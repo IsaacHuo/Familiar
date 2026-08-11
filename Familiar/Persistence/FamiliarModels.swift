@@ -140,6 +140,10 @@ final class FamiliarAttachment {
     var relativePath: String
     var extractedText: String
     var byteSize: Int64
+    var extractionEngine: String
+    var extractionVersion: String
+    var detectedFormat: String
+    var usedOCR: Bool
     var createdAt: Date
     var message: FamiliarMessage?
 
@@ -151,6 +155,10 @@ final class FamiliarAttachment {
         relativePath: String,
         extractedText: String,
         byteSize: Int64,
+        extractionEngine: String,
+        extractionVersion: String,
+        detectedFormat: String,
+        usedOCR: Bool,
         createdAt: Date = Date(),
         message: FamiliarMessage? = nil
     ) {
@@ -161,6 +169,10 @@ final class FamiliarAttachment {
         self.relativePath = relativePath
         self.extractedText = extractedText
         self.byteSize = byteSize
+        self.extractionEngine = extractionEngine
+        self.extractionVersion = extractionVersion
+        self.detectedFormat = detectedFormat
+        self.usedOCR = usedOCR
         self.createdAt = createdAt
         self.message = message
     }

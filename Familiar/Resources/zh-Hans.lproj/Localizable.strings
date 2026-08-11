@@ -58,6 +58,7 @@
 "settings.privacy.no_account" = "无需登录或 Familiar 账号";
 "settings.privacy.no_other_apps" = "不会读取其他 App 的数据";
 "settings.privacy.local_history" = "会话历史仅保存在本机";
+"settings.privacy.local_documents" = "文档由 AnyDoc 在本机转换，仅随消息发送转换后的文字";
 "settings.error.title" = "设置失败";
 
 "drawer.open" = "打开会话列表";
@@ -96,7 +97,7 @@
 "empty.configure" = "配置 %@ 开始聊天";
 
 "capability.coming_soon.title" = "暂不可用";
-"capability.attachments.detail" = "支持 PDF、TXT 和 Markdown 文件。图片只保留在本地草稿中，首版不会发送。";
+"capability.attachments.detail" = "Word、PowerPoint、Excel、OpenDocument、RTF、EPUB、CSV、PDF、TXT 和 Markdown 均在本机转换。图片只保留在本地草稿中，首版不会发送。";
 "capability.speech.detail" = "语音转写使用 Apple 语音识别，不会保留录音。";
 
 "attachment.choose_photos" = "选择照片";
@@ -111,12 +112,12 @@
 "attachment.file_send_blocked_detail" = "请选择支持文档的模型，或移除文件后只发送文字。";
 "attachment.file_import_failed_title" = "无法添加文件";
 "attachment.file_import_failed" = "无法添加所选文件。";
-"attachment.processing" = "正在读取文件…";
+"attachment.processing" = "正在使用 AnyDoc 转换…";
 "attachment.preview" = "预览 %@";
 "attachment.unavailable.title" = "附件不可用";
 "attachment.unavailable.detail" = "本地文件已丢失或无法继续打开。";
 "attachment.error.source_unavailable" = "所选文件当前不可用。";
-"attachment.error.unsupported_file" = "仅支持 PDF、TXT 和 Markdown 文件。";
+"attachment.error.unsupported_file" = "暂不支持此文件格式。Familiar 支持 Word、PowerPoint、Excel、OpenDocument、RTF、EPUB、CSV、PDF、TXT 和 Markdown。";
 "attachment.error.file_too_large" = "文件超过 25 MiB 上限。";
 "attachment.error.malformed_document" = "文档格式损坏，无法读取。";
 "attachment.error.unreadable_document" = "无法读取该文档。";
@@ -124,6 +125,13 @@
 "attachment.error.invalid_path" = "附件路径无效。";
 "attachment.error.copy_failed" = "无法把附件复制到 Familiar 的私有存储。";
 "attachment.error.model_unsupported" = "当前模型不支持文档上下文。请选择其他模型或移除文件。";
+"anydoc.error.unsupported" = "AnyDoc 不支持此文档，或无法识别它的格式。";
+"anydoc.error.malformed" = "AnyDoc 无法从该文档中恢复出有效内容。";
+"anydoc.error.encrypted" = "该文档已加密或受密码保护，请解除保护后再添加。";
+"anydoc.error.resource_limit" = "该文档超过 AnyDoc 的本地安全资源限制。";
+"anydoc.error.missing_part" = "该文档缺少必要的内部组成部分。";
+"anydoc.error.io" = "AnyDoc 无法读取本地文档副本。";
+"anydoc.error.bridge" = "本地 AnyDoc 转换器返回了无效结果。";
 
 "camera.permission.title" = "相机权限未开启";
 "camera.permission.detail" = "请在系统设置中允许 Familiar 使用相机，以添加图片草稿。";

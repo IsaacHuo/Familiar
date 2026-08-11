@@ -321,9 +321,13 @@ struct FamiliarComposer: View {
                                 .foregroundStyle(FamiliarTheme.accent)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(file.filename).font(.caption).lineLimit(1)
-                                Text(ByteCountFormatter.string(fromByteCount: file.byteSize, countStyle: .file))
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                                Text(
+                                    "\(file.extractionEngine)\(file.usedOCR ? " + Vision OCR" : "") · "
+                                    + "\(file.detectedFormat.uppercased()) · "
+                                    + ByteCountFormatter.string(fromByteCount: file.byteSize, countStyle: .file)
+                                )
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                             }
                             removeButton(label: String(localized: "attachment.remove_file")) {
                                 FamiliarAttachmentStore.remove(relativePath: file.relativePath)
@@ -446,12 +450,9 @@ struct FamiliarComposer: View {
         photoSelection = items
     }
 
-    private static let allowedFileTypes: [UTType] = [
-        .pdf,
-        UTType(filenameExtension: "txt")!,
-        UTType(filenameExtension: "md")!,
-        UTType(filenameExtension: "markdown")!
-    ]
+    private static let allowedFileTypes: [UTType] = FamiliarAnyDocService.supportedExtensions
+        .sorted()
+        .compactMap { UTType(filenameExtension: $0) }
 
     private func importFiles(_ result: Result<[URL], Error>) {
         do {

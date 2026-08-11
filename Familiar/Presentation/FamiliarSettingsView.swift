@@ -186,6 +186,7 @@ struct FamiliarSettingsView: View {
             Label(String(localized: "settings.privacy.no_account"), systemImage: "person.crop.circle.badge.xmark")
             Label(String(localized: "settings.privacy.permission_tools"), systemImage: "hand.raised")
             Label(String(localized: "settings.privacy.local_history"), systemImage: "internaldrive")
+            Label(String(localized: "settings.privacy.local_documents"), systemImage: "doc.text.magnifyingglass")
         }
     }
 

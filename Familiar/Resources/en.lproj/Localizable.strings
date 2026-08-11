@@ -58,6 +58,7 @@
 "settings.privacy.no_account" = "No sign-in or Familiar account";
 "settings.privacy.no_other_apps" = "Does not read data from other apps";
 "settings.privacy.local_history" = "Conversation history stays on this device";
+"settings.privacy.local_documents" = "Documents are converted locally with AnyDoc; only the resulting text is sent with your message";
 "settings.error.title" = "Couldn't Save Settings";
 
 "drawer.open" = "Open conversations";
@@ -96,7 +97,7 @@
 "empty.configure" = "Configure %@ to start chatting";
 
 "capability.coming_soon.title" = "Unavailable";
-"capability.attachments.detail" = "PDF, TXT, and Markdown files are supported. Photos remain local drafts and cannot be sent in this release.";
+"capability.attachments.detail" = "Word, PowerPoint, Excel, OpenDocument, RTF, EPUB, CSV, PDF, TXT, and Markdown are converted locally. Photos remain local drafts and cannot be sent in this release.";
 "capability.speech.detail" = "Voice transcription uses Apple Speech and does not keep an audio recording.";
 
 "attachment.choose_photos" = "Choose Photos";
@@ -111,12 +112,12 @@
 "attachment.file_send_blocked_detail" = "Choose a model that supports documents, or remove the files to send only the text.";
 "attachment.file_import_failed_title" = "Couldn't add files";
 "attachment.file_import_failed" = "Couldn't add the selected files.";
-"attachment.processing" = "Reading file…";
+"attachment.processing" = "Converting with AnyDoc…";
 "attachment.preview" = "Preview %@";
 "attachment.unavailable.title" = "Attachment unavailable";
 "attachment.unavailable.detail" = "The local file is missing or can no longer be opened.";
 "attachment.error.source_unavailable" = "The selected file is unavailable.";
-"attachment.error.unsupported_file" = "Only PDF, TXT, and Markdown files are supported.";
+"attachment.error.unsupported_file" = "This file format isn't supported. Familiar accepts Word, PowerPoint, Excel, OpenDocument, RTF, EPUB, CSV, PDF, TXT, and Markdown files.";
 "attachment.error.file_too_large" = "The file is larger than the 25 MiB limit.";
 "attachment.error.malformed_document" = "The document is malformed and cannot be read.";
 "attachment.error.unreadable_document" = "The document could not be read.";
@@ -124,6 +125,13 @@
 "attachment.error.invalid_path" = "The attachment path is invalid.";
 "attachment.error.copy_failed" = "The attachment could not be copied into Familiar's private storage.";
 "attachment.error.model_unsupported" = "The selected model does not support document context. Choose another model or remove the files.";
+"anydoc.error.unsupported" = "AnyDoc doesn't support this document or couldn't identify its format.";
+"anydoc.error.malformed" = "AnyDoc couldn't recover meaningful content from this document.";
+"anydoc.error.encrypted" = "This document is encrypted or password-protected. Remove its protection before adding it.";
+"anydoc.error.resource_limit" = "The document exceeded AnyDoc's local safety limits.";
+"anydoc.error.missing_part" = "The document is missing a required internal component.";
+"anydoc.error.io" = "AnyDoc couldn't read the local document copy.";
+"anydoc.error.bridge" = "The local AnyDoc converter returned an invalid result.";
 
 "camera.permission.title" = "Camera access is off";
 "camera.permission.detail" = "Allow Familiar to use the camera in Settings to add a photo draft.";

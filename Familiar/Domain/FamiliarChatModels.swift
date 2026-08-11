@@ -18,6 +18,10 @@ nonisolated struct FamiliarAttachmentDraft: Identifiable, Equatable, Sendable {
     let relativePath: String
     let extractedText: String
     let byteSize: Int64
+    let extractionEngine: String
+    let extractionVersion: String
+    let detectedFormat: String
+    let usedOCR: Bool
 }
 
 nonisolated struct FamiliarAttachmentSnapshot: Identifiable, Equatable, Sendable {
@@ -28,6 +32,10 @@ nonisolated struct FamiliarAttachmentSnapshot: Identifiable, Equatable, Sendable
     let relativePath: String
     let extractedText: String
     let byteSize: Int64
+    let extractionEngine: String
+    let extractionVersion: String
+    let detectedFormat: String
+    let usedOCR: Bool
 }
 
 nonisolated struct FamiliarMessageSnapshot: Identifiable, Equatable, Sendable {

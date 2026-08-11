@@ -1,6 +1,7 @@
 import Foundation
 import PDFKit
 import UIKit
+import UniformTypeIdentifiers
 import Vision
 
 nonisolated enum FamiliarAttachmentStoreError: LocalizedError, Sendable {
@@ -98,8 +99,13 @@ nonisolated enum FamiliarAttachmentStore {
         }
         do {
             try Task.checkCancellation()
-            let extractedText = try await extractText(from: draftURL)
-            return try makeDraft(filename: filename, relativePath: relativePath(for: draftURL), text: extractedText, byteSize: sourceSize)
+            let conversion = try await extractDocument(from: draftURL, filename: filename)
+            return try makeDraft(
+                filename: filename,
+                relativePath: relativePath(for: draftURL),
+                conversion: conversion,
+                byteSize: sourceSize
+            )
         } catch {
             try? fileManager.removeItem(at: draftURL)
             throw error
@@ -124,7 +130,19 @@ nonisolated enum FamiliarAttachmentStore {
             try? fileManager.removeItem(at: destinationURL)
             throw FamiliarAttachmentStoreError.copyFailed
         }
-        return try makeDraft(filename: filename, relativePath: relativePath(for: destinationURL), text: attachment.extractedText, byteSize: size)
+        return FamiliarAttachmentDraft(
+            id: UUID(),
+            kind: .document,
+            filename: filename,
+            mimeType: attachment.mimeType,
+            relativePath: relativePath(for: destinationURL),
+            extractedText: attachment.extractedText,
+            byteSize: size,
+            extractionEngine: attachment.extractionEngine,
+            extractionVersion: attachment.extractionVersion,
+            detectedFormat: attachment.detectedFormat,
+            usedOCR: attachment.usedOCR
+        )
     }
 
     static func committedCopy(of draft: FamiliarAttachmentDraft, messageID: UUID) throws -> String {
@@ -175,18 +193,15 @@ nonisolated enum FamiliarAttachmentStore {
     }
 
     private static func isSupported(_ filename: String) -> Bool {
-        switch URL(fileURLWithPath: filename).pathExtension.lowercased() {
-        case "pdf", "txt", "md", "markdown": return true
-        default: return false
-        }
+        FamiliarAnyDocService.supportedExtensions.contains(
+            URL(fileURLWithPath: filename).pathExtension.lowercased()
+        )
     }
 
     private static func mimeType(for filename: String) -> String {
-        switch URL(fileURLWithPath: filename).pathExtension.lowercased() {
-        case "pdf": return "application/pdf"
-        case "md", "markdown": return "text/markdown"
-        default: return "text/plain"
-        }
+        let fileExtension = URL(fileURLWithPath: filename).pathExtension.lowercased()
+        if fileExtension == "md" || fileExtension == "markdown" { return "text/markdown" }
+        return UTType(filenameExtension: fileExtension)?.preferredMIMEType ?? "application/octet-stream"
     }
 
     private static func sanitizedFilename(_ filename: String) -> String {
@@ -226,23 +241,68 @@ nonisolated enum FamiliarAttachmentStore {
         guard try fileSize(of: url) == expectedSize else { throw FamiliarAttachmentStoreError.copyFailed }
     }
 
-    private static func makeDraft(filename: String, relativePath: String, text: String, byteSize: Int64) throws -> FamiliarAttachmentDraft {
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw FamiliarAttachmentStoreError.emptyDocument }
-        return FamiliarAttachmentDraft(id: UUID(), kind: .document, filename: filename, mimeType: mimeType(for: filename), relativePath: relativePath, extractedText: text, byteSize: byteSize)
-    }
-
-    private static func extractText(from url: URL) async throws -> String {
-        try Task.checkCancellation()
-        if url.pathExtension.lowercased() == "pdf" { return try await extractPDFText(from: url) }
-        let data: Data
-        do { data = try Data(contentsOf: url, options: [.mappedIfSafe]) } catch { throw FamiliarAttachmentStoreError.unreadableDocument }
-        for encoding in [String.Encoding.utf8, .utf16, .utf16LittleEndian, .utf16BigEndian, .utf32, .utf32LittleEndian, .utf32BigEndian, .isoLatin1, .windowsCP1252, .macOSRoman] {
-            if let text = String(data: data, encoding: encoding), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return text }
+    private static func makeDraft(
+        filename: String,
+        relativePath: String,
+        conversion: FamiliarAnyDocConversion,
+        byteSize: Int64
+    ) throws -> FamiliarAttachmentDraft {
+        guard !conversion.markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw FamiliarAttachmentStoreError.emptyDocument
         }
-        throw FamiliarAttachmentStoreError.unreadableDocument
+        return FamiliarAttachmentDraft(
+            id: UUID(),
+            kind: .document,
+            filename: filename,
+            mimeType: mimeType(for: filename),
+            relativePath: relativePath,
+            extractedText: conversion.markdown,
+            byteSize: byteSize,
+            extractionEngine: FamiliarAnyDocService.engineName,
+            extractionVersion: conversion.engineVersion,
+            detectedFormat: conversion.formatID,
+            usedOCR: conversion.usedOCR
+        )
     }
 
-    private static func extractPDFText(from url: URL) async throws -> String {
+    private static func extractDocument(
+        from url: URL,
+        filename: String
+    ) async throws -> FamiliarAnyDocConversion {
+        try Task.checkCancellation()
+        let data: Data
+        do {
+            data = try Data(contentsOf: url, options: [.mappedIfSafe])
+        } catch {
+            throw FamiliarAttachmentStoreError.unreadableDocument
+        }
+
+        do {
+            let conversion = try FamiliarAnyDocService.convert(data: data, filename: filename)
+            guard url.pathExtension.lowercased() == "pdf" else { return conversion }
+            let scannedPages = try await extractScannedPDFPages(from: url)
+            guard !scannedPages.isEmpty else { return conversion }
+            return FamiliarAnyDocConversion(
+                markdown: conversion.markdown + "\n\n---\n\n# OCR text from scanned pages\n\n" + scannedPages,
+                formatID: conversion.formatID,
+                engineVersion: conversion.engineVersion,
+                usedOCR: true
+            )
+        } catch let error as FamiliarAnyDocError {
+            guard url.pathExtension.lowercased() == "pdf",
+                  case .unsupported = error
+            else { throw error }
+            let markdown = try await extractPDFWithVisionFallback(from: url)
+            return FamiliarAnyDocConversion(
+                markdown: markdown,
+                formatID: "pdf",
+                engineVersion: FamiliarAnyDocService.engineVersion,
+                usedOCR: true
+            )
+        }
+    }
+
+    private static func extractPDFWithVisionFallback(from url: URL) async throws -> String {
         guard let document = PDFDocument(url: url), document.pageCount > 0 else {
             throw FamiliarAttachmentStoreError.malformedDocument
         }
@@ -260,26 +320,44 @@ nonisolated enum FamiliarAttachmentStore {
                 continue
             }
 
-            guard let image = page.thumbnail(
-                of: CGSize(width: 1800, height: 2400),
-                for: .mediaBox
-            ).cgImage else {
-                pageTexts.append("")
-                continue
-            }
-            let request = VNRecognizeTextRequest()
-            request.recognitionLevel = .accurate
-            request.usesLanguageCorrection = true
-            try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
-            let recognized = (request.results ?? [])
-                .compactMap { $0.topCandidates(1).first?.string }
-                .joined(separator: "\n")
-            pageTexts.append(recognized)
+            pageTexts.append(try recognizeText(on: page))
         }
         let text = pageTexts.joined(separator: "\n\n")
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw FamiliarAttachmentStoreError.emptyDocument
         }
         return text
+    }
+
+    private static func extractScannedPDFPages(from url: URL) async throws -> String {
+        guard let document = PDFDocument(url: url), document.pageCount > 0 else {
+            throw FamiliarAttachmentStoreError.malformedDocument
+        }
+        var sections: [String] = []
+        for index in 0..<document.pageCount {
+            try Task.checkCancellation()
+            guard let page = document.page(at: index) else { continue }
+            let embeddedText = page.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard embeddedText.isEmpty else { continue }
+            let recognized = try recognizeText(on: page)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !recognized.isEmpty else { continue }
+            sections.append("## Page \(index + 1)\n\n\(recognized)")
+        }
+        return sections.joined(separator: "\n\n")
+    }
+
+    private static func recognizeText(on page: PDFPage) throws -> String {
+        guard let image = page.thumbnail(
+            of: CGSize(width: 1800, height: 2400),
+            for: .mediaBox
+        ).cgImage else { return "" }
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
+        try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
+        return (request.results ?? [])
+            .compactMap { $0.topCandidates(1).first?.string }
+            .joined(separator: "\n")
     }
 }

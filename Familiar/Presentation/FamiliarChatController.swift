@@ -205,6 +205,10 @@ final class FamiliarChatController: ObservableObject {
                 relativePath: relativePath,
                 extractedText: draftAttachment.extractedText,
                 byteSize: draftAttachment.byteSize,
+                extractionEngine: draftAttachment.extractionEngine,
+                extractionVersion: draftAttachment.extractionVersion,
+                detectedFormat: draftAttachment.detectedFormat,
+                usedOCR: draftAttachment.usedOCR,
                 message: userMessage
             )
             context.insert(attachment)
@@ -354,7 +358,11 @@ final class FamiliarChatController: ObservableObject {
                 mimeType: $0.mimeType,
                 relativePath: $0.relativePath,
                 extractedText: $0.extractedText,
-                byteSize: $0.byteSize
+                byteSize: $0.byteSize,
+                extractionEngine: $0.extractionEngine,
+                extractionVersion: $0.extractionVersion,
+                detectedFormat: $0.detectedFormat,
+                usedOCR: $0.usedOCR
             )
         }
         let stagedAttachments: [FamiliarAttachmentDraft]
@@ -426,7 +434,11 @@ final class FamiliarChatController: ObservableObject {
                                 mimeType: $0.mimeType,
                                 relativePath: $0.relativePath,
                                 extractedText: $0.extractedText,
-                                byteSize: $0.byteSize
+                                byteSize: $0.byteSize,
+                                extractionEngine: $0.extractionEngine,
+                                extractionVersion: $0.extractionVersion,
+                                detectedFormat: $0.detectedFormat,
+                                usedOCR: $0.usedOCR
                             )
                         }
                 )

@@ -281,9 +281,13 @@ private struct FamiliarMessageRow: View {
                                 Text(attachment.filename)
                                     .font(.subheadline.weight(.medium))
                                     .lineLimit(2)
-                                Text(ByteCountFormatter.string(fromByteCount: attachment.byteSize, countStyle: .file))
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                                Text(
+                                    "\(attachment.extractionEngine)\(attachment.usedOCR ? " + Vision OCR" : "") · "
+                                    + "\(attachment.detectedFormat.uppercased()) · "
+                                    + ByteCountFormatter.string(fromByteCount: attachment.byteSize, countStyle: .file)
+                                )
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                             }
                             Image(systemName: "chevron.right")
                                 .font(.caption.weight(.semibold))
