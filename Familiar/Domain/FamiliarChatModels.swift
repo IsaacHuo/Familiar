@@ -5,6 +5,31 @@ nonisolated enum FamiliarMessageRole: String, Codable, Sendable {
     case assistant
 }
 
+nonisolated enum FamiliarAttachmentKind: String, Codable, Sendable {
+    case document
+    case image
+}
+
+nonisolated struct FamiliarAttachmentDraft: Identifiable, Equatable, Sendable {
+    let id: UUID
+    let kind: FamiliarAttachmentKind
+    let filename: String
+    let mimeType: String
+    let relativePath: String
+    let extractedText: String
+    let byteSize: Int64
+}
+
+nonisolated struct FamiliarAttachmentSnapshot: Identifiable, Equatable, Sendable {
+    let id: UUID
+    let kind: FamiliarAttachmentKind
+    let filename: String
+    let mimeType: String
+    let relativePath: String
+    let extractedText: String
+    let byteSize: Int64
+}
+
 nonisolated struct FamiliarMessageSnapshot: Identifiable, Equatable, Sendable {
     let id: UUID
     let role: FamiliarMessageRole
@@ -13,6 +38,7 @@ nonisolated struct FamiliarMessageSnapshot: Identifiable, Equatable, Sendable {
     let sequence: Int
     let providerID: String?
     let modelID: String?
+    let attachments: [FamiliarAttachmentSnapshot]
 }
 
 nonisolated enum FamiliarPersistedConfirmationResult: String, Codable, Sendable {

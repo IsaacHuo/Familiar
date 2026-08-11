@@ -40,6 +40,7 @@ struct FamiliarMessageTimeline: View {
                 sequence: Int.max,
                 providerID: nil,
                 modelID: nil,
+                attachments: [],
                 isStreaming: true,
                 source: nil
             )))
@@ -193,6 +194,7 @@ private struct FamiliarRenderedMessage {
     let sequence: Int
     let providerID: String?
     let modelID: String?
+    let attachments: [FamiliarAttachmentSnapshot]
     let isStreaming: Bool
     let source: FamiliarMessageSnapshot?
 
@@ -204,6 +206,7 @@ private struct FamiliarRenderedMessage {
         sequence = snapshot.sequence
         providerID = snapshot.providerID
         modelID = snapshot.modelID
+        attachments = snapshot.attachments
         isStreaming = false
         source = snapshot
     }
@@ -216,6 +219,7 @@ private struct FamiliarRenderedMessage {
         sequence: Int,
         providerID: String?,
         modelID: String?,
+        attachments: [FamiliarAttachmentSnapshot],
         isStreaming: Bool,
         source: FamiliarMessageSnapshot?
     ) {
@@ -226,6 +230,7 @@ private struct FamiliarRenderedMessage {
         self.sequence = sequence
         self.providerID = providerID
         self.modelID = modelID
+        self.attachments = attachments
         self.isStreaming = isStreaming
         self.source = source
     }
@@ -236,37 +241,86 @@ private struct FamiliarMessageRow: View {
     let onEdit: (FamiliarMessageSnapshot) -> Void
     let onRetry: (FamiliarMessageSnapshot) -> Void
 
+    @State private var previewAttachment: FamiliarAttachmentSnapshot?
+
     var body: some View {
-        if message.role == .user {
-            userMessage
-        } else {
-            assistantMessage
+        Group {
+            if message.role == .user {
+                userMessage
+            } else {
+                assistantMessage
+            }
+        }
+        .sheet(item: $previewAttachment) { attachment in
+            if let url = FamiliarAttachmentStore.url(for: attachment.relativePath) {
+                FamiliarAttachmentQuickLookView(url: url)
+                    .ignoresSafeArea()
+            } else {
+                ContentUnavailableView(
+                    String(localized: "attachment.unavailable.title"),
+                    systemImage: "doc.badge.ellipsis",
+                    description: Text(String(localized: "attachment.unavailable.detail"))
+                )
+            }
         }
     }
 
     private var userMessage: some View {
         HStack(alignment: .bottom) {
             Spacer(minLength: 48)
-            Text(message.content)
-                .font(.body)
-                .textSelection(.enabled)
-                .padding(.horizontal, 15)
-                .padding(.vertical, 11)
-                .background(FamiliarTheme.userFill, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .contextMenu {
+            VStack(alignment: .leading, spacing: 9) {
+                ForEach(message.attachments) { attachment in
+                    Button {
+                        previewAttachment = attachment
+                    } label: {
+                        HStack(spacing: 9) {
+                            Image(systemName: attachment.mimeType == "application/pdf" ? "doc.richtext" : "doc.text")
+                                .font(.title3)
+                                .foregroundStyle(FamiliarTheme.accent)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(attachment.filename)
+                                    .font(.subheadline.weight(.medium))
+                                    .lineLimit(2)
+                                Text(ByteCountFormatter.string(fromByteCount: attachment.byteSize, countStyle: .file))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(String(format: String(localized: "attachment.preview"), attachment.filename))
+                }
+                if !message.content.isEmpty {
+                    Text(message.content)
+                        .font(.body)
+                        .textSelection(.enabled)
+                }
+            }
+            .padding(.horizontal, 15)
+            .padding(.vertical, 11)
+            .background(FamiliarTheme.userFill, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .contextMenu {
+                if !message.content.isEmpty {
                     Button {
                         UIPasteboard.general.string = message.content
                     } label: {
                         Label(String(localized: "common.copy"), systemImage: "doc.on.doc")
                     }
-                    if let source = message.source {
-                        Button {
-                            onEdit(source)
-                        } label: {
-                            Label(String(localized: "common.edit"), systemImage: "pencil")
-                        }
+                }
+                if let source = message.source {
+                    Button {
+                        onEdit(source)
+                    } label: {
+                        Label(String(localized: "common.edit"), systemImage: "pencil")
                     }
                 }
+            }
         }
     }
 

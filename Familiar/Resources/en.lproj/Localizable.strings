@@ -78,6 +78,7 @@
 "attachment.photos" = "Photos";
 "attachment.files" = "Files";
 "speech.start" = "Start voice input";
+"speech.stop" = "Stop voice input";
 "composer.placeholder" = "Message Familiar";
 "message.send" = "Send";
 "message.stop" = "Stop generating";
@@ -94,9 +95,9 @@
 "empty.prompt.write" = "Help me polish a piece of writing";
 "empty.configure" = "Configure %@ to start chatting";
 
-"capability.coming_soon.title" = "Coming Soon";
-"capability.attachments.detail" = "Attachment drafts are available. Photos are kept in the composer but cannot be sent in this first release; PDF, TXT, and MD files remain drafts only.";
-"capability.speech.detail" = "Native voice dictation is planned for the next milestone.";
+"capability.coming_soon.title" = "Unavailable";
+"capability.attachments.detail" = "PDF, TXT, and Markdown files are supported. Photos remain local drafts and cannot be sent in this release.";
+"capability.speech.detail" = "Voice transcription uses Apple Speech and does not keep an audio recording.";
 
 "attachment.choose_photos" = "Choose Photos";
 "attachment.close_photos" = "Close photo picker";
@@ -106,10 +107,23 @@
 "attachment.remove_file" = "Remove file";
 "attachment.image_send_blocked_title" = "Photos aren't sendable yet";
 "attachment.image_send_blocked_detail" = "This first release does not support sending images. Your text and photo drafts are preserved; remove the photos to send the text.";
-"attachment.file_send_blocked_title" = "Files aren't sendable yet";
-"attachment.file_send_blocked_detail" = "PDF, TXT, and Markdown drafts are preserved, but they are not sent until local extraction is enabled. Remove the files to send only the text.";
+"attachment.file_send_blocked_title" = "This model doesn't support documents";
+"attachment.file_send_blocked_detail" = "Choose a model that supports documents, or remove the files to send only the text.";
 "attachment.file_import_failed_title" = "Couldn't add files";
 "attachment.file_import_failed" = "Couldn't add the selected files.";
+"attachment.processing" = "Reading file…";
+"attachment.preview" = "Preview %@";
+"attachment.unavailable.title" = "Attachment unavailable";
+"attachment.unavailable.detail" = "The local file is missing or can no longer be opened.";
+"attachment.error.source_unavailable" = "The selected file is unavailable.";
+"attachment.error.unsupported_file" = "Only PDF, TXT, and Markdown files are supported.";
+"attachment.error.file_too_large" = "The file is larger than the 25 MiB limit.";
+"attachment.error.malformed_document" = "The document is malformed and cannot be read.";
+"attachment.error.unreadable_document" = "The document could not be read.";
+"attachment.error.empty_document" = "No readable text was found in the document.";
+"attachment.error.invalid_path" = "The attachment path is invalid.";
+"attachment.error.copy_failed" = "The attachment could not be copied into Familiar's private storage.";
+"attachment.error.model_unsupported" = "The selected model does not support document context. Choose another model or remove the files.";
 
 "camera.permission.title" = "Camera access is off";
 "camera.permission.detail" = "Allow Familiar to use the camera in Settings to add a photo draft.";
@@ -125,6 +139,10 @@
 "camera.configuration_failed" = "The camera could not be configured.";
 "composer.expand" = "Expand editor";
 "composer.collapse" = "Collapse editor";
+"speech.error.unavailable" = "Speech recognition is currently unavailable.";
+"speech.error.permission" = "Allow Speech Recognition in Settings to use voice input.";
+"speech.error.microphone" = "Allow microphone access in Settings to use voice input.";
+"speech.error.start" = "Voice transcription couldn't start. Check the microphone and try again.";
 
 "agent.status.thinking" = "Thinking";
 "agent.status.using_tool" = "Using %@";

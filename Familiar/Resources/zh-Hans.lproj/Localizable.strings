@@ -78,6 +78,7 @@
 "attachment.photos" = "照片";
 "attachment.files" = "文件";
 "speech.start" = "开始语音输入";
+"speech.stop" = "停止语音输入";
 "composer.placeholder" = "问问 Familiar";
 "message.send" = "发送";
 "message.stop" = "停止生成";
@@ -94,9 +95,9 @@
 "empty.prompt.write" = "帮我润色一段文字";
 "empty.configure" = "配置 %@ 开始聊天";
 
-"capability.coming_soon.title" = "即将支持";
-"capability.attachments.detail" = "附件草稿入口已经可用。首版不支持发送图片；PDF、TXT 和 MD 文件暂时只保留草稿界面。";
-"capability.speech.detail" = "语音输入将在下一阶段接入原生听写。";
+"capability.coming_soon.title" = "暂不可用";
+"capability.attachments.detail" = "支持 PDF、TXT 和 Markdown 文件。图片只保留在本地草稿中，首版不会发送。";
+"capability.speech.detail" = "语音转写使用 Apple 语音识别，不会保留录音。";
 
 "attachment.choose_photos" = "选择照片";
 "attachment.close_photos" = "关闭照片选择";
@@ -106,10 +107,23 @@
 "attachment.remove_file" = "移除文件";
 "attachment.image_send_blocked_title" = "暂不支持发送图片";
 "attachment.image_send_blocked_detail" = "首版暂不支持发送图片。文字和图片草稿会保留；移除图片后才可以发送文字。";
-"attachment.file_send_blocked_title" = "暂不支持发送文件";
-"attachment.file_send_blocked_detail" = "PDF、TXT 和 Markdown 草稿会保留；启用本地文本抽取前不会发送。移除文件后可以只发送文字。";
+"attachment.file_send_blocked_title" = "当前模型不支持文档";
+"attachment.file_send_blocked_detail" = "请选择支持文档的模型，或移除文件后只发送文字。";
 "attachment.file_import_failed_title" = "无法添加文件";
 "attachment.file_import_failed" = "无法添加所选文件。";
+"attachment.processing" = "正在读取文件…";
+"attachment.preview" = "预览 %@";
+"attachment.unavailable.title" = "附件不可用";
+"attachment.unavailable.detail" = "本地文件已丢失或无法继续打开。";
+"attachment.error.source_unavailable" = "所选文件当前不可用。";
+"attachment.error.unsupported_file" = "仅支持 PDF、TXT 和 Markdown 文件。";
+"attachment.error.file_too_large" = "文件超过 25 MiB 上限。";
+"attachment.error.malformed_document" = "文档格式损坏，无法读取。";
+"attachment.error.unreadable_document" = "无法读取该文档。";
+"attachment.error.empty_document" = "文档中没有找到可读取的文字。";
+"attachment.error.invalid_path" = "附件路径无效。";
+"attachment.error.copy_failed" = "无法把附件复制到 Familiar 的私有存储。";
+"attachment.error.model_unsupported" = "当前模型不支持文档上下文。请选择其他模型或移除文件。";
 
 "camera.permission.title" = "相机权限未开启";
 "camera.permission.detail" = "请在系统设置中允许 Familiar 使用相机，以添加图片草稿。";
@@ -125,6 +139,10 @@
 "camera.configuration_failed" = "相机配置失败。";
 "composer.expand" = "放大编辑器";
 "composer.collapse" = "缩小编辑器";
+"speech.error.unavailable" = "语音识别当前不可用。";
+"speech.error.permission" = "请在系统设置中允许语音识别，以使用语音输入。";
+"speech.error.microphone" = "请在系统设置中允许麦克风，以使用语音输入。";
+"speech.error.start" = "无法开始语音转写，请检查麦克风后重试。";
 
 "agent.status.thinking" = "正在思考";
 "agent.status.using_tool" = "正在使用 %@";

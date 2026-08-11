@@ -10,6 +10,8 @@ final class FamiliarChatController: ObservableObject {
     @Published private(set) var toolRunRecords: [FamiliarToolRunSnapshot] = []
     @Published private(set) var pendingConfirmations: [FamiliarToolConfirmationRequest] = []
     @Published var draft = ""
+    @Published var draftImages: [FamiliarDraftImage] = []
+    @Published var draftAttachments: [FamiliarAttachmentDraft] = []
     @Published private(set) var streamingText = ""
     @Published private(set) var streamingMessageID: UUID?
     @Published private(set) var agentStatus: FamiliarAgentStatus?
@@ -47,6 +49,8 @@ final class FamiliarChatController: ObservableObject {
 
     func select(_ id: UUID?, in context: ModelContext) {
         guard !isSending else { return }
+        discardDraftAttachments()
+        draft = ""
         selectedConversationID = id
         resetTransientRunState()
         reloadMessages(in: context)
@@ -59,6 +63,8 @@ final class FamiliarChatController: ObservableObject {
 
     @discardableResult
     func createConversation(in context: ModelContext) -> FamiliarConversation? {
+        discardDraftAttachments()
+        draft = ""
         let conversation = FamiliarConversation(
             currentProviderID: settings.providerID,
             currentModelID: settings.modelID
@@ -82,9 +88,13 @@ final class FamiliarChatController: ObservableObject {
     func delete(_ conversations: [FamiliarConversation], in context: ModelContext) {
         guard !isSending else { return }
         let deletedIDs = Set(conversations.map(\.id))
+        let attachmentPaths = conversations.flatMap { conversation in
+            conversation.messages.flatMap { $0.attachments.map(\.relativePath) }
+        }
         conversations.forEach(context.delete)
         do {
             try context.save()
+            FamiliarAttachmentStore.remove(relativePaths: attachmentPaths)
             if let selectedConversationID, deletedIDs.contains(selectedConversationID) {
                 self.selectedConversationID = nil
                 messages = []
@@ -114,14 +124,29 @@ final class FamiliarChatController: ObservableObject {
 
     func startSending(in context: ModelContext) {
         guard !isSending else { return }
+        guard draftImages.isEmpty else {
+            errorMessage = String(localized: "attachment.image_send_blocked_detail")
+            return
+        }
         let prompt = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !prompt.isEmpty else { return }
+        guard !prompt.isEmpty || !draftAttachments.isEmpty else { return }
         let requestSettings = settings
         guard let descriptor = requestSettings.resolvedProvider else {
             errorMessage = String(localized: "error.provider.invalid_custom_configuration")
             return
         }
-        guard prompt.count <= requestSettings.selectedModel.capabilities.maximumInputCharacters else {
+        guard draftAttachments.isEmpty || requestSettings.selectedModel.capabilities.supportsDocuments else {
+            errorMessage = String(localized: "attachment.error.model_unsupported")
+            return
+        }
+        let priorCharacterCount = messages.reduce(into: 0) { count, message in
+            count += message.content.count
+            count += message.attachments.reduce(0) { $0 + $1.extractedText.count }
+        }
+        let requestCharacterCount = priorCharacterCount
+            + prompt.count
+            + draftAttachments.reduce(0) { $0 + $1.extractedText.count }
+        guard requestCharacterCount <= requestSettings.selectedModel.capabilities.maximumInputCharacters else {
             errorMessage = String(localized: "error.message.context_too_large")
             return
         }
@@ -134,38 +159,76 @@ final class FamiliarChatController: ObservableObject {
         }
 
         let conversation: FamiliarConversation
+        let createdConversation: Bool
         if let existing = selectedConversation(in: context) {
             conversation = existing
-        } else if let created = createConversation(in: context) {
-            conversation = created
+            createdConversation = false
         } else {
-            return
+            let created = FamiliarConversation(
+                currentProviderID: requestSettings.providerID,
+                currentModelID: requestSettings.modelID
+            )
+            context.insert(created)
+            conversation = created
+            createdConversation = true
+            selectedConversationID = created.id
         }
         conversation.currentProviderID = requestSettings.providerID
         conversation.currentModelID = requestSettings.modelID
 
         let nextSequence = (conversation.messages.map(\.sequence).max() ?? -1) + 1
+        let messageID = UUID()
+        var committedPaths: [String] = []
+        do {
+            committedPaths = try committedAttachmentPaths(for: draftAttachments, messageID: messageID)
+        } catch {
+            context.rollback()
+            if createdConversation { selectedConversationID = nil }
+            FamiliarAttachmentStore.remove(relativePaths: committedPaths)
+            errorMessage = error.localizedDescription
+            return
+        }
         let userMessage = FamiliarMessage(
+            id: messageID,
             role: .user,
             content: prompt,
             sequence: nextSequence,
             conversation: conversation
         )
         context.insert(userMessage)
+        for (draftAttachment, relativePath) in zip(draftAttachments, committedPaths) {
+            let attachment = FamiliarAttachment(
+                id: draftAttachment.id,
+                kind: draftAttachment.kind,
+                filename: draftAttachment.filename,
+                mimeType: draftAttachment.mimeType,
+                relativePath: relativePath,
+                extractedText: draftAttachment.extractedText,
+                byteSize: draftAttachment.byteSize,
+                message: userMessage
+            )
+            context.insert(attachment)
+        }
         conversation.updatedAt = Date()
         if conversation.messages.count == 1 {
-            conversation.title = String(prompt.prefix(28))
+            let titleSource = prompt.isEmpty ? (draftAttachments.first?.filename ?? String(localized: "conversation.new")) : prompt
+            conversation.title = String(titleSource.prefix(28))
         }
 
         do {
             try context.save()
         } catch {
             context.rollback()
+            if createdConversation { selectedConversationID = nil }
+            FamiliarAttachmentStore.remove(relativePaths: committedPaths)
             errorMessage = String(format: String(localized: "error.save_prompt"), error.localizedDescription)
             return
         }
 
+        FamiliarAttachmentStore.remove(relativePaths: draftAttachments.map(\.relativePath))
         draft = ""
+        draftAttachments = []
+        draftImages = []
         reloadMessages(in: context)
         let requestMessages = messages
         let responseID = UUID()
@@ -238,19 +301,33 @@ final class FamiliarChatController: ObservableObject {
               let conversation = selectedConversation(in: context)
         else { return }
 
-        conversation.messages
+        let stagedAttachments: [FamiliarAttachmentDraft]
+        do {
+            stagedAttachments = try stagedCopies(of: message.attachments)
+        } catch {
+            errorMessage = error.localizedDescription
+            return
+        }
+        let messagesToDelete = conversation.messages.filter { $0.sequence >= message.sequence }
+        let attachmentPaths = messagesToDelete.flatMap { $0.attachments.map(\.relativePath) }
+        messagesToDelete.forEach(context.delete)
+        conversation.modelSwitchRecords
             .filter { $0.sequence >= message.sequence }
             .forEach(context.delete)
-        conversation.modelSwitchRecords
+        conversation.toolRunRecords
             .filter { $0.sequence >= message.sequence }
             .forEach(context.delete)
         conversation.updatedAt = Date()
         do {
             try context.save()
+            FamiliarAttachmentStore.remove(relativePaths: attachmentPaths)
+            discardDraftAttachments()
             draft = message.content
+            draftAttachments = stagedAttachments
             reloadMessages(in: context)
         } catch {
             context.rollback()
+            FamiliarAttachmentStore.remove(relativePaths: stagedAttachments.map(\.relativePath))
             errorMessage = String(format: String(localized: "error.edit_message"), error.localizedDescription)
         }
     }
@@ -269,10 +346,31 @@ final class FamiliarChatController: ObservableObject {
         else { return }
 
         let prompt = userMessage.content
-        conversation.messages
+        let userSnapshotAttachments = userMessage.attachments.map {
+            FamiliarAttachmentSnapshot(
+                id: $0.id,
+                kind: $0.kind,
+                filename: $0.filename,
+                mimeType: $0.mimeType,
+                relativePath: $0.relativePath,
+                extractedText: $0.extractedText,
+                byteSize: $0.byteSize
+            )
+        }
+        let stagedAttachments: [FamiliarAttachmentDraft]
+        do {
+            stagedAttachments = try stagedCopies(of: userSnapshotAttachments)
+        } catch {
+            errorMessage = error.localizedDescription
+            return
+        }
+        let messagesToDelete = conversation.messages.filter { $0.sequence >= userMessage.sequence }
+        let attachmentPaths = messagesToDelete.flatMap { $0.attachments.map(\.relativePath) }
+        messagesToDelete.forEach(context.delete)
+        conversation.modelSwitchRecords
             .filter { $0.sequence >= userMessage.sequence }
             .forEach(context.delete)
-        conversation.modelSwitchRecords
+        conversation.toolRunRecords
             .filter { $0.sequence >= userMessage.sequence }
             .forEach(context.delete)
         if let providerID = message.providerID, let modelID = message.modelID {
@@ -285,11 +383,15 @@ final class FamiliarChatController: ObservableObject {
         do {
             try context.save()
             try FamiliarSettingsStore.save(settings)
+            FamiliarAttachmentStore.remove(relativePaths: attachmentPaths)
+            discardDraftAttachments()
             draft = prompt
+            draftAttachments = stagedAttachments
             reloadMessages(in: context)
             startSending(in: context)
         } catch {
             context.rollback()
+            FamiliarAttachmentStore.remove(relativePaths: stagedAttachments.map(\.relativePath))
             errorMessage = String(format: String(localized: "error.retry_message"), error.localizedDescription)
         }
     }
@@ -313,7 +415,20 @@ final class FamiliarChatController: ObservableObject {
                     createdAt: $0.createdAt,
                     sequence: $0.sequence,
                     providerID: $0.providerID,
-                    modelID: $0.modelID
+                    modelID: $0.modelID,
+                    attachments: $0.attachments
+                        .sorted { $0.createdAt < $1.createdAt }
+                        .map {
+                            FamiliarAttachmentSnapshot(
+                                id: $0.id,
+                                kind: $0.kind,
+                                filename: $0.filename,
+                                mimeType: $0.mimeType,
+                                relativePath: $0.relativePath,
+                                extractedText: $0.extractedText,
+                                byteSize: $0.byteSize
+                            )
+                        }
                 )
             }
         modelSwitches = conversation.modelSwitchRecords
@@ -516,6 +631,43 @@ final class FamiliarChatController: ObservableObject {
             context.rollback()
             errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
         }
+    }
+
+    private func committedAttachmentPaths(
+        for attachments: [FamiliarAttachmentDraft],
+        messageID: UUID
+    ) throws -> [String] {
+        var paths: [String] = []
+        do {
+            for attachment in attachments {
+                paths.append(try FamiliarAttachmentStore.committedCopy(of: attachment, messageID: messageID))
+            }
+            return paths
+        } catch {
+            FamiliarAttachmentStore.remove(relativePaths: paths)
+            throw error
+        }
+    }
+
+    private func stagedCopies(
+        of attachments: [FamiliarAttachmentSnapshot]
+    ) throws -> [FamiliarAttachmentDraft] {
+        var drafts: [FamiliarAttachmentDraft] = []
+        do {
+            for attachment in attachments {
+                drafts.append(try FamiliarAttachmentStore.stageCopy(of: attachment))
+            }
+            return drafts
+        } catch {
+            FamiliarAttachmentStore.remove(relativePaths: drafts.map(\.relativePath))
+            throw error
+        }
+    }
+
+    private func discardDraftAttachments() {
+        FamiliarAttachmentStore.remove(relativePaths: draftAttachments.map(\.relativePath))
+        draftAttachments = []
+        draftImages = []
     }
 
     private func selectedConversation(in context: ModelContext) -> FamiliarConversation? {

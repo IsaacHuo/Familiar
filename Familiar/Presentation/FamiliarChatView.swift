@@ -4,16 +4,18 @@ import SwiftUI
 struct FamiliarChatView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \FamiliarConversation.updatedAt, order: .reverse)
     private var conversations: [FamiliarConversation]
 
     @StateObject private var controller = FamiliarChatController()
+    @StateObject private var speechTranscriber = FamiliarSpeechTranscriber()
     @State private var isDrawerOpen = false
     @GestureState private var drawerDrag: CGFloat = 0
     @State private var presentedSheet: FamiliarSheetDestination?
     @State private var renameRequest: FamiliarRenameRequest?
     @State private var pendingMessageOperation: FamiliarPendingMessageOperation?
-    @State private var capabilityNotice: FamiliarCapabilityNotice?
+    @State private var speechBaseDraft = ""
     @FocusState private var isComposerFocused: Bool
 
     var body: some View {
@@ -27,10 +29,12 @@ struct FamiliarChatView: View {
                     conversations: conversations,
                     selectedConversationID: controller.selectedConversationID,
                     onSelect: { conversation in
+                        speechTranscriber.stop()
                         controller.select(conversation.id, in: modelContext)
                         closeDrawer()
                     },
                     onNewConversation: {
+                        speechTranscriber.stop()
                         _ = controller.createConversation(in: modelContext)
                         closeDrawer()
                         isComposerFocused = true
@@ -105,13 +109,7 @@ struct FamiliarChatView: View {
             Button(String(localized: "common.save")) { commitRename() }
             Button(String(localized: "common.cancel"), role: .cancel) {}
         }
-        .alert(item: $capabilityNotice) { notice in
-            Alert(
-                title: Text(String(localized: "capability.coming_soon.title")),
-                message: Text(notice.message),
-                dismissButton: .default(Text(String(localized: "common.ok")))
-            )
-        }
+
         .alert(String(localized: "app.name"), isPresented: Binding(
             get: { controller.errorMessage != nil },
             set: { if !$0 { controller.errorMessage = nil } }
@@ -145,6 +143,13 @@ struct FamiliarChatView: View {
                let first = conversations.first {
                 controller.select(first.id, in: modelContext)
             }
+            FamiliarAttachmentStore.pruneDrafts(keeping: Set(controller.draftAttachments.map(\.relativePath)))
+        }
+        .onChange(of: speechTranscriber.errorMessage) { _, message in
+            if let message { controller.errorMessage = message }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { speechTranscriber.stop() }
         }
     }
 
@@ -155,10 +160,15 @@ struct FamiliarChatView: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     FamiliarComposer(
                         draft: $controller.draft,
+                        images: $controller.draftImages,
+                        documents: $controller.draftAttachments,
                         isSending: controller.isSending,
+                        isListening: speechTranscriber.isListening,
+                        draftScopeID: controller.selectedConversationID,
                         focus: $isComposerFocused,
-                        onSpeech: { capabilityNotice = .speech },
+                        onSpeech: toggleSpeech,
                         onSend: {
+                            speechTranscriber.stop()
                             if controller.isSending {
                                 controller.cancelSending(in: modelContext)
                             } else {
@@ -224,6 +234,7 @@ struct FamiliarChatView: View {
                 controller.selectModel(providerID: providerID, modelID: modelID, in: modelContext)
             },
             onNewConversation: {
+                speechTranscriber.stop()
                 _ = controller.createConversation(in: modelContext)
                 isComposerFocused = true
             }
@@ -268,6 +279,17 @@ struct FamiliarChatView: View {
             withAnimation(.smooth(duration: 0.32)) {
                 isDrawerOpen = isOpen
             }
+        }
+    }
+
+    private func toggleSpeech() {
+        if !speechTranscriber.isListening {
+            speechBaseDraft = controller.draft
+        }
+        speechTranscriber.toggle { transcript in
+            let separator = speechBaseDraft.isEmpty || transcript.isEmpty ? "" : " "
+            controller.draft = speechBaseDraft + separator + transcript
+            isComposerFocused = true
         }
     }
 
@@ -326,19 +348,7 @@ private enum FamiliarPendingMessageOperation: Identifiable {
     }
 }
 
-private enum FamiliarCapabilityNotice: String, Identifiable {
-    case attachments
-    case speech
 
-    var id: String { rawValue }
-
-    var message: String {
-        switch self {
-        case .attachments: String(localized: "capability.attachments.detail")
-        case .speech: String(localized: "capability.speech.detail")
-        }
-    }
-}
 
 private struct FamiliarTopBarInstaller<Bar: View>: ViewModifier {
     let content: Bar

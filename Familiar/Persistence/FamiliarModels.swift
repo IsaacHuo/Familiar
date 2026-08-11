@@ -102,6 +102,9 @@ final class FamiliarMessage {
     var modelID: String?
     var conversation: FamiliarConversation?
 
+    @Relationship(deleteRule: .cascade, inverse: \FamiliarAttachment.message)
+    var attachments: [FamiliarAttachment]
+
     init(
         id: UUID = UUID(),
         role: FamiliarMessageRole,
@@ -120,9 +123,49 @@ final class FamiliarMessage {
         self.providerID = providerID
         self.modelID = modelID
         self.conversation = conversation
+        attachments = []
     }
 
     var role: FamiliarMessageRole {
         FamiliarMessageRole(rawValue: roleRawValue) ?? .assistant
+    }
+}
+
+@Model
+final class FamiliarAttachment {
+    @Attribute(.unique) var id: UUID
+    var kindRawValue: String
+    var filename: String
+    var mimeType: String
+    var relativePath: String
+    var extractedText: String
+    var byteSize: Int64
+    var createdAt: Date
+    var message: FamiliarMessage?
+
+    init(
+        id: UUID = UUID(),
+        kind: FamiliarAttachmentKind,
+        filename: String,
+        mimeType: String,
+        relativePath: String,
+        extractedText: String,
+        byteSize: Int64,
+        createdAt: Date = Date(),
+        message: FamiliarMessage? = nil
+    ) {
+        self.id = id
+        kindRawValue = kind.rawValue
+        self.filename = filename
+        self.mimeType = mimeType
+        self.relativePath = relativePath
+        self.extractedText = extractedText
+        self.byteSize = byteSize
+        self.createdAt = createdAt
+        self.message = message
+    }
+
+    var kind: FamiliarAttachmentKind {
+        FamiliarAttachmentKind(rawValue: kindRawValue) ?? .document
     }
 }

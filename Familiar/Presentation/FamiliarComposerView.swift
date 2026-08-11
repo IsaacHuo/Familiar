@@ -3,15 +3,14 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 
-private struct FamiliarDraftImage: Identifiable {
-    let id = UUID()
+struct FamiliarDraftImage: Identifiable {
+    let id: UUID
     let image: UIImage
-}
 
-private struct FamiliarDraftFile: Identifiable {
-    let id = UUID()
-    let name: String
-    let typeIdentifier: String
+    init(id: UUID = UUID(), image: UIImage) {
+        self.id = id
+        self.image = image
+    }
 }
 
 private nonisolated enum FamiliarComposerMode: Equatable {
@@ -121,15 +120,20 @@ private struct FamiliarInlinePhotoPickerSheet: View {
 struct FamiliarComposer: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var draft: String
+    @Binding var images: [FamiliarDraftImage]
+    @Binding var documents: [FamiliarAttachmentDraft]
     let isSending: Bool
+    let isListening: Bool
+    let draftScopeID: UUID?
     let focus: FocusState<Bool>.Binding
     let onSpeech: () -> Void
     let onSend: () -> Void
 
     @State private var mode: FamiliarComposerMode = .compact
     @State private var measuredTextHeight: CGFloat = 0
-    @State private var images: [FamiliarDraftImage] = []
-    @State private var files: [FamiliarDraftFile] = []
+    @State private var importingFileCount = 0
+    @State private var importTasks: [UUID: Task<Void, Never>] = [:]
+    @State private var photoTasks: [UUID: Task<Void, Never>] = [:]
     @State private var photoSelection: [PhotosPickerItem] = []
     @State private var fullPhotoSelection: [PhotosPickerItem] = []
     @State private var showsAddMenu = false
@@ -144,9 +148,24 @@ struct FamiliarComposer: View {
     private static let editorFontSize: CGFloat = 20
     private static let lineHeight = UIFont.systemFont(ofSize: editorFontSize).lineHeight
 
-    init(draft: Binding<String>, isSending: Bool, focus: FocusState<Bool>.Binding, onSpeech: @escaping () -> Void, onSend: @escaping () -> Void, availableHeight: CGFloat = UIScreen.main.bounds.height) {
+    init(
+        draft: Binding<String>,
+        images: Binding<[FamiliarDraftImage]>,
+        documents: Binding<[FamiliarAttachmentDraft]>,
+        isSending: Bool,
+        isListening: Bool,
+        draftScopeID: UUID?,
+        focus: FocusState<Bool>.Binding,
+        onSpeech: @escaping () -> Void,
+        onSend: @escaping () -> Void,
+        availableHeight: CGFloat = UIScreen.main.bounds.height
+    ) {
         _draft = draft
+        _images = images
+        _documents = documents
         self.isSending = isSending
+        self.isListening = isListening
+        self.draftScopeID = draftScopeID
         self.focus = focus
         self.onSpeech = onSpeech
         self.onSend = onSend
@@ -154,8 +173,10 @@ struct FamiliarComposer: View {
     }
 
     private var hasText: Bool { !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    private var canSend: Bool { hasText || hasDraftContent || isSending }
-    private var hasDraftContent: Bool { !images.isEmpty || !files.isEmpty }
+    private var canSend: Bool {
+        isSending || (importingFileCount == 0 && (hasText || !images.isEmpty || !documents.isEmpty))
+    }
+    private var hasDraftContent: Bool { !images.isEmpty || !documents.isEmpty || importingFileCount > 0 }
     private var effectiveTextHeight: CGFloat { max(measuredTextHeight, CGFloat(max(draft.components(separatedBy: "\n").count, 1)) * Self.lineHeight) }
     private var isLongText: Bool { effectiveTextHeight >= Self.lineHeight * 4 - 0.5 }
     private var showsExpansion: Bool { mode == .fullscreen || isLongText }
@@ -186,10 +207,10 @@ struct FamiliarComposer: View {
         .photosPicker(isPresented: $showsFullPhotos, selection: $fullPhotoSelection, maxSelectionCount: max(4 - images.count, 1), matching: .images)
         .onChange(of: fullPhotoSelection) { _, items in
             guard !transitionToFullPhotos else { return }
-            Task { await loadImages(items) }
+            beginLoadingImages(items)
         }
         .sheet(isPresented: $showsPhotos, onDismiss: showFullPhotosIfNeeded) {
-            FamiliarInlinePhotoPickerSheet(selection: photoSelection, limit: max(4 - images.count, 1), onCommit: { items in Task { await loadImages(items) } }, onAllPhotos: { items in transitionToFullPhotos = true; fullPhotoSelection = items })
+            FamiliarInlinePhotoPickerSheet(selection: photoSelection, limit: max(4 - images.count, 1), onCommit: beginLoadingImages, onAllPhotos: { items in transitionToFullPhotos = true; fullPhotoSelection = items })
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
@@ -208,6 +229,8 @@ struct FamiliarComposer: View {
             Alert(title: Text(notice.title), message: Text(notice.message), dismissButton: .default(Text(String(localized: "common.ok"))))
         }
         .onChange(of: focus.wrappedValue) { _, focused in updateModeForFocus(focused) }
+        .onChange(of: draftScopeID) { _, _ in cancelDraftTasks() }
+        .onDisappear { cancelDraftTasks() }
         .onPreferenceChange(FamiliarComposerTextHeightKey.self) { measuredTextHeight = $0; updateModeForText() }
     }
 
@@ -255,17 +278,23 @@ struct FamiliarComposer: View {
     }
 
     private var micButton: some View {
-        Button(action: onSpeech) { Image(systemName: "mic").font(.system(size: 23)).frame(width: 44, height: 44) }
-            .buttonStyle(.plain)
-            .accessibilityLabel(String(localized: "speech.start"))
+        Button(action: onSpeech) {
+            Image(systemName: isListening ? "waveform" : "mic")
+                .font(.system(size: isListening ? 20 : 23, weight: isListening ? .semibold : .regular))
+                .foregroundStyle(isListening ? FamiliarTheme.accent : Color.primary)
+                .symbolEffect(.variableColor.iterative, isActive: isListening)
+                .frame(width: 44, height: 44)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(String(localized: isListening ? "speech.stop" : "speech.start"))
     }
 
     private var sendButton: some View {
         Button {
             if isSending { onSend() }
             else if !images.isEmpty { notice = .imageBlocked }
-            else if !files.isEmpty { notice = .fileBlocked }
-            else if hasText { onSend() }
+            else if importingFileCount > 0 { return }
+            else if hasText || !documents.isEmpty { onSend() }
         } label: {
             Image(systemName: isSending ? "stop.fill" : "arrow.up")
                 .font(.system(size: 14, weight: .bold)).foregroundStyle(.white).frame(width: 36, height: 36)
@@ -286,13 +315,32 @@ struct FamiliarComposer: View {
                             removeButton(label: String(localized: "attachment.remove_image")) { images.removeAll { $0.id == item.id } }
                         }
                     }
-                    ForEach(files) { file in
+                    ForEach(documents) { file in
                         HStack(spacing: 7) {
-                            Image(systemName: "doc.text").foregroundStyle(FamiliarTheme.accent)
-                            Text(file.name).font(.caption).lineLimit(1)
-                            removeButton(label: String(localized: "attachment.remove_file")) { files.removeAll { $0.id == file.id } }
+                            Image(systemName: file.mimeType == "application/pdf" ? "doc.richtext" : "doc.text")
+                                .foregroundStyle(FamiliarTheme.accent)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(file.filename).font(.caption).lineLimit(1)
+                                Text(ByteCountFormatter.string(fromByteCount: file.byteSize, countStyle: .file))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            removeButton(label: String(localized: "attachment.remove_file")) {
+                                FamiliarAttachmentStore.remove(relativePath: file.relativePath)
+                                documents.removeAll { $0.id == file.id }
+                            }
                         }
-                        .padding(.leading, 10).frame(height: 44).background(FamiliarTheme.elevatedFill, in: Capsule())
+                        .padding(.leading, 10).frame(height: 48).background(FamiliarTheme.elevatedFill, in: Capsule())
+                    }
+                    if importingFileCount > 0 {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text(String(localized: "attachment.processing"))
+                                .font(.caption)
+                        }
+                        .padding(.horizontal, 12)
+                        .frame(height: 48)
+                        .background(FamiliarTheme.elevatedFill, in: Capsule())
                     }
                 }
             }
@@ -376,48 +424,98 @@ struct FamiliarComposer: View {
         Task { @MainActor in await Task.yield(); showsFullPhotos = true }
     }
 
-    private func loadImages(_ items: [PhotosPickerItem]) async {
-        var loaded: [FamiliarDraftImage] = []
-        for item in items.prefix(max(4 - images.count, 0)) {
-            if let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) { loaded.append(.init(image: image)) }
+    private func beginLoadingImages(_ items: [PhotosPickerItem]) {
+        let taskID = UUID()
+        photoTasks[taskID] = Task {
+            await loadImages(items)
+            photoTasks.removeValue(forKey: taskID)
         }
-        await MainActor.run { images.append(contentsOf: loaded.prefix(max(4 - images.count, 0))); photoSelection = items }
     }
 
-    private static let allowedFileTypes: [UTType] = [.pdf, UTType(filenameExtension: "txt")!, UTType(filenameExtension: "md")!]
+    private func loadImages(_ items: [PhotosPickerItem]) async {
+        let scopeID = draftScopeID
+        var loaded: [FamiliarDraftImage] = []
+        for item in items.prefix(max(4 - images.count, 0)) {
+            guard !Task.isCancelled else { return }
+            if let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) {
+                loaded.append(.init(image: image))
+            }
+        }
+        guard !Task.isCancelled, scopeID == draftScopeID else { return }
+        images.append(contentsOf: loaded.prefix(max(4 - images.count, 0)))
+        photoSelection = items
+    }
+
+    private static let allowedFileTypes: [UTType] = [
+        .pdf,
+        UTType(filenameExtension: "txt")!,
+        UTType(filenameExtension: "md")!,
+        UTType(filenameExtension: "markdown")!
+    ]
 
     private func importFiles(_ result: Result<[URL], Error>) {
         do {
-            let urls = try result.get()
-            for url in urls.prefix(max(3 - files.count, 0)) {
-                let accessed = url.startAccessingSecurityScopedResource(); defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-                let type = try url.resourceValues(forKeys: [.contentTypeKey]).contentType
-                guard Self.allowedFileTypes.contains(where: { $0.identifier == type?.identifier }) else { continue }
-                files.append(.init(name: url.lastPathComponent, typeIdentifier: type?.identifier ?? UTType.data.identifier))
+            let urls = try result.get().prefix(max(3 - documents.count, 0))
+            guard !urls.isEmpty else { return }
+            importingFileCount += urls.count
+            let scopeID = draftScopeID
+            for url in urls {
+                let taskID = UUID()
+                importTasks[taskID] = Task {
+                    defer { finishImport(taskID) }
+                    do {
+                        let attachment = try await FamiliarAttachmentStore.importDocument(from: url)
+                        guard !Task.isCancelled, scopeID == draftScopeID else {
+                            FamiliarAttachmentStore.remove(relativePath: attachment.relativePath)
+                            return
+                        }
+                        documents.append(attachment)
+                    } catch is CancellationError {
+                        return
+                    } catch {
+                        notice = .fileImportFailed(error.localizedDescription)
+                    }
+                }
             }
-        } catch { notice = .fileImportFailed }
+        } catch {
+            notice = .fileImportFailed(error.localizedDescription)
+        }
+    }
+
+    private func finishImport(_ taskID: UUID) {
+        guard importTasks.removeValue(forKey: taskID) != nil else { return }
+        importingFileCount = max(importingFileCount - 1, 0)
+    }
+
+    private func cancelDraftTasks() {
+        let fileTasks = importTasks.values
+        let imageTasks = photoTasks.values
+        importTasks = [:]
+        photoTasks = [:]
+        importingFileCount = 0
+        fileTasks.forEach { $0.cancel() }
+        imageTasks.forEach { $0.cancel() }
     }
 }
 
 private struct FamiliarComposerNotice: Identifiable {
-    enum Kind { case imageBlocked, fileBlocked, fileImportFailed }
+    enum Kind { case imageBlocked, fileImportFailed(String) }
     let id = UUID()
     let kind: Kind
     var title: String {
         switch kind {
         case .imageBlocked: return String(localized: "attachment.image_send_blocked_title")
-        case .fileBlocked: return String(localized: "attachment.file_send_blocked_title")
         case .fileImportFailed: return String(localized: "attachment.file_import_failed_title")
         }
     }
     var message: String {
         switch kind {
         case .imageBlocked: return String(localized: "attachment.image_send_blocked_detail")
-        case .fileBlocked: return String(localized: "attachment.file_send_blocked_detail")
-        case .fileImportFailed: return String(localized: "attachment.file_import_failed")
+        case .fileImportFailed(let detail): return detail
         }
     }
     static let imageBlocked = FamiliarComposerNotice(kind: .imageBlocked)
-    static let fileBlocked = FamiliarComposerNotice(kind: .fileBlocked)
-    static let fileImportFailed = FamiliarComposerNotice(kind: .fileImportFailed)
+    static func fileImportFailed(_ detail: String) -> FamiliarComposerNotice {
+        FamiliarComposerNotice(kind: .fileImportFailed(detail))
+    }
 }

@@ -62,6 +62,7 @@ nonisolated enum FamiliarAgentError: LocalizedError, Sendable {
     case invalidToolCall
     case incompleteResponse
     case maxIterationsExceeded
+    case contextTooLarge
     case toolArgumentsTooLarge
     case toolResultTooLarge
 
@@ -75,6 +76,8 @@ nonisolated enum FamiliarAgentError: LocalizedError, Sendable {
             String(localized: "error.agent.incomplete_response")
         case .maxIterationsExceeded:
             String(localized: "error.agent.max_iterations")
+        case .contextTooLarge:
+            String(localized: "error.message.context_too_large")
         case .toolArgumentsTooLarge:
             String(localized: "error.agent.tool_arguments_too_large")
         case .toolResultTooLarge:
@@ -146,10 +149,19 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         var messages: [FamiliarProviderMessage] = [
             .system(settings.normalizedSystemPrompt + "\n\n" + toolPolicy)
         ]
-        messages += snapshots.suffix(40).map { snapshot in
+        messages += snapshots.map { snapshot in
             switch snapshot.role {
-            case .user: .user(snapshot.content)
-            case .assistant: .assistant(snapshot.content)
+            case .user:
+                var parts: [FamiliarProviderContent] = []
+                if !snapshot.content.isEmpty {
+                    parts.append(.text(snapshot.content))
+                }
+                parts += snapshot.attachments.map {
+                    .document(text: $0.extractedText, filename: $0.filename)
+                }
+                return .user(parts: parts)
+            case .assistant:
+                return .assistant(snapshot.content)
             }
         }
 
@@ -161,6 +173,20 @@ nonisolated struct FamiliarAgentLoop: Sendable {
             try Task.checkCancellation()
             if iteration > 0 { continuation.yield(.status(.responding)) }
 
+            let providerCharacterCount = messages.reduce(0) { count, message in
+                count
+                    + (message.networkText?.count ?? 0)
+                    + message.toolCalls.reduce(0) {
+                        $0 + $1.id.count + $1.name.count + $1.arguments.count
+                    }
+                    + (message.toolCallID?.count ?? 0)
+                    + (message.name?.count ?? 0)
+            } + toolDefinitions.reduce(0) {
+                $0 + $1.name.count + $1.description.count
+            }
+            guard providerCharacterCount <= settings.selectedModel.capabilities.maximumInputCharacters else {
+                throw FamiliarAgentError.contextTooLarge
+            }
             let request = FamiliarModelRequest(
                 model: settings.modelID,
                 messages: messages,

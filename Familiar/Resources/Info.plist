@@ -28,6 +28,10 @@
     <string>Familiar reads calendar events you ask about and adds an event only after you confirm its preview.</string>
     <key>NSRemindersFullAccessUsageDescription</key>
     <string>Familiar reads reminders you ask about and adds a reminder only after you confirm its preview.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Familiar uses the microphone only while transcribing your voice into an editable message draft.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Familiar uses Apple Speech to turn your voice into editable text and does not keep an audio recording.</string>
     <key>UIApplicationSupportsIndirectInputEvents</key>
     <true/>
     <key>UILaunchScreen</key>

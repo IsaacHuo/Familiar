@@ -62,7 +62,7 @@ nonisolated struct FamiliarModelCapabilities: Codable, Equatable, Sendable {
         supportsText: true,
         supportsTools: false,
         supportsImages: false,
-        supportsDocuments: true,
+        supportsDocuments: false,
         maximumInputCharacters: 60_000
     )
 }

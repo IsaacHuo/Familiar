@@ -10,6 +10,7 @@ struct FamiliarApp: App {
             let schema = Schema([
                 FamiliarConversation.self,
                 FamiliarMessage.self,
+                FamiliarAttachment.self,
                 FamiliarModelSwitchRecord.self,
                 FamiliarToolRunRecord.self
             ])
