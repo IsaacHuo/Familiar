@@ -5,10 +5,13 @@ struct FamiliarMessageTimeline: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let messages: [FamiliarMessageSnapshot]
     let modelSwitches: [FamiliarModelSwitchSnapshot]
+    let toolRunRecords: [FamiliarToolRunSnapshot]
+    let pendingConfirmations: [FamiliarToolConfirmationRequest]
     let streamingMessageID: UUID?
     let streamingText: String
     let agentStatus: FamiliarAgentStatus?
     let toolActivities: [FamiliarToolActivity]
+    let onResolveConfirmation: (FamiliarToolConfirmationRequest, FamiliarToolConfirmationDecision) -> Void
     let onEdit: (FamiliarMessageSnapshot) -> Void
     let onRetry: (FamiliarMessageSnapshot) -> Void
 
@@ -17,9 +20,13 @@ struct FamiliarMessageTimeline: View {
     private var timelineItems: [FamiliarTimelineItem] {
         var items = messages.map { FamiliarTimelineItem.message(.init(snapshot: $0)) }
         items += modelSwitches.map(FamiliarTimelineItem.modelSwitch)
+        items += toolRunRecords.map(FamiliarTimelineItem.toolRecord)
         items.sort {
             if $0.sequence != $1.sequence { return $0.sequence < $1.sequence }
             return $0.createdAt < $1.createdAt
+        }
+        for request in pendingConfirmations {
+            items.append(.confirmation(request))
         }
         if agentStatus != nil || !toolActivities.isEmpty {
             items.append(.agent(status: agentStatus, activities: toolActivities))
@@ -57,6 +64,15 @@ struct FamiliarMessageTimeline: View {
                             case .modelSwitch(let marker):
                                 FamiliarModelSwitchRow(marker: marker)
                                     .id(item.id)
+                            case .toolRecord(let record):
+                                FamiliarPersistedToolRunRow(record: record)
+                                    .id(item.id)
+                            case .confirmation(let request):
+                                FamiliarToolConfirmationCard(
+                                    request: request,
+                                    onDecision: { onResolveConfirmation(request, $0) }
+                                )
+                                .id(item.id)
                             case .agent(let status, let activities):
                                 FamiliarAgentRunRow(status: status, activities: activities)
                                     .id(item.id)
@@ -134,12 +150,16 @@ struct FamiliarMessageTimeline: View {
 private enum FamiliarTimelineItem: Identifiable {
     case message(FamiliarRenderedMessage)
     case modelSwitch(FamiliarModelSwitchSnapshot)
+    case toolRecord(FamiliarToolRunSnapshot)
+    case confirmation(FamiliarToolConfirmationRequest)
     case agent(status: FamiliarAgentStatus?, activities: [FamiliarToolActivity])
 
     var id: String {
         switch self {
         case .message(let message): message.id.uuidString
         case .modelSwitch(let marker): "model-switch-\(marker.id.uuidString)"
+        case .toolRecord(let record): "tool-record-\(record.id.uuidString)"
+        case .confirmation(let request): "confirmation-\(request.id.uuidString)"
         case .agent: "agent-run"
         }
     }
@@ -148,6 +168,8 @@ private enum FamiliarTimelineItem: Identifiable {
         switch self {
         case .message(let message): message.sequence
         case .modelSwitch(let marker): marker.sequence
+        case .toolRecord(let record): record.sequence
+        case .confirmation: Int.max - 1
         case .agent: Int.max
         }
     }
@@ -156,6 +178,8 @@ private enum FamiliarTimelineItem: Identifiable {
         switch self {
         case .message(let message): message.createdAt
         case .modelSwitch(let marker): marker.createdAt
+        case .toolRecord(let record): record.finishedAt
+        case .confirmation: Date()
         case .agent: .distantFuture
         }
     }
@@ -324,6 +348,107 @@ private struct FamiliarModelSwitchRow: View {
     }
 }
 
+private struct FamiliarToolConfirmationCard: View {
+    let request: FamiliarToolConfirmationRequest
+    let onDecision: (FamiliarToolConfirmationDecision) -> Void
+
+    private var isWrite: Bool {
+        ["create_calendar_event", "create_reminder"].contains(request.toolName)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Image(systemName: isWrite ? "checklist.checked" : "hand.raised.fill")
+                    .font(.title3)
+                    .foregroundStyle(FamiliarTheme.accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(request.title)
+                        .font(.headline)
+                    if let target = request.target {
+                        Text(String(format: String(localized: "eventkit.target"), target))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            VStack(spacing: 8) {
+                ForEach(request.fields.keys.sorted(), id: \.self) { key in
+                    HStack(alignment: .top, spacing: 12) {
+                        Text(key)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 82, alignment: .leading)
+                        Text(request.fields[key] ?? "")
+                            .font(.subheadline)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+
+            HStack(spacing: 10) {
+                Button(String(localized: "common.cancel")) {
+                    onDecision(.cancelled)
+                }
+                .buttonStyle(.bordered)
+
+                Button(isWrite ? String(localized: "eventkit.confirm_add") : String(localized: "common.continue")) {
+                    onDecision(.confirmed)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .padding(16)
+        .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(FamiliarTheme.separator, lineWidth: 1)
+        }
+    }
+}
+
+private struct FamiliarPersistedToolRunRow: View {
+    let record: FamiliarToolRunSnapshot
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            statusIcon
+                .frame(width: 22, height: 22)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(record.summary)
+                    .font(.subheadline.weight(.semibold))
+                if !record.detail.isEmpty {
+                    Text(record.detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(5)
+                }
+                Text(record.finishedAt, style: .time)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var statusIcon: some View {
+        switch record.status {
+        case .succeeded:
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+        case .cancelled:
+            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+        case .failed:
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+        }
+    }
+}
+
 private struct MessageActionButton: View {
     let symbol: String
     let label: String
@@ -384,6 +509,8 @@ private struct FamiliarAgentRunRow: View {
             ProgressView().controlSize(.small)
         case .succeeded:
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+        case .cancelled:
+            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
         case .failed:
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
         }

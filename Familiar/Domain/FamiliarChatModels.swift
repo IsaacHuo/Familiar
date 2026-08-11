@@ -15,6 +15,32 @@ nonisolated struct FamiliarMessageSnapshot: Identifiable, Equatable, Sendable {
     let modelID: String?
 }
 
+nonisolated enum FamiliarPersistedConfirmationResult: String, Codable, Sendable {
+    case notRequired
+    case confirmed
+    case cancelled
+}
+
+nonisolated enum FamiliarToolRunTerminalStatus: String, Codable, Sendable {
+    case succeeded
+    case cancelled
+    case failed
+}
+
+nonisolated struct FamiliarToolRunSnapshot: Identifiable, Equatable, Sendable {
+    let id: UUID
+    let runID: String
+    let toolCallID: String
+    let toolName: String
+    let summary: String
+    let detail: String
+    let confirmation: FamiliarPersistedConfirmationResult
+    let status: FamiliarToolRunTerminalStatus
+    let sequence: Int
+    let startedAt: Date
+    let finishedAt: Date
+}
+
 nonisolated struct FamiliarModelSwitchSnapshot: Identifiable, Equatable, Sendable {
     let id: UUID
     let previousProviderID: String

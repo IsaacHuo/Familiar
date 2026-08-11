@@ -160,7 +160,7 @@ struct FamiliarChatView: View {
                         onSpeech: { capabilityNotice = .speech },
                         onSend: {
                             if controller.isSending {
-                                controller.cancelSending()
+                                controller.cancelSending(in: modelContext)
                             } else {
                                 controller.startSending(in: modelContext)
                             }
@@ -176,6 +176,8 @@ struct FamiliarChatView: View {
     @ViewBuilder
     private var chatBody: some View {
         if controller.messages.isEmpty,
+           controller.toolRunRecords.isEmpty,
+           controller.pendingConfirmations.isEmpty,
            controller.streamingText.isEmpty,
            controller.agentStatus == nil,
            controller.toolActivities.isEmpty {
@@ -192,10 +194,15 @@ struct FamiliarChatView: View {
             FamiliarMessageTimeline(
                 messages: controller.messages,
                 modelSwitches: controller.modelSwitches,
+                toolRunRecords: controller.toolRunRecords,
+                pendingConfirmations: controller.pendingConfirmations,
                 streamingMessageID: controller.streamingMessageID,
                 streamingText: controller.streamingText,
                 agentStatus: controller.agentStatus,
                 toolActivities: controller.toolActivities,
+                onResolveConfirmation: { request, decision in
+                    controller.resolveConfirmation(request, decision: decision)
+                },
                 onEdit: { pendingMessageOperation = .edit($0) },
                 onRetry: { pendingMessageOperation = .retry($0) }
             )

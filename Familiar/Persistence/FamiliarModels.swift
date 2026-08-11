@@ -16,6 +16,9 @@ final class FamiliarConversation {
     @Relationship(deleteRule: .cascade, inverse: \FamiliarModelSwitchRecord.conversation)
     var modelSwitchRecords: [FamiliarModelSwitchRecord]
 
+    @Relationship(deleteRule: .cascade, inverse: \FamiliarToolRunRecord.conversation)
+    var toolRunRecords: [FamiliarToolRunRecord]
+
     init(
         id: UUID = UUID(),
         title: String = String(localized: "conversation.new"),
@@ -32,6 +35,59 @@ final class FamiliarConversation {
         self.currentModelID = currentModelID
         messages = []
         modelSwitchRecords = []
+        toolRunRecords = []
+    }
+}
+
+@Model
+final class FamiliarToolRunRecord {
+    @Attribute(.unique) var id: UUID
+    var runID: String
+    var toolCallID: String
+    var toolName: String
+    var summary: String
+    var detail: String
+    var confirmationRawValue: String
+    var statusRawValue: String
+    var sequence: Int
+    var startedAt: Date
+    var finishedAt: Date
+    var conversation: FamiliarConversation?
+
+    init(
+        id: UUID = UUID(),
+        runID: String,
+        toolCallID: String,
+        toolName: String,
+        summary: String,
+        detail: String,
+        confirmation: FamiliarPersistedConfirmationResult,
+        status: FamiliarToolRunTerminalStatus,
+        sequence: Int,
+        startedAt: Date,
+        finishedAt: Date,
+        conversation: FamiliarConversation? = nil
+    ) {
+        self.id = id
+        self.runID = runID
+        self.toolCallID = toolCallID
+        self.toolName = toolName
+        self.summary = summary
+        self.detail = detail
+        confirmationRawValue = confirmation.rawValue
+        statusRawValue = status.rawValue
+        self.sequence = sequence
+        self.startedAt = startedAt
+        self.finishedAt = finishedAt
+        self.conversation = conversation
+    }
+
+    var confirmation: FamiliarPersistedConfirmationResult {
+        FamiliarPersistedConfirmationResult(rawValue: confirmationRawValue) ?? .notRequired
+    }
+
+    var status: FamiliarToolRunTerminalStatus {
+        FamiliarToolRunTerminalStatus(rawValue: statusRawValue) ?? .failed
     }
 }
 

@@ -7,6 +7,8 @@ final class FamiliarChatController: ObservableObject {
     @Published var selectedConversationID: UUID?
     @Published private(set) var messages: [FamiliarMessageSnapshot] = []
     @Published private(set) var modelSwitches: [FamiliarModelSwitchSnapshot] = []
+    @Published private(set) var toolRunRecords: [FamiliarToolRunSnapshot] = []
+    @Published private(set) var pendingConfirmations: [FamiliarToolConfirmationRequest] = []
     @Published var draft = ""
     @Published private(set) var streamingText = ""
     @Published private(set) var streamingMessageID: UUID?
@@ -17,13 +19,22 @@ final class FamiliarChatController: ObservableObject {
     @Published private(set) var settings = FamiliarSettingsStore.load()
 
     private let toolRegistry: FamiliarToolRegistry
+    private let eventKitService: FamiliarEventKitService
+    private let confirmationCoordinator: FamiliarToolConfirmationCoordinator
     private var runningTask: Task<Void, Never>?
 
     init() {
+        let eventKitService = FamiliarEventKitService()
+        self.eventKitService = eventKitService
+        confirmationCoordinator = FamiliarToolConfirmationCoordinator()
         do {
             toolRegistry = try FamiliarToolRegistry(tools: [
                 AnyFamiliarTool(FamiliarCurrentDateTimeTool()),
-                AnyFamiliarTool(FamiliarAppInformationTool())
+                AnyFamiliarTool(FamiliarAppInformationTool()),
+                AnyFamiliarTool(FamiliarCalendarEventsTool(service: eventKitService)),
+                AnyFamiliarTool(FamiliarCreateCalendarEventTool()),
+                AnyFamiliarTool(FamiliarRemindersTool(service: eventKitService)),
+                AnyFamiliarTool(FamiliarCreateReminderTool())
             ])
         } catch {
             preconditionFailure("无法创建工具注册表：\(error.localizedDescription)")
@@ -58,6 +69,7 @@ final class FamiliarChatController: ObservableObject {
             selectedConversationID = conversation.id
             messages = []
             modelSwitches = []
+            toolRunRecords = []
             resetTransientRunState()
             return conversation
         } catch {
@@ -77,6 +89,7 @@ final class FamiliarChatController: ObservableObject {
                 self.selectedConversationID = nil
                 messages = []
                 modelSwitches = []
+                toolRunRecords = []
                 resetTransientRunState()
             }
         } catch {
@@ -174,8 +187,36 @@ final class FamiliarChatController: ObservableObject {
         }
     }
 
-    func cancelSending() {
+    func cancelSending(in context: ModelContext) {
+        for request in pendingConfirmations {
+            persistToolRecord(
+                FamiliarToolRunTerminalEvent(
+                    runID: request.runID,
+                    toolCallID: request.toolCallID,
+                    toolName: request.toolName,
+                    summary: request.title,
+                    detail: String(localized: "tool.cancelled_by_user"),
+                    confirmation: .cancelled,
+                    status: .cancelled,
+                    startedAt: Date(),
+                    finishedAt: Date()
+                ),
+                conversationID: selectedConversationID,
+                context: context
+            )
+        }
+        pendingConfirmations = []
         runningTask?.cancel()
+        Task { await confirmationCoordinator.cancelAll() }
+    }
+
+    func resolveConfirmation(
+        _ request: FamiliarToolConfirmationRequest,
+        decision: FamiliarToolConfirmationDecision
+    ) {
+        Task {
+            _ = await confirmationCoordinator.resolve(requestID: request.id, decision: decision)
+        }
     }
 
     func updateSettings(_ value: FamiliarSettings, in context: ModelContext) {
@@ -257,6 +298,7 @@ final class FamiliarChatController: ObservableObject {
         guard let conversation = selectedConversation(in: context) else {
             messages = []
             modelSwitches = []
+            toolRunRecords = []
             return
         }
         messages = conversation.messages
@@ -287,6 +329,25 @@ final class FamiliarChatController: ObservableObject {
                     currentModelID: $0.currentModelID,
                     sequence: $0.sequence,
                     createdAt: $0.createdAt
+                )
+            }
+        toolRunRecords = conversation.toolRunRecords
+            .sorted { lhs, rhs in
+                lhs.sequence == rhs.sequence ? lhs.finishedAt < rhs.finishedAt : lhs.sequence < rhs.sequence
+            }
+            .map {
+                FamiliarToolRunSnapshot(
+                    id: $0.id,
+                    runID: $0.runID,
+                    toolCallID: $0.toolCallID,
+                    toolName: $0.toolName,
+                    summary: $0.summary,
+                    detail: $0.detail,
+                    confirmation: $0.confirmation,
+                    status: $0.status,
+                    sequence: $0.sequence,
+                    startedAt: $0.startedAt,
+                    finishedAt: $0.finishedAt
                 )
             }
     }
@@ -342,7 +403,9 @@ final class FamiliarChatController: ObservableObject {
         do {
             let agentLoop = FamiliarAgentLoop(
                 provider: FamiliarProviderFactory.makeProvider(for: descriptor),
-                registry: toolRegistry
+                registry: toolRegistry,
+                confirmationCoordinator: confirmationCoordinator,
+                eventKitService: eventKitService
             )
             var completedAnswer: String?
             for try await event in agentLoop.stream(
@@ -358,6 +421,14 @@ final class FamiliarChatController: ObservableObject {
                     streamingText += delta
                 case .toolActivity(let activity):
                     updateToolActivity(activity)
+                case .confirmationRequested(let request):
+                    if !pendingConfirmations.contains(where: { $0.id == request.id }) {
+                        pendingConfirmations.append(request)
+                    }
+                case .confirmationResolved(let requestID, _):
+                    pendingConfirmations.removeAll { $0.id == requestID }
+                case .toolRecord(let record):
+                    persistToolRecord(record, conversationID: conversationID, context: context)
                 case .completed(let answer):
                     completedAnswer = answer
                 }
@@ -408,6 +479,43 @@ final class FamiliarChatController: ObservableObject {
         streamingMessageID = nil
         agentStatus = nil
         toolActivities = []
+        pendingConfirmations = []
+    }
+
+    private func persistToolRecord(
+        _ event: FamiliarToolRunTerminalEvent,
+        conversationID: UUID?,
+        context: ModelContext
+    ) {
+        guard let conversationID,
+              let conversation = fetchConversation(id: conversationID, in: context),
+              !conversation.toolRunRecords.contains(where: {
+                  $0.runID == event.runID && $0.toolCallID == event.toolCallID
+              })
+        else { return }
+        let sequence = (conversation.messages.map(\.sequence).max() ?? -1) + 1
+        let record = FamiliarToolRunRecord(
+            runID: event.runID,
+            toolCallID: event.toolCallID,
+            toolName: event.toolName,
+            summary: event.summary,
+            detail: event.detail,
+            confirmation: event.confirmation,
+            status: event.status,
+            sequence: sequence,
+            startedAt: event.startedAt,
+            finishedAt: event.finishedAt,
+            conversation: conversation
+        )
+        context.insert(record)
+        conversation.updatedAt = event.finishedAt
+        do {
+            try context.save()
+            reloadMessages(in: context)
+        } catch {
+            context.rollback()
+            errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
+        }
     }
 
     private func selectedConversation(in context: ModelContext) -> FamiliarConversation? {

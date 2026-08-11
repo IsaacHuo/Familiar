@@ -24,6 +24,10 @@
     <true/>
     <key>NSCameraUsageDescription</key>
     <string>Familiar uses the camera to add a photo draft to your message.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Familiar reads calendar events you ask about and adds an event only after you confirm its preview.</string>
+    <key>NSRemindersFullAccessUsageDescription</key>
+    <string>Familiar reads reminders you ask about and adds a reminder only after you confirm its preview.</string>
     <key>UIApplicationSupportsIndirectInputEvents</key>
     <true/>
     <key>UILaunchScreen</key>

@@ -10,7 +10,8 @@ struct FamiliarApp: App {
             let schema = Schema([
                 FamiliarConversation.self,
                 FamiliarMessage.self,
-                FamiliarModelSwitchRecord.self
+                FamiliarModelSwitchRecord.self,
+                FamiliarToolRunRecord.self
             ])
             let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
             modelContainer = try ModelContainer(for: schema, configurations: [configuration])

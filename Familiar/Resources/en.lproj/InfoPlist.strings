@@ -1,0 +1,3 @@
+"NSCameraUsageDescription" = "Familiar uses the camera to add a photo draft to your message.";
+"NSCalendarsFullAccessUsageDescription" = "Familiar reads calendar events you ask about and adds an event only after you confirm its preview.";
+"NSRemindersFullAccessUsageDescription" = "Familiar reads reminders you ask about and adds a reminder only after you confirm its preview.";

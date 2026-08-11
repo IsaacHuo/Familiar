@@ -1,0 +1,3 @@
+"NSCameraUsageDescription" = "Familiar 使用相机把照片加入消息草稿。";
+"NSCalendarsFullAccessUsageDescription" = "Familiar 仅查询你询问的日历事件，并且只在你确认预览后添加日程。";
+"NSRemindersFullAccessUsageDescription" = "Familiar 仅查询你询问的提醒事项，并且只在你确认预览后添加提醒。";
