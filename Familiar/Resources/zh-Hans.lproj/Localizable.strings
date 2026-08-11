@@ -1,0 +1,156 @@
+"app.name" = "Familiar";
+
+"common.back" = "返回";
+"common.cancel" = "取消";
+"common.clear" = "清除";
+"common.continue" = "继续";
+"common.copy" = "复制";
+"common.delete" = "删除";
+"common.edit" = "编辑";
+"common.ok" = "知道了";
+"common.open_settings" = "打开设置";
+"common.save" = "保存";
+"common.share" = "分享";
+
+"onboarding.welcome.title" = "认识 Familiar";
+"onboarding.welcome.subtitle" = "一个安静、原生、始终在你手边的 AI 助手。";
+"onboarding.feature.chat" = "自然地提问、思考与创作";
+"onboarding.feature.byok" = "使用你自己的模型 API Key";
+"onboarding.feature.local" = "会话历史只保存在这台 iPhone";
+"onboarding.provider.title" = "连接你的模型";
+"onboarding.provider.subtitle" = "Familiar 从你的设备直接连接服务商，不经过 Familiar 服务器。";
+"onboarding.ready.title" = "一切准备好了";
+"onboarding.ready.subtitle" = "从一句问题开始，让 Familiar 帮你把事情想清楚。";
+"onboarding.ready.keychain" = "API Key 安全保存在系统钥匙串";
+"onboarding.ready.history" = "聊天记录保存在本机";
+"onboarding.ready.permissions" = "需要系统权限时，Familiar 会先询问你";
+"onboarding.verify" = "验证并继续";
+"onboarding.start" = "开始使用 Familiar";
+"onboarding.validation_failed" = "连接失败";
+
+"provider.deepseek.detail" = "兼顾速度与推理能力";
+"provider.groq.detail" = "高速运行开放模型";
+"provider.validation.invalid_response" = "服务商返回了无法识别的响应。";
+"provider.validation.rejected" = "%1$@ 验证失败（%2$ld）。请检查 API Key 和网络连接。";
+
+"model.detail.fast" = "快速回答日常问题";
+"model.detail.reasoning" = "更适合复杂推理";
+"model.detail.quality_tools" = "高质量回答与工具调用";
+"model.detail.speed_tools" = "轻量、快速并支持工具";
+"model.detail.light_tools" = "轻量开放模型";
+"model.detail.strong_tools" = "更强的开放模型";
+"model.current" = "当前模型：%1$@，%2$@";
+
+"settings.provider" = "模型服务";
+"settings.model" = "模型";
+"settings.subtitle" = "模型、隐私与回答偏好";
+"settings.api_key.title" = "%@ API Key";
+"settings.api_key.footer" = "API Key 按服务商分别保存在当前设备的钥匙串。请求从设备直接发送到 %@。";
+"settings.api_key.replace_placeholder" = "已配置；输入新值可替换";
+"settings.api_key.saved" = "已保存在此设备";
+"settings.api_key.missing" = "尚未配置";
+"settings.api_key.verified" = "连接验证成功";
+"settings.api_key.verify" = "验证连接";
+"settings.response_preferences" = "回答偏好";
+"settings.system_prompt.default" = "你是 Familiar，一个可靠、清晰、友好的 AI 助手。优先直接回答用户的问题；需要调用工具时，清楚说明正在做什么。";
+"settings.system_prompt.footer" = "系统提示最多使用前 3,000 个字符，仅影响之后的新问题。";
+"settings.privacy.title" = "隐私与数据";
+"settings.privacy.no_account" = "无需登录或 Familiar 账号";
+"settings.privacy.no_other_apps" = "不会读取其他 App 的数据";
+"settings.privacy.local_history" = "会话历史仅保存在本机";
+"settings.error.title" = "设置失败";
+
+"drawer.open" = "打开会话列表";
+"drawer.search" = "搜索对话";
+"drawer.no_conversations" = "还没有对话";
+"drawer.no_results" = "没有找到相关对话";
+"drawer.recent" = "最近";
+"drawer.settings" = "设置";
+
+"conversation.new" = "新对话";
+"conversation.rename" = "重命名";
+"conversation.rename.title" = "重命名对话";
+"conversation.rename.placeholder" = "对话名称";
+"conversation.scroll_latest" = "滚动到最新消息";
+
+"attachment.add" = "添加附件";
+"attachment.camera" = "相机";
+"attachment.photos" = "照片";
+"attachment.files" = "文件";
+"speech.start" = "开始语音输入";
+"composer.placeholder" = "问问 Familiar";
+"message.send" = "发送";
+"message.stop" = "停止生成";
+"message.responding" = "正在回答";
+"message.retry" = "重新生成";
+"message.edit_and_resend" = "编辑并重新发送";
+"message.operation.title" = "重新开始这段对话？";
+"message.operation.detail" = "此消息之后的内容会被移除。";
+
+"empty.title" = "今天想聊些什么？";
+"empty.subtitle" = "提问、梳理想法，或一起完成一件事。";
+"empty.prompt.explain" = "用简单的话解释一个复杂概念";
+"empty.prompt.plan" = "帮我为今天制定一个清晰计划";
+"empty.prompt.write" = "帮我润色一段文字";
+"empty.configure" = "配置 %@ 开始聊天";
+
+"capability.coming_soon.title" = "即将支持";
+"capability.attachments.detail" = "附件草稿入口已经可用。首版不支持发送图片；PDF、TXT 和 MD 文件暂时只保留草稿界面。";
+"capability.speech.detail" = "语音输入将在下一阶段接入原生听写。";
+
+"attachment.choose_photos" = "选择照片";
+"attachment.close_photos" = "关闭照片选择";
+"attachment.all_photos" = "全部照片";
+"attachment.add_photos_count" = "添加 %ld 张照片";
+"attachment.remove_image" = "移除图片";
+"attachment.remove_file" = "移除文件";
+"attachment.image_send_blocked_title" = "暂不支持发送图片";
+"attachment.image_send_blocked_detail" = "首版暂不支持发送图片。文字和图片草稿会保留；移除图片后才可以发送文字。";
+"attachment.file_send_blocked_title" = "暂不支持发送文件";
+"attachment.file_send_blocked_detail" = "PDF、TXT 和 Markdown 草稿会保留；启用本地文本抽取前不会发送。移除文件后可以只发送文字。";
+"attachment.file_import_failed_title" = "无法添加文件";
+"attachment.file_import_failed" = "无法添加所选文件。";
+
+"camera.permission.title" = "相机权限未开启";
+"camera.permission.detail" = "请在系统设置中允许 Familiar 使用相机，以添加图片草稿。";
+"camera.unavailable.title" = "无法使用相机";
+"camera.capture_failed.title" = "拍照失败";
+"camera.flash.on" = "开启闪光灯";
+"camera.flash.off" = "关闭闪光灯";
+"camera.switch" = "切换前后镜头";
+"camera.close" = "关闭相机";
+"camera.open_settings" = "前往设置";
+"camera.unknown_permission" = "系统未返回可识别的相机权限状态。";
+"camera.invalid_photo" = "相机没有返回可用的照片。";
+"camera.configuration_failed" = "相机配置失败。";
+"composer.expand" = "放大编辑器";
+"composer.collapse" = "缩小编辑器";
+
+"agent.status.thinking" = "正在思考";
+"agent.status.using_tool" = "正在使用 %@";
+"agent.status.responding" = "正在整理结果";
+"tool.date_time" = "日期与时间";
+"tool.app_information" = "App 信息";
+
+"error.unknown" = "发生了未知错误。";
+"error.keychain" = "API Key 操作失败（系统状态码：%d）。";
+"error.provider.invalid_response" = "%@ 返回了无法识别的响应。";
+"error.provider.server" = "%1$@ 请求失败（%2$ld）：%3$@";
+"error.provider.empty_response" = "%@ 没有返回回答内容。";
+"error.provider.unknown_server" = "未知服务错误";
+"error.agent.empty_response" = "模型没有返回可显示的回答。";
+"error.agent.invalid_tool_call" = "模型返回了不完整的工具调用。";
+"error.agent.incomplete_response" = "模型回答未完整结束，请重试。";
+"error.agent.max_iterations" = "工具调用次数过多，已停止本次任务。";
+"error.tool.duplicate" = "工具名称重复：%@";
+"error.tool.not_found" = "未找到工具：%@";
+"error.tool.invalid_arguments" = "工具 %@ 的参数不是有效的 UTF-8 JSON。";
+"error.tool.decoding" = "工具 %1$@ 的参数无效：%2$@";
+"error.create_conversation" = "新建对话失败：%@";
+"error.delete_conversation" = "删除对话失败：%@";
+"error.rename_conversation" = "重命名失败：%@";
+"error.api_key_missing" = "请先在设置中配置 %@ API Key。";
+"error.save_prompt" = "保存问题失败：%@";
+"error.save_settings" = "保存设置失败：%@";
+"error.edit_message" = "编辑消息失败：%@";
+"error.retry_message" = "重新生成失败：%@";

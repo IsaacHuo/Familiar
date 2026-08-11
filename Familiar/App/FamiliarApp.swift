@@ -20,7 +20,7 @@ struct FamiliarApp: App {
 
     var body: some Scene {
         WindowGroup {
-            FamiliarChatView()
+            FamiliarRootView()
                 .tint(FamiliarTheme.accent)
         }
         .modelContainer(modelContainer)

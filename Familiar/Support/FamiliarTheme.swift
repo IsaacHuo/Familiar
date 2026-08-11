@@ -1,9 +1,16 @@
 import SwiftUI
 
 nonisolated enum FamiliarTheme {
-    static let accent = Color(red: 0.267, green: 0.565, blue: 0.510)
+    static let accent = Color(red: 0.10, green: 0.53, blue: 0.98)
+    static let brandViolet = Color(red: 0.55, green: 0.44, blue: 0.98)
+    static let brandGlow = LinearGradient(
+        colors: [accent.opacity(0.18), brandViolet.opacity(0.12), .clear],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
     static let assistantFill = Color(uiColor: .secondarySystemBackground)
-    static let userFill = accent.opacity(0.16)
+    static let userFill = Color(uiColor: .secondarySystemFill)
+    static let elevatedFill = Color(uiColor: .secondarySystemBackground)
     static let separator = Color.primary.opacity(0.10)
 }
 
@@ -12,14 +19,23 @@ nonisolated enum AppSpacing {
     static let standard: CGFloat = 12
     static let card: CGFloat = 16
     static let page: CGFloat = 20
+    static let control: CGFloat = 44
 }
 
 private struct FamiliarGlassSurface: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let interactive: Bool
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
+        if reduceTransparency {
+            content
+                .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(FamiliarTheme.separator, lineWidth: 1)
+                }
+        } else if #available(iOS 26.0, *) {
             content.glassEffect(interactive ? .regular.interactive() : .regular, in: .rect(cornerRadius: 22))
         } else {
             content
@@ -35,5 +51,35 @@ private struct FamiliarGlassSurface: ViewModifier {
 extension View {
     func familiarGlassSurface(interactive: Bool = false) -> some View {
         modifier(FamiliarGlassSurface(interactive: interactive))
+    }
+}
+
+private struct FamiliarGlassCircle: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    let interactive: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if reduceTransparency {
+            content
+                .background(FamiliarTheme.elevatedFill, in: Circle())
+                .overlay {
+                    Circle().stroke(FamiliarTheme.separator, lineWidth: 1)
+                }
+        } else if #available(iOS 26.0, *) {
+            content.glassEffect(interactive ? .regular.interactive() : .regular, in: .circle)
+        } else {
+            content
+                .background(.regularMaterial, in: Circle())
+                .overlay {
+                    Circle().stroke(FamiliarTheme.separator, lineWidth: 1)
+                }
+        }
+    }
+}
+
+extension View {
+    func familiarGlassCircle(interactive: Bool = false) -> some View {
+        modifier(FamiliarGlassCircle(interactive: interactive))
     }
 }

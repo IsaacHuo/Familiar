@@ -15,14 +15,16 @@ struct FamiliarMarkdownWebView: View {
 
     let markdown: String
     let mode: Mode
+    let isStreaming: Bool
 
     @Environment(\.openURL) private var openURL
     @State private var contentHeight: CGFloat = 1
     @State private var didFailRendering = false
 
-    init(markdown: String, mode: Mode = .compact) {
+    init(markdown: String, mode: Mode = .compact, isStreaming: Bool = false) {
         self.markdown = FamiliarMarkdownNormalizer.normalize(markdown)
         self.mode = mode
+        self.isStreaming = isStreaming
     }
 
     var body: some View {
@@ -41,6 +43,7 @@ struct FamiliarMarkdownWebView: View {
                     height: $contentHeight,
                     didFailRendering: $didFailRendering,
                     isScrollEnabled: mode == .document,
+                    isStreaming: isStreaming,
                     openURL: { openURL($0) }
                 )
                 .frame(height: mode == .document ? nil : max(1, contentHeight))
@@ -149,6 +152,7 @@ private struct FamiliarMarkdownPlatformWebView: UIViewRepresentable {
     @Binding var height: CGFloat
     @Binding var didFailRendering: Bool
     let isScrollEnabled: Bool
+    let isStreaming: Bool
     let openURL: (URL) -> Void
 
     func makeCoordinator() -> FamiliarMarkdownWebCoordinator {
@@ -167,7 +171,7 @@ private struct FamiliarMarkdownPlatformWebView: UIViewRepresentable {
 
     func updateUIView(_ webView: WKWebView, context: Context) {
         context.coordinator.openURL = openURL
-        context.coordinator.update(markdown: markdown, in: webView)
+        context.coordinator.update(markdown: markdown, isStreaming: isStreaming, in: webView)
     }
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: FamiliarMarkdownWebCoordinator) {
@@ -199,6 +203,7 @@ private struct FamiliarMarkdownPlatformWebView: NSViewRepresentable {
     @Binding var height: CGFloat
     @Binding var didFailRendering: Bool
     let isScrollEnabled: Bool
+    let isStreaming: Bool
     let openURL: (URL) -> Void
 
     func makeCoordinator() -> FamiliarMarkdownWebCoordinator {
@@ -217,7 +222,7 @@ private struct FamiliarMarkdownPlatformWebView: NSViewRepresentable {
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.openURL = openURL
-        context.coordinator.update(markdown: markdown, in: webView)
+        context.coordinator.update(markdown: markdown, isStreaming: isStreaming, in: webView)
     }
 
     static func dismantleNSView(_ webView: WKWebView, coordinator: FamiliarMarkdownWebCoordinator) {
@@ -252,6 +257,8 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
     private var isRendererReady = false
     private var pendingMarkdown = ""
     private var renderedMarkdown: String?
+    private var isRendering = false
+    private var scheduledRender: DispatchWorkItem?
     var openURL: (URL) -> Void
 
     init(
@@ -268,7 +275,7 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
         self.webView = webView
     }
 
-    func update(markdown: String, in webView: WKWebView) {
+    func update(markdown: String, isStreaming: Bool, in webView: WKWebView) {
         self.webView = webView
         pendingMarkdown = markdown
 
@@ -285,10 +292,12 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
             return
         }
 
-        renderIfReady()
+        scheduleRender(isStreaming: isStreaming)
     }
 
     func dismantle(from webView: WKWebView) {
+        scheduledRender?.cancel()
+        scheduledRender = nil
         Self.messageNames.forEach {
             webView.configuration.userContentController.removeScriptMessageHandler(forName: $0)
         }
@@ -345,24 +354,47 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
             return
         }
 
-        if open(url) {
-            decisionHandler(.cancel)
-        } else {
-            decisionHandler(.allow)
-        }
+        _ = open(url)
+        decisionHandler(.cancel)
     }
 
     private func renderIfReady() {
-        guard isRendererReady, renderedMarkdown != pendingMarkdown else { return }
-        let literal = FamiliarMarkdownHTML.javascriptStringLiteral(pendingMarkdown)
-        webView?.evaluateJavaScript("window.FamiliarMarkdown.render(\(literal));") { [weak self] _, error in
+        guard let webView,
+              isRendererReady,
+              !isRendering,
+              renderedMarkdown != pendingMarkdown
+        else { return }
+
+        let targetMarkdown = pendingMarkdown
+        let literal = FamiliarMarkdownHTML.javascriptStringLiteral(targetMarkdown)
+        isRendering = true
+        webView.evaluateJavaScript("window.FamiliarMarkdown.render(\(literal));") { [weak self] _, error in
             DispatchQueue.main.async {
+                guard let self else { return }
+                self.isRendering = false
                 if error == nil {
-                    self?.renderedMarkdown = self?.pendingMarkdown
+                    self.renderedMarkdown = targetMarkdown
+                    if self.pendingMarkdown != targetMarkdown {
+                        self.scheduleRender(isStreaming: true)
+                    }
                 } else {
-                    self?.didFailRendering.wrappedValue = true
+                    self.didFailRendering.wrappedValue = true
                 }
             }
+        }
+    }
+
+    private func scheduleRender(isStreaming: Bool) {
+        scheduledRender?.cancel()
+        if isStreaming {
+            let work = DispatchWorkItem { [weak self] in
+                self?.renderIfReady()
+            }
+            scheduledRender = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
+        } else {
+            scheduledRender = nil
+            renderIfReady()
         }
     }
 

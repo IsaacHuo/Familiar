@@ -8,7 +8,9 @@ struct FamiliarSettingsView: View {
 
     @State private var settings: FamiliarSettings
     @State private var apiKey = ""
-    @State private var hasAPIKey = FamiliarKeychainStore.isConfigured
+    @State private var hasAPIKey: Bool
+    @State private var isValidating = false
+    @State private var validationSucceeded = false
     @State private var errorMessage: String?
 
     init(
@@ -18,84 +20,159 @@ struct FamiliarSettingsView: View {
         self.initialSettings = initialSettings
         self.onSaveSettings = onSaveSettings
         _settings = State(initialValue: initialSettings)
+        _hasAPIKey = State(initialValue: FamiliarKeychainStore.isConfigured(for: initialSettings.provider))
     }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    SecureField(hasAPIKey ? "已配置；输入新值可替换" : "sk-…", text: $apiKey)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                brandHeader
 
-                    HStack {
-                        Label(hasAPIKey ? "已保存在此设备" : "尚未配置", systemImage: hasAPIKey ? "checkmark.circle.fill" : "exclamationmark.circle")
-                            .foregroundStyle(hasAPIKey ? .green : .orange)
-                        Spacer()
-                        if hasAPIKey {
-                            Button("清除", role: .destructive) { clearAPIKey() }
+                Section(String(localized: "settings.provider")) {
+                    Picker(String(localized: "settings.provider"), selection: $settings.provider) {
+                        ForEach(FamiliarProvider.allCases) { provider in
+                            Label(provider.title, systemImage: provider == .deepSeek ? "bolt.fill" : "hare.fill")
+                                .tag(provider)
                         }
                     }
-                } header: {
-                    Text("DeepSeek API Key")
-                } footer: {
-                    Text("API Key 只保存在当前设备的 Keychain。聊天请求从设备直接发送到 DeepSeek；Familiar 没有账号和后端数据库。")
+                    .onChange(of: settings.provider) { _, provider in
+                        switchProvider(to: provider)
+                    }
+
+                    Picker(String(localized: "settings.model"), selection: $settings.modelID) {
+                        ForEach(settings.provider.models) { model in
+                            Text(model.title).tag(model.id)
+                        }
+                    }
                 }
 
-                Section("模型") {
-                    Picker("回答模型", selection: $settings.model) {
-                        ForEach(FamiliarModel.allCases) { model in
-                            VStack(alignment: .leading) {
-                                Text(model.title)
-                                Text(model.detail)
+                Section {
+                    SecureField(keyPlaceholder, text: $apiKey)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .onChange(of: apiKey) { _, _ in validationSucceeded = false }
+
+                    HStack(spacing: 10) {
+                        Label(keyStatusTitle, systemImage: keyStatusSymbol)
+                            .foregroundStyle(keyStatusColor)
+                        Spacer()
+                        if hasAPIKey {
+                            Button(String(localized: "common.clear"), role: .destructive) {
+                                clearAPIKey()
                             }
-                            .tag(model)
                         }
                     }
-                    .pickerStyle(.inline)
+
+                    Button {
+                        validateCurrentKey()
+                    } label: {
+                        HStack {
+                            if isValidating { ProgressView() }
+                            Text(String(localized: "settings.api_key.verify"))
+                            Spacer()
+                        }
+                    }
+                    .disabled(isValidating || effectiveKey.isEmpty)
+                } header: {
+                    Text(String(format: String(localized: "settings.api_key.title"), settings.provider.title))
+                } footer: {
+                    Text(String(format: String(localized: "settings.api_key.footer"), settings.provider.title))
                 }
 
                 Section {
                     TextEditor(text: $settings.systemPrompt)
                         .frame(minHeight: 120)
                 } header: {
-                    Text("回答偏好")
+                    Text(String(localized: "settings.response_preferences"))
                 } footer: {
-                    Text("系统提示最多使用前 3,000 个字符，仅影响后续问题。")
+                    Text(String(localized: "settings.system_prompt.footer"))
                 }
 
-                Section("数据边界") {
-                    Label("无登录、无账号", systemImage: "person.crop.circle.badge.xmark")
-                    Label("不读取教务或其他 App 数据", systemImage: "hand.raised")
-                    Label("会话历史仅保存在本机", systemImage: "internaldrive")
+                Section(String(localized: "settings.privacy.title")) {
+                    Label(String(localized: "settings.privacy.no_account"), systemImage: "person.crop.circle.badge.xmark")
+                    Label(String(localized: "settings.privacy.no_other_apps"), systemImage: "hand.raised")
+                    Label(String(localized: "settings.privacy.local_history"), systemImage: "internaldrive")
                 }
             }
-            .navigationTitle("设置")
+            .navigationTitle(String(localized: "drawer.settings"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
+                    Button(String(localized: "common.cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") { save() }
+                    Button(String(localized: "common.save")) { save() }
+                        .fontWeight(.semibold)
                 }
             }
-            .alert("设置失败", isPresented: Binding(
+            .alert(String(localized: "settings.error.title"), isPresented: Binding(
                 get: { errorMessage != nil },
                 set: { if !$0 { errorMessage = nil } }
             )) {
-                Button("知道了", role: .cancel) {}
+                Button(String(localized: "common.ok"), role: .cancel) {}
             } message: {
-                Text(errorMessage ?? "未知错误")
+                Text(errorMessage ?? String(localized: "error.unknown"))
             }
         }
+        .tint(FamiliarTheme.accent)
+    }
+
+    private var brandHeader: some View {
+        Section {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(FamiliarTheme.brandGlow)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 21, weight: .semibold))
+                        .foregroundStyle(FamiliarTheme.accent)
+                }
+                .frame(width: 52, height: 52)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(String(localized: "app.name"))
+                        .font(.headline)
+                    Text(String(localized: "settings.subtitle"))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    private var effectiveKey: String {
+        let entered = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !entered.isEmpty { return entered }
+        return FamiliarKeychainStore.load(for: settings.provider) ?? ""
+    }
+
+    private var keyPlaceholder: String {
+        hasAPIKey
+            ? String(localized: "settings.api_key.replace_placeholder")
+            : settings.provider.apiKeyPlaceholder
+    }
+
+    private var keyStatusTitle: String {
+        if validationSucceeded { return String(localized: "settings.api_key.verified") }
+        return hasAPIKey
+            ? String(localized: "settings.api_key.saved")
+            : String(localized: "settings.api_key.missing")
+    }
+
+    private var keyStatusSymbol: String {
+        validationSucceeded ? "checkmark.seal.fill" : (hasAPIKey ? "checkmark.circle.fill" : "exclamationmark.circle")
+    }
+
+    private var keyStatusColor: Color {
+        validationSucceeded || hasAPIKey ? .green : .orange
     }
 
     private func save() {
         do {
             let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmedKey.isEmpty {
-                try FamiliarKeychainStore.save(trimmedKey)
+                try FamiliarKeychainStore.save(trimmedKey, for: settings.provider)
                 hasAPIKey = true
             }
             onSaveSettings(settings)
@@ -105,11 +182,35 @@ struct FamiliarSettingsView: View {
         }
     }
 
+    private func validateCurrentKey() {
+        let key = effectiveKey
+        guard !key.isEmpty else { return }
+        isValidating = true
+        Task {
+            do {
+                try await FamiliarProviderConnectionValidator.validate(provider: settings.provider, apiKey: key)
+                isValidating = false
+                validationSucceeded = true
+            } catch {
+                isValidating = false
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func switchProvider(to provider: FamiliarProvider) {
+        apiKey = ""
+        hasAPIKey = FamiliarKeychainStore.isConfigured(for: provider)
+        validationSucceeded = false
+        settings.modelID = provider.defaultModelID
+    }
+
     private func clearAPIKey() {
         do {
-            try FamiliarKeychainStore.delete()
+            try FamiliarKeychainStore.delete(for: settings.provider)
             apiKey = ""
             hasAPIKey = false
+            validationSucceeded = false
         } catch {
             errorMessage = error.localizedDescription
         }

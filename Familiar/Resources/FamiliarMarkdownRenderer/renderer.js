@@ -302,12 +302,12 @@
         theme: "base",
         themeVariables: {
           background: "transparent",
-          mainBkg: "#f7faf7",
-          primaryColor: "#edf5ee",
-          primaryTextColor: "#17201a",
-          primaryBorderColor: "#bfd1c0",
-          lineColor: "#4f6557",
-          textColor: "#17201a",
+          mainBkg: "#f7f9ff",
+          primaryColor: "#edf4ff",
+          primaryTextColor: "#172033",
+          primaryBorderColor: "#bfd2f2",
+          lineColor: "#536985",
+          textColor: "#172033",
           fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif"
         }
       });

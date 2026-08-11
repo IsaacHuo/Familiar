@@ -8,12 +8,26 @@ final class FamiliarChatController: ObservableObject {
     @Published private(set) var messages: [FamiliarMessageSnapshot] = []
     @Published var draft = ""
     @Published private(set) var streamingText = ""
+    @Published private(set) var streamingMessageID: UUID?
+    @Published private(set) var agentStatus: FamiliarAgentStatus?
+    @Published private(set) var toolActivities: [FamiliarToolActivity] = []
     @Published private(set) var isSending = false
     @Published var errorMessage: String?
     @Published private(set) var settings = FamiliarSettingsStore.load()
 
-    private let client = DeepSeekClient()
+    private let toolRegistry: FamiliarToolRegistry
     private var runningTask: Task<Void, Never>?
+
+    init() {
+        do {
+            toolRegistry = try FamiliarToolRegistry(tools: [
+                AnyFamiliarTool(FamiliarCurrentDateTimeTool()),
+                AnyFamiliarTool(FamiliarAppInformationTool())
+            ])
+        } catch {
+            preconditionFailure("无法创建工具注册表：\(error.localizedDescription)")
+        }
+    }
 
     deinit {
         runningTask?.cancel()
@@ -22,6 +36,7 @@ final class FamiliarChatController: ObservableObject {
     func select(_ id: UUID?, in context: ModelContext) {
         guard !isSending else { return }
         selectedConversationID = id
+        resetTransientRunState()
         reloadMessages(in: context)
     }
 
@@ -33,10 +48,11 @@ final class FamiliarChatController: ObservableObject {
             try context.save()
             selectedConversationID = conversation.id
             messages = []
+            resetTransientRunState()
             return conversation
         } catch {
             context.rollback()
-            errorMessage = "新建对话失败：\(error.localizedDescription)"
+            errorMessage = String(format: String(localized: "error.create_conversation"), error.localizedDescription)
             return nil
         }
     }
@@ -50,10 +66,28 @@ final class FamiliarChatController: ObservableObject {
             if let selectedConversationID, deletedIDs.contains(selectedConversationID) {
                 self.selectedConversationID = nil
                 messages = []
+                resetTransientRunState()
             }
         } catch {
             context.rollback()
-            errorMessage = "删除对话失败：\(error.localizedDescription)"
+            errorMessage = String(format: String(localized: "error.delete_conversation"), error.localizedDescription)
+        }
+    }
+
+    func rename(_ conversation: FamiliarConversation, to proposedTitle: String, in context: ModelContext) {
+        guard !isSending else { return }
+        let title = proposedTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return }
+        conversation.title = String(title.prefix(80))
+        conversation.updatedAt = Date()
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            errorMessage = String(
+                format: String(localized: "error.rename_conversation"),
+                error.localizedDescription
+            )
         }
     }
 
@@ -61,8 +95,9 @@ final class FamiliarChatController: ObservableObject {
         guard !isSending else { return }
         let prompt = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty else { return }
-        guard let apiKey = FamiliarKeychainStore.load() else {
-            errorMessage = DeepSeekClientError.missingAPIKey.localizedDescription
+        let requestSettings = settings
+        guard let apiKey = FamiliarKeychainStore.load(for: requestSettings.provider) else {
+            errorMessage = String(format: String(localized: "error.api_key_missing"), requestSettings.provider.title)
             return
         }
 
@@ -84,7 +119,7 @@ final class FamiliarChatController: ObservableObject {
         )
         context.insert(userMessage)
         conversation.updatedAt = Date()
-        if conversation.title == "新对话" {
+        if conversation.messages.count == 1 {
             conversation.title = String(prompt.prefix(28))
         }
 
@@ -92,15 +127,17 @@ final class FamiliarChatController: ObservableObject {
             try context.save()
         } catch {
             context.rollback()
-            errorMessage = "保存问题失败：\(error.localizedDescription)"
+            errorMessage = String(format: String(localized: "error.save_prompt"), error.localizedDescription)
             return
         }
 
         draft = ""
         reloadMessages(in: context)
         let requestMessages = messages
+        let responseID = UUID()
         isSending = true
-        streamingText = ""
+        resetTransientRunState()
+        streamingMessageID = responseID
 
         runningTask = Task { [weak self] in
             guard let self else { return }
@@ -108,6 +145,8 @@ final class FamiliarChatController: ObservableObject {
                 requestMessages: requestMessages,
                 conversationID: conversation.id,
                 apiKey: apiKey,
+                settings: requestSettings,
+                responseID: responseID,
                 context: context
             )
         }
@@ -122,7 +161,67 @@ final class FamiliarChatController: ObservableObject {
             try FamiliarSettingsStore.save(value)
             settings = value
         } catch {
-            errorMessage = "保存设置失败：\(error.localizedDescription)"
+            errorMessage = String(format: String(localized: "error.save_settings"), error.localizedDescription)
+        }
+    }
+
+    func selectModel(provider: FamiliarProvider, modelID: String) {
+        var value = settings
+        value.provider = provider
+        value.modelID = modelID
+        updateSettings(value)
+    }
+
+    func prepareToEdit(_ message: FamiliarMessageSnapshot, in context: ModelContext) {
+        guard !isSending,
+              message.role == .user,
+              let conversation = selectedConversation(in: context)
+        else { return }
+
+        let removed = conversation.messages.filter { $0.sequence >= message.sequence }
+        removed.forEach(context.delete)
+        conversation.updatedAt = Date()
+        do {
+            try context.save()
+            draft = message.content
+            reloadMessages(in: context)
+        } catch {
+            context.rollback()
+            errorMessage = String(
+                format: String(localized: "error.edit_message"),
+                error.localizedDescription
+            )
+        }
+    }
+
+    func retry(_ message: FamiliarMessageSnapshot, in context: ModelContext) {
+        guard !isSending,
+              message.role == .assistant,
+              let conversation = selectedConversation(in: context)
+        else { return }
+
+        let sortedMessages = conversation.messages.sorted {
+            $0.sequence == $1.sequence ? $0.createdAt < $1.createdAt : $0.sequence < $1.sequence
+        }
+        guard let assistantIndex = sortedMessages.firstIndex(where: { $0.id == message.id }),
+              let userMessage = sortedMessages[..<assistantIndex].last(where: { $0.role == .user })
+        else { return }
+
+        let prompt = userMessage.content
+        let removed = conversation.messages.filter { $0.sequence >= userMessage.sequence }
+        removed.forEach(context.delete)
+        conversation.updatedAt = Date()
+        do {
+            try context.save()
+            draft = prompt
+            reloadMessages(in: context)
+            startSending(in: context)
+        } catch {
+            context.rollback()
+            errorMessage = String(
+                format: String(localized: "error.retry_message"),
+                error.localizedDescription
+            )
         }
     }
 
@@ -150,6 +249,8 @@ final class FamiliarChatController: ObservableObject {
         requestMessages: [FamiliarMessageSnapshot],
         conversationID: UUID,
         apiKey: String,
+        settings: FamiliarSettings,
+        responseID: UUID,
         context: ModelContext
     ) async {
         defer {
@@ -158,24 +259,39 @@ final class FamiliarChatController: ObservableObject {
         }
 
         do {
-            for try await delta in client.stream(
+            let agentLoop = FamiliarAgentLoop(
+                provider: FamiliarProviderFactory.makeProvider(for: settings.provider),
+                registry: toolRegistry
+            )
+            var completedAnswer: String?
+            for try await event in agentLoop.stream(
                 messages: requestMessages,
                 settings: settings,
                 apiKey: apiKey
             ) {
                 try Task.checkCancellation()
-                streamingText += delta
+                switch event {
+                case .status(let status):
+                    agentStatus = status
+                case .textDelta(let delta):
+                    streamingText += delta
+                case .toolActivity(let activity):
+                    updateToolActivity(activity)
+                case .completed(let answer):
+                    completedAnswer = answer
+                }
             }
             try Task.checkCancellation()
 
-            let answer = streamingText.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !answer.isEmpty else { throw DeepSeekClientError.emptyResponse }
+            let answer = (completedAnswer ?? streamingText).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !answer.isEmpty else { throw FamiliarAgentError.emptyResponse }
             guard let conversation = fetchConversation(id: conversationID, in: context) else {
                 throw CocoaError(.fileNoSuchFile)
             }
 
             let nextSequence = (conversation.messages.map(\.sequence).max() ?? -1) + 1
             let assistantMessage = FamiliarMessage(
+                id: responseID,
                 role: .assistant,
                 content: answer,
                 sequence: nextSequence,
@@ -184,16 +300,31 @@ final class FamiliarChatController: ObservableObject {
             context.insert(assistantMessage)
             conversation.updatedAt = Date()
             try context.save()
-            streamingText = ""
             reloadMessages(in: context)
+            resetTransientRunState()
         } catch is CancellationError {
-            streamingText = ""
+            resetTransientRunState()
         } catch {
             context.rollback()
-            streamingText = ""
+            resetTransientRunState()
             errorMessage = error.localizedDescription
             reloadMessages(in: context)
         }
+    }
+
+    private func updateToolActivity(_ activity: FamiliarToolActivity) {
+        if let index = toolActivities.firstIndex(where: { $0.id == activity.id }) {
+            toolActivities[index] = activity
+        } else {
+            toolActivities.append(activity)
+        }
+    }
+
+    private func resetTransientRunState() {
+        streamingText = ""
+        streamingMessageID = nil
+        agentStatus = nil
+        toolActivities = []
     }
 
     private func selectedConversation(in context: ModelContext) -> FamiliarConversation? {

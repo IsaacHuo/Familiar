@@ -18,7 +18,7 @@ body {
   width: 100%;
   max-width: 780px;
   margin: 0 auto;
-  padding: 12px 20px 40px;
+  padding: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
@@ -86,7 +86,7 @@ hr {
 }
 
 a {
-  color: #4d7f3f;
+  color: #1a87fa;
   text-decoration: none;
 }
 
@@ -152,8 +152,8 @@ pre code {
 .copy-code {
   border: 0;
   border-radius: 6px;
-  background: rgba(126, 164, 104, 0.18);
-  color: #4d7f3f;
+  background: rgba(26, 135, 250, 0.14);
+  color: #1a87fa;
   font: inherit;
   font-size: 0.82em;
   padding: 0.25em 0.55em;
@@ -237,8 +237,8 @@ th {
 }
 
 .task-marker.checked {
-  border-color: rgba(126, 164, 104, 0.85);
-  background: rgba(126, 164, 104, 0.18);
+  border-color: rgba(26, 135, 250, 0.85);
+  background: rgba(26, 135, 250, 0.16);
   position: relative;
 }
 
@@ -249,7 +249,7 @@ th {
   top: 0.07em;
   width: 0.32em;
   height: 0.56em;
-  border: solid #4d7f3f;
+  border: solid #1a87fa;
   border-width: 0 0.14em 0.14em 0;
   transform: rotate(45deg);
 }
@@ -284,7 +284,7 @@ th {
   padding: 0.75em;
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 8px;
-  background: rgba(126, 164, 104, 0.06);
+  background: rgba(26, 135, 250, 0.055);
   -webkit-overflow-scrolling: touch;
 }
 

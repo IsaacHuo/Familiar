@@ -13,7 +13,7 @@ final class FamiliarConversation {
 
     init(
         id: UUID = UUID(),
-        title: String = "新对话",
+        title: String = String(localized: "conversation.new"),
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {

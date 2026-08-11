@@ -1,0 +1,156 @@
+"app.name" = "Familiar";
+
+"common.back" = "Back";
+"common.cancel" = "Cancel";
+"common.clear" = "Clear";
+"common.continue" = "Continue";
+"common.copy" = "Copy";
+"common.delete" = "Delete";
+"common.edit" = "Edit";
+"common.ok" = "OK";
+"common.open_settings" = "Open Settings";
+"common.save" = "Save";
+"common.share" = "Share";
+
+"onboarding.welcome.title" = "Meet Familiar";
+"onboarding.welcome.subtitle" = "A calm, native AI companion that is always close at hand.";
+"onboarding.feature.chat" = "Ask, think, and create naturally";
+"onboarding.feature.byok" = "Use your own model API key";
+"onboarding.feature.local" = "Keep conversation history on this iPhone";
+"onboarding.provider.title" = "Connect your model";
+"onboarding.provider.subtitle" = "Familiar connects directly from your device, without routing requests through a Familiar server.";
+"onboarding.ready.title" = "You're all set";
+"onboarding.ready.subtitle" = "Start with a question and let Familiar help make things clear.";
+"onboarding.ready.keychain" = "Your API key is stored in Keychain";
+"onboarding.ready.history" = "Chat history stays on this device";
+"onboarding.ready.permissions" = "Familiar asks before using system permissions";
+"onboarding.verify" = "Verify and Continue";
+"onboarding.start" = "Start Using Familiar";
+"onboarding.validation_failed" = "Connection Failed";
+
+"provider.deepseek.detail" = "Balanced speed and reasoning";
+"provider.groq.detail" = "Fast open-model inference";
+"provider.validation.invalid_response" = "The provider returned an unrecognized response.";
+"provider.validation.rejected" = "%1$@ verification failed (%2$ld). Check your API key and network connection.";
+
+"model.detail.fast" = "Fast answers for everyday questions";
+"model.detail.reasoning" = "Better suited to complex reasoning";
+"model.detail.quality_tools" = "High-quality answers and tool use";
+"model.detail.speed_tools" = "Fast, lightweight, and tool capable";
+"model.detail.light_tools" = "Lightweight open model";
+"model.detail.strong_tools" = "More capable open model";
+"model.current" = "Current model: %1$@, %2$@";
+
+"settings.provider" = "Model Provider";
+"settings.model" = "Model";
+"settings.subtitle" = "Models, privacy, and response preferences";
+"settings.api_key.title" = "%@ API Key";
+"settings.api_key.footer" = "Keys are stored separately for each provider in this device's Keychain. Requests go directly from your device to %@.";
+"settings.api_key.replace_placeholder" = "Configured — enter a new key to replace it";
+"settings.api_key.saved" = "Saved on this device";
+"settings.api_key.missing" = "Not configured";
+"settings.api_key.verified" = "Connection verified";
+"settings.api_key.verify" = "Verify Connection";
+"settings.response_preferences" = "Response Preferences";
+"settings.system_prompt.default" = "You are Familiar, a reliable, clear, and friendly AI assistant. Answer the user's question directly. When using a tool, clearly explain what you are doing.";
+"settings.system_prompt.footer" = "The first 3,000 characters are used for future questions only.";
+"settings.privacy.title" = "Privacy and Data";
+"settings.privacy.no_account" = "No sign-in or Familiar account";
+"settings.privacy.no_other_apps" = "Does not read data from other apps";
+"settings.privacy.local_history" = "Conversation history stays on this device";
+"settings.error.title" = "Couldn't Save Settings";
+
+"drawer.open" = "Open conversations";
+"drawer.search" = "Search chats";
+"drawer.no_conversations" = "No conversations yet";
+"drawer.no_results" = "No matching conversations";
+"drawer.recent" = "Recent";
+"drawer.settings" = "Settings";
+
+"conversation.new" = "New chat";
+"conversation.rename" = "Rename";
+"conversation.rename.title" = "Rename Chat";
+"conversation.rename.placeholder" = "Chat name";
+"conversation.scroll_latest" = "Scroll to latest message";
+
+"attachment.add" = "Add attachment";
+"attachment.camera" = "Camera";
+"attachment.photos" = "Photos";
+"attachment.files" = "Files";
+"speech.start" = "Start voice input";
+"composer.placeholder" = "Message Familiar";
+"message.send" = "Send";
+"message.stop" = "Stop generating";
+"message.responding" = "Responding";
+"message.retry" = "Regenerate";
+"message.edit_and_resend" = "Edit and Resend";
+"message.operation.title" = "Restart from this message?";
+"message.operation.detail" = "Messages after this point will be removed.";
+
+"empty.title" = "What can I help with?";
+"empty.subtitle" = "Ask a question, shape an idea, or work through something together.";
+"empty.prompt.explain" = "Explain a complex idea in simple terms";
+"empty.prompt.plan" = "Help me make a clear plan for today";
+"empty.prompt.write" = "Help me polish a piece of writing";
+"empty.configure" = "Configure %@ to start chatting";
+
+"capability.coming_soon.title" = "Coming Soon";
+"capability.attachments.detail" = "Attachment drafts are available. Photos are kept in the composer but cannot be sent in this first release; PDF, TXT, and MD files remain drafts only.";
+"capability.speech.detail" = "Native voice dictation is planned for the next milestone.";
+
+"attachment.choose_photos" = "Choose Photos";
+"attachment.close_photos" = "Close photo picker";
+"attachment.all_photos" = "All Photos";
+"attachment.add_photos_count" = "Add %ld Photos";
+"attachment.remove_image" = "Remove image";
+"attachment.remove_file" = "Remove file";
+"attachment.image_send_blocked_title" = "Photos aren't sendable yet";
+"attachment.image_send_blocked_detail" = "This first release does not support sending images. Your text and photo drafts are preserved; remove the photos to send the text.";
+"attachment.file_send_blocked_title" = "Files aren't sendable yet";
+"attachment.file_send_blocked_detail" = "PDF, TXT, and Markdown drafts are preserved, but they are not sent until local extraction is enabled. Remove the files to send only the text.";
+"attachment.file_import_failed_title" = "Couldn't add files";
+"attachment.file_import_failed" = "Couldn't add the selected files.";
+
+"camera.permission.title" = "Camera access is off";
+"camera.permission.detail" = "Allow Familiar to use the camera in Settings to add a photo draft.";
+"camera.unavailable.title" = "Camera unavailable";
+"camera.capture_failed.title" = "Couldn't take photo";
+"camera.flash.on" = "Turn flash on";
+"camera.flash.off" = "Turn flash off";
+"camera.switch" = "Switch front and back cameras";
+"camera.close" = "Close camera";
+"camera.open_settings" = "Open Settings";
+"camera.unknown_permission" = "The system returned an unknown camera permission state.";
+"camera.invalid_photo" = "The camera did not return a usable photo.";
+"camera.configuration_failed" = "The camera could not be configured.";
+"composer.expand" = "Expand editor";
+"composer.collapse" = "Collapse editor";
+
+"agent.status.thinking" = "Thinking";
+"agent.status.using_tool" = "Using %@";
+"agent.status.responding" = "Preparing the response";
+"tool.date_time" = "Date and Time";
+"tool.app_information" = "App Information";
+
+"error.unknown" = "An unknown error occurred.";
+"error.keychain" = "The API key operation failed (system status: %d).";
+"error.provider.invalid_response" = "%@ returned an unrecognized response.";
+"error.provider.server" = "%1$@ request failed (%2$ld): %3$@";
+"error.provider.empty_response" = "%@ returned no response content.";
+"error.provider.unknown_server" = "Unknown service error";
+"error.agent.empty_response" = "The model returned no displayable response.";
+"error.agent.invalid_tool_call" = "The model returned an incomplete tool call.";
+"error.agent.incomplete_response" = "The response ended before it was complete. Try again.";
+"error.agent.max_iterations" = "This task was stopped after too many tool calls.";
+"error.tool.duplicate" = "Duplicate tool name: %@";
+"error.tool.not_found" = "Tool not found: %@";
+"error.tool.invalid_arguments" = "The arguments for %@ are not valid UTF-8 JSON.";
+"error.tool.decoding" = "Invalid arguments for %1$@: %2$@";
+"error.create_conversation" = "Couldn't create the conversation: %@";
+"error.delete_conversation" = "Couldn't delete the conversation: %@";
+"error.rename_conversation" = "Couldn't rename the conversation: %@";
+"error.api_key_missing" = "Configure a %@ API key in Settings first.";
+"error.save_prompt" = "Couldn't save your message: %@";
+"error.save_settings" = "Couldn't save settings: %@";
+"error.edit_message" = "Couldn't edit the message: %@";
+"error.retry_message" = "Couldn't regenerate the response: %@";
