@@ -204,9 +204,12 @@ Vendor/
 ├── AnyDocBridge.xcframework/
 └── AnyDocBridgeRust/
 
+Docs/               Product, architecture, UI, privacy and validation records
 website/            Vue/Vite website, privacy policy and support pages
 Scripts/            Reproducible AnyDoc XCFramework build script
 ```
+
+Detailed product and engineering records are maintained in [`Docs/`](Docs/README.md).
 
 ## Requirements
 

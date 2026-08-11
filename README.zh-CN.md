@@ -118,7 +118,7 @@ Familiar 当前提供四个产品级强类型工具：
 
 ## 文档处理链路
 
-所有文档首先复制到 App 私有目录，再进行本地转换。Familiar 不长期依赖外部 security-scoped URL。
+系统将所选文档复制到 App 私有目录，再进行本地转换。Familiar 不长期依赖外部 security-scoped URL。
 
 | 输入格式 | 本地处理方式 |
 | --- | --- |
@@ -204,9 +204,12 @@ Vendor/
 ├── AnyDocBridge.xcframework/
 └── AnyDocBridgeRust/
 
+Docs/               产品、架构、UI、隐私和验证记录
 website/            Vue/Vite 网站、隐私政策和支持页面
 Scripts/            可复现的 AnyDoc XCFramework 构建脚本
 ```
+
+详尽的产品与工程记录位于 [`Docs/`](Docs/README.md)。
 
 ## 环境要求
 
