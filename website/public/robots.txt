@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://isaachuo.github.io/familiar/sitemap.xml

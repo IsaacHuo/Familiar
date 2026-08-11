@@ -3,3 +3,7 @@ xcuserdata/
 DerivedData/
 .build/
 *.xcuserstate
+
+# Familiar website
+website/node_modules/
+website/dist/
