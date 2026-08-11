@@ -5,8 +5,13 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		F20000000000000000000001 /* AnyDocBridge.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = F20000000000000000000002 /* AnyDocBridge.xcframework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		F10000000000000000000001 /* Familiar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Familiar.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F20000000000000000000002 /* AnyDocBridge.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = AnyDocBridge.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -30,7 +35,7 @@
 		F10000000000000000000011 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
-			files = ();
+			files = (F20000000000000000000001 /* AnyDocBridge.xcframework in Frameworks */, );
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -38,7 +43,13 @@
 /* Begin PBXGroup section */
 		F10000000000000000000004 = {
 			isa = PBXGroup;
-			children = (F10000000000000000000003 /* Familiar */, F10000000000000000000005 /* Products */, );
+			children = (F10000000000000000000003 /* Familiar */, F20000000000000000000003 /* Vendor */, F10000000000000000000005 /* Products */, );
+			sourceTree = "<group>";
+		};
+		F20000000000000000000003 /* Vendor */ = {
+			isa = PBXGroup;
+			children = (F20000000000000000000002 /* AnyDocBridge.xcframework */, );
+			path = Vendor;
 			sourceTree = "<group>";
 		};
 		F10000000000000000000005 /* Products */ = {

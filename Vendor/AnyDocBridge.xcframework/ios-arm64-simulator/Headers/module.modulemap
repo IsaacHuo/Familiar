@@ -1,0 +1,4 @@
+module AnyDocBridge {
+    header "AnyDocBridge.h"
+    export *
+}
