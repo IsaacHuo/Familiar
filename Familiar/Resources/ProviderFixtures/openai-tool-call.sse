@@ -1,0 +1,7 @@
+data: {"id":"chatcmpl-fixture","choices":[{"index":0,"delta":{"role":"assistant","content":"I’ll check that."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-fixture","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"calendar_query","arguments":"{\"start\":"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-fixture","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"2026-08-11T00:00:00Z\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]

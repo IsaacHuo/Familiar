@@ -7,6 +7,12 @@ nonisolated enum FamiliarProviderMessageRole: String, Sendable {
     case tool
 }
 
+nonisolated enum FamiliarProviderContent: Equatable, Sendable {
+    case text(String)
+    case document(text: String, filename: String)
+    case imagePlaceholder(localIdentifier: String?)
+}
+
 nonisolated struct FamiliarProviderToolCall: Equatable, Sendable {
     let id: String
     let name: String
@@ -15,25 +21,73 @@ nonisolated struct FamiliarProviderToolCall: Equatable, Sendable {
 
 nonisolated struct FamiliarProviderMessage: Sendable {
     let role: FamiliarProviderMessageRole
-    let content: String?
+    let contentParts: [FamiliarProviderContent]
     let toolCalls: [FamiliarProviderToolCall]
     let toolCallID: String?
     let name: String?
 
+    init(
+        role: FamiliarProviderMessageRole,
+        contentParts: [FamiliarProviderContent] = [],
+        toolCalls: [FamiliarProviderToolCall] = [],
+        toolCallID: String? = nil,
+        name: String? = nil
+    ) {
+        self.role = role
+        self.contentParts = contentParts
+        self.toolCalls = toolCalls
+        self.toolCallID = toolCallID
+        self.name = name
+    }
+
     static func system(_ content: String) -> Self {
-        .init(role: .system, content: content, toolCalls: [], toolCallID: nil, name: nil)
+        .init(role: .system, contentParts: [.text(content)])
     }
 
     static func user(_ content: String) -> Self {
-        .init(role: .user, content: content, toolCalls: [], toolCallID: nil, name: nil)
+        .init(role: .user, contentParts: [.text(content)])
+    }
+
+    static func user(parts: [FamiliarProviderContent]) -> Self {
+        .init(role: .user, contentParts: parts)
     }
 
     static func assistant(_ content: String?, toolCalls: [FamiliarProviderToolCall] = []) -> Self {
-        .init(role: .assistant, content: content, toolCalls: toolCalls, toolCallID: nil, name: nil)
+        .init(
+            role: .assistant,
+            contentParts: content.map { [.text($0)] } ?? [],
+            toolCalls: toolCalls
+        )
     }
 
     static func tool(_ content: String, toolCallID: String, name: String) -> Self {
-        .init(role: .tool, content: content, toolCalls: [], toolCallID: toolCallID, name: name)
+        .init(
+            role: .tool,
+            contentParts: [.text(content)],
+            toolCallID: toolCallID,
+            name: name
+        )
+    }
+
+    var networkText: String? {
+        let values = contentParts.compactMap { part -> String? in
+            switch part {
+            case .text(let text):
+                text
+            case .document(let text, let filename):
+                "[Document: \(filename)]\n\(text)"
+            case .imagePlaceholder:
+                nil
+            }
+        }
+        return values.isEmpty ? nil : values.joined(separator: "\n\n")
+    }
+
+    var containsImagePlaceholder: Bool {
+        contentParts.contains { part in
+            if case .imagePlaceholder = part { return true }
+            return false
+        }
     }
 }
 
@@ -99,6 +153,8 @@ nonisolated enum FamiliarModelStreamEvent: Sendable {
 }
 
 nonisolated protocol FamiliarModelProvider: Sendable {
+    var providerID: String { get }
+
     func stream(
         request: FamiliarModelRequest,
         apiKey: String

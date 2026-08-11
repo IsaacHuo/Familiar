@@ -7,35 +7,37 @@ nonisolated enum FamiliarKeychainError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unexpectedStatus(let status):
-            String(
-                format: String(localized: "error.keychain"),
-                status
-            )
+            String(format: String(localized: "error.keychain"), status)
         }
     }
 }
 
 nonisolated enum FamiliarKeychainStore {
-    private static let service = "com.isaachuo.familiar.provider-api-keys"
-    private static let legacyDeepSeekService = "com.isaachuo.familiar.deepseek"
-    private static let legacyAccount = "api-key"
+    private static let service = "com.isaachuo.familiar.provider-api-keys.v2"
 
-    static func load(for provider: FamiliarProvider) -> String? {
-        if let value = load(query: baseQuery(for: provider)) {
-            return value
-        }
-        guard provider == .deepSeek else { return nil }
-        return load(query: legacyDeepSeekQuery)
+    static func load(for providerID: String) -> String? {
+        var query = baseQuery(for: providerID)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let value = String(data: data, encoding: .utf8)
+        else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
-    static func save(_ value: String, for provider: FamiliarProvider) throws {
+    static func save(_ value: String, for providerID: String) throws {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            try delete(for: provider)
+            try delete(for: providerID)
             return
         }
 
-        let query = baseQuery(for: provider)
+        let query = baseQuery(for: providerID)
         let data = Data(trimmed.utf8)
         let updateStatus = SecItemUpdate(
             query as CFDictionary,
@@ -54,53 +56,22 @@ nonisolated enum FamiliarKeychainStore {
         }
     }
 
-    static func delete(for provider: FamiliarProvider) throws {
-        try delete(query: baseQuery(for: provider))
-        if provider == .deepSeek {
-            try delete(query: legacyDeepSeekQuery)
-        }
-    }
-
-    static func isConfigured(for provider: FamiliarProvider) -> Bool {
-        load(for: provider) != nil
-    }
-
-    private static func load(query: [String: Any]) -> String? {
-        var query = query
-        query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
-
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess,
-              let data = result as? Data,
-              let value = String(data: data, encoding: .utf8)
-        else { return nil }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
-    }
-
-    private static func delete(query: [String: Any]) throws {
-        let status = SecItemDelete(query as CFDictionary)
+    static func delete(for providerID: String) throws {
+        let status = SecItemDelete(baseQuery(for: providerID) as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw FamiliarKeychainError.unexpectedStatus(status)
         }
     }
 
-    private static func baseQuery(for provider: FamiliarProvider) -> [String: Any] {
+    static func isConfigured(for providerID: String) -> Bool {
+        load(for: providerID) != nil
+    }
+
+    private static func baseQuery(for providerID: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: provider.rawValue,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        ]
-    }
-
-    private static var legacyDeepSeekQuery: [String: Any] {
-        [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: legacyDeepSeekService,
-            kSecAttrAccount as String: legacyAccount,
+            kSecAttrAccount as String: providerID,
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         ]
     }

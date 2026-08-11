@@ -9,33 +9,43 @@ nonisolated enum FamiliarProviderConnectionError: LocalizedError, Sendable {
         case .invalidResponse:
             String(localized: "provider.validation.invalid_response")
         case .rejected(let statusCode, let message):
-            String(
-                format: String(localized: "provider.validation.rejected"),
-                statusCode,
-                message
-            )
+            String(format: String(localized: "provider.validation.rejected"), statusCode, message)
         }
     }
 }
 
 nonisolated enum FamiliarProviderConnectionValidator {
-    static func validate(provider: FamiliarProvider, apiKey: String) async throws {
-        var request = URLRequest(url: provider.modelsEndpoint)
-        request.timeoutInterval = 20
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
+    static func validate(
+        descriptor: FamiliarProviderDescriptor,
+        modelID: String,
+        apiKey: String
+    ) async throws {
+        if descriptor.modelsPath != nil {
+            _ = try await FamiliarModelCatalogService.models(for: descriptor, apiKey: apiKey)
+            return
+        }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw FamiliarProviderConnectionError.invalidResponse
+        let provider = FamiliarProviderFactory.makeProvider(for: descriptor)
+        let request = FamiliarModelRequest(
+            model: modelID,
+            messages: [
+                .system("Reply with OK."),
+                .user("Connection test")
+            ],
+            tools: []
+        )
+        var receivedContent = false
+        for try await event in provider.stream(request: request, apiKey: apiKey) {
+            switch event {
+            case .textDelta(let text):
+                if !text.isEmpty { receivedContent = true }
+            case .toolCallDelta:
+                break
+            case .completed:
+                break
+            }
+            if receivedContent { break }
         }
-        guard (200..<300).contains(http.statusCode) else {
-            let body = String(data: data, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            throw FamiliarProviderConnectionError.rejected(
-                statusCode: http.statusCode,
-                message: String((body?.isEmpty == false ? body! : "Unknown error").prefix(320))
-            )
-        }
+        guard receivedContent else { throw FamiliarProviderConnectionError.invalidResponse }
     }
 }

@@ -11,89 +11,53 @@ nonisolated struct FamiliarMessageSnapshot: Identifiable, Equatable, Sendable {
     let content: String
     let createdAt: Date
     let sequence: Int
+    let providerID: String?
+    let modelID: String?
 }
 
-nonisolated struct FamiliarModelOption: Identifiable, Equatable, Sendable {
-    let id: String
-    let title: String
-    let detail: String
-}
-
-nonisolated enum FamiliarProvider: String, CaseIterable, Codable, Identifiable, Sendable {
-    case deepSeek = "deepseek"
-    case groq
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .deepSeek: "DeepSeek"
-        case .groq: "Groq"
-        }
-    }
-
-    var detail: String {
-        switch self {
-        case .deepSeek: String(localized: "provider.deepseek.detail")
-        case .groq: String(localized: "provider.groq.detail")
-        }
-    }
-
-    var apiKeyPlaceholder: String {
-        switch self {
-        case .deepSeek: "sk-…"
-        case .groq: "gsk_…"
-        }
-    }
-
-    var models: [FamiliarModelOption] {
-        switch self {
-        case .deepSeek:
-            [
-                .init(id: "deepseek-v4-flash", title: "Flash", detail: String(localized: "model.detail.fast")),
-                .init(id: "deepseek-v4-pro", title: "Pro", detail: String(localized: "model.detail.reasoning"))
-            ]
-        case .groq:
-            [
-                .init(id: "llama-3.3-70b-versatile", title: "Llama 3.3 70B", detail: String(localized: "model.detail.quality_tools")),
-                .init(id: "llama-3.1-8b-instant", title: "Llama 3.1 8B Instant", detail: String(localized: "model.detail.speed_tools")),
-                .init(id: "openai/gpt-oss-20b", title: "GPT-OSS 20B", detail: String(localized: "model.detail.light_tools")),
-                .init(id: "openai/gpt-oss-120b", title: "GPT-OSS 120B", detail: String(localized: "model.detail.strong_tools"))
-            ]
-        }
-    }
-
-    var modelsEndpoint: URL {
-        switch self {
-        case .deepSeek:
-            URL(string: "https://api.deepseek.com/models")!
-        case .groq:
-            URL(string: "https://api.groq.com/openai/v1/models")!
-        }
-    }
-
-    var defaultModelID: String {
-        models[0].id
-    }
-
-    func model(for id: String) -> FamiliarModelOption {
-        models.first(where: { $0.id == id }) ?? models[0]
-    }
+nonisolated struct FamiliarModelSwitchSnapshot: Identifiable, Equatable, Sendable {
+    let id: UUID
+    let previousProviderID: String
+    let previousModelID: String
+    let currentProviderID: String
+    let currentModelID: String
+    let sequence: Int
+    let createdAt: Date
 }
 
 nonisolated struct FamiliarSettings: Codable, Equatable, Sendable {
-    var provider: FamiliarProvider
+    var providerID: String
     var modelID: String
     var systemPrompt: String
+    var providerConfigurations: [String: FamiliarProviderConfiguration]
 
     static let defaultValue = FamiliarSettings(
-        provider: .deepSeek,
-        modelID: FamiliarProvider.deepSeek.defaultModelID,
-        systemPrompt: String(localized: "settings.system_prompt.default")
+        providerID: FamiliarProviderCatalog.deepSeek.id,
+        modelID: FamiliarProviderCatalog.deepSeek.defaultModel.id,
+        systemPrompt: String(localized: "settings.system_prompt.default"),
+        providerConfigurations: [:]
     )
 
-    var selectedModel: FamiliarModelOption {
-        provider.model(for: modelID)
+    var providerConfiguration: FamiliarProviderConfiguration {
+        FamiliarProviderCatalog.configuration(
+            for: providerID,
+            in: providerConfigurations
+        )
+    }
+
+    var resolvedProvider: FamiliarProviderDescriptor? {
+        FamiliarProviderCatalog.descriptor(
+            for: providerID,
+            configuration: providerConfiguration
+        )
+    }
+
+    var selectedProvider: FamiliarProviderDescriptor {
+        resolvedProvider ?? FamiliarProviderCatalog.deepSeek
+    }
+
+    var selectedModel: FamiliarModelDescriptor {
+        selectedProvider.model(for: modelID)
     }
 
     var normalizedSystemPrompt: String {
@@ -101,40 +65,14 @@ nonisolated struct FamiliarSettings: Codable, Equatable, Sendable {
         return value.isEmpty ? Self.defaultValue.systemPrompt : String(value.prefix(3_000))
     }
 
-    init(provider: FamiliarProvider, modelID: String, systemPrompt: String) {
-        self.provider = provider
-        self.modelID = modelID
-        self.systemPrompt = systemPrompt
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        provider = try container.decodeIfPresent(FamiliarProvider.self, forKey: .provider) ?? .deepSeek
-        modelID = try container.decodeIfPresent(String.self, forKey: .modelID)
-            ?? container.decodeIfPresent(String.self, forKey: .legacyModel)
-            ?? provider.defaultModelID
-        systemPrompt = try container.decodeIfPresent(String.self, forKey: .systemPrompt)
-            ?? Self.defaultValue.systemPrompt
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(provider, forKey: .provider)
-        try container.encode(modelID, forKey: .modelID)
-        try container.encode(systemPrompt, forKey: .systemPrompt)
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case provider
-        case modelID
-        case systemPrompt
-        case legacyModel = "model"
+    mutating func updateConfiguration(_ configuration: FamiliarProviderConfiguration) {
+        providerConfigurations[providerID] = configuration
     }
 }
 
 @MainActor
 enum FamiliarSettingsStore {
-    private static let key = "familiar.chat.settings.v1"
+    private static let key = "familiar.chat.settings.v2"
 
     static func load() -> FamiliarSettings {
         guard let data = UserDefaults.standard.data(forKey: key),

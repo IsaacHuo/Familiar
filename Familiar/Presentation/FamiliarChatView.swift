@@ -93,7 +93,7 @@ struct FamiliarChatView: View {
             switch destination {
             case .settings:
                 FamiliarSettingsView(initialSettings: controller.settings) {
-                    controller.updateSettings($0)
+                    controller.updateSettings($0, in: modelContext)
                 }
             }
         }
@@ -116,7 +116,7 @@ struct FamiliarChatView: View {
             get: { controller.errorMessage != nil },
             set: { if !$0 { controller.errorMessage = nil } }
         )) {
-            if !FamiliarKeychainStore.isConfigured(for: controller.settings.provider) {
+            if !FamiliarKeychainStore.isConfigured(for: controller.settings.providerID) {
                 Button(String(localized: "common.open_settings")) {
                     presentedSheet = .settings
                 }
@@ -180,8 +180,8 @@ struct FamiliarChatView: View {
            controller.agentStatus == nil,
            controller.toolActivities.isEmpty {
             FamiliarEmptyConversationView(
-                isProviderConfigured: FamiliarKeychainStore.isConfigured(for: controller.settings.provider),
-                providerTitle: controller.settings.provider.title,
+                isProviderConfigured: FamiliarKeychainStore.isConfigured(for: controller.settings.providerID),
+                providerTitle: controller.settings.selectedProvider.displayName,
                 onConfigure: { presentedSheet = .settings },
                 onPrompt: { prompt in
                     controller.draft = prompt
@@ -191,6 +191,7 @@ struct FamiliarChatView: View {
         } else {
             FamiliarMessageTimeline(
                 messages: controller.messages,
+                modelSwitches: controller.modelSwitches,
                 streamingMessageID: controller.streamingMessageID,
                 streamingText: controller.streamingText,
                 agentStatus: controller.agentStatus,
@@ -202,13 +203,18 @@ struct FamiliarChatView: View {
     }
 
     private var topBar: some View {
-        FamiliarChatTopBar(
-            provider: controller.settings.provider,
+        let selectedProvider = controller.settings.selectedProvider
+        let providers = selectedProvider.isCustom
+            ? FamiliarProviderCatalog.builtIn + [selectedProvider]
+            : FamiliarProviderCatalog.builtIn
+        return FamiliarChatTopBar(
+            provider: selectedProvider,
             model: controller.settings.selectedModel,
+            providerOptions: providers,
             isSending: controller.isSending,
             onOpenDrawer: { setDrawerOpen(true) },
-            onSelectModel: { provider, modelID in
-                controller.selectModel(provider: provider, modelID: modelID)
+            onSelectModel: { providerID, modelID in
+                controller.selectModel(providerID: providerID, modelID: modelID, in: modelContext)
             },
             onNewConversation: {
                 _ = controller.createConversation(in: modelContext)
@@ -355,11 +361,12 @@ private struct FamiliarTopBarInstaller<Bar: View>: ViewModifier {
 }
 
 private struct FamiliarChatTopBar: View {
-    let provider: FamiliarProvider
-    let model: FamiliarModelOption
+    let provider: FamiliarProviderDescriptor
+    let model: FamiliarModelDescriptor
+    let providerOptions: [FamiliarProviderDescriptor]
     let isSending: Bool
     let onOpenDrawer: () -> Void
-    let onSelectModel: (FamiliarProvider, String) -> Void
+    let onSelectModel: (String, String) -> Void
     let onNewConversation: () -> Void
 
     var body: some View {
@@ -387,16 +394,19 @@ private struct FamiliarChatTopBar: View {
             Spacer(minLength: 0)
 
             Menu {
-                ForEach(FamiliarProvider.allCases) { provider in
-                    Menu(provider.title) {
-                        ForEach(provider.models) { model in
+                ForEach(providerOptions) { provider in
+                    Menu(provider.displayName) {
+                        let models = provider.curatedModels.isEmpty && self.provider.id == provider.id
+                            ? [model]
+                            : provider.curatedModels
+                        ForEach(models) { model in
                             Button {
-                                onSelectModel(provider, model.id)
+                                onSelectModel(provider.id, model.id)
                             } label: {
-                                if self.provider == provider && self.model.id == model.id {
-                                    Label(model.title, systemImage: "checkmark")
+                                if self.provider.id == provider.id && self.model.id == model.id {
+                                    Label(model.displayName, systemImage: "checkmark")
                                 } else {
-                                    Text(model.title)
+                                    Text(model.displayName)
                                 }
                             }
                         }
@@ -404,7 +414,7 @@ private struct FamiliarChatTopBar: View {
                 }
             } label: {
                 HStack(spacing: 7) {
-                    Text(model.title)
+                    Text(model.displayName)
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
                     Image(systemName: "chevron.down")
@@ -416,7 +426,7 @@ private struct FamiliarChatTopBar: View {
             .buttonStyle(.plain)
             .familiarGlassSurface(interactive: true)
             .disabled(isSending)
-            .accessibilityLabel(String(format: String(localized: "model.current"), provider.title, model.title))
+            .accessibilityLabel(String(format: String(localized: "model.current"), provider.displayName, model.displayName))
 
             Spacer(minLength: 0)
 

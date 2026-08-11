@@ -6,6 +6,7 @@ struct FamiliarOnboardingView: View {
 
     @State private var step = 0
     @State private var settings = FamiliarSettings.defaultValue
+    @State private var configuration = FamiliarProviderConfiguration.empty
     @State private var apiKey = ""
     @State private var isValidating = false
     @State private var errorMessage: String?
@@ -23,10 +24,7 @@ struct FamiliarOnboardingView: View {
 
             footer
         }
-        .background {
-            FamiliarTheme.brandGlow
-                .ignoresSafeArea()
-        }
+        .background { FamiliarTheme.brandGlow.ignoresSafeArea() }
         .alert(String(localized: "onboarding.validation_failed"), isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -58,35 +56,47 @@ struct FamiliarOnboardingView: View {
             subtitle: String(localized: "onboarding.provider.subtitle")
         ) {
             VStack(spacing: 14) {
-                Picker(String(localized: "settings.provider"), selection: $settings.provider) {
-                    ForEach(FamiliarProvider.allCases) { provider in
-                        Text(provider.title).tag(provider)
+                Picker(String(localized: "settings.provider"), selection: $settings.providerID) {
+                    ForEach(FamiliarProviderCatalog.builtIn) { provider in
+                        Text(provider.displayName).tag(provider.id)
                     }
-                }
-                .pickerStyle(.segmented)
-                .onChange(of: settings.provider) { _, provider in
-                    settings.modelID = provider.defaultModelID
-                    apiKey = ""
-                }
-
-                SecureField(settings.provider.apiKeyPlaceholder, text: $apiKey)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .focused($isKeyFocused)
-                    .padding(.horizontal, 16)
-                    .frame(height: 52)
-                    .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-                Picker(String(localized: "settings.model"), selection: $settings.modelID) {
-                    ForEach(settings.provider.models) { model in
-                        Text(model.title).tag(model.id)
-                    }
+                    Text(String(localized: "settings.custom.provider"))
+                        .tag(FamiliarProviderCatalog.customProviderID)
                 }
                 .pickerStyle(.menu)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
                 .frame(height: 52)
                 .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .onChange(of: settings.providerID) { oldID, newID in
+                    settings.providerConfigurations[oldID] = configuration
+                    configuration = settings.providerConfigurations[newID] ?? .empty
+                    settings.modelID = newID == FamiliarProviderCatalog.customProviderID
+                        ? ""
+                        : currentDescriptor?.defaultModel.id ?? ""
+                    apiKey = ""
+                }
+
+                if settings.providerID == FamiliarProviderCatalog.customProviderID {
+                    TextField(String(localized: "settings.custom.name"), text: $configuration.displayName)
+                        .onboardingField()
+                    TextField("https://example.com/v1", text: $configuration.baseURL)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
+                        .autocorrectionDisabled()
+                        .onboardingField()
+                }
+
+                SecureField(currentDescriptor?.apiKeyPlaceholder ?? "sk-…", text: $apiKey)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .focused($isKeyFocused)
+                    .onboardingField()
+
+                TextField(String(localized: "settings.model.manual"), text: $settings.modelID)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .onboardingField()
             }
         }
     }
@@ -115,15 +125,10 @@ struct FamiliarOnboardingView: View {
                 }
             }
 
-            Button {
-                advance()
-            } label: {
+            Button(action: advance) {
                 HStack(spacing: 8) {
-                    if isValidating {
-                        ProgressView().tint(.white)
-                    }
-                    Text(primaryButtonTitle)
-                        .font(.headline)
+                    if isValidating { ProgressView().tint(.white) }
+                    Text(primaryButtonTitle).font(.headline)
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 54)
@@ -135,18 +140,20 @@ struct FamiliarOnboardingView: View {
             .opacity(isPrimaryDisabled ? 0.45 : 1)
 
             if step > 0 {
-                Button(String(localized: "common.back")) {
-                    setStep(step - 1)
-                }
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
-                .disabled(isValidating)
+                Button(String(localized: "common.back")) { setStep(step - 1) }
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .disabled(isValidating)
             } else {
                 Color.clear.frame(height: 20)
             }
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 18)
+    }
+
+    private var currentDescriptor: FamiliarProviderDescriptor? {
+        FamiliarProviderCatalog.descriptor(for: settings.providerID, configuration: configuration)
     }
 
     private var primaryButtonTitle: String {
@@ -158,7 +165,12 @@ struct FamiliarOnboardingView: View {
     }
 
     private var isPrimaryDisabled: Bool {
-        isValidating || (step == 1 && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        isValidating
+            || (step == 1 && (
+                apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || settings.modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || currentDescriptor == nil
+            ))
     }
 
     private func advance() {
@@ -174,23 +186,27 @@ struct FamiliarOnboardingView: View {
     }
 
     private func setStep(_ newStep: Int) {
-        if reduceMotion {
-            step = newStep
-        } else {
-            withAnimation(.smooth) { step = newStep }
-        }
+        if reduceMotion { step = newStep }
+        else { withAnimation(.smooth) { step = newStep } }
     }
 
     private func validateProvider() {
         let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else { return }
+        let modelID = settings.modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let descriptor = currentDescriptor, !key.isEmpty, !modelID.isEmpty else { return }
         isKeyFocused = false
         isValidating = true
 
         Task {
             do {
-                try await FamiliarProviderConnectionValidator.validate(provider: settings.provider, apiKey: key)
-                try FamiliarKeychainStore.save(key, for: settings.provider)
+                try await FamiliarProviderConnectionValidator.validate(
+                    descriptor: descriptor,
+                    modelID: modelID,
+                    apiKey: key
+                )
+                settings.modelID = modelID
+                settings.providerConfigurations[settings.providerID] = configuration
+                try FamiliarKeychainStore.save(key, for: settings.providerID)
                 try FamiliarSettingsStore.save(settings)
                 isValidating = false
                 setStep(2)
@@ -202,18 +218,21 @@ struct FamiliarOnboardingView: View {
     }
 }
 
+private extension View {
+    func onboardingField() -> some View {
+        padding(.horizontal, 16)
+            .frame(height: 52)
+            .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
 private struct OnboardingPage<Content: View>: View {
     let symbol: String
     let title: String
     let subtitle: String
     let content: Content
 
-    init(
-        symbol: String,
-        title: String,
-        subtitle: String,
-        @ViewBuilder content: () -> Content
-    ) {
+    init(symbol: String, title: String, subtitle: String, @ViewBuilder content: () -> Content) {
         self.symbol = symbol
         self.title = title
         self.subtitle = subtitle
@@ -224,30 +243,21 @@ private struct OnboardingPage<Content: View>: View {
         ScrollView {
             VStack(spacing: 26) {
                 Spacer(minLength: 48)
-
                 ZStack {
-                    Circle()
-                        .fill(FamiliarTheme.brandGlow)
-                        .frame(width: 112, height: 112)
+                    Circle().fill(FamiliarTheme.brandGlow).frame(width: 112, height: 112)
                     Image(systemName: symbol)
                         .font(.system(size: 42, weight: .medium))
                         .foregroundStyle(FamiliarTheme.accent)
                 }
-
                 VStack(spacing: 10) {
-                    Text(title)
-                        .font(.largeTitle.bold())
-                        .multilineTextAlignment(.center)
+                    Text(title).font(.largeTitle.bold()).multilineTextAlignment(.center)
                     Text(subtitle)
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .lineSpacing(3)
                 }
-
-                content
-                    .frame(maxWidth: 420)
-
+                content.frame(maxWidth: 420)
                 Spacer(minLength: 24)
             }
             .padding(.horizontal, 28)
@@ -267,8 +277,7 @@ private struct OnboardingFeatureRow: View {
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(FamiliarTheme.accent)
                 .frame(width: 28)
-            Text(title)
-                .font(.subheadline.weight(.medium))
+            Text(title).font(.subheadline.weight(.medium))
             Spacer()
         }
         .padding(.horizontal, 16)

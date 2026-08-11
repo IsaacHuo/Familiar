@@ -154,3 +154,23 @@
 "error.save_settings" = "保存设置失败：%@";
 "error.edit_message" = "编辑消息失败：%@";
 "error.retry_message" = "重新生成失败：%@";
+
+"settings.model.manual" = "模型 ID";
+"settings.model.refresh" = "刷新模型";
+"settings.model.curated_footer" = "此服务商没有可靠的模型列表接口。可选择精选模型，或手动填写官方模型 ID。";
+"settings.model.refresh_footer" = "从服务商官方模型列表接口刷新；也可以随时手动填写模型 ID。";
+"settings.openai.organization" = "Organization ID（可选）";
+"settings.openai.project" = "Project ID（可选）";
+"settings.qwen.region" = "Qwen 区域";
+"settings.qwen.region.china" = "中国";
+"settings.qwen.region.international" = "国际";
+"settings.custom.provider" = "自定义 OpenAI-compatible";
+"settings.custom.name" = "配置名称";
+"settings.custom.models_path" = "模型列表路径（可选，例如 /models）";
+"settings.privacy.permission_tools" = "仅在授权后、仅为你请求的工具访问日历和提醒事项";
+"model.switched_marker" = "已切换到 %1$@ · %2$@";
+"message.generated_by" = "由 %@ 生成";
+"error.provider.images_unsupported" = "%@ 在首版中不接收图片草稿。";
+"error.provider.invalid_configuration" = "%@ 配置无效。";
+"error.provider.invalid_custom_configuration" = "请先完整填写自定义服务商名称、Base URL 和模型 ID。";
+"error.message.context_too_large" = "这条消息超过所选模型的本地上下文安全限制。";

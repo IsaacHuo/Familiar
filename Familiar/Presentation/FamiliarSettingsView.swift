@@ -7,9 +7,12 @@ struct FamiliarSettingsView: View {
     let onSaveSettings: (FamiliarSettings) -> Void
 
     @State private var settings: FamiliarSettings
+    @State private var configuration: FamiliarProviderConfiguration
+    @State private var models: [FamiliarModelDescriptor]
     @State private var apiKey = ""
     @State private var hasAPIKey: Bool
     @State private var isValidating = false
+    @State private var isRefreshingModels = false
     @State private var validationSucceeded = false
     @State private var errorMessage: String?
 
@@ -20,79 +23,20 @@ struct FamiliarSettingsView: View {
         self.initialSettings = initialSettings
         self.onSaveSettings = onSaveSettings
         _settings = State(initialValue: initialSettings)
-        _hasAPIKey = State(initialValue: FamiliarKeychainStore.isConfigured(for: initialSettings.provider))
+        _configuration = State(initialValue: initialSettings.providerConfiguration)
+        _models = State(initialValue: initialSettings.selectedProvider.curatedModels)
+        _hasAPIKey = State(initialValue: FamiliarKeychainStore.isConfigured(for: initialSettings.providerID))
     }
 
     var body: some View {
         NavigationStack {
             Form {
                 brandHeader
-
-                Section(String(localized: "settings.provider")) {
-                    Picker(String(localized: "settings.provider"), selection: $settings.provider) {
-                        ForEach(FamiliarProvider.allCases) { provider in
-                            Label(provider.title, systemImage: provider == .deepSeek ? "bolt.fill" : "hare.fill")
-                                .tag(provider)
-                        }
-                    }
-                    .onChange(of: settings.provider) { _, provider in
-                        switchProvider(to: provider)
-                    }
-
-                    Picker(String(localized: "settings.model"), selection: $settings.modelID) {
-                        ForEach(settings.provider.models) { model in
-                            Text(model.title).tag(model.id)
-                        }
-                    }
-                }
-
-                Section {
-                    SecureField(keyPlaceholder, text: $apiKey)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .onChange(of: apiKey) { _, _ in validationSucceeded = false }
-
-                    HStack(spacing: 10) {
-                        Label(keyStatusTitle, systemImage: keyStatusSymbol)
-                            .foregroundStyle(keyStatusColor)
-                        Spacer()
-                        if hasAPIKey {
-                            Button(String(localized: "common.clear"), role: .destructive) {
-                                clearAPIKey()
-                            }
-                        }
-                    }
-
-                    Button {
-                        validateCurrentKey()
-                    } label: {
-                        HStack {
-                            if isValidating { ProgressView() }
-                            Text(String(localized: "settings.api_key.verify"))
-                            Spacer()
-                        }
-                    }
-                    .disabled(isValidating || effectiveKey.isEmpty)
-                } header: {
-                    Text(String(format: String(localized: "settings.api_key.title"), settings.provider.title))
-                } footer: {
-                    Text(String(format: String(localized: "settings.api_key.footer"), settings.provider.title))
-                }
-
-                Section {
-                    TextEditor(text: $settings.systemPrompt)
-                        .frame(minHeight: 120)
-                } header: {
-                    Text(String(localized: "settings.response_preferences"))
-                } footer: {
-                    Text(String(localized: "settings.system_prompt.footer"))
-                }
-
-                Section(String(localized: "settings.privacy.title")) {
-                    Label(String(localized: "settings.privacy.no_account"), systemImage: "person.crop.circle.badge.xmark")
-                    Label(String(localized: "settings.privacy.no_other_apps"), systemImage: "hand.raised")
-                    Label(String(localized: "settings.privacy.local_history"), systemImage: "internaldrive")
-                }
+                providerSection
+                modelSection
+                keySection
+                responseSection
+                privacySection
             }
             .navigationTitle(String(localized: "drawer.settings"))
             .navigationBarTitleDisplayMode(.inline)
@@ -103,6 +47,7 @@ struct FamiliarSettingsView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(String(localized: "common.save")) { save() }
                         .fontWeight(.semibold)
+                        .disabled(currentDescriptor == nil || normalizedModelID.isEmpty)
                 }
             }
             .alert(String(localized: "settings.error.title"), isPresented: Binding(
@@ -117,12 +62,138 @@ struct FamiliarSettingsView: View {
         .tint(FamiliarTheme.accent)
     }
 
+    private var providerSection: some View {
+        Section(String(localized: "settings.provider")) {
+            Picker(String(localized: "settings.provider"), selection: $settings.providerID) {
+                ForEach(providerChoices, id: \.id) { provider in
+                    Text(provider.displayName).tag(provider.id)
+                }
+            }
+            .onChange(of: settings.providerID) { oldID, newID in
+                switchProvider(from: oldID, to: newID)
+            }
+
+            if settings.providerID == "openai" {
+                TextField(String(localized: "settings.openai.organization"), text: $configuration.organizationID)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                TextField(String(localized: "settings.openai.project"), text: $configuration.projectID)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
+
+            if settings.providerID == "qwen" {
+                Picker(String(localized: "settings.qwen.region"), selection: $configuration.region) {
+                    Text(String(localized: "settings.qwen.region.china")).tag(FamiliarProviderRegion.china)
+                    Text(String(localized: "settings.qwen.region.international")).tag(FamiliarProviderRegion.international)
+                }
+            }
+
+            if settings.providerID == FamiliarProviderCatalog.customProviderID {
+                TextField(String(localized: "settings.custom.name"), text: $configuration.displayName)
+                TextField("https://example.com/v1", text: $configuration.baseURL)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                    .autocorrectionDisabled()
+                TextField(String(localized: "settings.custom.models_path"), text: $configuration.modelsPath)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
+        }
+    }
+
+    private var modelSection: some View {
+        Section {
+            if !models.isEmpty {
+                Picker(String(localized: "settings.model"), selection: $settings.modelID) {
+                    ForEach(models) { model in
+                        Text(model.displayName).tag(model.id)
+                    }
+                }
+            }
+
+            TextField(String(localized: "settings.model.manual"), text: $settings.modelID)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+
+            Button {
+                refreshModels()
+            } label: {
+                HStack {
+                    if isRefreshingModels { ProgressView() }
+                    Text(String(localized: "settings.model.refresh"))
+                    Spacer()
+                }
+            }
+            .disabled(isRefreshingModels || effectiveKey.isEmpty || currentDescriptor?.modelsPath == nil)
+        } header: {
+            Text(String(localized: "settings.model"))
+        } footer: {
+            Text(currentDescriptor?.modelsPath == nil
+                 ? String(localized: "settings.model.curated_footer")
+                 : String(localized: "settings.model.refresh_footer"))
+        }
+    }
+
+    private var keySection: some View {
+        Section {
+            SecureField(keyPlaceholder, text: $apiKey)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .onChange(of: apiKey) { _, _ in validationSucceeded = false }
+
+            HStack(spacing: 10) {
+                Label(keyStatusTitle, systemImage: keyStatusSymbol)
+                    .foregroundStyle(keyStatusColor)
+                Spacer()
+                if hasAPIKey {
+                    Button(String(localized: "common.clear"), role: .destructive) {
+                        clearAPIKey()
+                    }
+                }
+            }
+
+            Button {
+                validateCurrentKey()
+            } label: {
+                HStack {
+                    if isValidating { ProgressView() }
+                    Text(String(localized: "settings.api_key.verify"))
+                    Spacer()
+                }
+            }
+            .disabled(isValidating || effectiveKey.isEmpty || currentDescriptor == nil || normalizedModelID.isEmpty)
+        } header: {
+            Text(String(format: String(localized: "settings.api_key.title"), providerDisplayName))
+        } footer: {
+            Text(String(format: String(localized: "settings.api_key.footer"), providerDisplayName))
+        }
+    }
+
+    private var responseSection: some View {
+        Section {
+            TextEditor(text: $settings.systemPrompt)
+                .frame(minHeight: 120)
+        } header: {
+            Text(String(localized: "settings.response_preferences"))
+        } footer: {
+            Text(String(localized: "settings.system_prompt.footer"))
+        }
+    }
+
+    private var privacySection: some View {
+        Section(String(localized: "settings.privacy.title")) {
+            Label(String(localized: "settings.privacy.no_account"), systemImage: "person.crop.circle.badge.xmark")
+            Label(String(localized: "settings.privacy.permission_tools"), systemImage: "hand.raised")
+            Label(String(localized: "settings.privacy.local_history"), systemImage: "internaldrive")
+        }
+    }
+
     private var brandHeader: some View {
         Section {
             HStack(spacing: 14) {
                 ZStack {
-                    Circle()
-                        .fill(FamiliarTheme.brandGlow)
+                    Circle().fill(FamiliarTheme.brandGlow)
                     Image(systemName: "sparkles")
                         .font(.system(size: 21, weight: .semibold))
                         .foregroundStyle(FamiliarTheme.accent)
@@ -130,8 +201,7 @@ struct FamiliarSettingsView: View {
                 .frame(width: 52, height: 52)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(String(localized: "app.name"))
-                        .font(.headline)
+                    Text(String(localized: "app.name")).font(.headline)
                     Text(String(localized: "settings.subtitle"))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -141,23 +211,62 @@ struct FamiliarSettingsView: View {
         }
     }
 
+    private var providerChoices: [FamiliarProviderDescriptor] {
+        FamiliarProviderCatalog.builtIn + [customChoice]
+    }
+
+    private var customChoice: FamiliarProviderDescriptor {
+        FamiliarProviderCatalog.descriptor(
+            for: FamiliarProviderCatalog.customProviderID,
+            configuration: configurationForCustomChoice
+        ) ?? FamiliarProviderDescriptor(
+            id: FamiliarProviderCatalog.customProviderID,
+            displayName: String(localized: "settings.custom.provider"),
+            protocolKind: .openAIChat,
+            baseURL: URL(string: "https://example.com/v1")!,
+            chatPath: "/chat/completions",
+            modelsPath: nil,
+            authStyle: .bearer,
+            additionalHeaders: [:],
+            curatedModels: [],
+            openAIChat: .init(),
+            isCustom: true
+        )
+    }
+
+    private var configurationForCustomChoice: FamiliarProviderConfiguration {
+        if settings.providerID == FamiliarProviderCatalog.customProviderID { return configuration }
+        return settings.providerConfigurations[FamiliarProviderCatalog.customProviderID] ?? .empty
+    }
+
+    private var currentDescriptor: FamiliarProviderDescriptor? {
+        FamiliarProviderCatalog.descriptor(for: settings.providerID, configuration: configuration)
+    }
+
+    private var providerDisplayName: String {
+        currentDescriptor?.displayName
+            ?? FamiliarProviderCatalog.builtIn.first(where: { $0.id == settings.providerID })?.displayName
+            ?? String(localized: "settings.custom.provider")
+    }
+
+    private var normalizedModelID: String {
+        settings.modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private var effectiveKey: String {
         let entered = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !entered.isEmpty { return entered }
-        return FamiliarKeychainStore.load(for: settings.provider) ?? ""
+        return entered.isEmpty ? FamiliarKeychainStore.load(for: settings.providerID) ?? "" : entered
     }
 
     private var keyPlaceholder: String {
         hasAPIKey
             ? String(localized: "settings.api_key.replace_placeholder")
-            : settings.provider.apiKeyPlaceholder
+            : currentDescriptor?.apiKeyPlaceholder ?? "sk-…"
     }
 
     private var keyStatusTitle: String {
         if validationSucceeded { return String(localized: "settings.api_key.verified") }
-        return hasAPIKey
-            ? String(localized: "settings.api_key.saved")
-            : String(localized: "settings.api_key.missing")
+        return hasAPIKey ? String(localized: "settings.api_key.saved") : String(localized: "settings.api_key.missing")
     }
 
     private var keyStatusSymbol: String {
@@ -168,14 +277,38 @@ struct FamiliarSettingsView: View {
         validationSucceeded || hasAPIKey ? .green : .orange
     }
 
+    private func switchProvider(from oldID: String, to newID: String) {
+        settings.providerConfigurations[oldID] = configuration
+        configuration = settings.providerConfigurations[newID] ?? .empty
+        let descriptor = FamiliarProviderCatalog.descriptor(for: newID, configuration: configuration)
+        models = descriptor?.curatedModels ?? []
+        settings.modelID = newID == FamiliarProviderCatalog.customProviderID
+            ? ""
+            : descriptor?.defaultModel.id ?? ""
+        apiKey = ""
+        hasAPIKey = FamiliarKeychainStore.isConfigured(for: newID)
+        validationSucceeded = false
+    }
+
+    private func settingsForSave() -> FamiliarSettings {
+        var value = settings
+        value.modelID = normalizedModelID
+        value.providerConfigurations[value.providerID] = configuration
+        return value
+    }
+
     private func save() {
         do {
+            let value = settingsForSave()
+            guard value.resolvedProvider != nil, !value.modelID.isEmpty else {
+                errorMessage = String(localized: "error.provider.invalid_custom_configuration")
+                return
+            }
             let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmedKey.isEmpty {
-                try FamiliarKeychainStore.save(trimmedKey, for: settings.provider)
-                hasAPIKey = true
+                try FamiliarKeychainStore.save(trimmedKey, for: value.providerID)
             }
-            onSaveSettings(settings)
+            onSaveSettings(value)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
@@ -183,12 +316,17 @@ struct FamiliarSettingsView: View {
     }
 
     private func validateCurrentKey() {
+        guard let descriptor = currentDescriptor, !normalizedModelID.isEmpty else { return }
         let key = effectiveKey
         guard !key.isEmpty else { return }
         isValidating = true
         Task {
             do {
-                try await FamiliarProviderConnectionValidator.validate(provider: settings.provider, apiKey: key)
+                try await FamiliarProviderConnectionValidator.validate(
+                    descriptor: descriptor,
+                    modelID: normalizedModelID,
+                    apiKey: key
+                )
                 isValidating = false
                 validationSucceeded = true
             } catch {
@@ -198,16 +336,27 @@ struct FamiliarSettingsView: View {
         }
     }
 
-    private func switchProvider(to provider: FamiliarProvider) {
-        apiKey = ""
-        hasAPIKey = FamiliarKeychainStore.isConfigured(for: provider)
-        validationSucceeded = false
-        settings.modelID = provider.defaultModelID
+    private func refreshModels() {
+        guard let descriptor = currentDescriptor else { return }
+        let key = effectiveKey
+        guard !key.isEmpty else { return }
+        isRefreshingModels = true
+        Task {
+            do {
+                let refreshed = try await FamiliarModelCatalogService.models(for: descriptor, apiKey: key)
+                models = refreshed
+                if settings.modelID.isEmpty, let first = refreshed.first { settings.modelID = first.id }
+                isRefreshingModels = false
+            } catch {
+                isRefreshingModels = false
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 
     private func clearAPIKey() {
         do {
-            try FamiliarKeychainStore.delete(for: settings.provider)
+            try FamiliarKeychainStore.delete(for: settings.providerID)
             apiKey = ""
             hasAPIKey = false
             validationSucceeded = false

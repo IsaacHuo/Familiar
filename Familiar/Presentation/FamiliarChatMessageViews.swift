@@ -4,6 +4,7 @@ import UIKit
 struct FamiliarMessageTimeline: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let messages: [FamiliarMessageSnapshot]
+    let modelSwitches: [FamiliarModelSwitchSnapshot]
     let streamingMessageID: UUID?
     let streamingText: String
     let agentStatus: FamiliarAgentStatus?
@@ -15,6 +16,11 @@ struct FamiliarMessageTimeline: View {
 
     private var timelineItems: [FamiliarTimelineItem] {
         var items = messages.map { FamiliarTimelineItem.message(.init(snapshot: $0)) }
+        items += modelSwitches.map(FamiliarTimelineItem.modelSwitch)
+        items.sort {
+            if $0.sequence != $1.sequence { return $0.sequence < $1.sequence }
+            return $0.createdAt < $1.createdAt
+        }
         if agentStatus != nil || !toolActivities.isEmpty {
             items.append(.agent(status: agentStatus, activities: toolActivities))
         }
@@ -25,6 +31,8 @@ struct FamiliarMessageTimeline: View {
                 content: streamingText,
                 createdAt: Date(),
                 sequence: Int.max,
+                providerID: nil,
+                modelID: nil,
                 isStreaming: true,
                 source: nil
             )))
@@ -46,6 +54,9 @@ struct FamiliarMessageTimeline: View {
                                     onRetry: onRetry
                                 )
                                 .id(item.id)
+                            case .modelSwitch(let marker):
+                                FamiliarModelSwitchRow(marker: marker)
+                                    .id(item.id)
                             case .agent(let status, let activities):
                                 FamiliarAgentRunRow(status: status, activities: activities)
                                     .id(item.id)
@@ -122,12 +133,30 @@ struct FamiliarMessageTimeline: View {
 
 private enum FamiliarTimelineItem: Identifiable {
     case message(FamiliarRenderedMessage)
+    case modelSwitch(FamiliarModelSwitchSnapshot)
     case agent(status: FamiliarAgentStatus?, activities: [FamiliarToolActivity])
 
     var id: String {
         switch self {
         case .message(let message): message.id.uuidString
+        case .modelSwitch(let marker): "model-switch-\(marker.id.uuidString)"
         case .agent: "agent-run"
+        }
+    }
+
+    var sequence: Int {
+        switch self {
+        case .message(let message): message.sequence
+        case .modelSwitch(let marker): marker.sequence
+        case .agent: Int.max
+        }
+    }
+
+    var createdAt: Date {
+        switch self {
+        case .message(let message): message.createdAt
+        case .modelSwitch(let marker): marker.createdAt
+        case .agent: .distantFuture
         }
     }
 }
@@ -138,6 +167,8 @@ private struct FamiliarRenderedMessage {
     let content: String
     let createdAt: Date
     let sequence: Int
+    let providerID: String?
+    let modelID: String?
     let isStreaming: Bool
     let source: FamiliarMessageSnapshot?
 
@@ -147,6 +178,8 @@ private struct FamiliarRenderedMessage {
         content = snapshot.content
         createdAt = snapshot.createdAt
         sequence = snapshot.sequence
+        providerID = snapshot.providerID
+        modelID = snapshot.modelID
         isStreaming = false
         source = snapshot
     }
@@ -157,6 +190,8 @@ private struct FamiliarRenderedMessage {
         content: String,
         createdAt: Date,
         sequence: Int,
+        providerID: String?,
+        modelID: String?,
         isStreaming: Bool,
         source: FamiliarMessageSnapshot?
     ) {
@@ -165,6 +200,8 @@ private struct FamiliarRenderedMessage {
         self.content = content
         self.createdAt = createdAt
         self.sequence = sequence
+        self.providerID = providerID
+        self.modelID = modelID
         self.isStreaming = isStreaming
         self.source = source
     }
@@ -221,6 +258,13 @@ private struct FamiliarMessageRow: View {
                         .foregroundStyle(.secondary)
                 }
             } else if let source = message.source {
+                if let sourceLabel {
+                    Text(sourceLabel)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .accessibilityLabel(String(format: String(localized: "message.generated_by"), sourceLabel))
+                }
+
                 HStack(spacing: 4) {
                     MessageActionButton(symbol: "doc.on.doc", label: String(localized: "common.copy")) {
                         UIPasteboard.general.string = message.content
@@ -242,6 +286,41 @@ private struct FamiliarMessageRow: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var sourceLabel: String? {
+        guard let providerID = message.providerID, let modelID = message.modelID else { return nil }
+        let provider = FamiliarProviderCatalog.descriptor(for: providerID)
+        let providerName = provider?.displayName ?? providerID
+        let modelName = provider?.model(for: modelID).displayName ?? modelID
+        return "\(providerName) · \(modelName)"
+    }
+}
+
+private struct FamiliarModelSwitchRow: View {
+    let marker: FamiliarModelSwitchSnapshot
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Rectangle()
+                .fill(FamiliarTheme.separator)
+                .frame(height: 0.5)
+            Text(label)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Rectangle()
+                .fill(FamiliarTheme.separator)
+                .frame(height: 0.5)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var label: String {
+        let provider = FamiliarProviderCatalog.descriptor(for: marker.currentProviderID)
+        let providerName = provider?.displayName ?? marker.currentProviderID
+        let modelName = provider?.model(for: marker.currentModelID).displayName ?? marker.currentModelID
+        return String(format: String(localized: "model.switched_marker"), providerName, modelName)
     }
 }
 

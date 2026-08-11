@@ -6,6 +6,7 @@ import SwiftData
 final class FamiliarChatController: ObservableObject {
     @Published var selectedConversationID: UUID?
     @Published private(set) var messages: [FamiliarMessageSnapshot] = []
+    @Published private(set) var modelSwitches: [FamiliarModelSwitchSnapshot] = []
     @Published var draft = ""
     @Published private(set) var streamingText = ""
     @Published private(set) var streamingMessageID: UUID?
@@ -38,16 +39,25 @@ final class FamiliarChatController: ObservableObject {
         selectedConversationID = id
         resetTransientRunState()
         reloadMessages(in: context)
+        guard let conversation = selectedConversation(in: context) else { return }
+        var value = settings
+        value.providerID = conversation.currentProviderID
+        value.modelID = conversation.currentModelID
+        settings = value
     }
 
     @discardableResult
     func createConversation(in context: ModelContext) -> FamiliarConversation? {
-        let conversation = FamiliarConversation()
+        let conversation = FamiliarConversation(
+            currentProviderID: settings.providerID,
+            currentModelID: settings.modelID
+        )
         context.insert(conversation)
         do {
             try context.save()
             selectedConversationID = conversation.id
             messages = []
+            modelSwitches = []
             resetTransientRunState()
             return conversation
         } catch {
@@ -66,6 +76,7 @@ final class FamiliarChatController: ObservableObject {
             if let selectedConversationID, deletedIDs.contains(selectedConversationID) {
                 self.selectedConversationID = nil
                 messages = []
+                modelSwitches = []
                 resetTransientRunState()
             }
         } catch {
@@ -84,10 +95,7 @@ final class FamiliarChatController: ObservableObject {
             try context.save()
         } catch {
             context.rollback()
-            errorMessage = String(
-                format: String(localized: "error.rename_conversation"),
-                error.localizedDescription
-            )
+            errorMessage = String(format: String(localized: "error.rename_conversation"), error.localizedDescription)
         }
     }
 
@@ -96,8 +104,19 @@ final class FamiliarChatController: ObservableObject {
         let prompt = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty else { return }
         let requestSettings = settings
-        guard let apiKey = FamiliarKeychainStore.load(for: requestSettings.provider) else {
-            errorMessage = String(format: String(localized: "error.api_key_missing"), requestSettings.provider.title)
+        guard let descriptor = requestSettings.resolvedProvider else {
+            errorMessage = String(localized: "error.provider.invalid_custom_configuration")
+            return
+        }
+        guard prompt.count <= requestSettings.selectedModel.capabilities.maximumInputCharacters else {
+            errorMessage = String(localized: "error.message.context_too_large")
+            return
+        }
+        guard let apiKey = FamiliarKeychainStore.load(for: requestSettings.providerID) else {
+            errorMessage = String(
+                format: String(localized: "error.api_key_missing"),
+                descriptor.displayName
+            )
             return
         }
 
@@ -109,6 +128,8 @@ final class FamiliarChatController: ObservableObject {
         } else {
             return
         }
+        conversation.currentProviderID = requestSettings.providerID
+        conversation.currentModelID = requestSettings.modelID
 
         let nextSequence = (conversation.messages.map(\.sequence).max() ?? -1) + 1
         let userMessage = FamiliarMessage(
@@ -145,6 +166,7 @@ final class FamiliarChatController: ObservableObject {
                 requestMessages: requestMessages,
                 conversationID: conversation.id,
                 apiKey: apiKey,
+                descriptor: descriptor,
                 settings: requestSettings,
                 responseID: responseID,
                 context: context
@@ -156,20 +178,17 @@ final class FamiliarChatController: ObservableObject {
         runningTask?.cancel()
     }
 
-    func updateSettings(_ value: FamiliarSettings) {
-        do {
-            try FamiliarSettingsStore.save(value)
-            settings = value
-        } catch {
-            errorMessage = String(format: String(localized: "error.save_settings"), error.localizedDescription)
-        }
+    func updateSettings(_ value: FamiliarSettings, in context: ModelContext) {
+        guard !isSending else { return }
+        applySettings(value, recordingSwitchIn: context)
     }
 
-    func selectModel(provider: FamiliarProvider, modelID: String) {
+    func selectModel(providerID: String, modelID: String, in context: ModelContext) {
+        guard !isSending else { return }
         var value = settings
-        value.provider = provider
+        value.providerID = providerID
         value.modelID = modelID
-        updateSettings(value)
+        applySettings(value, recordingSwitchIn: context)
     }
 
     func prepareToEdit(_ message: FamiliarMessageSnapshot, in context: ModelContext) {
@@ -178,8 +197,12 @@ final class FamiliarChatController: ObservableObject {
               let conversation = selectedConversation(in: context)
         else { return }
 
-        let removed = conversation.messages.filter { $0.sequence >= message.sequence }
-        removed.forEach(context.delete)
+        conversation.messages
+            .filter { $0.sequence >= message.sequence }
+            .forEach(context.delete)
+        conversation.modelSwitchRecords
+            .filter { $0.sequence >= message.sequence }
+            .forEach(context.delete)
         conversation.updatedAt = Date()
         do {
             try context.save()
@@ -187,10 +210,7 @@ final class FamiliarChatController: ObservableObject {
             reloadMessages(in: context)
         } catch {
             context.rollback()
-            errorMessage = String(
-                format: String(localized: "error.edit_message"),
-                error.localizedDescription
-            )
+            errorMessage = String(format: String(localized: "error.edit_message"), error.localizedDescription)
         }
     }
 
@@ -208,26 +228,35 @@ final class FamiliarChatController: ObservableObject {
         else { return }
 
         let prompt = userMessage.content
-        let removed = conversation.messages.filter { $0.sequence >= userMessage.sequence }
-        removed.forEach(context.delete)
+        conversation.messages
+            .filter { $0.sequence >= userMessage.sequence }
+            .forEach(context.delete)
+        conversation.modelSwitchRecords
+            .filter { $0.sequence >= userMessage.sequence }
+            .forEach(context.delete)
+        if let providerID = message.providerID, let modelID = message.modelID {
+            settings.providerID = providerID
+            settings.modelID = modelID
+            conversation.currentProviderID = providerID
+            conversation.currentModelID = modelID
+        }
         conversation.updatedAt = Date()
         do {
             try context.save()
+            try FamiliarSettingsStore.save(settings)
             draft = prompt
             reloadMessages(in: context)
             startSending(in: context)
         } catch {
             context.rollback()
-            errorMessage = String(
-                format: String(localized: "error.retry_message"),
-                error.localizedDescription
-            )
+            errorMessage = String(format: String(localized: "error.retry_message"), error.localizedDescription)
         }
     }
 
     func reloadMessages(in context: ModelContext) {
         guard let conversation = selectedConversation(in: context) else {
             messages = []
+            modelSwitches = []
             return
         }
         messages = conversation.messages
@@ -240,15 +269,67 @@ final class FamiliarChatController: ObservableObject {
                     role: $0.role,
                     content: $0.content,
                     createdAt: $0.createdAt,
-                    sequence: $0.sequence
+                    sequence: $0.sequence,
+                    providerID: $0.providerID,
+                    modelID: $0.modelID
                 )
             }
+        modelSwitches = conversation.modelSwitchRecords
+            .sorted { lhs, rhs in
+                lhs.sequence == rhs.sequence ? lhs.createdAt < rhs.createdAt : lhs.sequence < rhs.sequence
+            }
+            .map {
+                FamiliarModelSwitchSnapshot(
+                    id: $0.id,
+                    previousProviderID: $0.previousProviderID,
+                    previousModelID: $0.previousModelID,
+                    currentProviderID: $0.currentProviderID,
+                    currentModelID: $0.currentModelID,
+                    sequence: $0.sequence,
+                    createdAt: $0.createdAt
+                )
+            }
+    }
+
+    private func applySettings(_ value: FamiliarSettings, recordingSwitchIn context: ModelContext) {
+        guard value.resolvedProvider != nil else {
+            errorMessage = String(localized: "error.provider.invalid_custom_configuration")
+            return
+        }
+        let oldValue = settings
+        do {
+            try FamiliarSettingsStore.save(value)
+            settings = value
+            guard let conversation = selectedConversation(in: context) else { return }
+            if oldValue.providerID != value.providerID || oldValue.modelID != value.modelID {
+                let nextSequence = (conversation.messages.map(\.sequence).max() ?? -1) + 1
+                let record = FamiliarModelSwitchRecord(
+                    previousProviderID: conversation.currentProviderID,
+                    previousModelID: conversation.currentModelID,
+                    currentProviderID: value.providerID,
+                    currentModelID: value.modelID,
+                    sequence: nextSequence,
+                    conversation: conversation
+                )
+                context.insert(record)
+                conversation.currentProviderID = value.providerID
+                conversation.currentModelID = value.modelID
+                conversation.updatedAt = Date()
+                try context.save()
+                reloadMessages(in: context)
+            }
+        } catch {
+            context.rollback()
+            settings = oldValue
+            errorMessage = String(format: String(localized: "error.save_settings"), error.localizedDescription)
+        }
     }
 
     private func performSend(
         requestMessages: [FamiliarMessageSnapshot],
         conversationID: UUID,
         apiKey: String,
+        descriptor: FamiliarProviderDescriptor,
         settings: FamiliarSettings,
         responseID: UUID,
         context: ModelContext
@@ -260,7 +341,7 @@ final class FamiliarChatController: ObservableObject {
 
         do {
             let agentLoop = FamiliarAgentLoop(
-                provider: FamiliarProviderFactory.makeProvider(for: settings.provider),
+                provider: FamiliarProviderFactory.makeProvider(for: descriptor),
                 registry: toolRegistry
             )
             var completedAnswer: String?
@@ -295,6 +376,8 @@ final class FamiliarChatController: ObservableObject {
                 role: .assistant,
                 content: answer,
                 sequence: nextSequence,
+                providerID: settings.providerID,
+                modelID: settings.modelID,
                 conversation: conversation
             )
             context.insert(assistantMessage)
