@@ -1,20 +1,20 @@
 import Foundation
 
 /// The decision delivered to an agent after a confirmation request finishes.
-public enum FamiliarToolConfirmationDecision: Sendable, Equatable {
+nonisolated public enum FamiliarToolConfirmationDecision: Sendable, Equatable {
     case confirmed
     case cancelled
 }
 
 /// The result of attempting to resolve a request from the UI.
-public enum FamiliarToolConfirmationResolution: Sendable, Equatable {
+nonisolated public enum FamiliarToolConfirmationResolution: Sendable, Equatable {
     case confirmed
     case cancelled
     case alreadyResolved(FamiliarToolConfirmationDecision)
     case unknownRequest
 }
 
-public enum FamiliarToolConfirmationError: Error, Sendable, Equatable {
+nonisolated public enum FamiliarToolConfirmationError: Error, Sendable, Equatable {
     /// The request's idempotency key was resolved before this request was made.
     case alreadyResolved(FamiliarToolConfirmationDecision)
     /// Another request with the same run/tool-call idempotency key is waiting.
@@ -22,7 +22,7 @@ public enum FamiliarToolConfirmationError: Error, Sendable, Equatable {
 }
 
 /// A value that can safely cross the AgentLoop/SwiftUI boundary.
-public struct FamiliarToolConfirmationRequest: Identifiable, Sendable, Equatable {
+nonisolated public struct FamiliarToolConfirmationRequest: Identifiable, Sendable, Equatable {
     public let id: UUID
     public let runID: String
     public let toolCallID: String
@@ -31,7 +31,7 @@ public struct FamiliarToolConfirmationRequest: Identifiable, Sendable, Equatable
     public let fields: [String: String]
     public let target: String?
 
-    public init(
+    nonisolated public init(
         id: UUID = UUID(),
         runID: String,
         toolCallID: String,

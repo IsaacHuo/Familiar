@@ -38,7 +38,7 @@ public final class FamiliarSpeechTranscriber: ObservableObject {
         finishListening()
     }
 
-    deinit {
+    isolated deinit {
         audioEngine.stop()
         if hasInputTap {
             audioEngine.inputNode.removeTap(onBus: 0)

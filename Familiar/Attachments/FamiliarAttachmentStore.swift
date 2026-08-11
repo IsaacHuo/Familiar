@@ -38,7 +38,7 @@ nonisolated enum FamiliarAttachmentStoreError: LocalizedError, Sendable {
 
 nonisolated enum FamiliarAttachmentStore {
     private static let maximumSourceBytes: Int64 = 25 * 1024 * 1024
-    private static let fileManager = FileManager.default
+    private static var fileManager: FileManager { FileManager.default }
 
     private static var attachmentsURL: URL {
         fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

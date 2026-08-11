@@ -205,13 +205,13 @@ public actor FamiliarEventKitService: FamiliarEventKitWriteExecutor {
         let all = await fetchReminders(matching: predicate)
         try Task.checkCancellation()
         let query = text?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let values = all.filter { reminder in
-            let due = reminder.dueDateComponents?.date
+        let values = all.filter { candidate in
+            let due = candidate.dueDate
             let inRange = (start == nil || (due != nil && due! >= start!)) && (end == nil || (due != nil && due! <= end!))
-            let matchesText = query.map { !$0.isEmpty && (reminder.title.lowercased().contains($0) || (reminder.notes ?? "").lowercased().contains($0)) } ?? true
+            let matchesText = query.map { !$0.isEmpty && candidate.searchableText.contains($0) } ?? true
             return inRange && matchesText
-        }.sorted { ($0.dueDateComponents?.date ?? .distantFuture) < ($1.dueDateComponents?.date ?? .distantFuture) }
-        return values.prefix(limit).map(FamiliarReminder.init)
+        }.sorted { ($0.dueDate ?? .distantFuture) < ($1.dueDate ?? .distantFuture) }
+        return values.prefix(limit).map(\.reminder)
     }
 
     public func commit(_ request: FamiliarPendingWriteRequest, idempotencyKey: String) async throws -> FamiliarWriteCommitResult {
@@ -227,10 +227,17 @@ public actor FamiliarEventKitService: FamiliarEventKitWriteExecutor {
         return result
     }
 
-    private func fetchReminders(matching predicate: NSPredicate) async -> [EKReminder] {
+    private func fetchReminders(matching predicate: NSPredicate) async -> [FamiliarReminderCandidate] {
         await withCheckedContinuation { continuation in
             store.fetchReminders(matching: predicate) { reminders in
-                continuation.resume(returning: reminders ?? [])
+                let candidates = (reminders ?? []).map { reminder in
+                    FamiliarReminderCandidate(
+                        reminder: FamiliarReminder(reminder),
+                        dueDate: reminder.dueDateComponents?.date,
+                        searchableText: "\(reminder.title.lowercased())\n\((reminder.notes ?? "").lowercased())"
+                    )
+                }
+                continuation.resume(returning: candidates)
             }
         }
     }
@@ -306,15 +313,21 @@ nonisolated private enum FamiliarISO8601 {
 }
 
 private extension FamiliarCalendarEvent {
-    init(_ event: EKEvent) {
+    nonisolated init(_ event: EKEvent) {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         self.init(id: event.eventIdentifier, title: event.title, startISO8601: formatter.string(from: event.startDate), endISO8601: formatter.string(from: event.endDate), isAllDay: event.isAllDay, location: event.location, notes: event.notes, calendarIdentifier: event.calendar.calendarIdentifier, calendarTitle: event.calendar.title)
     }
 }
 
+nonisolated private struct FamiliarReminderCandidate: Sendable {
+    let reminder: FamiliarReminder
+    let dueDate: Date?
+    let searchableText: String
+}
+
 private extension FamiliarReminder {
-    init(_ reminder: EKReminder) {
+    nonisolated init(_ reminder: EKReminder) {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         self.init(id: reminder.calendarItemIdentifier, title: reminder.title, dueISO8601: reminder.dueDateComponents?.date.map(formatter.string), isCompleted: reminder.isCompleted, priority: reminder.priority, notes: reminder.notes, listIdentifier: reminder.calendar.calendarIdentifier, listTitle: reminder.calendar.title)

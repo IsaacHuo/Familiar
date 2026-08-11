@@ -345,7 +345,7 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
     func webView(
         _ webView: WKWebView,
         decidePolicyFor navigationAction: WKNavigationAction,
-        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
     ) {
         guard navigationAction.navigationType == .linkActivated,
               let url = navigationAction.request.url

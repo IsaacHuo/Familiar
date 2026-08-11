@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Combine
 import SwiftUI
 import UIKit
@@ -110,9 +110,10 @@ private struct FamiliarCameraPreview: UIViewRepresentable {
 }
 
 @MainActor
-private final class FamiliarCameraController: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
+private final class FamiliarCameraController: NSObject, ObservableObject {
     enum State: Equatable { case loading, ready, denied, unavailable(String) }
-    let session = AVCaptureSession()
+
+    let session: AVCaptureSession
     @Published var state: State = .loading
     @Published var isCapturing = false
     @Published var isFlashAvailable = false
@@ -120,96 +121,193 @@ private final class FamiliarCameraController: NSObject, ObservableObject, AVCapt
     @Published var canSwitchCamera = false
     @Published var errorMessage: String?
 
-    private let queue = DispatchQueue(label: "com.familiar.camera")
-    private let output = AVCapturePhotoOutput()
-    private var input: AVCaptureDeviceInput?
-    private var position: AVCaptureDevice.Position = .back
-    private var configured = false
-    private var completion: ((UIImage) -> Void)?
+    private let worker: FamiliarCameraSessionWorker
+
+    override init() {
+        let worker = FamiliarCameraSessionWorker()
+        self.worker = worker
+        self.session = worker.session
+        super.init()
+
+        worker.onReady = { [weak self] in self?.state = .ready }
+        worker.onUnavailable = { [weak self] message in self?.state = .unavailable(message) }
+        worker.onCapabilities = { [weak self] flashAvailable, canSwitch in
+            self?.isFlashAvailable = flashAvailable
+            if !flashAvailable { self?.isFlashEnabled = false }
+            self?.canSwitchCamera = canSwitch
+        }
+        worker.onCaptureFinished = { [weak self] result in
+            guard let self else { return }
+            self.isCapturing = false
+            let completion = self.captureCompletion
+            self.captureCompletion = nil
+            switch result {
+            case .success(let data):
+                guard let image = UIImage(data: data) else {
+                    self.errorMessage = String(localized: "camera.invalid_photo")
+                    return
+                }
+                completion?(image)
+            case .failure(let error):
+                switch error {
+                case .message(let message): self.errorMessage = message
+                }
+            }
+        }
+    }
+
+    private var captureCompletion: ((UIImage) -> Void)?
 
     func start() {
         state = .loading
         switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized: configureAndStart()
+        case .authorized:
+            worker.start()
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
-                guard let self else { return }
-                if granted { self.configureAndStart() } else { Task { @MainActor in self.state = .denied } }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    if granted { worker.start() } else { self.state = .denied }
+                }
             }
-        case .denied, .restricted: state = .denied
-        @unknown default: state = .unavailable(String(localized: "camera.unknown_permission"))
+        case .denied, .restricted:
+            state = .denied
+        @unknown default:
+            state = .unavailable(String(localized: "camera.unknown_permission"))
         }
     }
 
-    func stop() { queue.async { [weak self] in guard let self, self.session.isRunning else { return }; self.session.stopRunning() } }
-    func toggleFlash() { guard isFlashAvailable else { return }; isFlashEnabled.toggle() }
+    func stop() { worker.stop() }
 
-    func switchCamera() {
-        queue.async { [weak self] in
-            guard let self, configured, let old = input else { return }
-            let next: AVCaptureDevice.Position = position == .back ? .front : .back
-            guard let device = Self.device(position: next), let nextInput = try? AVCaptureDeviceInput(device: device) else { return }
-            session.beginConfiguration(); session.removeInput(old)
-            if session.canAddInput(nextInput) { session.addInput(nextInput); input = nextInput; position = next } else { session.addInput(old) }
-            session.commitConfiguration(); publishCapabilities()
-        }
+    func toggleFlash() {
+        guard isFlashAvailable else { return }
+        isFlashEnabled.toggle()
     }
+
+    func switchCamera() { worker.switchCamera() }
 
     func capture(_ onCapture: @escaping (UIImage) -> Void) {
         guard state == .ready, !isCapturing else { return }
         isCapturing = true
-        let flash = isFlashEnabled
-        queue.async { [weak self] in
-            guard let self, configured else { Task { @MainActor in self?.isCapturing = false }; return }
+        captureCompletion = onCapture
+        worker.capture(flashEnabled: isFlashEnabled)
+    }
+}
+
+private nonisolated final class FamiliarCameraSessionWorker: NSObject, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
+    enum CaptureError: Error, Sendable {
+        case message(String)
+    }
+    typealias CaptureResult = Result<Data, CaptureError>
+
+    let session = AVCaptureSession()
+
+    private let queue = DispatchQueue(label: "com.familiar.camera")
+    private let output = AVCapturePhotoOutput()
+    var onReady: (@MainActor @Sendable () -> Void)?
+    var onUnavailable: (@MainActor @Sendable (String) -> Void)?
+    var onCapabilities: (@MainActor @Sendable (Bool, Bool) -> Void)?
+    var onCaptureFinished: (@MainActor @Sendable (CaptureResult) -> Void)?
+    private var input: AVCaptureDeviceInput?
+    private var position: AVCaptureDevice.Position = .back
+    private var configured = false
+
+    override init() { super.init() }
+
+    nonisolated func start() {
+        queue.async { [self] in
+            do {
+                if !configured { try configure() }
+                if !session.isRunning { session.startRunning() }
+                Task { @MainActor in onReady?() }
+            } catch {
+                let message = error.localizedDescription
+                Task { @MainActor in onUnavailable?(message) }
+            }
+        }
+    }
+
+    nonisolated func stop() {
+        queue.async { [self] in
+            if session.isRunning { session.stopRunning() }
+        }
+    }
+
+    nonisolated func switchCamera() {
+        queue.async { [self] in
+            guard configured, let oldInput = input else { return }
+            let next = position == .back ? AVCaptureDevice.Position.front : .back
+            guard let device = Self.device(position: next), let nextInput = try? AVCaptureDeviceInput(device: device) else { return }
+            session.beginConfiguration()
+            session.removeInput(oldInput)
+            if session.canAddInput(nextInput) {
+                session.addInput(nextInput)
+                input = nextInput
+                position = next
+            } else {
+                session.addInput(oldInput)
+            }
+            session.commitConfiguration()
+            publishCapabilities()
+        }
+    }
+
+    nonisolated func capture(flashEnabled: Bool) {
+        queue.async { [self] in
+            guard configured else {
+                Task { @MainActor in onCaptureFinished?(.failure(.message(String(localized: "camera.configuration_failed")))) }
+                return
+            }
             let settings = AVCapturePhotoSettings()
-            settings.flashMode = flash && input?.device.hasFlash == true ? .on : .off
+            settings.flashMode = flashEnabled && input?.device.hasFlash == true ? .on : .off
             if let connection = output.connection(with: .video), connection.isVideoMirroringSupported {
                 connection.automaticallyAdjustsVideoMirroring = false
                 connection.isVideoMirrored = position == .front
             }
-            completion = onCapture
             output.capturePhoto(with: settings, delegate: self)
         }
     }
 
     nonisolated func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         let data = photo.fileDataRepresentation()
-        let description = error?.localizedDescription
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            let callback = completion; completion = nil; isCapturing = false
-            if let description { errorMessage = description; return }
-            guard let data, let image = UIImage(data: data) else { errorMessage = String(localized: "camera.invalid_photo"); return }
-            callback?(image)
-        }
-    }
-
-    private func configureAndStart() {
-        queue.async { [weak self] in
-            guard let self else { return }
-            do {
-                if !configured { try configure() }
-                if !session.isRunning { session.startRunning() }
-                Task { @MainActor in self.state = .ready }
-            } catch { Task { @MainActor in self.state = .unavailable(error.localizedDescription) } }
+        let message = error?.localizedDescription
+        queue.async { [self] in
+            if let message {
+                Task { @MainActor in onCaptureFinished?(.failure(.message(message))) }
+            } else if let data {
+                Task { @MainActor in onCaptureFinished?(.success(data)) }
+            } else {
+                Task { @MainActor in onCaptureFinished?(.failure(.message(String(localized: "camera.invalid_photo")))) }
+            }
         }
     }
 
     private func configure() throws {
         guard let device = Self.device(position: .back) else { throw CameraError.unavailable }
         let newInput = try AVCaptureDeviceInput(device: device)
-        session.beginConfiguration(); defer { session.commitConfiguration() }
+        session.beginConfiguration()
+        defer { session.commitConfiguration() }
         session.sessionPreset = .photo
         guard session.canAddInput(newInput), session.canAddOutput(output) else { throw CameraError.configuration }
-        session.addInput(newInput); session.addOutput(output); input = newInput; configured = true; publishCapabilities()
+        session.addInput(newInput)
+        session.addOutput(output)
+        input = newInput
+        configured = true
+        publishCapabilities()
     }
 
     private func publishCapabilities() {
-        let flash = input?.device.hasFlash == true
-        let switchable = Self.device(position: .back) != nil && Self.device(position: .front) != nil
-        Task { @MainActor in isFlashAvailable = flash; if !flash { isFlashEnabled = false }; canSwitchCamera = switchable }
+        let flashAvailable = input?.device.hasFlash == true
+        let canSwitch = Self.device(position: .back) != nil && Self.device(position: .front) != nil
+        Task { @MainActor in onCapabilities?(flashAvailable, canSwitch) }
     }
 
-    private static func device(position: AVCaptureDevice.Position) -> AVCaptureDevice? { AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position) }
-    private enum CameraError: LocalizedError { case unavailable, configuration; var errorDescription: String? { String(localized: "camera.configuration_failed") } }
+    private static func device(position: AVCaptureDevice.Position) -> AVCaptureDevice? {
+        AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position)
+    }
+
+    private enum CameraError: LocalizedError {
+        case unavailable, configuration
+        var errorDescription: String? { String(localized: "camera.configuration_failed") }
+    }
 }
