@@ -112,7 +112,7 @@ const base = import.meta.env.BASE_URL;
         <details>
           <summary>支持哪些系统版本？</summary>
           <div class="detail-content">
-            <p>Familiar 最低支持 iOS 17，并针对 iPhone 设计。建议安装最新可用的 iOS 更新，以获得更好的安全性和系统组件兼容性。</p>
+            <p>Familiar 最低支持 iOS 18，并针对 iPhone 设计。建议安装最新可用的 iOS 更新，以获得更好的安全性和系统组件兼容性。</p>
           </div>
         </details>
 

@@ -23,7 +23,7 @@ const base = import.meta.env.BASE_URL;
             </svg>
           </a>
         </div>
-        <p class="hero-note">需要 iOS 17 或更高版本 · App Store 版本准备中</p>
+        <p class="hero-note">需要 iOS 18 或更高版本 · App Store 版本准备中</p>
       </div>
 
       <div class="device-stage" aria-label="Familiar 聊天界面示意图">
