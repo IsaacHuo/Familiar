@@ -5,7 +5,7 @@
 <h1 align="center">Familiar</h1>
 
 <p align="center">
-  为 iPhone 打造的原生、本地优先 BYOK AI Agent。
+  为 iPhone 打造的原生、本地优先 BYOK AI Agent Runtime。
 </p>
 
 <p align="center">
@@ -14,7 +14,7 @@
 
 <p align="center">
   <a href="https://github.com/IsaacHuo/familiar/actions/workflows/pages.yml"><img src="https://github.com/IsaacHuo/familiar/actions/workflows/pages.yml/badge.svg" alt="Website deployment"></a>
-  <img src="https://img.shields.io/badge/iOS-17%2B-0A84FF?logo=apple" alt="iOS 17 or later">
+  <img src="https://img.shields.io/badge/iOS-18%2B-0A84FF?logo=apple" alt="iOS 18 or later">
   <img src="https://img.shields.io/badge/Swift-SwiftUI-F05138?logo=swift&logoColor=white" alt="Swift and SwiftUI">
   <img src="https://img.shields.io/badge/Platform-iPhone-111111" alt="iPhone only">
   <img src="https://img.shields.io/badge/Architecture-BYOK-6D5DFB" alt="Bring your own key">
@@ -30,66 +30,195 @@
 
 ## 项目概览
 
-Familiar 是一个面向 iPhone 的原生 AI 助理。它不要求注册 Familiar 账号，不依赖 Familiar 自建聊天后端，也不提供订阅或托管额度。用户使用自己的模型 API Key，App 从设备直接连接所选 Provider；会话、附件和工具记录保存在本机。
+> **Familiar = 一个 iPhone-native Agent Runtime。** 云端/可替换 LLM 负责理解、决策与编排；iOS 原生 Framework 负责感知、计算与行动；Native Workspace 提供通用内容处理能力。
 
-项目专注于一条可信、可审计的 Agent 闭环：自然语言聊天、本地文档理解、日历与提醒事项查询，以及在用户逐次确认后执行创建操作。
+Familiar 把 iPhone 的原生能力转成一个可组合的 Agent Runtime。它不以 Linux 为执行环境，不依赖 Apple Intelligence，不把每一个用户需求硬编码成 workflow，也不从一开始做复杂多 Agent。
+
+App 采用 BYOK 模式：用户使用自己的模型 API Key，请求从设备直接发送到所选 Provider；会话、附件和工具记录保存在本机。
 
 > Familiar 目前处于持续开发阶段。AI 输出可能不准确，不应作为医疗、法律、财务或其他高风险决定的唯一依据。
 
 ## 核心特性
 
-- **原生 iPhone 体验** — SwiftUI、SwiftData、URLSession、WebKit、Keychain、EventKit、Speech、Vision 与 PDFKit。
+- **iPhone 原生 Agent Runtime** — 单一主 Agent 通过 Tool 规划，并由 iOS 原生 Framework 执行；无 Linux 环境，无 Apple Intelligence 依赖。
+- **Tool 是最核心的抽象** — Calendar、Vision、PDF、Maps 都只是注册在 Capability Registry 中的 Tool；每个 Tool 小而正交、可组合。
+- **Native First** — 复用 EventKit、Vision、MapKit、PDFKit、Photos 与 Foundation，而不是重新实现日历、OCR、地图或文档渲染。
+- **Native Workspace** — 一个不依赖 Linux 的通用工作空间：File、PDF、Text、Image、Audio、Video、CSV/JSON、Archive 与 Document 处理。
+- **意图感知授权** — 低风险读取自动执行，明确可逆写入执行并支持撤销，推断或破坏性写入要求确认。
+- **Runtime Event 驱动的 UI** — 时间线渲染 Agent 事件（模型思考、工具进度、审批、成功与失败），而不是每个工具自造一套 UI。
 - **本地优先与 BYOK** — API Key 按 Provider 分别保存在 iOS Keychain；请求不经过 Familiar 服务器。
 - **完整 Provider Catalog** — OpenAI、Anthropic、Gemini、DeepSeek、Groq、xAI、OpenRouter、Qwen、Kimi、GLM、MiniMax、SiliconFlow，以及自定义 OpenAI-compatible endpoint。
-- **协议感知流式传输** — 分别实现 OpenAI Chat、Anthropic Messages 与 Gemini `generateContent` 协议，不假设所有兼容服务完全等价。
-- **确认后执行原生操作** — 日历与提醒事项写入前展示结构化预览；未经逐次确认绝不执行。
-- **本地文档转换** — AnyDoc 在设备上将 Office、OpenDocument、RTF、EPUB、CSV 与 PDF 转换为 Markdown；扫描 PDF 使用 Vision OCR 补充无文本页面。
+- **本地文档转换** — AnyDoc 在设备上将 Office、OpenDocument、RTF、EPUB、CSV 与 PDF 转换为 Markdown；扫描 PDF 使用 Vision OCR。
 - **富文本回答渲染** — 本地 Markdown、代码高亮、表格、引用、Mermaid、KaTeX、代码复制和安全外链。
 - **语音转写** — 使用 Apple Speech 与 `AVAudioEngine` 生成可编辑文字草稿，不保存原始录音。
-- **明确的图片能力边界** — 相机和相册图片可以作为本地草稿预览，但当前版本在发送前统一阻止，不创建消息，也不上传图片。
 - **双语界面** — 完整简体中文与英文资源，支持深浅色、Dynamic Type、VoiceOver、Reduce Motion 和 Reduce Transparency。
 
 ## 架构
 
-```mermaid
-flowchart TD
-    UI[SwiftUI App Shell] --> Controller[Chat Controller]
-    Controller --> Persistence[(SwiftData)]
-    Controller --> Agent[Bounded Agent Loop]
-    Agent --> Catalog[Provider Catalog]
-    Catalog --> OpenAI[OpenAI Chat Adapter]
-    Catalog --> Anthropic[Anthropic Messages Adapter]
-    Catalog --> Gemini[Gemini Adapter]
-    OpenAI --> Provider[Selected Model Provider]
-    Anthropic --> Provider
-    Gemini --> Provider
-
-    Controller --> Attachments[Attachment Pipeline]
-    Attachments --> AnyDoc[AnyDoc Rust Engine]
-    Attachments --> OCR[PDFKit + Vision OCR]
-    AnyDoc --> Markdown[Local Markdown Context]
-    OCR --> Markdown
-    Markdown --> Agent
-
-    Agent --> Tools[Typed Native Tools]
-    Tools --> Confirmation[Confirmation Coordinator]
-    Confirmation --> EventKit[Calendar and Reminders]
-```
-
-### 请求链路
+Familiar 整体划分为六层：
 
 ```text
-用户输入
-  → 本地会话快照
-  → Provider/模型能力检查
-  → 协议专用请求适配器
-  → 用户选择的第三方 Provider
-  → 流式回答
-  → 本地富文本渲染器
-  → 明确的持久化检查点
+┌─────────────────────────────────────────┐
+│             System Entry Layer          │
+│ Chat / Share / Notifications / Widgets  │
+│ Spotlight / App Intents / Shortcuts     │
+└────────────────────┬────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────┐
+│               Agent Runtime             │
+│                                         │
+│ Agent Loop / Context Manager            │
+│ Model Router / Tool Router              │
+│ Run / Step State                        │
+└────────────────────┬────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────┐
+│            Capability Registry          │
+│                                         │
+│ System Tools          Workspace Tools   │
+│ Calendar              File              │
+│ Reminder              PDF               │
+│ Contacts              Text              │
+│ Photos                Image             │
+│ Maps                  Audio             │
+│ Weather               Web               │
+│ Location              Structured Data   │
+└────────────────────┬────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────┐
+│           Execution Policy Layer        │
+│ Availability / Permission / Approval    │
+│ Validation / Timeout / Cancellation     │
+└────────────────────┬────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────┐
+│              Native Layer               │
+│ EventKit / Vision / MapKit / WebKit     │
+│ Photos / PDFKit / Core ML / Foundation  │
+└─────────────────────────────────────────┘
+            + State Layer
+  Session / Workspace / Memory
+  Artifacts / Trace / History
 ```
 
-Familiar 不代理模型流量。第三方 Provider 如何记录、保留或训练请求内容，取决于对应服务的条款和用户配置。
+```mermaid
+flowchart TD
+    Entry[System Entry Layer] --> Runtime[Agent Runtime]
+    Runtime --> Registry[Capability Registry]
+    Registry --> Policy[Execution Policy Layer]
+    Policy --> Native[Native Layer: EventKit Vision MapKit PDFKit ...]
+    Runtime --> State[State Layer: Session Memory Trace]
+```
+
+Agent Runtime 是最关键的一层：它只认识 `ToolDefinition`、`ToolCall` 与 `ToolResult`，从不直接触碰 EventKit、Vision、HealthKit 或 MapKit；这些都位于 Capability Registry 与 Execution Policy 之后。
+
+### 系统入口
+
+系统入口按优先级划分：
+
+| 优先级 | 入口 |
+| --- | --- |
+| **第一优先级** | ① Familiar App 本身 · ② Share Extension · ③ 系统通知 / Deep Link |
+| **第二优先级** | ④ Widgets / Controls · ⑤ Spotlight 等轻量系统入口 |
+| **兼容能力** | ⑥ App Intents · ⑦ Shortcuts |
+
+App Intents 位于 Agent Core 之外：它只向 Siri、Shortcuts、Spotlight、Widgets 与 Action Button 暴露一个很小的表面（`Ask Familiar`、`Process with Familiar`、`Open Familiar`），不会把整个 Capability Registry 复制到 App Intents。
+
+## Agent Runtime
+
+Familiar 采用单 Agent First 设计，核心是可组合的 Tool Loop：
+
+```text
+User
+  → AgentRun
+  → Context Assembler
+  → Model
+  → Tool Call?
+       ├── No ──→ Final Answer
+       └── Yes
+           → Tool Registry
+           → Policy Engine
+           → Execute Tool
+           → ToolResult
+           → Context
+           → Model
+           → continue
+until: final answer / cancelled / failed / max steps
+```
+
+Agent Loop 是有限循环：有最大迭代轮数、工具结果长度上限和由模型能力决定的上下文上限。同一 run 内的重复工具调用会被拒绝；单次 Agent Run 中相同写操作只能成功提交一次。
+
+## Tool 设计
+
+Tool 使用强类型 Swift，Registry 再做 type erasure：
+
+```swift
+protocol NativeTool {
+    associatedtype Input: Decodable & Sendable
+    associatedtype Output: Encodable & Sendable
+
+    static var manifest: ToolManifest { get }
+    func execute(_ input: Input, context: ToolContext) async throws -> Output
+}
+```
+
+`ToolManifest` 不只是名字：
+
+```text
+ToolManifest
+  id
+  title
+  description
+  effect        read / write / destructiveWrite
+  risk          low / high
+  requirements  EventKit, Calendar permission, ...
+```
+
+Familiar 内部借鉴 MCP 的思想但不把它当作内核，用原生 Swift 实现三种资源分离：
+
+- **Resources** — 附件、当前位置、Workspace 文件、会话上下文、Memory（application-controlled）
+- **Tools** — calendar.create、pdf.extract、maps.search、file.write（model-controlled）
+- **Instructions** — Base Agent Policy、Skills（user-controlled）
+
+> **MCP 是 Adapter，不是 Kernel。** 以后接入外部服务时通过 `MCPClient` 把 MCP Tools 转成 Familiar `AnyTool`，不需要修改基本架构。
+
+## Capability Registry
+
+Registry 才是 Familiar 真正的核心资产，组织成两大能力体系：
+
+| Native System | Native Workspace |
+| --- | --- |
+| Calendar | File |
+| Reminders | PDF |
+| Contacts | Text |
+| Photos | Image |
+| Maps | Audio |
+| Location | Video |
+| Weather | CSV / JSON |
+| Health | Archive |
+| Notifications | Document |
+| Clipboard | Web |
+
+Native System 工具负责操作 iPhone 和用户的数字环境；Native Workspace 工具给 Agent 一个不依赖 Linux 的通用工作空间。当前设备、地区、系统版本、用户授权不可用的能力，直接不暴露给模型。
+
+## 权限模型
+
+Familiar 采用意图感知授权，而不是对每个写操作都弹窗：
+
+| 操作 | 默认行为 |
+| --- | --- |
+| Read + 低风险 | 自动执行 |
+| 明确的可逆写入 | 执行 + Undo |
+| 推断出的写入 | 确认 |
+| 敏感读取 | Permission / policy |
+| 破坏性操作 | 确认 |
+| 财务 / 外部重大影响 | 强确认 |
+
+权限由代码控制，不靠 Prompt：模型无法用一句话绕过 HealthKit 权限、删除确认或敏感数据策略。
 
 ## Provider 支持
 
@@ -99,26 +228,13 @@ Familiar 不代理模型流量。第三方 Provider 如何记录、保留或训�
 | Anthropic Messages | Anthropic |
 | Gemini generateContent | Gemini |
 
-每个 Provider 拥有独立 Keychain 项、端点配置、Header 和模型目录策略。模型能力按 `providerID + modelID` 标记；未知自定义模型默认仅文本，不会收到工具定义或图片内容。
+每个 Provider 拥有独立 Keychain 项、端点配置、Header 和模型目录策略。模型能力按 `providerID + modelID` 标记；未知自定义模型默认仅文本。
 
-会话保存当前 Provider 与模型，每条助手回答记录实际使用的 `providerID` 和 `modelID`，切换模型时会在时间线显示轻量标记。
-
-## Agent 工具
-
-Familiar 当前提供四个产品级强类型工具：
-
-| 工具 | 行为 |
-| --- | --- |
-| 查询日历事件 | 读取用户问题所需时间范围内的事件 |
-| 新建日历事件 | 展示完整预览，确认后写入 EventKit |
-| 查询提醒事项 | 按时间或文字条件查询提醒事项 |
-| 新建提醒事项 | 展示列表、截止时间、优先级和备注，确认后写入 |
-
-写操作由 confirmation coordinator 暂停执行并等待 UI 决策。任务取消、停止生成、切换会话或 App 终止时，等待中的写操作不会执行。单次 Agent Run 内相同写操作只能成功提交一次。
+模型层是简单的 `ModelProvider` 抽象，包含 OpenAI、Anthropic、OpenAI-compatible 与（可选的）本地 Provider。第一阶段先用能拿到的最强模型建立 Agent benchmark，再进行任何省 token 的模型拆分。
 
 ## 文档处理链路
 
-系统将所选文档复制到 App 私有目录，再进行本地转换。Familiar 不长期依赖外部 security-scoped URL。
+系统将所选文档复制到 App 私有目录，再进行本地转换。
 
 | 输入格式 | 本地处理方式 |
 | --- | --- |
@@ -131,26 +247,13 @@ Familiar 当前提供四个产品级强类型工具：
 | 扫描或混合型 PDF | 先由 AnyDoc 处理；无文本层页面使用 PDFKit + Vision OCR |
 | TXT、MD、Markdown | 编码验证与无损文字直通 |
 
-内置桥接层固定使用 [`anydoc 0.1.8`](https://github.com/firecrawl/anydoc)，并向 Swift 暴露窄范围、面向字节的 C ABI。它被编译为静态 XCFramework，仅包含 arm64 iPhone 真机和 Apple Silicon iPhone Simulator 切片；有意排除了 Intel Simulator。
-
 只有转换后的 Markdown 和文件名会进入模型请求。原始文档字节、本地路径和 security-scoped URL 不会发送给 Firecrawl 或所选模型 Provider。
 
-附件会保留本地原文件，以供 QuickLook 历史预览。删除会话或截断消息路径时会同步清理本地文件；编辑和重试会保留附件副本及转换元数据。
+图片预处理是 Tool，不是强制 pipeline：根据 Agent 判断的任务需要，图片才走 Vision OCR、二维码检测或多模态模型，而不是默认先 OCR。
 
 ## 富文本渲染
 
-助手回答由内置的非持久化 `WKWebView` 渲染，并且只使用本地资源。流式内容与最终内容共用同一个渲染视图，避免从原始文本突然切换到 WebView。
-
-支持的输出包括：
-
-- CommonMark 风格 Markdown
-- 语法高亮代码块与代码复制
-- 表格、引用和列表
-- Mermaid 图表
-- KaTeX 数学表达式
-- 安全外链
-
-流式更新经过节流；只有用户仍接近会话底部时才继续自动滚动。
+助手回答由内置的非持久化 `WKWebView` 渲染，并且只使用本地资源。支持的输出包括 CommonMark 风格 Markdown、语法高亮代码块与代码复制、表格、引用、列表、Mermaid 图表、KaTeX 数学表达式和安全外链。
 
 ## 隐私与安全模型
 
@@ -160,13 +263,10 @@ Familiar 当前提供四个产品级强类型工具：
 - API Key 按 Provider 保存在 iOS Keychain。
 - 会话历史、附件和工具记录保存在本机。
 - 流式 token 和等待中的确认不会被广泛持久化。
-- 文档由 AnyDoc 在本机转换；只有转换后的文字会随用户主动发起的请求发送。
-- 当前版本会阻止图片进入网络请求。
+- 文档在本机转换；只有转换后的文字会随用户主动发起的请求发送。
 - 只有调用相应工具时才请求日历或提醒事项访问权限。
-- 日历与提醒事项写入要求逐次明确确认。
+- 写操作要求逐次确认，或提供明确的可逆撤销路径。
 - 网站代码不包含广告、分析或跟踪脚本。
-
-完整说明请参阅[隐私政策](https://isaachuo.github.io/familiar/privacy/)，其中明确区分本地存储与直接发送给所选第三方 Provider 的内容。
 
 ## 技术栈
 
@@ -187,7 +287,7 @@ Familiar 当前提供四个产品级强类型工具：
 
 ```text
 Familiar/
-├── Agent/          有限工具循环与确认事件
+├── Agent/          Agent Runtime、工具循环与确认事件
 ├── AnyDoc/         内置 AnyDoc 引擎的 Swift 接口
 ├── App/            App 入口与模型容器
 ├── Attachments/    私有存储、转换与 OCR 链路
@@ -215,11 +315,11 @@ Scripts/            可复现的 AnyDoc XCFramework 构建脚本
 
 - Apple Silicon Mac
 - Xcode 26 或更高版本
-- iOS 17 或更高版本
+- iOS 18 或更高版本
 - iPhone target
 - 至少一个受支持模型 Provider 的有效 API Key
 
-正常构建 App 不需要安装 Rust，因为仓库已包含 arm64 AnyDoc XCFramework。仅在重新构建桥接层时需要 Rust 1.88 或更高版本，并安装 iOS arm64 targets。
+正常构建 App 不需要安装 Rust，因为仓库已包含 arm64 AnyDoc XCFramework。
 
 ## 构建 iOS App
 
@@ -249,10 +349,7 @@ xcodebuild \
 ./Scripts/build-anydoc-xcframework.sh
 ```
 
-脚本只构建：
-
-- `aarch64-apple-ios`
-- `aarch64-apple-ios-sim`
+脚本只构建 `aarch64-apple-ios` 和 `aarch64-apple-ios-sim`。
 
 ## 构建网站
 
@@ -260,22 +357,6 @@ xcodebuild \
 npm --prefix website ci
 npm --prefix website run build
 ```
-
-生产构建输出到 `website/dist/`。当 `main` 上的 `website/**` 或 Pages workflow 发生变化时，GitHub Actions 会自动把该目录部署到 GitHub Pages。
-
-## 验证状态
-
-当前实现已经完成以下验证：
-
-- iOS 17.5 arm64 Simulator 构建
-- iOS 26.5 arm64 Simulator 构建
-- Generic iOS arm64 真机目标构建
-- Simulator 干净安装与启动
-- Markdown、CSV、DOCX、PDF、未知数据拒绝和 C ABI 所有权的 Rust bridge 测试
-- Vue/Vite 生产构建
-- Property list 与本地化校验
-
-真实 Provider 凭证、EventKit 写入、相机、麦克风和 Speech 权限仍需在发布前使用实体 iPhone 验证。
 
 ## 明确的产品边界
 
@@ -285,10 +366,14 @@ Familiar 当前不包含：
 - 账号或工作区系统
 - Familiar 托管的模型代理
 - 订阅或权益流程
+- Linux / iSH 执行环境
+- Shell 或任意代码执行
+- 多 Agent、Subagent 或 Agent Graph
+- 复杂 RAG 或向量数据库
+- iPhone 上的 MCP Server（后期可能增加 MCP Client）
+- Core ML LLM 或 Apple Intelligence 依赖
 - 实时语音对话
-- 图片上传或图片理解
 - 修改或删除日历/提醒事项
-- MCP、Skills、Sandbox 或多 Agent 编排
 - Web Research 或自主浏览器操作
 
 ## 第三方软件

@@ -2,37 +2,158 @@
 
 ## 1. 系统边界
 
-Familiar 在 iPhone 内运行。网络请求从 App 直接发送到用户选择的 AI Provider。日历、提醒事项、相机、麦克风、Speech、文件选择和 Keychain 通过系统框架访问。项目没有 Familiar 业务后端。
+Familiar 是一个 iPhone-native Agent Runtime。网络请求从 App 直接发送到用户选择的 AI Provider。日历、提醒事项、相机、麦克风、Speech、文件选择和 Keychain 通过系统框架访问。项目没有 Familiar 业务后端。
 
-```mermaid
-flowchart TB
-    subgraph iPhone[Familiar iPhone App]
-        UI[SwiftUI Presentation]
-        Controller[Chat Controller]
-        Agent[Finite Agent Loop]
-        Provider[Provider Adapters]
-        Tools[EventKit Tools]
-        Content[AnyDoc PDFKit Vision]
-        Store[SwiftData and Files]
-        Secrets[Keychain]
-        Renderer[Non-persistent WKWebView]
-    end
+它不以 Linux 为执行环境，不依赖 Apple Intelligence，不把用户需求硬编码成 workflow，也不从复杂多 Agent 开始。
 
-    User[User] --> UI
-    UI --> Controller
-    Controller --> Agent
-    Agent --> Provider
-    Provider --> APIs[AI Provider APIs]
-    Agent --> Tools
-    Tools --> EventKit[EventKit]
-    Controller --> Content
-    Content --> Store
-    Controller --> Store
-    Controller --> Secrets
-    UI --> Renderer
+## 2. 六层架构
+
+```text
+┌─────────────────────────────────────────┐
+│             System Entry Layer          │
+│ Chat / Share / Notifications / Widgets  │
+│ Spotlight / App Intents / Shortcuts     │
+└────────────────────┬────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────┐
+│               Agent Runtime             │
+│                                         │
+│ Agent Loop / Context Manager            │
+│ Model Router / Tool Router              │
+│ Run / Step State                        │
+└────────────────────┬────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────┐
+│            Capability Registry          │
+│                                         │
+│ System Tools          Workspace Tools   │
+│ Calendar              File              │
+│ Reminder              PDF               │
+│ Contacts              Text              │
+│ Photos                Image             │
+│ Maps                  Audio             │
+│ Weather               Web               │
+│ Location              Structured Data   │
+└────────────────────┬────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────┐
+│           Execution Policy Layer        │
+│ Availability / Permission / Approval    │
+│ Validation / Timeout / Cancellation     │
+└────────────────────┬────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────┐
+│              Native Layer               │
+│ EventKit / Vision / MapKit / WebKit     │
+│ Photos / PDFKit / Core ML / Foundation  │
+└─────────────────────────────────────────┘
+            + State Layer
+  Session / Workspace / Memory
+  Artifacts / Trace / History
 ```
 
-## 2. 技术基线
+### 2.1 System Entry Layer
+
+系统入口按优先级划分：
+
+| 优先级 | 入口 |
+| --- | --- |
+| **第一优先级** | ① Familiar App 本身 · ② Share Extension · ③ 系统通知 / Deep Link |
+| **第二优先级** | ④ Widgets / Controls · ⑤ Spotlight 等轻量系统入口 |
+| **兼容能力** | ⑥ App Intents · ⑦ Shortcuts |
+
+App Intents 位于外层，不进入 Agent Core。它只暴露 `Ask Familiar`、`Process with Familiar`、`Open Familiar`，让 Siri、Shortcuts、Spotlight、Widgets 和 Action Button 能启动一次 Agent Run。
+
+### 2.2 Agent Runtime
+
+Agent Runtime 是骨架中最关键的一层。它尽量不碰 Apple Framework，完全不知道：
+
+```text
+EventKit / Vision / HealthKit / MapKit
+```
+
+它只知道：
+
+```text
+ToolDefinition / ToolCall / ToolResult
+```
+
+核心数据流：
+
+```text
+User
+  → AgentRun
+  → Context Assembler
+  → Model
+  → Tool Call?
+       ├── No ──→ Final Answer
+       └── Yes
+           → Tool Registry
+           → Policy Engine
+           → Execute Tool
+           → ToolResult
+           → Context
+           → Model
+           → continue
+直到：final answer / cancelled / failed / max steps
+```
+
+内部组件：
+
+- Agent Loop：有限轮次循环。
+- Context Manager：组装 Resources、历史与工具结果。
+- Model Router：把 Tool Call 决策交给模型，聚合流式增量。
+- Tool Router：通过 Capability Registry 分发 Tool 执行。
+- Run / Step State：一次 Agent Run 的执行状态。
+
+### 2.3 Capability Registry
+
+Registry 是 Familiar 真正的核心资产，组织成两大能力体系：
+
+| Native System | Native Workspace |
+| --- | --- |
+| Calendar | File |
+| Reminders | PDF |
+| Contacts | Text |
+| Photos | Image |
+| Maps | Audio |
+| Location | Video |
+| Weather | CSV / JSON |
+| Health | Archive |
+| Notifications | Document |
+| Clipboard | Web |
+
+- Native System 工具负责操作 iPhone 和用户的数字环境。
+- Native Workspace 工具给 Agent 一个不依赖 Linux 的通用工作空间。
+- 当前设备、地区、系统版本、用户授权不可用的 Tool 不暴露给模型。
+
+### 2.4 Execution Policy Layer
+
+位于 Registry 与 Native Layer 之间，承担：
+
+- 能力可用性检查。
+- 权限与授权决策（意图感知授权）。
+- 写操作审批。
+- 参数校验、超时与取消。
+- 破坏性与财务敏感操作的强确认。
+
+### 2.5 Native Layer
+
+EventKit、Vision、MapKit、WebKit、Photos、PDFKit、Core ML、Foundation。只被注册为 Tool 的执行后端调用，不被 Agent Runtime 直接感知。
+
+### 2.6 State Layer
+
+- Session：会话、消息、Run/Step。
+- Workspace：附件、抽取文本、工件。
+- Memory：Working Context / Session History / Long-term Memory。
+- Trace：模型调用、Tool Call、失败、权限请求、耗时。
+- History：工具终态与执行记录。
+
+## 3. 技术基线
 
 | 领域 | 技术 |
 |---|---|
@@ -47,15 +168,15 @@ flowchart TB
 | PDF | PDFKit、Vision OCR |
 | 图片 | PhotosPicker、AVFoundation、UIKit |
 | 语音 | Speech、AVAudioEngine、AVAudioSession |
-| 最低系统 | iOS 17 |
+| 最低系统 | iOS 18 |
 | Swift 语言模式 | Swift 6 |
 | 设备族 | iPhone，`TARGETED_DEVICE_FAMILY = 1` |
 
 工程设置位于 `familiar.xcodeproj/project.pbxproj`。
 
-## 3. 代码分层
+## 4. 代码分层
 
-### 3.1 App
+### 4.1 App
 
 路径：`Familiar/App/`
 
@@ -68,7 +189,7 @@ flowchart TB
 
 入口：`Familiar/App/FamiliarApp.swift`。
 
-### 3.2 Presentation
+### 4.2 Presentation
 
 路径：`Familiar/Presentation/`
 
@@ -83,7 +204,7 @@ flowchart TB
 - `FamiliarMarkdownWebView`：本地富文本渲染。
 - `FamiliarCameraView`：相机 UI 与采集 worker。
 
-### 3.3 Domain
+### 4.3 Domain
 
 路径：`Familiar/Domain/`
 
@@ -100,7 +221,7 @@ flowchart TB
 - `FamiliarChatModels.swift`
 - `FamiliarConversationMetadata.swift`
 
-### 3.4 Data
+### 4.4 Data
 
 路径：`Familiar/Data/`
 
@@ -121,7 +242,7 @@ flowchart TB
 - `FamiliarProviderConnectionValidator.swift`
 - `FamiliarKeychainStore.swift`
 
-### 3.5 Agent
+### 4.5 Agent
 
 路径：`Familiar/Agent/`
 
@@ -141,7 +262,7 @@ flowchart TB
 - `FamiliarToolConfirmationCoordinator.swift`
 - `FamiliarNativeTools.swift`
 
-### 3.6 EventKit
+### 4.6 EventKit
 
 路径：`Familiar/EventKit/`
 
@@ -157,7 +278,7 @@ flowchart TB
 - `FamiliarEventKitService.swift`
 - `FamiliarEventKitTools.swift`
 
-### 3.7 Persistence 与 Attachments
+### 4.7 Persistence 与 Attachments
 
 路径：
 
@@ -170,7 +291,7 @@ flowchart TB
 - 文件导入、大小限制、路径校验、草稿复制和清理。
 - AnyDoc、PDFKit 和 Vision 的内容抽取协调。
 
-### 3.8 AnyDoc Bridge
+### 4.8 AnyDoc Bridge
 
 路径：
 
@@ -186,7 +307,7 @@ flowchart TB
 - Markdown、检测格式、引擎版本和错误码返回。
 - `ios-arm64` 和 `ios-arm64-simulator` 产物管理。
 
-## 4. 聊天运行链路
+## 5. 聊天运行链路
 
 ```mermaid
 sequenceDiagram
@@ -213,7 +334,7 @@ sequenceDiagram
     C-->>V: Reload persisted timeline
 ```
 
-### 4.1 请求前检查
+### 5.1 请求前检查
 
 `FamiliarChatController.startSending(in:)` 执行以下检查：
 
@@ -225,7 +346,7 @@ sequenceDiagram
 
 检查通过后保存用户消息。网络请求使用持久化消息生成的快照。
 
-### 4.2 流式状态
+### 5.2 流式状态
 
 以下状态保存在 `FamiliarChatController` 内存：
 
@@ -237,7 +358,7 @@ sequenceDiagram
 
 流式增量不写入 SwiftData。助手消息在终态创建并保存。
 
-### 4.3 Tool Loop
+### 5.3 Tool Loop
 
 `FamiliarAgentLoop` 默认最多运行 6 轮。每轮完成以下工作：
 
@@ -249,7 +370,64 @@ sequenceDiagram
 6. 将工具结果写回下一轮上下文。
 7. 在无工具调用的终态返回回答。
 
-## 5. 数据持久化边界
+## 6. Runtime Event
+
+一次执行产生统一事件，UI 只渲染这些事件，工具不自己造 UI：
+
+```text
+AgentRunStarted
+ModelThinking
+ToolRequested
+ToolAwaitingApproval
+ToolStarted
+ToolProgress
+ToolSucceeded
+ToolFailed
+ArtifactProduced
+AgentRunCompleted
+```
+
+例如：
+
+```text
+查找明天下午的日程
+  ✓ 找到 2 个安排
+查询目的地天气
+  ✓ 24–29°C，有阵雨
+创建提醒
+  等待确认
+```
+
+这套事件同时解决 Task Timeline、Debug、History、Background resume 和 Trace；以后甚至可以重放一次任务。
+
+## 7. Run / Step 数据模型
+
+不只保存 Chat Message，Agent 执行状态也要正式建模：
+
+```text
+AgentSession
+    ├── Messages
+    └── Runs
+         └── Steps
+              ├── ModelStep
+              ├── ToolStep
+              ├── ApprovalStep
+              └── ResultStep
+```
+
+一个复杂任务：
+
+```text
+"分析这个 PDF，找到考试日期，加到日历。"
+
+Run #827
+  Step 1  pdf.extract
+  Step 2  model reasoning
+  Step 3  calendar.create
+  Step 4  final
+```
+
+## 8. 数据持久化边界
 
 | 数据 | 存储位置 | 保存时点 |
 |---|---|---|
@@ -258,6 +436,7 @@ sequenceDiagram
 | 助手消息 | SwiftData | 回答终态 |
 | 模型切换 | SwiftData | 会话内切换时 |
 | 工具记录 | SwiftData | 成功、取消或失败终态 |
+| Run/Step | SwiftData | Run 与 Step 终态 |
 | 流式文本 | 内存 | 运行期间 |
 | 待确认请求 | 内存 | 等待用户决策期间 |
 | Provider 配置 | UserDefaults | 设置保存时 |
@@ -267,9 +446,9 @@ sequenceDiagram
 | 图片草稿 | 内存 | 输入器会话期间 |
 | 原始录音 | 不创建文件 | 无保存时点 |
 
-## 6. 并发模型
+## 9. 并发模型
 
-### 6.1 Main Actor
+### 9.1 Main Actor
 
 工程设置 `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`。UI、`ModelContext` 使用和可观察状态集中在 Main Actor。
 
@@ -279,25 +458,25 @@ sequenceDiagram
 - `FamiliarSpeechTranscriber`
 - `FamiliarCameraController`
 
-### 6.2 Actor
+### 9.2 Actor
 
 - `FamiliarToolRegistry`：工具注册与读取。
 - `FamiliarToolConfirmationCoordinator`：确认 continuation 和幂等状态。
 - `FamiliarEventKitService`：EventKit store 与写入幂等状态。
 
-### 6.3 Sendable 边界
+### 9.3 Sendable 边界
 
 Provider 消息、Agent 事件、确认请求、EventKit DTO、附件快照等纯值类型声明为 `Sendable`。Swift 6 构建用于校验隔离边界。
 
-### 6.4 相机
+### 9.4 相机
 
 `FamiliarCameraController` 管理 SwiftUI 发布状态。`FamiliarCameraSessionWorker` 使用专用串行队列管理 `AVCaptureSession`、输入、输出、镜头位置和拍照。worker 通过 Main Actor 回调更新 UI。
 
-### 6.5 文件转换
+### 9.5 文件转换
 
 `FamiliarAttachmentStore.importDocument(from:)` 使用 detached task 处理安全作用域文件复制和内容抽取。取消处理通过 `Task.checkCancellation()` 和 `withTaskCancellationHandler` 传播。
 
-## 7. 富文本渲染
+## 10. 富文本渲染
 
 `FamiliarMarkdownWebView` 使用非持久化 `WKWebsiteDataStore`。脚本、样式、字体和渲染器从 `Familiar/Resources/FamiliarMarkdownRenderer/` 加载。
 
@@ -314,7 +493,7 @@ Provider 消息、Agent 事件、确认请求、EventKit DTO、附件快照等�
 
 CSP 禁止脚本网络连接、媒体、对象、frame 和表单。`img-src` 当前允许 `https:` 和 `data:`，远程 Markdown 图片可能产生网络请求。该行为需要在隐私审核时单独确认。
 
-## 8. iOS 17 与 iOS 26
+## 11. iOS 18 与 iOS 26
 
 ### iOS 26
 
@@ -322,7 +501,7 @@ CSP 禁止脚本网络连接、媒体、对象、frame 和表单。`img-src` 当
 - `glassEffect`
 - `GlassEffectContainer`
 
-### iOS 17–25
+### iOS 18–25
 
 - `safeAreaInset`
 - `regularMaterial` / `ultraThinMaterial`
@@ -340,7 +519,7 @@ CSP 禁止脚本网络连接、媒体、对象、frame 和表单。`img-src` 当
 - `Familiar/Presentation/FamiliarRootView.swift`
 - `Familiar/Presentation/FamiliarComposerView.swift`
 
-## 9. 启动与本地 store
+## 12. 启动与本地 store
 
 `FamiliarApp` 创建以下 Schema：
 
@@ -358,7 +537,7 @@ Application Support/Familiar/Persistence/FamiliarAgentV1.store
 
 首次成功创建当前 store 后，App 清理旧开发 `default.store`、SQLite sidecar 和旧附件目录。该策略服务于开发阶段的直接 Schema 替换。后续公开版本发生 Schema 变化时，需要引入正式迁移方案或新的受控数据升级流程。
 
-## 10. 错误边界
+## 13. 错误边界
 
 | 场景 | 当前处理 |
 |---|---|
@@ -373,9 +552,10 @@ Application Support/Familiar/Persistence/FamiliarAgentV1.store
 | Markdown 渲染失败 | 回退 SwiftUI attributed/plain text |
 | 当前 store 创建失败 | 启动 fatal error；后续需要恢复界面 |
 
-## 11. 架构约束
+## 14. 架构约束
 
 - Provider adapter 不接触 SwiftData 实体。
+- Agent Runtime 不接触 Apple Framework，只认识 ToolDefinition/ToolCall/ToolResult。
 - Agent Loop 使用消息快照和内容片段。
 - UI 不直接调用 EventKit save。
 - 写工具的 `execute` 只产生待确认计划。
@@ -383,3 +563,6 @@ Application Support/Familiar/Persistence/FamiliarAgentV1.store
 - 图片 placeholder 不进入网络请求。
 - WebKit 不使用持久化网站数据存储。
 - SwiftData 的广泛 invalidation 不承载逐 token 更新。
+- App Intents 不复制 Capability Registry。
+- 图片预处理是 Tool，不是强制 pipeline。
+- 权限由代码控制，不靠 Prompt。

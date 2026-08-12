@@ -3,7 +3,7 @@
 ## 1. 当前基线
 
 - 分支：`main`
-- 最低部署目标：iOS 17
+- 最低部署目标：iOS 18
 - 设备族：iPhone
 - Swift 语言模式：Swift 6
 - 架构目标：arm64
@@ -64,6 +64,19 @@
 - 英文 README。
 - 简体中文 README。
 - 产品与工程 Docs。
+- Agent Runtime 目标架构文档（六层架构、入口优先级、Capability Registry、Execution Policy、Native Workspace）。
+
+## 2.1 与目标架构的差距
+
+项目按 iPhone-native Agent Runtime 方向演进。当前实现聚焦聊天与有限 EventKit 工具，尚未交付的架构部分：
+
+- System Entry：Share Extension、系统通知 / Deep Link、Widgets / Controls、Spotlight、App Intents、Shortcuts。
+- Capability Registry：System Tools 仅 Calendar/Reminders；Workspace 仅 File/PDF/Text；Contacts、Photos、Maps、Location、Weather、Web 等未接入。
+- Execution Policy：当前为逐次确认，意图感知授权与 Undo 路径未实现。
+- Run/Step 正式数据模型与 Task Timeline：未实现。
+- Runtime Event 统一事件流：当前为聊天时间线事件，未泛化为 Agent 事件。
+- Memory 三层、Skills、Background（BGContinuedProcessingTask）与 MCP Client：未实现。
+- 单 Agent First 已确立；多 Agent 明确不做。
 
 ## 3. 已执行验证
 
@@ -74,7 +87,7 @@
 ```text
 Swift 6 Debug generic iOS signed build
 Swift 6 Release generic iOS build
-Swift 6 iOS 17 arm64 Simulator build
+Swift 6 iOS 18 arm64 Simulator build
 Swift 6 connected iPhone signed build
 Default Xcode DerivedData clean iPhone build
 ```
@@ -150,7 +163,7 @@ Application Support/Familiar/Persistence/FamiliarAgentV1.store
 ### 4.3 验证状态
 
 - 修改后的真机签名构建：已通过。
-- 修改后的 iOS 17 arm64 Simulator 构建：已通过。
+- 修改后的 iOS 18 arm64 Simulator 构建：已通过。
 - 覆盖安装到保留旧 store 的真机：设备离线，未完成。
 - Simulator 安装启动：命令被用户终止，未完成。
 
@@ -236,7 +249,7 @@ Application Support/Familiar/Persistence/FamiliarAgentV1.store
 
 ## 7. UI 验证矩阵
 
-- iOS 17 和 iOS 26。
+- iOS 18 和 iOS 26。
 - Light 和 Dark。
 - 简体中文和英文。
 - Dynamic Type。
@@ -305,7 +318,7 @@ EventKit commit 幂等状态只存在于当前进程。系统 save 完成后进�
 
 - Debug generic iOS 通过。
 - Release generic iOS 通过。
-- iOS 17 arm64 Simulator 通过。
+- iOS 18 arm64 Simulator 通过。
 - 当前 Xcode 稳定版 Swift 6 警告清零。
 
 ### 数据

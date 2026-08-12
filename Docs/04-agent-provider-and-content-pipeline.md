@@ -91,16 +91,26 @@ UI gate 位于 `FamiliarChatController.startSending(in:)`。Agent gate 位于 `F
 
 模型能力由应用静态目录定义。能力状态不代表 Provider 在线探测结果。
 
+### 2.3 模型分层策略
+
+第一阶段使用能拿到的最强模型建立 Agent benchmark，不做提前优化。之后按 eval 结果分层：
+
+- 简单提取 → 小模型。
+- 复杂 Planning → 强模型。
+- 本地分类 → Core ML（仅在出现明确任务时）。
+
 ## 3. 统一 Provider 接口
 
 路径：`Familiar/Agent/FamiliarModelProvider.swift`
 
 输入：`FamiliarModelRequest`
 
-流事件：
+统一事件：
 
 - `textDelta`
-- `toolCallDelta`
+- `reasoningDelta`
+- `toolCall`
+- `usage`
 - `completed`
 
 终止原因统一映射为：
@@ -194,11 +204,17 @@ Gemini function call 缺少服务端调用 ID 时，App 生成当前运行范围
 
 格式异常的单行 SSE 当前采用跳过策略。连续异常导致无有效事件时返回空响应错误。
 
-## 8. Agent Loop
+## 8. Agent Runtime
 
-路径：`Familiar/Agent/FamiliarAgentLoop.swift`
+路径：`Familiar/Agent/`
 
-### 8.1 运行步骤
+### 8.1 职责边界
+
+Agent Runtime 尽量不接触 Apple Framework，完全不知道 EventKit、Vision、HealthKit、MapKit。它只知道：
+
+```text
+ToolDefinition / ToolCall / ToolResult
+```
 
 ```mermaid
 sequenceDiagram
@@ -213,7 +229,7 @@ sequenceDiagram
     loop Maximum 6 iterations
         A->>P: Stream request
         P-->>A: Text and tool-call deltas
-        A-->>C: Streaming events
+        A-->>C: Runtime events
         alt No tool calls
             A-->>C: Final response
         else Read tool
@@ -221,8 +237,8 @@ sequenceDiagram
             R-->>A: Tool result
         else Write tool
             A->>R: Build pending write request
-            A->>K: Wait for confirmation
-            K-->>C: Confirmation requested
+            A->>K: Wait for approval
+            K-->>C: Approval requested
             C-->>K: Confirm or cancel
             alt Confirmed
                 A->>E: Commit write
@@ -245,20 +261,94 @@ sequenceDiagram
 - 重复调用生成失败工具结果。
 - length 和 unknown 终止原因产生不完整回答错误。
 
-### 8.3 系统策略
+### 8.3 Runtime Event
+
+Agent Loop 只产生统一事件，UI 只渲染这些事件，工具不自己造 UI：
+
+```text
+AgentRunStarted
+ModelThinking
+ToolRequested
+ToolAwaitingApproval
+ToolStarted
+ToolProgress
+ToolSucceeded
+ToolFailed
+ArtifactProduced
+AgentRunCompleted
+```
+
+### 8.4 系统策略
 
 无工具能力时，系统策略要求模型避免声称已读取设备数据或执行系统操作。写入取消后，后续回答需要反映取消结果。
 
-## 9. 工具注册表
+### 8.5 Run / Step 模型
 
-### 9.1 本机信息
+不只保存 Chat Message：
+
+```text
+AgentSession
+    ├── Messages
+    └── Runs
+         └── Steps
+              ├── ModelStep
+              ├── ToolStep
+              ├── ApprovalStep
+              └── ResultStep
+```
+
+## 9. Tool 设计
+
+### 9.1 强类型 Tool
+
+```swift
+protocol NativeTool {
+    associatedtype Input: Decodable & Sendable
+    associatedtype Output: Encodable & Sendable
+
+    static var manifest: ToolManifest { get }
+    func execute(
+        _ input: Input,
+        context: ToolContext
+    ) async throws -> Output
+}
+```
+
+`ToolManifest`：
+
+```swift
+struct ToolManifest {
+    let id: ToolID
+    let title: String
+    let description: String
+    let effect: ToolEffect     // read / write / destructiveWrite
+    let risk: ToolRisk         // low / high
+    let requirements: [CapabilityRequirement]
+}
+```
+
+Tool Registry 存储 `AnyNativeTool`，提供给 Agent。
+
+### 9.2 Resources / Tools / Instructions
+
+借鉴 MCP 的思想，但内部直接用 Swift：
+
+- **Resources**（application-controlled）：附件、当前位置、Workspace 文件、会话上下文、Memory。
+- **Tools**（model-controlled）：calendar.create、pdf.extract、maps.search、file.write。
+- **Instructions**（user-controlled）：Base Agent Policy、Skills。
+
+外部服务（GitHub、Notion、Supabase 等）未来通过 `MCPClient` 接入，把 MCP Tools 转成 Familiar `AnyTool`。
+
+> **MCP 是 Adapter，不是 Kernel。**
+
+### 9.3 本机信息
 
 路径：`Familiar/Agent/FamiliarNativeTools.swift`
 
 - `current_date_time`
 - `app_information`
 
-### 9.2 EventKit
+### 9.4 EventKit
 
 路径：`Familiar/EventKit/FamiliarEventKitTools.swift`
 
@@ -269,7 +359,28 @@ sequenceDiagram
 | `reminders` | 查询 | 开始、结束、文字、limit |
 | `create_reminder` | 写入计划 | 标题、截止时间、列表、优先级、备注 |
 
-## 10. EventKit 权限与查询
+## 10. Execution Policy 与意图感知授权
+
+权限由代码控制，不靠 Prompt。风险模型：
+
+| 操作 | 默认行为 |
+|---|---|
+| Read + 低风险 | 自动执行 |
+| 明确的可逆写入 | 执行 + Undo |
+| 推断出的写入 | 确认 |
+| 敏感读取 | Permission / policy |
+| 破坏性操作 | 确认 |
+| 财务 / 外部重大影响 | 强确认 |
+
+例如用户明确说 "帮我明天下午三点创建一个日程"，Agent 调 `calendar.create`：
+
+- 明确用户意图 + 低风险 + 可逆 → 直接执行，然后显示 "✓ 已创建 撤销"。
+
+但 Agent 自己推断 "既然他说周六出去玩，我顺便给他加个提醒"：
+
+- 不是用户明确授权 → 需要确认。
+
+## 11. EventKit 权限与查询
 
 路径：`Familiar/EventKit/FamiliarEventKitService.swift`
 
@@ -290,9 +401,9 @@ sequenceDiagram
 - 提醒事项支持截止时间范围和标题/备注文字匹配。
 - EventKit 对象在回调内转换为 `Sendable` DTO。
 
-## 11. 写入确认和幂等
+## 12. 写入确认和幂等
 
-### 11.1 确认协调器
+### 12.1 确认协调器
 
 路径：`Familiar/Agent/FamiliarToolConfirmationCoordinator.swift`
 
@@ -312,15 +423,15 @@ runID + toolCallID
 
 Task 取消会移除 continuation，并将该请求解析为取消。
 
-### 11.2 EventKit commit
+### 12.2 EventKit commit
 
 `FamiliarEventKitService` actor 使用 `committedKeys` 保存当前进程内已完成写入。相同 idempotency key 返回已有结果。
 
 该缓存不跨 App 重启。SwiftData 工具终态提供历史记录，不能用于系统层写入回滚。
 
-## 12. 文档处理
+## 13. 文档处理
 
-### 12.1 支持格式
+### 13.1 支持格式
 
 - DOC、DOCX、DOCM
 - PPT、PPS、POT、PPTX、PPTM、PPSX、PPSM
@@ -330,7 +441,7 @@ Task 取消会移除 continuation，并将该请求解析为取消。
 - PDF
 - TXT、MD、Markdown
 
-### 12.2 导入链路
+### 13.2 导入链路
 
 ```mermaid
 flowchart TD
@@ -349,7 +460,7 @@ flowchart TD
     Draft --> Commit[Copy to message directory]
 ```
 
-### 12.3 AnyDoc Bridge
+### 13.3 AnyDoc Bridge
 
 路径：
 
@@ -369,9 +480,7 @@ flowchart TD
 - `aarch64-apple-ios`
 - `aarch64-apple-ios-sim`
 
-构建流程不包含 Intel Simulator slice。
-
-### 12.4 PDF
+### 13.4 PDF
 
 1. AnyDoc 处理文档结构。
 2. PDFKit 检查每页文本层。
@@ -380,7 +489,7 @@ flowchart TD
 5. OCR 文本追加到 Markdown。
 6. AnyDoc 返回 PDF unsupported 时执行完整 PDF fallback。
 
-### 12.5 Provider 输入
+### 13.5 Provider 输入
 
 Provider 接收：
 
@@ -389,9 +498,9 @@ Provider 接收：
 
 Provider 不接收原文件二进制。
 
-## 13. 图片链路
+## 14. 图片链路
 
-已实现：
+### 14.1 已实现
 
 - 相机拍摄。
 - PhotosPicker 选择。
@@ -399,14 +508,32 @@ Provider 不接收原文件二进制。
 - 单张移除。
 - 发送前拦截。
 
-当前限制：
+### 14.2 预处理是 Tool，不是强制 pipeline
+
+图片可能包含照片、UI 截图、活动海报、二维码、表格、人物、风景。不要默认每张图片都 OCR：
+
+```text
+Image
+  → Agent 判断任务
+     ├── 需要文字 → Vision OCR
+     ├── 需要视觉理解 → Multimodal LLM
+     └── 需要二维码 → Vision Barcode
+```
+
+Native preprocessing 是 Tool，不是强制 pipeline，避免因为提前 OCR 丢掉图片语义。
+
+### 14.3 Core ML 边界
+
+只有出现 Embedding、专用分类、目标检测、本地特殊模型这样的明确任务时才使用 Core ML。不要为了 "Native" 而强行把每个 AI 问题 Core ML 化。
+
+### 14.4 当前限制
 
 - 不编码图片内容片段。
 - 不上传图片。
 - 不执行图片 OCR 后自动发送。
 - `supportsImages` 描述字段不开放图片发送路径。
 
-## 14. 语音链路
+## 15. 语音链路
 
 路径：`Familiar/Speech/FamiliarSpeechTranscriber.swift`
 
@@ -423,7 +550,59 @@ Provider 不接收原文件二进制。
 
 设备支持本地识别时设置 `requiresOnDeviceRecognition = true`。系统不支持本地识别时，Speech framework 可能使用 Apple 服务。隐私文案需要保留该条件描述。
 
-## 15. 验证要求
+## 16. Memory
+
+三层 Memory：
+
+- Working Context：当前 Run。
+- Session History：当前 Conversation。
+- Long-term Memory：跨 Session 的用户信息。
+
+Long-term Memory 第一版：
+
+- `memory.search`
+- `memory.write`
+- `memory.delete`
+
+`memory.write` 保守执行：优先保存 "用户习惯提前 15 分钟提醒" 这类明确事实，而不是把全部聊天自动向量化。等真实数据量出现后再决定是否需要 embeddings。
+
+## 17. Skills
+
+Familiar Skill 第一版不包含 Python、Shell、Executable Script。一个 Skill 就是：
+
+```text
+Skill
+├── id
+├── description
+├── instructions
+├── allowedTools
+└── examples
+```
+
+例如：
+
+```text
+Travel Assistant
+  Allowed Tools: maps.* weather.* calendar.* file.*
+  Instructions: 规划出行时……
+```
+
+本质是 Instruction Package + Tool Scope。
+
+## 18. Background 与可恢复 Run
+
+Agent Run 设计为可恢复，不是常驻 daemon：
+
+```text
+用户发起
+  → Foreground
+  → 用户退出 App
+  → 必要时继续完成
+```
+
+使用 `BGContinuedProcessingTask` 承接用户启动的长任务。系统允许这类任务在转入后台后继续进行网络、Vision、Core ML、Accelerate 等工作。Agent Runtime 提供 resumable AgentRun 语义，而不是 daemon / cron / always alive agent。
+
+## 19. 验证要求
 
 ### 真实 Key
 
@@ -444,3 +623,7 @@ Provider 不接收原文件二进制。
 - 扫描 PDF OCR。
 - 图片拦截保留草稿。
 - Speech 权限和中文转写。
+
+### Benchmark
+
+MVP Benchmark 任务（见 01-product-definition）：每一次提交影响 Agent 行为，都应跑这些任务验证端到端。

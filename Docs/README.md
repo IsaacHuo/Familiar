@@ -6,12 +6,12 @@
 
 | 文档 | 内容 |
 |---|---|
-| [01-product-definition.md](01-product-definition.md) | 产品定位、用户任务、范围、设计原则、成功条件 |
-| [02-system-architecture.md](02-system-architecture.md) | 系统边界、模块分层、运行链路、并发模型、平台适配 |
-| [03-ui-ux-design.md](03-ui-ux-design.md) | 信息架构、聊天界面、输入器、状态反馈、视觉和无障碍 |
-| [04-agent-provider-and-content-pipeline.md](04-agent-provider-and-content-pipeline.md) | Provider、协议适配、Agent Loop、EventKit、AnyDoc、语音与图片边界 |
-| [05-local-data-and-privacy.md](05-local-data-and-privacy.md) | SwiftData、附件、Keychain、权限、数据生命周期、恢复策略 |
-| [06-engineering-status-and-validation.md](06-engineering-status-and-validation.md) | 当前实现状态、验证记录、待验证项目、发布门槛 |
+| [01-product-definition.md](01-product-definition.md) | 产品定位、Agent Runtime 原则、入口优先级、任务、范围、Benchmark、开发顺序 |
+| [02-system-architecture.md](02-system-architecture.md) | 六层架构、Agent Runtime、Capability Registry、Execution Policy、Native Workspace、并发模型、平台适配 |
+| [03-ui-ux-design.md](03-ui-ux-design.md) | 信息架构、聊天界面、输入器、系统入口、Runtime Event 执行界面、视觉和无障碍 |
+| [04-agent-provider-and-content-pipeline.md](04-agent-provider-and-content-pipeline.md) | Provider、协议适配、Agent Runtime、Tool 设计、意图感知授权、Memory、Skills、内容链路 |
+| [05-local-data-and-privacy.md](05-local-data-and-privacy.md) | SwiftData、附件、Run/Step、Memory、Keychain、权限、数据生命周期、恢复策略 |
+| [06-engineering-status-and-validation.md](06-engineering-status-and-validation.md) | 当前实现状态、与目标架构的差距、验证记录、待验证项目、发布门槛 |
 | [07-decision-log.md](07-decision-log.md) | 关键产品和工程决策、依据、影响、复审条件 |
 
 ## 状态术语
@@ -57,6 +57,9 @@
 - SwiftData Schema 或本地存储地址变化。
 - Provider、模型能力、协议适配和认证字段变化。
 - 工具定义、权限范围、确认流程或写入行为变化。
+- Capability Registry 的能力体系或动态注册规则变化。
+- Runtime Event 事件流、Run/Step 数据模型或执行轨迹变化。
+- 系统入口（Share Extension、Deep Link、Widgets/Controls、Spotlight、App Intents、Shortcuts）变化。
 - 附件格式、大小限制、OCR 或 AnyDoc 流程变化。
 - 图片发送、音频处理或外部数据传输范围变化。
 - 首启、抽屉、时间线、输入器和设置的信息架构变化。

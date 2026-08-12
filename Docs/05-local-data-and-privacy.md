@@ -5,6 +5,7 @@
 - API Key 保存到设备 Keychain。
 - 模型请求从 iPhone 直接发送到用户选择的 Provider。
 - 会话和工具记录保存在 SwiftData 本地 store。
+- Agent Run 与 Step 终态保存在 SwiftData。
 - 文档原文件复制到 App 私有目录。
 - 文档转换和 PDF OCR 在设备内执行。
 - 流式 token 和待确认请求只存在于内存。
@@ -24,6 +25,8 @@
 | 助手消息 | Provider 返回 | SwiftData | 后续请求上下文 | 用户删除或重试路径 |
 | 模型切换记录 | 用户操作 | SwiftData | 不单独发送 | 会话删除或路径重写 |
 | 工具终态 | Agent 与系统结果 | SwiftData | 可能进入后续模型上下文 | 会话删除或路径重写 |
+| Run/Step 记录 | Agent Runtime | SwiftData | 不单独发送 | 会话删除或路径重写 |
+| Long-term Memory | 明确事实写入 | SwiftData | 作为 Resources 进入上下文 | 用户删除或 memory.delete |
 | 待确认请求 | Agent | 内存 | 不发送到 Familiar 服务 | 决策、取消或进程结束 |
 | 流式 token | Provider | 内存 | 不作二次上传 | 回答终态或任务结束 |
 | 文档原文件 | 文件选择器 | App Support | 不上传 | 附件、消息或会话删除 |
@@ -42,6 +45,8 @@ erDiagram
     FamiliarConversation ||--o{ FamiliarMessage : messages
     FamiliarConversation ||--o{ FamiliarModelSwitchRecord : modelSwitchRecords
     FamiliarConversation ||--o{ FamiliarToolRunRecord : toolRunRecords
+    FamiliarConversation ||--o{ FamiliarAgentRun : runs
+    FamiliarAgentRun ||--o{ FamiliarAgentStep : steps
     FamiliarMessage ||--o{ FamiliarAttachment : attachments
 
     FamiliarConversation {
@@ -87,6 +92,20 @@ erDiagram
         Int sequence
         Date startedAt
         Date finishedAt
+    }
+    FamiliarAgentRun {
+        UUID id
+        String status
+        Date startedAt
+        Date finishedAt
+        String finishReason
+    }
+    FamiliarAgentStep {
+        UUID id
+        String kind
+        String content
+        Int sequence
+        Date createdAt
     }
 ```
 
@@ -147,6 +166,18 @@ Application Support/default.store
 ### 5.4 模型切换
 
 会话内切换 Provider 或模型时保存切换记录，并更新会话当前选择。
+
+### 5.5 Run 与 Step
+
+一次 Agent Run 中的 ModelStep、ToolStep、ApprovalStep、ResultStep 在终态保存。等待确认状态和流式增量不保存。
+
+## 5.6 Memory 三层
+
+- Working Context：当前 Run，内存。
+- Session History：当前 Conversation，SwiftData。
+- Long-term Memory：跨 Session 的明确用户事实，SwiftData。
+
+Long-term Memory 只写入用户明确告知或反复出现的稳定事实，保守执行，不做全量聊天向量化。
 
 ## 6. 文件系统
 
@@ -274,7 +305,7 @@ CSP 主要限制：
 
 ### 10.3 权限
 
-使用 iOS 17 full access API：
+使用 EventKit full access API（iOS 17 引入）：
 
 - `requestFullAccessToEvents()`
 - `requestFullAccessToReminders()`
@@ -307,6 +338,17 @@ CSP 主要限制：
 - 系统不支持设备端识别时，Speech framework 的处理路径由 Apple 系统能力决定。
 
 ## 12. 权限表
+
+权限由代码控制，不靠 Prompt。系统权限按功能触发；写操作按意图感知授权执行：
+
+| 操作 | 默认行为 |
+|---|---|
+| Read + 低风险 | 自动执行 |
+| 明确的可逆写入 | 执行 + Undo |
+| 推断出的写入 | 确认 |
+| 敏感读取 | Permission / policy |
+| 破坏性操作 | 确认 |
+| 财务 / 外部重大影响 | 强确认 |
 
 | 权限 | 触发功能 | 数据用途 |
 |---|---|---|
@@ -355,6 +397,10 @@ CSP 主要限制：
 ### 卸载 App
 
 App 容器中的 SwiftData、UserDefaults 和附件文件由系统删除。`kSecAttrAccessibleWhenUnlockedThisDeviceOnly` Keychain 项目的卸载行为由系统管理；产品需要提供设置内清除 Key 的操作。
+
+## 14.5 后台与可恢复运行
+
+Agent Run 设计为可恢复，不是常驻 daemon。用户退出 App 后，必要时通过 `BGContinuedProcessingTask` 承接用户启动的长任务继续完成。Run/Step 终态已持久化，重新打开 App 后可恢复执行轨迹。后台运行不改变数据目的地：模型请求仍然直接发往用户选择的 Provider。
 
 ## 15. 隐私验收
 

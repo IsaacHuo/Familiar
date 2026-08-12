@@ -33,6 +33,43 @@ flowchart TD
     Timeline --> Confirmation[工具确认]
 ```
 
+## 2.5 系统入口
+
+系统入口按优先级划分：
+
+| 优先级 | 入口 |
+| --- | --- |
+| **第一优先级** | ① Familiar App 本身 · ② Share Extension · ③ 系统通知 / Deep Link |
+| **第二优先级** | ④ Widgets / Controls · ⑤ Spotlight 等轻量系统入口 |
+| **兼容能力** | ⑥ App Intents · ⑦ Shortcuts |
+
+界面设计约束：
+
+- Share Extension 承接外部选中的文本或文件，进入现有输入草稿或直接发起一次 Agent Run。
+- 系统通知 / Deep Link 把用户带回对应任务上下文（会话 + Run/Step 轨迹）。
+- Widgets / Controls 只暴露轻量动作（如快速提问、任务状态），不复制完整聊天界面。
+- App Intents 只暴露 `Ask Familiar`、`Process with Familiar`、`Open Familiar`，由系统表面触发 Agent Run。
+- 所有入口最终汇入同一个 Agent Runtime，不各自造一套执行逻辑。
+
+## 2.6 Runtime Event 驱动的 Agent 执行界面
+
+工具不自己造 UI。一次执行产生统一事件，界面只渲染这些事件：
+
+```text
+AgentRunStarted
+ModelThinking
+ToolRequested
+ToolAwaitingApproval
+ToolStarted
+ToolProgress
+ToolSucceeded
+ToolFailed
+ArtifactProduced
+AgentRunCompleted
+```
+
+时间线即执行轨迹：模型思考、工具进度、审批、成功和失败都作为同一组事件渲染。运行中工具展示进度和活动说明，写操作在 `ToolAwaitingApproval` 时进入确认卡，终态渲染成功 / 取消 / 失败。这套事件同时支撑 Task Timeline、Debug、History 和 Background resume。
+
 ## 3. 首启流程
 
 路径：`Familiar/Presentation/FamiliarOnboardingView.swift`
@@ -71,18 +108,21 @@ flowchart TD
 - 宽度约为屏幕的 82%。
 - 支持左边缘拖动打开。
 - 支持遮罩点击、拖动和选择会话后关闭。
-- 主界面在抽屉打开时横移、缩放、裁切圆角和添加阴影。
+- 主界面在抽屉打开时横移、裁切圆角和添加阴影，不做纵向缩放。
 - Reduce Motion 开启时取消动效。
 
 抽屉内容：
 
-- 搜索。
-- 新对话。
+- 固定的 Familiar 标题与圆形搜索按钮。
+- 点击搜索按钮后在固定头部展开会话搜索。
+- 会话历史在固定头部下方连续滚动；标题下方使用由实到透明的渐变，iOS 26 搜索按钮使用玻璃材质直接透出下方内容。
 - 最近会话。
 - 会话选择。
+- 会话标题使用正文级字号和宽松行高，不使用偏小的辅助字号。
 - 重命名。
 - 删除。
-- 设置。
+- 固定在右下角、与搜索按钮右侧对齐的圆形本地用户头像入口。
+- 头像入口打开资料与设置汇总页，其中包含 Provider、模型、API Key、回答偏好与隐私说明。
 
 范围约束：
 
@@ -97,12 +137,16 @@ flowchart TD
 - 中：Provider 与模型选择胶囊。
 - 右：新对话按钮。
 
+模型选择胶囊紧邻左侧抽屉按钮，不在顶栏中居中。
+
 发送期间禁用模型切换和新对话，避免当前请求上下文发生变化。
+
+模型菜单只展示已保存 API Key 的 Provider。设置页保留完整 Provider 列表，并展示当前已配置数量。
 
 ### 4.3 平台材质
 
 - iOS 26：`safeAreaBar`、`GlassEffectContainer`、`glassEffect`。
-- iOS 17–25：`safeAreaInset`、`ultraThinMaterial`、底部分隔线。
+- iOS 18–25：`safeAreaInset`、`ultraThinMaterial`、底部分隔线。
 
 ## 5. 时间线
 
@@ -223,7 +267,7 @@ WebView 关闭内部滚动，由内容高度回传 SwiftUI。文档预览模式�
 - `expanded`：聚焦或多行文本状态。
 - `fullscreen`：长文本编辑状态。
 
-文本接近四行时自动扩展。用户可以显式展开或收起。Reduce Motion 开启时取消模式切换动画。
+文本接近四行时自动扩展。用户可以显式展开或收起，全屏输入器最多占可用聊天区域的 80%。空态、时间线和文本编辑区均支持交互式下滑收起键盘。Reduce Motion 开启时取消模式切换动画。
 
 ### 8.3 发送状态
 
@@ -398,7 +442,7 @@ Provider 特定字段：
 
 | 维度 | 目标 |
 |---|---|
-| 系统 | iOS 17、iOS 26 |
+| 系统 | iOS 18、iOS 26 |
 | 外观 | Light、Dark |
 | 语言 | 简体中文、英文 |
 | 字体 | 默认、最大 Dynamic Type |
@@ -409,3 +453,5 @@ Provider 特定字段：
 | 材质 | 默认、Reduce Transparency |
 | 辅助技术 | VoiceOver |
 | 附件 | 文件导入、图片草稿、相机、相册、预览 |
+| 系统入口 | App 冷启动、Share Extension 承接、Deep Link 定位、Widgets/Controls、Spotlight |
+| Runtime 事件 | 模型思考、工具进度、审批、成功/失败终态、执行轨迹回放 |

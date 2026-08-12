@@ -26,20 +26,20 @@
   - 网站承担产品说明、隐私和支持功能。
 - 复审条件：用户研究明确需要跨设备连续性。
 
-## D-003 iPhone-only，最低 iOS 17
+## D-003 iPhone-only，最低 iOS 18
 
 - 状态：生效
-- 决策：`TARGETED_DEVICE_FAMILY = 1`，部署目标 iOS 17。
-- 依据：集中优化单手聊天和输入器体验，使用 SwiftData 与 EventKit full access API。
+- 决策：`TARGETED_DEVICE_FAMILY = 1`，部署目标 iOS 18。
+- 依据：集中优化单手聊天和输入器体验，使用 SwiftData 与 EventKit full access API，并为后续系统入口（App Intents、Widgets、Controls、Deep Link）预留系统能力。
 - 影响：
   - 不维护 iPad 专用布局。
-  - Simulator 和真机验证覆盖 iOS 17 与当前系统。
+  - Simulator 和真机验证覆盖 iOS 18 与当前系统。
 - 复审条件：iPad 进入正式产品范围。
 
 ## D-004 iOS 26 Liquid Glass，旧系统使用 Material
 
 - 状态：生效
-- 决策：导航、输入器和浮层在 iOS 26 使用系统 glass API；iOS 17–25 使用 Material 和边框。
+- 决策：导航、输入器和浮层在 iOS 26 使用系统 glass API；iOS 18–25 使用 Material 和边框。
 - 依据：遵守系统版本能力和 Apple Materials 使用范围。
 - 影响：
   - 消息正文不使用玻璃。
@@ -224,6 +224,160 @@
   - 新代码需要满足 Sendable 和隔离规则。
   - Debug、Release、Simulator 和真机构建纳入验证矩阵。
 - 复审条件：Swift 工具链升级引入新的语言兼容问题。
+
+## D-021 Familiar 定位为 iPhone-native Agent Runtime
+
+- 状态：生效
+- 决策：产品定义为 Agent Runtime：云端/可替换 LLM 负责理解、决策与编排；iOS 原生 Framework 负责感知、计算与行动；Native Workspace 提供通用内容处理能力。North Star：Familiar turns the iPhone's native capabilities into a composable runtime for AI agents。
+- 依据：不以 Linux 为执行环境，不依赖 Apple Intelligence，不把用户需求硬编码成 workflow，也不从复杂多 Agent 开始。
+- 影响：
+  - 六层架构成为后续设计与实现基准：System Entry / Agent Runtime / Capability Registry / Execution Policy / Native Layer + State Layer。
+  - 最核心资产是 Capability Registry、Agent Runtime、Execution Policy、Native Workspace。
+  - 接入新 Apple Framework、MCP Server、新模型都只是 Adapter。
+- 复审条件：出现必须偏离 Agent Runtime 定位的明确需求。
+
+## D-022 单 Agent First
+
+- 状态：生效
+- 决策：Familiar v1 只有一个主 Agent。Subagent、Manager Agent、Graph orchestration 暂时不做。
+- 依据：工具重叠和逻辑复杂度真正成为问题之后再考虑多 Agent。
+- 影响：
+  - 通过清晰 Tools 扩展能力。
+  - 多 Agent 相关架构不进入当前范围。
+- 复审条件：单 Agent 可维护范围被复杂度超过。
+
+## D-023 Tool 是最核心的抽象
+
+- 状态：生效
+- 决策：Calendar、Vision、PDF、Maps 等都只是 Capability Registry 中的 Tool。Tool 要小、正交、可组合。
+- 依据：LLM 决定做什么，Swift 决定怎么做；模型只生成结构化 Tool Call。
+- 影响：
+  - 强类型 `NativeTool` 协议 + Registry type erasure。
+  - `ToolManifest` 包含 effect、risk、requirements。
+  - 不做 `summarizePDFAndCreateCalendarEvent` 这类大而全的工具。
+- 复审条件：需要比 Tool 更粗粒度的编排抽象。
+
+## D-024 Capability 动态注册
+
+- 状态：生效
+- 决策：当前设备、地区、系统版本、用户授权不可用的 Tool 不暴露给模型。
+- 依据：避免模型调用不可用能力，减少错误与误操作。
+- 影响：
+  - Capability Registry 运行时过滤工具。
+  - 工具能力关闭时不发送工具定义。
+- 复审条件：引入远程能力发现。
+
+## D-025 所有执行必须可观察（Trace）
+
+- 状态：生效
+- 决策：一次 Agent Run 中的模型调用、Tool Call、失败、权限请求、耗时都可 Trace。
+- 依据：Agent 执行需要可调试、可重放、可审计。
+- 影响：
+  - Runtime Event 统一事件流。
+  - Run/Step 成为正式数据模型。
+  - 时间线即执行轨迹。
+- 复审条件：Trace 能力与持久化边界冲突时重新评估。
+
+## D-026 系统入口优先级
+
+- 状态：生效
+- 决策：系统入口按优先级排序：第一优先级 ① Familiar App ② Share Extension ③ 系统通知 / Deep Link；第二优先级 ④ Widgets / Controls ⑤ Spotlight 等轻量入口；兼容能力 ⑥ App Intents ⑦ Shortcuts。
+- 依据：核心体验在 App 内，Share 与通知承担外部分发，轻量入口与系统表面延后，App Intents/Shortcuts 作为兼容能力打通系统生态。
+- 影响：
+  - App Intents 位于 Agent Core 之外，只暴露 Ask / Process / Open Familiar。
+  - 不把整个 Capability Registry 复制到 App Intents。
+  - Share Extension 承接外部文本/文件进入现有执行链路。
+- 复审条件：系统入口需求或 Apple 系统能力变化。
+
+## D-027 MCP 是 Adapter，不是 Kernel
+
+- 状态：生效
+- 决策：内部借鉴 MCP 的 Resources/Tools/Instructions 分离，但直接用 Swift。外部服务通过 `MCPClient` 把 MCP Tools 转成 Familiar `AnyTool`。
+- 依据：MCP 是接入外部能力的协议，不定义 Familiar 内部架构。
+- 影响：
+  - 内部不引入 MCP Server。
+  - 未来接 GitHub、Notion、Supabase 等只增加 Adapter。
+- 复审条件：需要在 iPhone 上托管 MCP Server。
+
+## D-028 意图感知授权
+
+- 状态：生效
+- 决策：不采用"所有写操作都弹窗"。低风险读取自动执行；明确可逆写入执行 + Undo；推断写入、破坏性操作、财务/外部重大影响要求确认。
+- 依据：权限由代码控制，不靠 Prompt；个人 Agent 需要比简单 Read/Write 更细的风险模型。
+- 影响：
+  - Execution Policy Layer 承担审批。
+  - 高风险 Action 引入 human intervention。
+- 复审条件：授权模型被滥用或用户无法理解。
+
+## D-029 Agent UI 由 Runtime Event 驱动
+
+- 状态：生效
+- 决策：工具不自己造 UI。一次执行产生统一事件（AgentRunStarted…AgentRunCompleted），UI 只渲染这些事件。
+- 依据：解决 Task Timeline、Debug、History、Background resume 与 Trace 复用问题。
+- 影响：
+  - 时间线即执行轨迹。
+  - 任务可重放。
+- 复审条件：出现必须由工具自建 UI 的交互。
+
+## D-030 Run/Step 成为正式数据模型
+
+- 状态：生效
+- 决策：不只保存 Chat Message。AgentSession → Runs → Steps（ModelStep / ToolStep / ApprovalStep / ResultStep）。
+- 依据：复杂任务需要真正的执行状态。
+- 影响：
+  - Run 与 Step 终态持久化。
+  - 支持恢复、Trace 与重放。
+- 复审条件：持久化成本与收益失衡。
+
+## D-031 Memory 三层，不做 RAG 大工程
+
+- 状态：生效
+- 决策：Working Context / Session History / Long-term Memory 三层。Long-term Memory 第一版为 memory.search / write / delete，写入保守。
+- 依据：先保存明确事实，等真实数据量出现后再决定是否 embeddings。
+- 影响：
+  - 不做向量数据库。
+  - 不自动向量化全部聊天。
+- 复审条件：真实数据量出现且检索质量不足。
+
+## D-032 Skills 不含 Python/Shell/Executable
+
+- 状态：生效
+- 决策：Familiar Skill 是 Instruction Package + Tool Scope：id、description、instructions、allowedTools、examples。
+- 依据：不引入任意代码执行面。
+- 影响：
+  - Skill 不包含脚本执行能力。
+  - 后续再扩展。
+- 复审条件：真实需求要求执行脚本。
+
+## D-033 Background 按可恢复 AgentRun 设计
+
+- 状态：生效
+- 决策：Agent Run 是 resumable AgentRun，不是 daemon/cron/always alive。必要时通过 `BGContinuedProcessingTask` 承接用户启动的长任务。
+- 依据：现代 iOS 提供 BGContinuedProcessingTask 承接后台网络、Vision、Core ML 等工作。
+- 影响：
+  - Run/Step 终态持久化支撑恢复。
+  - 不做常驻 Agent。
+- 复审条件：产品要求自主后台任务。
+
+## D-034 第一阶段用最强模型建立基准
+
+- 状态：生效
+- 决策：第一阶段用能拿到的最强模型建立 Agent benchmark，不提前做模型拆分优化。
+- 依据：先建立性能基线，再通过 eval 逐步替换成更小、更便宜的模型。
+- 影响：
+  - ModelProvider 抽象统一（OpenAI / Anthropic / OpenAICompatible / 可选 Local）。
+  - 之后才考虑简单提取用小模型、复杂 Planning 用强模型、本地分类用 Core ML。
+- 复审条件：benchmark 建立且成本需要优化。
+
+## D-035 图片预处理是 Tool，不是强制 pipeline
+
+- 状态：生效
+- 决策：图片进入 Agent 后，由 Agent 判断任务决定走 Vision OCR、Vision Barcode 还是 Multimodal LLM，默认不 OCR。
+- 依据：图片可能是照片、截图、海报、二维码、表格、人物、风景，提前 OCR 会丢语义。
+- 影响：
+  - 不把每张图片都 OCR。
+  - Core ML 只在明确任务（Embedding、分类、目标检测）时使用。
+- 复审条件：出现必须统一预处理的场景。
 
 ## 决策维护
 
