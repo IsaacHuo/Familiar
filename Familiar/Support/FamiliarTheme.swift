@@ -25,23 +25,24 @@ nonisolated enum AppSpacing {
 private struct FamiliarGlassSurface: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let interactive: Bool
+    let cornerRadius: CGFloat
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if reduceTransparency {
             content
-                .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .stroke(FamiliarTheme.separator, lineWidth: 1)
                 }
         } else if #available(iOS 26.0, *) {
-            content.glassEffect(interactive ? .regular.interactive() : .regular, in: .rect(cornerRadius: 22))
+            content.glassEffect(interactive ? .regular.interactive() : .regular, in: .rect(cornerRadius: cornerRadius))
         } else {
             content
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .stroke(FamiliarTheme.separator, lineWidth: 1)
                 }
         }
@@ -49,8 +50,8 @@ private struct FamiliarGlassSurface: ViewModifier {
 }
 
 extension View {
-    func familiarGlassSurface(interactive: Bool = false) -> some View {
-        modifier(FamiliarGlassSurface(interactive: interactive))
+    func familiarGlassSurface(interactive: Bool = false, cornerRadius: CGFloat = 22) -> some View {
+        modifier(FamiliarGlassSurface(interactive: interactive, cornerRadius: cornerRadius))
     }
 }
 

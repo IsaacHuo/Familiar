@@ -15,6 +15,7 @@ struct FamiliarSettingsView: View {
     @State private var isRefreshingModels = false
     @State private var validationSucceeded = false
     @State private var errorMessage: String?
+    @State private var configuredProviderIDs: Set<String>
 
     init(
         initialSettings: FamiliarSettings,
@@ -26,6 +27,9 @@ struct FamiliarSettingsView: View {
         _configuration = State(initialValue: initialSettings.providerConfiguration)
         _models = State(initialValue: initialSettings.selectedProvider.curatedModels)
         _hasAPIKey = State(initialValue: FamiliarKeychainStore.isConfigured(for: initialSettings.providerID))
+        _configuredProviderIDs = State(initialValue: FamiliarKeychainStore.configuredProviderIDs(
+            in: FamiliarProviderCatalog.allProviderIDs
+        ))
     }
 
     var body: some View {
@@ -63,7 +67,7 @@ struct FamiliarSettingsView: View {
     }
 
     private var providerSection: some View {
-        Section(String(localized: "settings.provider")) {
+        Section {
             Picker(String(localized: "settings.provider"), selection: $settings.providerID) {
                 ForEach(providerChoices, id: \.id) { provider in
                     Text(provider.displayName).tag(provider.id)
@@ -98,6 +102,21 @@ struct FamiliarSettingsView: View {
                 TextField(String(localized: "settings.custom.models_path"), text: $configuration.modelsPath)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+            }
+        } header: {
+            HStack {
+                Text(String(localized: "settings.provider"))
+                Spacer()
+                Text(String(
+                    format: String(localized: "settings.provider.configured_count"),
+                    configuredProviderIDs.count
+                ))
+                .textCase(nil)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(String(
+                    format: String(localized: "settings.provider.configured_count.accessibility"),
+                    configuredProviderIDs.count
+                ))
             }
         }
     }
@@ -194,15 +213,16 @@ struct FamiliarSettingsView: View {
         Section {
             HStack(spacing: 14) {
                 ZStack {
-                    Circle().fill(FamiliarTheme.brandGlow)
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 21, weight: .semibold))
+                    Circle().fill(FamiliarTheme.accent.opacity(0.14))
+                    Text("F")
+                        .font(.title2.bold())
                         .foregroundStyle(FamiliarTheme.accent)
                 }
-                .frame(width: 52, height: 52)
+                .frame(width: 58, height: 58)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(String(localized: "app.name")).font(.headline)
+                    Text(String(localized: "settings.profile.name"))
+                        .font(.headline)
                     Text(String(localized: "settings.subtitle"))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -287,7 +307,7 @@ struct FamiliarSettingsView: View {
             ? ""
             : descriptor?.defaultModel.id ?? ""
         apiKey = ""
-        hasAPIKey = FamiliarKeychainStore.isConfigured(for: newID)
+        hasAPIKey = configuredProviderIDs.contains(newID)
         validationSucceeded = false
     }
 
@@ -308,6 +328,7 @@ struct FamiliarSettingsView: View {
             let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmedKey.isEmpty {
                 try FamiliarKeychainStore.save(trimmedKey, for: value.providerID)
+                configuredProviderIDs.insert(value.providerID)
             }
             onSaveSettings(value)
             dismiss()
@@ -360,6 +381,7 @@ struct FamiliarSettingsView: View {
             try FamiliarKeychainStore.delete(for: settings.providerID)
             apiKey = ""
             hasAPIKey = false
+            configuredProviderIDs.remove(settings.providerID)
             validationSucceeded = false
         } catch {
             errorMessage = error.localizedDescription

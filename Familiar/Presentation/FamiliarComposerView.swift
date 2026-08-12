@@ -182,7 +182,9 @@ struct FamiliarComposer: View {
     private var showsExpansion: Bool { mode == .fullscreen || isLongText }
     private var editorHeight: CGFloat { min(max(effectiveTextHeight + 18, 44), Self.lineHeight * 4 + 20) }
     private var controlsHeight: CGFloat { mode == .compact ? 44 : editorHeight + 8 + 44 }
-    private var fullscreenHeight: CGFloat { min(max(availableHeight * 0.8, 240), availableHeight) }
+    private var fullscreenHeight: CGFloat {
+        min(max(availableHeight * 0.8 - 14, 240), max(availableHeight - 14, 240))
+    }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -200,7 +202,7 @@ struct FamiliarComposer: View {
         .padding(.top, hasDraftContent ? 10 : 4)
         .padding(.bottom, 4)
         .frame(height: mode == .fullscreen ? fullscreenHeight : nil, alignment: .bottom)
-        .familiarGlassSurface(interactive: true)
+        .familiarGlassSurface(interactive: true, cornerRadius: 28)
         .padding(.horizontal, 12)
         .padding(.top, 6)
         .padding(.bottom, 8)
@@ -241,7 +243,7 @@ struct FamiliarComposer: View {
                     .font(.system(size: Self.editorFontSize))
                     .foregroundStyle(.tertiary)
                     .padding(.leading, mode == .compact ? 5 : 14)
-                    .padding(.top, focus.wrappedValue ? 6 : 8)
+                    .padding(.top, 8)
                     .allowsHitTesting(false)
             }
             TextEditor(text: $draft)
@@ -249,8 +251,8 @@ struct FamiliarComposer: View {
                 .scrollContentBackground(.hidden)
                 .scrollIndicators(.hidden)
                 .padding(.leading, mode == .compact ? 0 : 9)
-                .padding(.trailing, showsExpansion ? 42 : 0)
-                .padding(.top, focus.wrappedValue ? 6 : 0)
+                .padding(.trailing, showsExpansion ? 44 : 0)
+                .scrollDismissesKeyboard(.interactively)
                 .focused(focus)
             if showsExpansion {
                 HStack {
@@ -299,6 +301,7 @@ struct FamiliarComposer: View {
             Image(systemName: isSending ? "stop.fill" : "arrow.up")
                 .font(.system(size: 14, weight: .bold)).foregroundStyle(.white).frame(width: 36, height: 36)
                 .background(canSend ? FamiliarTheme.accent : Color.secondary.opacity(0.28), in: Circle())
+                .frame(width: 44, height: 44)
         }
         .buttonStyle(.plain)
         .disabled(!canSend)
@@ -410,7 +413,7 @@ struct FamiliarComposer: View {
         if reduceMotion {
             mode = newMode
         } else {
-            withAnimation(.spring(response: response, dampingFraction: 0.86)) {
+            withAnimation(.smooth(duration: response)) {
                 mode = newMode
             }
         }

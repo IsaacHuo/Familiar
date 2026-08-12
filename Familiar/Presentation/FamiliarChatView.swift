@@ -11,93 +11,107 @@ struct FamiliarChatView: View {
     @StateObject private var controller = FamiliarChatController()
     @StateObject private var speechTranscriber = FamiliarSpeechTranscriber()
     @State private var isDrawerOpen = false
-    @GestureState private var drawerDrag: CGFloat = 0
+    @State private var drawerDrag: CGFloat = 0
+    @State private var isDragging = false
     @State private var presentedSheet: FamiliarSheetDestination?
     @State private var renameRequest: FamiliarRenameRequest?
     @State private var pendingMessageOperation: FamiliarPendingMessageOperation?
     @State private var speechBaseDraft = ""
+    @State private var configuredProviderIDs: Set<String> = []
     @FocusState private var isComposerFocused: Bool
 
     var body: some View {
-        GeometryReader { geometry in
-            let drawerWidth = min(max(geometry.size.width * 0.82, 280), geometry.size.width - 56)
-            let visibleDrawerWidth = drawerOffset(width: drawerWidth)
-            let drawerProgress = visibleDrawerWidth / max(drawerWidth, 1)
+        GeometryReader { safeGeometry in
+            let safeAreaInsets = safeGeometry.safeAreaInsets
 
-            ZStack(alignment: .leading) {
-                FamiliarConversationDrawer(
-                    conversations: conversations,
-                    selectedConversationID: controller.selectedConversationID,
-                    onSelect: { conversation in
-                        speechTranscriber.stop()
-                        controller.select(conversation.id, in: modelContext)
-                        closeDrawer()
-                    },
-                    onNewConversation: {
-                        speechTranscriber.stop()
-                        _ = controller.createConversation(in: modelContext)
-                        closeDrawer()
-                        isComposerFocused = true
-                    },
-                    onRename: { conversation in
-                        renameRequest = FamiliarRenameRequest(
-                            conversation: conversation,
-                            title: conversation.title
+            GeometryReader { geometry in
+                let drawerWidth = geometry.size.width * 2 / 3
+                let visibleDrawerWidth = drawerOffset(width: drawerWidth)
+                let drawerProgress = visibleDrawerWidth / max(drawerWidth, 1)
+                let cornerRadius = 28 * drawerProgress
+
+                ZStack(alignment: .leading) {
+                    Color(uiColor: .secondarySystemBackground)
+                        .ignoresSafeArea()
+
+                    FamiliarConversationDrawer(
+                        conversations: conversations,
+                        selectedConversationID: controller.selectedConversationID,
+                        safeAreaInsets: safeAreaInsets,
+                        onSelect: { conversation in
+                            speechTranscriber.stop()
+                            controller.select(conversation.id, in: modelContext)
+                            closeDrawer()
+                        },
+                        onRename: { conversation in
+                            renameRequest = FamiliarRenameRequest(
+                                conversation: conversation,
+                                title: conversation.title
+                            )
+                        },
+                        onDelete: { conversation in
+                            controller.delete([conversation], in: modelContext)
+                        },
+                        onSettings: {
+                            presentedSheet = .settings
+                        }
+                    )
+                    .frame(width: drawerWidth)
+                    .offset(x: -(drawerWidth * 0.12) * (1 - drawerProgress))
+
+                    ZStack {
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: cornerRadius,
+                            bottomLeadingRadius: cornerRadius,
+                            bottomTrailingRadius: 0,
+                            topTrailingRadius: 0,
+                            style: .continuous
                         )
-                    },
-                    onDelete: { conversation in
-                        controller.delete([conversation], in: modelContext)
-                    },
-                    onSettings: {
-                        closeDrawer()
-                        presentedSheet = .settings
-                    }
-                )
-                .frame(width: drawerWidth)
-                .offset(x: visibleDrawerWidth - drawerWidth)
+                        .fill(Color(uiColor: .systemBackground))
 
-                mainSurface
+                        mainSurface(availableHeight: geometry.size.height - safeAreaInsets.top - safeAreaInsets.bottom)
+                            .padding(.top, safeAreaInsets.top)
+                            .padding(.bottom, safeAreaInsets.bottom)
+                    }
                     .clipShape(
-                        RoundedRectangle(
-                            cornerRadius: 30 * drawerProgress,
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: cornerRadius,
+                            bottomLeadingRadius: cornerRadius,
+                            bottomTrailingRadius: 0,
+                            topTrailingRadius: 0,
                             style: .continuous
                         )
                     )
-                    .shadow(
-                        color: .black.opacity(0.12 * drawerProgress),
-                        radius: 24,
-                        x: -4,
-                        y: 0
-                    )
-                    .scaleEffect(reduceMotion ? 1 : 1 - (0.022 * drawerProgress), anchor: .trailing)
-                    .offset(x: visibleDrawerWidth)
+                    .shadow(color: .black.opacity(0.13 * drawerProgress), radius: 18, x: -7, y: 0)
                     .overlay {
-                        if visibleDrawerWidth > 1 {
-                            Color.black.opacity(0.07 * drawerProgress)
-                                .contentShape(Rectangle())
-                                .onTapGesture { closeDrawer() }
-                                .gesture(drawerGesture(width: drawerWidth))
-                        }
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture { closeDrawer() }
+                            .allowsHitTesting(drawerProgress > 0.01)
                     }
+                    .offset(x: visibleDrawerWidth)
+                    .simultaneousGesture(drawerGesture(width: drawerWidth))
 
-                if !isDrawerOpen {
                     Color.clear
                         .contentShape(Rectangle())
-                        .frame(width: 22)
+                        .frame(width: 30)
                         .frame(maxHeight: .infinity)
                         .gesture(drawerGesture(width: drawerWidth))
+                        .allowsHitTesting(!isDrawerOpen)
+                        .zIndex(100)
                         .accessibilityHidden(true)
                 }
+                .background(Color(uiColor: .secondarySystemBackground).ignoresSafeArea())
             }
-            .background(Color(uiColor: .systemGroupedBackground))
-            .animation(reduceMotion ? nil : .smooth(duration: 0.32), value: isDrawerOpen)
+            .ignoresSafeArea(.container)
         }
         .ignoresSafeArea(.keyboard, edges: isDrawerOpen ? .all : [])
-        .sheet(item: $presentedSheet) { destination in
+        .sheet(item: $presentedSheet, onDismiss: refreshConfiguredProviders) { destination in
             switch destination {
             case .settings:
                 FamiliarSettingsView(initialSettings: controller.settings) {
                     controller.updateSettings($0, in: modelContext)
+                    refreshConfiguredProviders()
                 }
             }
         }
@@ -114,7 +128,7 @@ struct FamiliarChatView: View {
             get: { controller.errorMessage != nil },
             set: { if !$0 { controller.errorMessage = nil } }
         )) {
-            if !FamiliarKeychainStore.isConfigured(for: controller.settings.providerID) {
+            if !configuredProviderIDs.contains(controller.settings.providerID) {
                 Button(String(localized: "common.open_settings")) {
                     presentedSheet = .settings
                 }
@@ -143,18 +157,23 @@ struct FamiliarChatView: View {
                let first = conversations.first {
                 controller.select(first.id, in: modelContext)
             }
+            refreshConfiguredProviders()
             FamiliarAttachmentStore.pruneDrafts(keeping: Set(controller.draftAttachments.map(\.relativePath)))
         }
         .onChange(of: speechTranscriber.errorMessage) { _, message in
             if let message { controller.errorMessage = message }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { speechTranscriber.stop() }
+            if phase == .active {
+                refreshConfiguredProviders()
+            } else {
+                speechTranscriber.stop()
+            }
         }
     }
 
     @ViewBuilder
-    private var mainSurface: some View {
+    private func mainSurface(availableHeight: CGFloat) -> some View {
         NavigationStack {
             chatBody
                 .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -174,7 +193,8 @@ struct FamiliarChatView: View {
                             } else {
                                 controller.startSending(in: modelContext)
                             }
-                        }
+                        },
+                        availableHeight: availableHeight
                     )
                 }
                 .modifier(FamiliarTopBarInstaller(content: topBar))
@@ -192,8 +212,7 @@ struct FamiliarChatView: View {
            controller.agentStatus == nil,
            controller.toolActivities.isEmpty {
             FamiliarEmptyConversationView(
-                isProviderConfigured: FamiliarKeychainStore.isConfigured(for: controller.settings.providerID),
-                providerTitle: controller.settings.selectedProvider.displayName,
+                isProviderConfigured: configuredProviderIDs.contains(controller.settings.providerID),
                 onConfigure: { presentedSheet = .settings },
                 onPrompt: { prompt in
                     controller.draft = prompt
@@ -221,9 +240,14 @@ struct FamiliarChatView: View {
 
     private var topBar: some View {
         let selectedProvider = controller.settings.selectedProvider
-        let providers = selectedProvider.isCustom
-            ? FamiliarProviderCatalog.builtIn + [selectedProvider]
-            : FamiliarProviderCatalog.builtIn
+        var providers = FamiliarProviderCatalog.builtIn.filter { configuredProviderIDs.contains($0.id) }
+        if configuredProviderIDs.contains(FamiliarProviderCatalog.customProviderID),
+           let customProvider = FamiliarProviderCatalog.descriptor(
+               for: FamiliarProviderCatalog.customProviderID,
+               configuration: controller.settings.providerConfigurations[FamiliarProviderCatalog.customProviderID] ?? .empty
+           ) {
+            providers.append(customProvider)
+        }
         return FamiliarChatTopBar(
             provider: selectedProvider,
             model: controller.settings.selectedModel,
@@ -233,6 +257,7 @@ struct FamiliarChatView: View {
             onSelectModel: { providerID, modelID in
                 controller.selectModel(providerID: providerID, modelID: modelID, in: modelContext)
             },
+            onConfigure: { presentedSheet = .settings },
             onNewConversation: {
                 speechTranscriber.stop()
                 _ = controller.createConversation(in: modelContext)
@@ -254,16 +279,30 @@ struct FamiliarChatView: View {
     }
 
     private func drawerGesture(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 8)
-            .updating($drawerDrag) { value, state, _ in
-                state = value.translation.width
+        DragGesture(minimumDistance: 8, coordinateSpace: .local)
+            .onChanged { value in
+                let horizontal = abs(value.translation.width)
+                let vertical = abs(value.translation.height)
+                guard horizontal > vertical || isDragging else { return }
+                isDragging = true
+                drawerDrag = value.translation.width
             }
             .onEnded { value in
-                let projected = value.predictedEndTranslation.width
-                if isDrawerOpen {
-                    isDrawerOpen = projected > -(width * 0.28)
+                guard isDragging else { return }
+                isDragging = false
+
+                let currentOffset = drawerOffset(width: width)
+                let projectedOffset = min(max(currentOffset + (value.predictedEndTranslation.width - value.translation.width), 0), width)
+                let shouldOpen = projectedOffset > width * 0.5
+
+                if reduceMotion {
+                    drawerDrag = 0
+                    isDrawerOpen = shouldOpen
                 } else {
-                    isDrawerOpen = projected > width * 0.22
+                    withAnimation(.interactiveSpring(response: 0.32, dampingFraction: 0.9)) {
+                        drawerDrag = 0
+                        isDrawerOpen = shouldOpen
+                    }
                 }
             }
     }
@@ -276,7 +315,7 @@ struct FamiliarChatView: View {
         if reduceMotion {
             isDrawerOpen = isOpen
         } else {
-            withAnimation(.smooth(duration: 0.32)) {
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
                 isDrawerOpen = isOpen
             }
         }
@@ -291,6 +330,12 @@ struct FamiliarChatView: View {
             controller.draft = speechBaseDraft + separator + transcript
             isComposerFocused = true
         }
+    }
+
+    private func refreshConfiguredProviders() {
+        configuredProviderIDs = FamiliarKeychainStore.configuredProviderIDs(
+            in: FamiliarProviderCatalog.allProviderIDs
+        )
     }
 
     private func commitRename() {
@@ -366,7 +411,7 @@ private struct FamiliarTopBarInstaller<Bar: View>: ViewModifier {
                 content
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
-                    .background(.ultraThinMaterial)
+                    .background(Color(uiColor: .systemBackground))
                     .overlay(alignment: .bottom) {
                         Rectangle()
                             .fill(FamiliarTheme.separator)
@@ -384,6 +429,7 @@ private struct FamiliarChatTopBar: View {
     let isSending: Bool
     let onOpenDrawer: () -> Void
     let onSelectModel: (String, String) -> Void
+    let onConfigure: () -> Void
     let onNewConversation: () -> Void
 
     var body: some View {
@@ -408,25 +454,14 @@ private struct FamiliarChatTopBar: View {
             .familiarGlassCircle(interactive: true)
             .accessibilityLabel(String(localized: "drawer.open"))
 
-            Spacer(minLength: 0)
-
             Menu {
-                ForEach(providerOptions) { provider in
-                    Menu(provider.displayName) {
-                        let models = provider.curatedModels.isEmpty && self.provider.id == provider.id
-                            ? [model]
-                            : provider.curatedModels
-                        ForEach(models) { model in
-                            Button {
-                                onSelectModel(provider.id, model.id)
-                            } label: {
-                                if self.provider.id == provider.id && self.model.id == model.id {
-                                    Label(model.displayName, systemImage: "checkmark")
-                                } else {
-                                    Text(model.displayName)
-                                }
-                            }
-                        }
+                if providerOptions.isEmpty {
+                    Button(action: onConfigure) {
+                        Label(String(localized: "empty.configure"), systemImage: "key")
+                    }
+                } else {
+                    ForEach(providerOptions) { provider in
+                        providerMenu(provider)
                     }
                 }
             } label: {
@@ -458,13 +493,43 @@ private struct FamiliarChatTopBar: View {
             .accessibilityLabel(String(localized: "conversation.new"))
         }
     }
+
+    @ViewBuilder
+    private func providerMenu(_ provider: FamiliarProviderDescriptor) -> some View {
+        let models = models(for: provider)
+        if models.isEmpty {
+            Button(action: onConfigure) {
+                Label(provider.displayName, systemImage: "gearshape")
+            }
+        } else {
+            Menu(provider.displayName) {
+                ForEach(models) { model in
+                    Button {
+                        onSelectModel(provider.id, model.id)
+                    } label: {
+                        if self.provider.id == provider.id && self.model.id == model.id {
+                            Label(model.displayName, systemImage: "checkmark")
+                        } else {
+                            Text(model.displayName)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func models(for provider: FamiliarProviderDescriptor) -> [FamiliarModelDescriptor] {
+        guard self.provider.id == provider.id,
+              !provider.curatedModels.contains(where: { $0.id == model.id })
+        else { return provider.curatedModels }
+        return [model] + provider.curatedModels
+    }
 }
 
 
 
 private struct FamiliarEmptyConversationView: View {
     let isProviderConfigured: Bool
-    let providerTitle: String
     let onConfigure: () -> Void
     let onPrompt: (String) -> Void
 
@@ -502,7 +567,7 @@ private struct FamiliarEmptyConversationView: View {
                     Button {
                         onConfigure()
                     } label: {
-                        Text(String(format: String(localized: "empty.configure"), providerTitle))
+                        Text(String(localized: "empty.configure"))
                             .font(.headline)
                             .padding(.horizontal, 20)
                             .frame(height: 48)
@@ -517,6 +582,7 @@ private struct FamiliarEmptyConversationView: View {
             .padding(.horizontal, 24)
             .frame(maxWidth: .infinity)
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 }
 
@@ -549,13 +615,162 @@ private struct PromptSuggestion: View {
 private struct FamiliarConversationDrawer: View {
     let conversations: [FamiliarConversation]
     let selectedConversationID: UUID?
+    let safeAreaInsets: EdgeInsets
     let onSelect: (FamiliarConversation) -> Void
-    let onNewConversation: () -> Void
     let onRename: (FamiliarConversation) -> Void
     let onDelete: (FamiliarConversation) -> Void
     let onSettings: () -> Void
 
+    @State private var isSearchPresented = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            drawerHeader
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 3) {
+                    if conversations.isEmpty {
+                        Text(String(localized: "drawer.no_conversations"))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 20)
+                            .padding(.top, 24)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        Text(String(localized: "drawer.recent"))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 20)
+                            .padding(.top, 4)
+                            .padding(.bottom, 4)
+
+                        ForEach(conversations) { conversation in
+                            conversationRow(conversation)
+                        }
+                    }
+                }
+                .padding(.top, 4)
+                .padding(.bottom, 12)
+            }
+            .scrollDismissesKeyboard(.interactively)
+
+            settingsRow
+        }
+        .background(Color(uiColor: .secondarySystemBackground))
+        .sheet(isPresented: $isSearchPresented) {
+            FamiliarConversationSearchView(
+                conversations: conversations,
+                selectedConversationID: selectedConversationID,
+                onSelect: { conversation in
+                    isSearchPresented = false
+                    onSelect(conversation)
+                }
+            )
+        }
+    }
+
+    private func conversationRow(_ conversation: FamiliarConversation) -> some View {
+        Button {
+            onSelect(conversation)
+        } label: {
+            HStack(spacing: 10) {
+                Text(conversation.title)
+                    .font(.body)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 46)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(
+            conversation.id == selectedConversationID
+                ? Color.primary.opacity(0.075)
+                : .clear,
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+        .padding(.horizontal, 10)
+        .contextMenu {
+            Button {
+                onRename(conversation)
+            } label: {
+                Label(String(localized: "conversation.rename"), systemImage: "pencil")
+            }
+            Button(role: .destructive) {
+                onDelete(conversation)
+            } label: {
+                Label(String(localized: "common.delete"), systemImage: "trash")
+            }
+        }
+    }
+
+    private var drawerHeader: some View {
+        HStack {
+            Text(String(localized: "app.name"))
+                .font(.title2.bold())
+            Spacer()
+            Button {
+                isSearchPresented = true
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 18, weight: .semibold))
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .familiarGlassCircle(interactive: true)
+            .accessibilityLabel(String(localized: "drawer.search"))
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, safeAreaInsets.top + 10)
+        .padding(.bottom, 12)
+    }
+
+    private var settingsRow: some View {
+        Button(action: onSettings) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(FamiliarTheme.accent.opacity(0.14))
+                    Text("F")
+                        .font(.headline)
+                        .foregroundStyle(FamiliarTheme.accent)
+                }
+                .frame(width: 34, height: 34)
+
+                Text(String(localized: "drawer.settings"))
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.primary)
+
+                Spacer(minLength: 4)
+
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 18)
+            .frame(height: 56)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(FamiliarTheme.separator)
+                .frame(height: 0.5)
+        }
+        .padding(.bottom, safeAreaInsets.bottom)
+        .accessibilityLabel(String(localized: "drawer.settings"))
+    }
+}
+
+private struct FamiliarConversationSearchView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let conversations: [FamiliarConversation]
+    let selectedConversationID: UUID?
+    let onSelect: (FamiliarConversation) -> Void
+
     @State private var searchText = ""
+    @FocusState private var isSearchFocused: Bool
 
     private var filteredConversations: [FamiliarConversation] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -564,121 +779,45 @@ private struct FamiliarConversationDrawer: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text(String(localized: "app.name"))
-                    .font(.title2.bold())
-                Spacer()
-                Button(action: onNewConversation) {
-                    Image(systemName: "square.and.pencil")
-                        .font(.system(size: 17, weight: .semibold))
-                        .frame(width: 42, height: 42)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(localized: "conversation.new"))
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, 10)
-
-            HStack(spacing: 9) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField(String(localized: "drawer.search"), text: $searchText)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-            }
-            .padding(.horizontal, 13)
-            .frame(height: 42)
-            .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 3) {
-                    if filteredConversations.isEmpty {
-                        Text(searchText.isEmpty ? String(localized: "drawer.no_conversations") : String(localized: "drawer.no_results"))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 18)
-                            .padding(.top, 24)
-                    } else {
-                        Text(String(localized: "drawer.recent"))
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 18)
-                            .padding(.top, 4)
-                            .padding(.bottom, 6)
-
-                        ForEach(filteredConversations) { conversation in
-                            Button {
-                                onSelect(conversation)
-                            } label: {
-                                HStack(spacing: 10) {
-                                    Text(conversation.title)
-                                        .font(.subheadline)
-                                        .lineLimit(1)
-                                    Spacer(minLength: 4)
-                                }
-                                .padding(.horizontal, 13)
-                                .frame(height: 44)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .background(
-                                conversation.id == selectedConversationID
-                                    ? Color.primary.opacity(0.075)
-                                    : .clear,
-                                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            )
-                            .padding(.horizontal, 6)
-                            .contextMenu {
-                                Button {
-                                    onRename(conversation)
-                                } label: {
-                                    Label(String(localized: "conversation.rename"), systemImage: "pencil")
-                                }
-                                Button(role: .destructive) {
-                                    onDelete(conversation)
-                                } label: {
-                                    Label(String(localized: "common.delete"), systemImage: "trash")
+        NavigationStack {
+            List {
+                if filteredConversations.isEmpty {
+                    Text(searchText.isEmpty
+                         ? String(localized: "drawer.no_conversations")
+                         : String(localized: "drawer.no_results"))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(filteredConversations) { conversation in
+                        Button {
+                            onSelect(conversation)
+                        } label: {
+                            HStack(spacing: 10) {
+                                Text(conversation.title)
+                                    .font(.body)
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                Spacer(minLength: 4)
+                                if conversation.id == selectedConversationID {
+                                    Image(systemName: "checkmark")
+                                        .font(.footnote.weight(.semibold))
+                                        .foregroundStyle(FamiliarTheme.accent)
                                 }
                             }
                         }
                     }
                 }
             }
-
-            Divider().opacity(0.6)
-
-            Button(action: onSettings) {
-                HStack(spacing: 12) {
-                    ZStack {
-                        Circle()
-                            .fill(FamiliarTheme.accent.opacity(0.14))
-                        Text("F")
-                            .font(.subheadline.bold())
-                            .foregroundStyle(FamiliarTheme.accent)
-                    }
-                    .frame(width: 36, height: 36)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(localized: "app.name"))
-                            .font(.subheadline.weight(.semibold))
-                        Text(String(localized: "drawer.settings"))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
+            .listStyle(.plain)
+            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always))
+            .navigationTitle(String(localized: "drawer.search"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(String(localized: "common.cancel")) { dismiss() }
                 }
-                .padding(.horizontal, 16)
-                .frame(height: 66)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
         }
-        .background(Color(uiColor: .systemGroupedBackground))
+        .tint(FamiliarTheme.accent)
     }
 }

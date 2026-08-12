@@ -42,8 +42,11 @@
 "model.current" = "当前模型：%1$@，%2$@";
 
 "settings.provider" = "模型服务";
+"settings.provider.configured_count" = "已配置 %ld 个";
+"settings.provider.configured_count.accessibility" = "已配置 %ld 个模型服务";
 "settings.model" = "模型";
-"settings.subtitle" = "模型、隐私与回答偏好";
+"settings.profile.name" = "Familiar 用户";
+"settings.subtitle" = "本地使用，无需账户";
 "settings.api_key.title" = "%@ API Key";
 "settings.api_key.footer" = "API Key 按服务商分别保存在当前设备的钥匙串。请求从设备直接发送到 %@。";
 "settings.api_key.replace_placeholder" = "已配置；输入新值可替换";
@@ -63,6 +66,7 @@
 
 "drawer.open" = "打开会话列表";
 "drawer.search" = "搜索对话";
+"drawer.search.close" = "关闭搜索";
 "drawer.no_conversations" = "还没有对话";
 "drawer.no_results" = "没有找到相关对话";
 "drawer.recent" = "最近";
@@ -94,7 +98,7 @@
 "empty.prompt.explain" = "用简单的话解释一个复杂概念";
 "empty.prompt.plan" = "帮我为今天制定一个清晰计划";
 "empty.prompt.write" = "帮我润色一段文字";
-"empty.configure" = "配置 %@ 开始聊天";
+"empty.configure" = "配置 API Key";
 
 "capability.coming_soon.title" = "暂不可用";
 "capability.attachments.detail" = "Word、PowerPoint、Excel、OpenDocument、RTF、EPUB、CSV、PDF、TXT 和 Markdown 均在本机转换。图片只保留在本地草稿中，首版不会发送。";

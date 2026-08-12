@@ -139,6 +139,10 @@ nonisolated enum FamiliarProviderCatalog {
         openRouter, qwen, kimi, glm, miniMax, siliconFlow
     ]
 
+    static var allProviderIDs: [String] {
+        builtIn.map(\.id) + [customProviderID]
+    }
+
     static func descriptor(
         for providerID: String,
         configuration: FamiliarProviderConfiguration = .empty
@@ -235,8 +239,8 @@ nonisolated enum FamiliarProviderCatalog {
         id: "deepseek", name: "DeepSeek", baseURL: "https://api.deepseek.com",
         chatPath: "/chat/completions", modelsPath: "/models",
         models: [
-            .init(id: "deepseek-chat", displayName: "DeepSeek Chat", capabilities: toolText),
-            .init(id: "deepseek-reasoner", displayName: "DeepSeek Reasoner", capabilities: toolText)
+            .init(id: "deepseek-chat", displayName: "Flash", capabilities: toolText),
+            .init(id: "deepseek-reasoner", displayName: "Pro", capabilities: toolText)
         ],
         sendsStreamOptions: false
     )

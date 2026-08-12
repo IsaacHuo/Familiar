@@ -67,6 +67,10 @@ nonisolated enum FamiliarKeychainStore {
         load(for: providerID) != nil
     }
 
+    static func configuredProviderIDs(in providerIDs: [String]) -> Set<String> {
+        Set(providerIDs.filter(isConfigured(for:)))
+    }
+
     private static func baseQuery(for providerID: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
