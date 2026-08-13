@@ -255,6 +255,8 @@ sequenceDiagram
 
 - 默认最多 6 轮。
 - 工具结果上限 48,000 字符。
+- `web_search` 使用无需额外 Key 的 DuckDuckGo HTML/Lite，属于 best-effort 的只读外部服务；挑战页、限流或结构变化必须作为明确失败返回。
+- `web_fetch` 只访问公共 HTTPS 地址，以 DNS 固定的 Network.framework TLS 连接执行，每次重定向重新校验地址，不运行脚本、不加载子资源、不保存网页正文。
 - 上下文上限由模型能力决定。
 - 工具参数执行前进行 JSON 解码和字段校验。
 - 同一 run 内以工具名和参数组合识别重复调用。

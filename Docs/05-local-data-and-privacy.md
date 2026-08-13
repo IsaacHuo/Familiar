@@ -40,6 +40,8 @@
 | 语音转写 | Apple Speech | 输入草稿 | 发送后进入 Provider | 用户编辑或清空草稿 |
 | 原始录音 | 麦克风输入 | 不落盘 | Speech framework 按系统能力处理 | audio buffer 生命周期 |
 | 日历/提醒数据 | EventKit | 查询结果进入内存和工具记录摘要 | 可能作为工具结果进入 Provider | 运行结束和历史记录生命周期 |
+| 网页搜索 | 用户问题经 Agent 生成的最小搜索词 | 搜索结果正文仅在运行内存；来源标题、HTTPS URL、站点和时间随助手消息保存 | 搜索词直接发送给 DuckDuckGo；结果可能作为工具内容进入所选 Provider | 临时结果随 Run 结束；来源随消息删除 |
+| 网页读取 | 用户提供或搜索返回的公开 HTTPS URL | 原始 HTML 与正文仅在运行内存；来源元数据随助手消息保存 | 请求直接发送给目标站点及允许的 HTTPS 重定向目标；抽取正文可能进入所选 Provider | 原始内容随 Run 结束；来源随消息删除 |
 | Deep Link 输入 | 其他 App 或系统入口 | 草稿文本进入内存；会话 / Run UUID 仅用于本地查询 | 不因打开链接自动发送 | 链接处理或草稿生命周期 |
 | Share Extension 输入 | 用户从其他 App 明确共享 | App Group `ShareInbox`，导入后复制到 App 私有草稿附件目录 | 不因共享或导入自动发送 | 成功或终态失败处理后删除共享副本；草稿副本沿用附件生命周期 |
 | App Intent 文本 | 用户在 Siri / Shortcuts / Spotlight 明确提供 | 仅作为进程内 handoff 和新草稿短暂存在，发送后进入本地消息记录 | Ask / Process 通过当前选择的 BYOK Provider 发送；Open 不发送 | 未发送草稿被拒绝覆盖；成功提交后沿用会话生命周期 |
@@ -58,6 +60,7 @@ erDiagram
     FamiliarConversation ||--o{ FamiliarAgentRun : runs
     FamiliarAgentRun ||--o{ FamiliarAgentStep : steps
     FamiliarMessage ||--o{ FamiliarAttachment : attachments
+    FamiliarMessage ||--o{ FamiliarSourceRecord : sources
 
     FamiliarConversation {
         UUID id
