@@ -16,8 +16,8 @@ const year = new Date().getFullYear();
       <nav class="footer-links" aria-label="页脚导航">
         <a :href="`${base}privacy/`">隐私政策</a>
         <a :href="`${base}support/`">支持中心</a>
-        <a href="https://github.com/IsaacHuo/familiar/issues" target="_blank" rel="noreferrer">问题反馈</a>
-        <a href="https://github.com/IsaacHuo/familiar" target="_blank" rel="noreferrer">GitHub</a>
+        <a href="https://github.com/IsaacHuo/Familiar/issues" target="_blank" rel="noreferrer">问题反馈</a>
+        <a href="https://github.com/IsaacHuo/Familiar" target="_blank" rel="noreferrer">GitHub</a>
       </nav>
     </div>
   </footer>

@@ -6,9 +6,9 @@
 
 | App Store Connect 字段 | URL |
 | --- | --- |
-| Marketing URL | `https://isaachuo.github.io/familiar/` |
-| Support URL | `https://isaachuo.github.io/familiar/support/` |
-| Privacy Policy URL | `https://isaachuo.github.io/familiar/privacy/` |
+| Marketing URL | `https://isaachuo.github.io/Familiar/` |
+| Support URL | `https://isaachuo.github.io/Familiar/support/` |
+| Privacy Policy URL | `https://isaachuo.github.io/Familiar/privacy/` |
 
 这些 URL 会在 GitHub Pages 工作流首次成功部署后生效。
 

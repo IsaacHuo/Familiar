@@ -164,7 +164,7 @@ const base = import.meta.env.BASE_URL;
         <img :src="`${base}assets/app-icon.png`" alt="Familiar App 图标" width="74" height="74">
         <h2>让复杂的问题，变得熟悉一点。</h2>
         <p>Familiar 的 App Store 版本正在准备中。你可以先查看项目进展，或在 GitHub 提交反馈。</p>
-        <a class="button button-primary" href="https://github.com/IsaacHuo/familiar" target="_blank" rel="noreferrer">
+        <a class="button button-primary" href="https://github.com/IsaacHuo/Familiar" target="_blank" rel="noreferrer">
           在 GitHub 查看 Familiar
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M7 4h9v9M16 4 7 13" stroke-linecap="round" stroke-linejoin="round" /><path d="M13 10v5H4V6h5" stroke-linecap="round" stroke-linejoin="round" /></svg>
         </a>

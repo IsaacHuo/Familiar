@@ -181,7 +181,7 @@ const base = import.meta.env.BASE_URL;
         <p>在 GitHub 提交问题，我们会根据你提供的复现信息进行排查。</p>
         <p class="safety-note">公开 Issue 中请勿提交 API Key、聊天内容、日历、提醒事项、文档或其他个人信息。</p>
       </div>
-      <a class="button button-primary" href="https://github.com/IsaacHuo/familiar/issues/new" target="_blank" rel="noreferrer">
+      <a class="button button-primary" href="https://github.com/IsaacHuo/Familiar/issues/new" target="_blank" rel="noreferrer">
         提交问题
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M7 4h9v9M16 4 7 13" stroke-linecap="round" stroke-linejoin="round" /><path d="M13 10v5H4V6h5" stroke-linecap="round" stroke-linejoin="round" /></svg>
       </a>

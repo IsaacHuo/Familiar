@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://isaachuo.github.io/familiar/sitemap.xml
+Sitemap: https://isaachuo.github.io/Familiar/sitemap.xml

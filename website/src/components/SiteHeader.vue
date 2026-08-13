@@ -63,8 +63,8 @@ onBeforeUnmount(() => {
         <a class="nav-link" :href="base" :aria-current="currentPage === 'home' ? 'page' : undefined">首页</a>
         <a class="nav-link" :href="`${base}privacy/`" :aria-current="currentPage === 'privacy' ? 'page' : undefined">隐私</a>
         <a class="nav-link" :href="`${base}support/`" :aria-current="currentPage === 'support' ? 'page' : undefined">支持</a>
-        <a class="nav-link" href="https://github.com/IsaacHuo/familiar" target="_blank" rel="noreferrer">GitHub</a>
-        <a class="button button-primary" href="https://github.com/IsaacHuo/familiar" target="_blank" rel="noreferrer">查看项目</a>
+        <a class="nav-link" href="https://github.com/IsaacHuo/Familiar" target="_blank" rel="noreferrer">GitHub</a>
+        <a class="button button-primary" href="https://github.com/IsaacHuo/Familiar" target="_blank" rel="noreferrer">查看项目</a>
       </div>
     </nav>
   </header>

@@ -115,7 +115,7 @@ const base = import.meta.env.BASE_URL;
 
         <section id="contact">
           <h2>9. 联系我们</h2>
-          <p>如对隐私、数据删除或本政策有疑问，请通过 <a href="https://github.com/IsaacHuo/familiar/issues" target="_blank" rel="noreferrer">Familiar GitHub Issues</a> 联系开发者。</p>
+          <p>如对隐私、数据删除或本政策有疑问，请通过 <a href="https://github.com/IsaacHuo/Familiar/issues" target="_blank" rel="noreferrer">Familiar GitHub Issues</a> 联系开发者。</p>
           <div class="notice"><strong>请勿在公开 Issue 中提交敏感信息。</strong>不要粘贴 API Key、完整聊天内容、个人日历、提醒事项、文档、图片或其他个人数据。请先描述问题类型，等待开发者提供适合的后续沟通方式。</div>
           <p><a :href="`${base}support/`">前往支持中心</a></p>
         </section>

@@ -19,9 +19,9 @@ npm run build
 
 ## App Store Connect URL
 
-- Marketing URL: `https://isaachuo.github.io/familiar/`
-- Privacy Policy URL: `https://isaachuo.github.io/familiar/privacy/`
-- Support URL: `https://isaachuo.github.io/familiar/support/`
+- Marketing URL: `https://isaachuo.github.io/Familiar/`
+- Privacy Policy URL: `https://isaachuo.github.io/Familiar/privacy/`
+- Support URL: `https://isaachuo.github.io/Familiar/support/`
 
 首次部署前，在 GitHub 仓库的 **Settings → Pages → Build and deployment → Source** 中选择 **GitHub Actions**。
 
@@ -30,4 +30,4 @@ npm run build
 - Vue 3 + Vite 多页面构建，保留干净的 `/privacy/` 与 `/support/` URL。
 - 无网站分析、广告脚本、Cookie 或外部字体。
 - 图片与样式均由 GitHub Pages 同源托管。
-- `vite.config.js` 的 `base` 当前为 `/familiar/`；若以后绑定根域名，需要同步改为 `/` 并更新页面 canonical、manifest、sitemap 和 404 链接。
+- `vite.config.js` 的 `base` 当前为 `/Familiar/`；该路径区分大小写。若以后绑定根域名，需要同步改为 `/` 并更新页面 canonical、manifest、sitemap 和 404 链接。
