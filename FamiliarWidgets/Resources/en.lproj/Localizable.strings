@@ -1,0 +1,11 @@
+"widget.launch.display_name" = "New Familiar Conversation";
+"widget.launch.description" = "Open Familiar with a clean, editable conversation draft.";
+"widget.launch.title" = "Ask Familiar";
+"widget.launch.subtitle" = "Start a new conversation";
+"widget.launch.accessibility_label" = "Start a new Familiar conversation";
+"control.open.display_name" = "Familiar";
+"control.open.description" = "Open Familiar without changing your current draft or conversation.";
+"control.open.title" = "Open Familiar";
+"Open Familiar" = "Open Familiar";
+"Destination" = "Destination";
+"Familiar destination" = "Familiar destination";

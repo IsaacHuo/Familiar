@@ -10,6 +10,8 @@
 		C10000000000000000000002 /* FamiliarShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = C10000000000000000000001 /* FamiliarShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C10000000000000000000006 /* FamiliarSharedInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000005 /* FamiliarSharedInbox.swift */; };
 		C10000000000000000000007 /* FamiliarSharedInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000005 /* FamiliarSharedInbox.swift */; };
+		D10000000000000000000002 /* FamiliarWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = D10000000000000000000001 /* FamiliarWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		D10000000000000000000006 /* FamiliarControlIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000005 /* FamiliarControlIntent.swift */; };
 		F20000000000000000000001 /* AnyDocBridge.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = F20000000000000000000002 /* AnyDocBridge.xcframework */; };
 /* End PBXBuildFile section */
 
@@ -35,6 +37,13 @@
 			remoteGlobalIDString = C10000000000000000000010;
 			remoteInfo = FamiliarShareExtension;
 		};
+		D10000000000000000000030 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F10000000000000000000020 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D10000000000000000000010;
+			remoteInfo = FamiliarWidgets;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -45,6 +54,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				C10000000000000000000002 /* FamiliarShareExtension.appex in Embed App Extensions */,
+				D10000000000000000000002 /* FamiliarWidgets.appex in Embed App Extensions */,
 			);
 			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -56,6 +66,8 @@
 		B10000000000000000000001 /* FamiliarUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FamiliarUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C10000000000000000000001 /* FamiliarShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FamiliarShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		C10000000000000000000005 /* FamiliarSharedInbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FamiliarSharedInbox.swift; sourceTree = "<group>"; };
+		D10000000000000000000001 /* FamiliarWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FamiliarWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		D10000000000000000000005 /* FamiliarControlIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FamiliarControlIntent.swift; sourceTree = "<group>"; };
 		F10000000000000000000001 /* Familiar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Familiar.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F20000000000000000000002 /* AnyDocBridge.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = AnyDocBridge.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -76,6 +88,13 @@
 			);
 			target = C10000000000000000000010 /* FamiliarShareExtension */;
 		};
+		D10000000000000000000008 /* Exceptions for "FamiliarWidgets" folder in "FamiliarWidgets" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = D10000000000000000000010 /* FamiliarWidgets */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -95,6 +114,14 @@
 				C10000000000000000000008 /* Exceptions for "FamiliarShareExtension" folder in "FamiliarShareExtension" target */,
 			);
 			path = FamiliarShareExtension;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000003 /* FamiliarWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				D10000000000000000000008 /* Exceptions for "FamiliarWidgets" folder in "FamiliarWidgets" target */,
+			);
+			path = FamiliarWidgets;
 			sourceTree = "<group>";
 		};
 		F10000000000000000000003 /* Familiar */ = {
@@ -129,6 +156,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D10000000000000000000011 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		F10000000000000000000011 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -144,6 +178,7 @@
 			isa = PBXGroup;
 			children = (
 				C10000000000000000000005 /* FamiliarSharedInbox.swift */,
+				D10000000000000000000005 /* FamiliarControlIntent.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -153,6 +188,7 @@
 			children = (
 				F10000000000000000000003 /* Familiar */,
 				C10000000000000000000003 /* FamiliarShareExtension */,
+				D10000000000000000000003 /* FamiliarWidgets */,
 				C10000000000000000000004 /* Shared */,
 				A10000000000000000000002 /* FamiliarTests */,
 				B10000000000000000000002 /* FamiliarUITests */,
@@ -168,6 +204,7 @@
 				A10000000000000000000001 /* FamiliarTests.xctest */,
 				B10000000000000000000001 /* FamiliarUITests.xctest */,
 				C10000000000000000000001 /* FamiliarShareExtension.appex */,
+				D10000000000000000000001 /* FamiliarWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -251,6 +288,28 @@
 			productReference = C10000000000000000000001 /* FamiliarShareExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		D10000000000000000000010 /* FamiliarWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D10000000000000000000020 /* Build configuration list for PBXNativeTarget "FamiliarWidgets" */;
+			buildPhases = (
+				D10000000000000000000012 /* Sources */,
+				D10000000000000000000011 /* Frameworks */,
+				D10000000000000000000013 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				D10000000000000000000003 /* FamiliarWidgets */,
+			);
+			name = FamiliarWidgets;
+			packageProductDependencies = (
+			);
+			productName = FamiliarWidgets;
+			productReference = D10000000000000000000001 /* FamiliarWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		F10000000000000000000010 /* Familiar */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = F10000000000000000000030 /* Build configuration list for PBXNativeTarget "Familiar" */;
@@ -264,6 +323,7 @@
 			);
 			dependencies = (
 				C10000000000000000000031 /* PBXTargetDependency */,
+				D10000000000000000000031 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				F10000000000000000000003 /* Familiar */,
@@ -296,6 +356,9 @@
 					C10000000000000000000010 = {
 						CreatedOnToolsVersion = 26.6;
 					};
+					D10000000000000000000010 = {
+						CreatedOnToolsVersion = 26.6;
+					};
 					F10000000000000000000010 = {
 						CreatedOnToolsVersion = 26.6;
 					};
@@ -320,6 +383,7 @@
 				A10000000000000000000010 /* FamiliarTests */,
 				B10000000000000000000010 /* FamiliarUITests */,
 				C10000000000000000000010 /* FamiliarShareExtension */,
+				D10000000000000000000010 /* FamiliarWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -340,6 +404,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		C10000000000000000000013 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D10000000000000000000013 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -378,6 +449,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D10000000000000000000012 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D10000000000000000000006 /* FamiliarControlIntent.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		F10000000000000000000012 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -403,6 +482,11 @@
 			isa = PBXTargetDependency;
 			target = C10000000000000000000010 /* FamiliarShareExtension */;
 			targetProxy = C10000000000000000000030 /* PBXContainerItemProxy */;
+		};
+		D10000000000000000000031 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D10000000000000000000010 /* FamiliarWidgets */;
+			targetProxy = D10000000000000000000030 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -513,6 +597,64 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.isaachuo.familiar.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		D10000000000000000000021 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G229WP43HH;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FamiliarWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.isaachuo.familiar.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		D10000000000000000000022 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G229WP43HH;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FamiliarWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.isaachuo.familiar.widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -657,6 +799,15 @@
 			buildConfigurations = (
 				C10000000000000000000021 /* Debug */,
 				C10000000000000000000022 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D10000000000000000000020 /* Build configuration list for PBXNativeTarget "FamiliarWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D10000000000000000000021 /* Debug */,
+				D10000000000000000000022 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -1,0 +1,11 @@
+"widget.launch.display_name" = "新建 Familiar 会话";
+"widget.launch.description" = "打开 Familiar，并进入一个干净、可编辑的新会话草稿。";
+"widget.launch.title" = "询问 Familiar";
+"widget.launch.subtitle" = "开始新会话";
+"widget.launch.accessibility_label" = "开始新的 Familiar 会话";
+"control.open.display_name" = "Familiar";
+"control.open.description" = "打开 Familiar，不改变当前草稿或会话。";
+"control.open.title" = "打开 Familiar";
+"Open Familiar" = "打开 Familiar";
+"Destination" = "目标";
+"Familiar destination" = "Familiar 目标";
