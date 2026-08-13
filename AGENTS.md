@@ -16,6 +16,10 @@ Familiar is a standalone iPhone-native Agent Runtime with a chat-first interface
 
 ## Engineering Principles
 
+### Git Workflow
+
+- Develop directly on `main` by default. Do not create a new branch unless the user explicitly requests one.
+
 ### 1. Prefer Simplicity
 
 Choose the simplest implementation that fully meets the current requirements.
