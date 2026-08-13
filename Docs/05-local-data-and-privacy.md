@@ -17,6 +17,7 @@
 - Share Extension 只把用户明确共享的文本、URL 和文件复制到 App Group 收件箱；扩展不读取 Keychain、会话、Provider 配置或 EventKit 数据。
 - Ask / Process App Intents 只把用户明确提供且经过长度限制的文本交给主 App；文本随后沿用普通消息的 BYOK 请求路径。Open Familiar 不创建草稿、不发送网络请求，所有 Intent 均不能授予工具写权限。
 - Run 终态通知是用户可选的本地通知，不使用远程推送；通知只包含通用状态与本地 Run / 会话标识，不包含问题、回答、附件名或工具结果。
+- Spotlight 使用受保护的设备内索引，只保存已有内容会话的标题、更新时间和本地 UUID；不索引消息正文、附件名、工具结果、密钥或 Provider 配置。
 
 ## 2. 数据清单
 
@@ -43,6 +44,7 @@
 | Share Extension 输入 | 用户从其他 App 明确共享 | App Group `ShareInbox`，导入后复制到 App 私有草稿附件目录 | 不因共享或导入自动发送 | 成功或终态失败处理后删除共享副本；草稿副本沿用附件生命周期 |
 | App Intent 文本 | 用户在 Siri / Shortcuts / Spotlight 明确提供 | 仅作为进程内 handoff 和新草稿短暂存在，发送后进入本地消息记录 | Ask / Process 通过当前选择的 BYOK Provider 发送；Open 不发送 | 未发送草稿被拒绝覆盖；成功提交后沿用会话生命周期 |
 | 本地通知状态 | Agent Run 终态 | iOS 通知中心保存通用文案和本地 Run / 会话 UUID；开关保存在 UserDefaults | 无 Familiar 服务或远程推送目的地 | 用户关闭功能时清理 Familiar 待处理与已投递通知；系统也可按自身策略清理 |
+| Spotlight 会话索引 | 本地 SwiftData 会话 | Core Spotlight `.complete` 保护索引；最多 80 字符标题、更新时间和会话 UUID | 无 Familiar 服务或公开 Web 索引目的地 | 随当前会话集合重建；重命名更新，删除会话后清理对应结果 |
 
 ## 3. SwiftData Schema
 
@@ -419,6 +421,16 @@ Agent Run 设计为可恢复，不是常驻 daemon。用户退出 App 后，必�
 - Familiar 不注册远程通知、不上传 device token，也不通过自有服务器发送通知。
 - 用户关闭功能时清理 Familiar 的待处理与已投递通知。
 
+## 14.7 Spotlight 会话索引
+
+- 只索引已经产生消息或 Run 的会话，空白会话不进入系统搜索。
+- 每项只包含最多 80 字符的会话标题、更新时间、Familiar 标识和本地会话 UUID。
+- 索引使用独立的 Core Spotlight 自定义索引，并指定 `.complete` 文件保护等级；设备锁定时受系统数据保护约束。
+- 不写入消息正文、文档抽取文本、附件名、工具结果、Run 详情、API Key 或 Provider 配置。
+- Core Spotlight 索引保留在设备上；Familiar 不启用公开索引、不上传索引内容，也不运营搜索服务器。
+- 点击结果只把 UUID 交给现有本地 Deep Link 路由。SwiftData 会话不存在时不恢复或重新创建内容。
+- 当前会话集合变化时整域刷新，确保重命名和删除反映到系统结果；索引失败不影响本地会话操作。
+
 ## 15. 隐私验收
 
 - 抓包确认 Provider 请求目的地。
@@ -432,3 +444,4 @@ Agent Run 设计为可恢复，不是常驻 daemon。用户退出 App 后，必�
 - 停止语音后无录音文件。
 - 验证 Markdown CSP 不允许 HTTP/HTTPS 图片，且远程图片只呈现为用户主动打开的来源链接。
 - 验证通知只在用户明确开启后安排，锁屏文案不包含会话内容，关闭后清理待处理与已投递通知。
+- 验证 Spotlight 项不含聊天正文或附件信息，点击能回到本地会话，重命名与删除后结果同步更新。

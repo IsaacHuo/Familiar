@@ -142,6 +142,8 @@ MCP、Skills、Core ML、Background、Memory、Subagent 都是能力，不是 MV
 
 当前系统通知第一版只覆盖用户主动启动的 Run 终态。用户在设置中明确开启后，Run 在 App 非活跃期间完成或失败时可安排一条本地通知；通知只显示通用状态，不包含问题、回答、文件名或工具结果。点击通知复用类型化 Deep Link 回到对应 Run，无法取得 Run ID 时回到对应会话。该能力不使用远程推送、不引入 Familiar 后端，也不代表 Run 已具备独立后台执行能力。
 
+当前 Spotlight 第一版只索引已有消息或 Run 的本地会话。受保护的设备内索引仅保存最多 80 字符的会话标题、更新时间和本地会话 UUID，不索引聊天正文、附件名、工具结果、API Key 或 Provider 配置。点击结果复用会话 Deep Link；本地重命名或删除后，索引随当前会话集合重建。该能力不使用公开 Web 索引，也不把内容同步到 Familiar 服务。
+
 App Intents 不进入 Agent Core，位于外层：
 
 ```text
@@ -241,6 +243,7 @@ Phase 8   Skills → MCP Client → Core ML specialized models
 9. SwiftData 启动路径能够处理当前开发 Schema 与旧开发 store 的切换。
 10. EventKit、相机、Speech 和安全作用域文件完成真机验收。
 11. 通知权限只在用户明确开启时请求；关闭后不再安排 Familiar 通知，并清理待处理与已投递通知。
+12. Spotlight 结果只暴露受保护的本地会话标题和 UUID，点击后能回到存在的本地会话；删除会话后对应结果被清理。
 
 ## 11. 产品成功条件
 

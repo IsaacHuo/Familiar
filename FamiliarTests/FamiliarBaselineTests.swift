@@ -1,3 +1,4 @@
+import CoreSpotlight
 import Foundation
 import SwiftData
 import Testing
@@ -97,20 +98,20 @@ struct FamiliarBaselineTests {
         let handoff = FamiliarAppIntentHandoff.shared
         _ = handoff.takePendingRequest()
 
-        var emptyAsk = AskFamiliarIntent()
+        let emptyAsk = AskFamiliarIntent()
         emptyAsk.question = "   "
         _ = try await emptyAsk.perform()
         #expect(handoff.pendingRequest == nil)
 
         let oversized = String(repeating: "x", count: FamiliarDeepLink.maximumPrefillCharacters + 1)
-        var ask = AskFamiliarIntent()
+        let ask = AskFamiliarIntent()
         ask.question = "  \(oversized)  "
         _ = try await ask.perform()
         let askRequest = try #require(handoff.takePendingRequest())
         #expect(askRequest.automaticallySubmit)
         #expect(askRequest.deepLink == .newDraft(text: String(oversized.prefix(FamiliarDeepLink.maximumPrefillCharacters))))
 
-        var process = ProcessWithFamiliarIntent()
+        let process = ProcessWithFamiliarIntent()
         process.text = "Process this"
         _ = try await process.perform()
         let processRequest = try #require(handoff.takePendingRequest())
@@ -141,6 +142,31 @@ struct FamiliarBaselineTests {
         #expect(FamiliarNotificationService.route(from: [:]) == nil)
         #expect(FamiliarNotificationRoute(encodedValue: "run:not-a-uuid") == nil)
         #expect(FamiliarNotificationRoute(encodedValue: "unknown:\(runID.uuidString)") == nil)
+    }
+
+    @Test("Spotlight conversation items contain only bounded local metadata and typed routes")
+    @MainActor
+    func spotlightConversationItems() {
+        let id = UUID()
+        let updatedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let conversation = FamiliarSpotlightConversation(
+            id: id,
+            title: "  " + String(repeating: "L", count: FamiliarSpotlightIndexer.maximumTitleCharacters + 1) + "  ",
+            updatedAt: updatedAt
+        )
+        let item = FamiliarSpotlightIndexer.searchableItem(for: conversation)
+
+        #expect(item.uniqueIdentifier == "conversation:\(id.uuidString)")
+        #expect(item.domainIdentifier == FamiliarSpotlightIndexer.domainIdentifier)
+        #expect(item.attributeSet.title == String(repeating: "L", count: FamiliarSpotlightIndexer.maximumTitleCharacters))
+        #expect(item.attributeSet.metadataModificationDate == updatedAt)
+        #expect(item.attributeSet.contentDescription == String(localized: "spotlight.conversation.description"))
+
+        let activity = NSUserActivity(activityType: CSSearchableItemActionType)
+        activity.userInfo = [CSSearchableItemActivityIdentifier: conversation.searchableIdentifier]
+        #expect(FamiliarSpotlightIndexer.deepLink(from: activity) == .conversation(id))
+        #expect(FamiliarSpotlightIndexer.deepLink(forSearchableIdentifier: "conversation:not-a-uuid") == nil)
+        #expect(FamiliarSpotlightIndexer.deepLink(forSearchableIdentifier: "run:\(id.uuidString)") == nil)
     }
 
     @Test("Shared inbox stores bounded text and verified file copies")

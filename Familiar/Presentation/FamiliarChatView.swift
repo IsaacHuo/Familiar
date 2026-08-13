@@ -181,6 +181,7 @@ struct FamiliarChatView: View {
             ))
             handlePendingSystemEntry()
             handleSharedInbox()
+            updateSpotlightIndex(spotlightConversations)
         }
         .onChange(of: speechTranscriber.errorMessage) { _, message in
             if let message { controller.errorMessage = message }
@@ -213,6 +214,26 @@ struct FamiliarChatView: View {
         .onChange(of: controller.draftImages.count) { _, _ in
             handlePendingSystemEntry()
             handleSharedInbox()
+        }
+        .onChange(of: spotlightConversations) { _, conversations in
+            updateSpotlightIndex(conversations)
+        }
+    }
+
+    private var spotlightConversations: [FamiliarSpotlightConversation] {
+        conversations.compactMap { conversation in
+            guard !conversation.messages.isEmpty || !conversation.agentRuns.isEmpty else { return nil }
+            return FamiliarSpotlightConversation(
+                id: conversation.id,
+                title: conversation.title,
+                updatedAt: conversation.updatedAt
+            )
+        }
+    }
+
+    private func updateSpotlightIndex(_ conversations: [FamiliarSpotlightConversation]) {
+        Task {
+            await FamiliarSpotlightIndexer.shared.replaceConversations(conversations)
         }
     }
 

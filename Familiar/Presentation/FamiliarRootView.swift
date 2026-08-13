@@ -1,3 +1,4 @@
+import CoreSpotlight
 import SwiftUI
 
 struct FamiliarRootView: View {
@@ -29,6 +30,11 @@ struct FamiliarRootView: View {
         .onChange(of: appIntentHandoff.pendingRequest) { _, _ in handlePendingAppIntent() }
         .onOpenURL { url in
             guard let deepLink = FamiliarDeepLink(url: url) else { return }
+            pendingSystemEntry = .deepLink(deepLink)
+            setOnboardingCompleted(true)
+        }
+        .onContinueUserActivity(CSSearchableItemActionType) { userActivity in
+            guard let deepLink = FamiliarSpotlightIndexer.deepLink(from: userActivity) else { return }
             pendingSystemEntry = .deepLink(deepLink)
             setOnboardingCompleted(true)
         }

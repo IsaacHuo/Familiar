@@ -291,3 +291,5 @@
 "notification.run.completed.body" = "回答已就绪。打开 Familiar 查看。";
 "notification.run.failed.title" = "Familiar 运行失败";
 "notification.run.failed.body" = "打开 Familiar 查看本次 Run，并可按需重试。";
+"spotlight.conversation.description" = "在 Familiar 中打开这个本地会话。";
+"spotlight.conversation.keyword" = "会话";

@@ -120,6 +120,18 @@ const base = import.meta.env.BASE_URL;
         </details>
 
         <details>
+          <summary>如何从 Spotlight 找到 Familiar 会话？</summary>
+          <div class="detail-content">
+            <ol>
+              <li>先在 Familiar 中创建至少含一条消息或一次 Run 的会话。</li>
+              <li>稍候片刻，再从 iPhone 主屏幕下拉并搜索会话标题。</li>
+              <li>点击结果即可打开 Familiar，并回到对应的本地会话。</li>
+            </ol>
+            <p>Spotlight 只索引会话标题、更新时间和本地标识，不会显示消息正文、附件名或工具结果。会话重命名或删除后，索引会在 Familiar 下次同步时更新；空会话不会出现在结果中。</p>
+          </div>
+        </details>
+
+        <details>
           <summary>如何删除聊天记录和附件？</summary>
           <div class="detail-content">
             <p>删除 Familiar 中的会话会同时清理该会话关联的本地内容。若要移除模型服务凭证，请另外前往设置清除 API Key。删除本地数据不会撤回此前已经发送给第三方模型服务的请求。</p>

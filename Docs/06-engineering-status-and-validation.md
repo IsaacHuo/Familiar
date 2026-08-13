@@ -81,12 +81,14 @@
 - App Intent 输入限制为 20,000 字符；未发送草稿不会被覆盖，工具写入仍由现有 Execution Policy 决定。
 - 新增用户可选的 Run 结束本地通知；仅在 App 非活跃且 Run 完成或失败时安排，通知只显示通用状态并通过类型化路由返回本地 Run / 会话。
 - 通知权限按需请求，拒绝后提供系统设置入口；关闭功能会清理 Familiar 待处理与已投递通知。未注册远程推送，也未引入后台执行保证。
+- 新增受保护的 Core Spotlight 会话索引；仅索引已有内容会话的最多 80 字符标题、更新时间和本地 UUID，点击后复用现有会话 Deep Link。
+- Spotlight 不索引消息正文、附件名、工具结果、密钥或 Provider 配置；重命名和删除通过当前完整会话集合刷新。
 
 ## 2.1 与目标架构的差距
 
 项目按 iPhone-native Agent Runtime 方向演进。当前实现聚焦聊天与有限 EventKit 工具，尚未交付的架构部分：
 
-- System Entry：App 内入口、Share Extension、Deep Link、Run 终态本地通知、App Intents 与 App Shortcuts 已交付；Widgets / Controls 和实体级 Spotlight 索引尚未实现。
+- System Entry：App 内入口、Share Extension、Deep Link、Run 终态本地通知、会话级 Spotlight 索引、App Intents 与 App Shortcuts 已交付；Widgets / Controls 尚未实现。
 - Capability Registry：System Tools 仅 Calendar/Reminders；Workspace 仅 File/PDF/Text；Contacts、Photos、Maps、Location、Weather、Web 等未接入。
 - Execution Policy：已覆盖能力可用性、权限请求、结构化写入确认和单次 Undo；App Intents 只负责显式启动 Run，不承担或绕过授权。
 - Run/Step 与 Task Timeline：已持久化运行终态和工具终态，并渲染运行、确认与工具记录；完整可恢复重放尚未实现。
@@ -153,8 +155,8 @@ Rust/FFI fixture 已通过：
 ### 3.5 自动化测试
 
 - 已建立 `FamiliarTests` 与 `FamiliarUITests` target。
-- `FamiliarTests/FamiliarBaselineTests` 已在 iOS 26.5 arm64 Simulator 通过 17 项，覆盖 Provider catalog、SSE framing、Markdown CSP、Deep Link 与通知路由解析、本地路由、App Intent 前台 handoff 与长度边界、Share Inbox 原子写入/文件副本/篡改路径拒绝及 AnyDoc 附件导入链路、附件路径边界、写入策略、Run/Step SwiftData 持久化、确认取消幂等与 V2 store 恢复删除范围。
-- EventKit policy / action proposal 与 Agent Runtime 的多轮、事件顺序、最大轮次、上下文上限测试已实现；当前完整单元测试为 22 项、3 个套件通过。
+- `FamiliarTests/FamiliarBaselineTests` 已在 iOS 26.5 arm64 Simulator 通过 18 项，覆盖 Provider catalog、SSE framing、Markdown CSP、Deep Link、通知与 Spotlight 路由解析、受限 Spotlight 元数据、本地路由、App Intent 前台 handoff 与长度边界、Share Inbox 原子写入/文件副本/篡改路径拒绝及 AnyDoc 附件导入链路、附件路径边界、写入策略、Run/Step SwiftData 持久化、确认取消幂等与 V2 store 恢复删除范围。
+- EventKit policy / action proposal 与 Agent Runtime 的多轮、事件顺序、最大轮次、上下文上限测试已实现；当前完整单元测试为 23 项、3 个套件通过。
 
 ## 4. SwiftData 启动问题
 
@@ -336,17 +338,23 @@ App Intent handoff 与 20,000 字符边界已有单元测试。当前运行中�
 
 类型化通知路由及 `userInfo` 解析已有单元测试。仍需在真机验证权限弹窗、系统设置恢复、锁屏呈现、完成 / 失败投递、冷启动点击和目标已删除时的恢复行为。当前没有 `BGContinuedProcessingTask`，因此通知只报告当前进程实际到达的终态，不保证 App 被系统挂起后 Run 仍会完成；本轮不做人工视觉检查。
 
-### 8.8 孤儿附件
+### 8.8 Spotlight 会话索引
+
+已实现 Core Spotlight 自定义索引和系统结果回流。索引指定 `.complete` 文件保护等级，只纳入已有消息或 Run 的会话；每项只含最多 80 字符标题、更新时间、Familiar 关键词和 `conversation:<UUID>`，不含消息正文、附件名、工具结果、Run 详情、密钥或 Provider 配置。聊天界面根据当前 SwiftData 集合触发整域刷新，索引 actor 串行合并连续更新；重命名和删除不会保留历史结果。用户点击系统结果后，`CSSearchableItemActionType` 复用现有 Deep Link 选择本地会话。
+
+Spotlight item 元数据边界、严格标识解析和 `NSUserActivity` 路由已有单元测试。仍需在真机验证系统索引延迟、中英文查询、设备锁定后的数据保护、冷启动点击、重命名和删除后的结果刷新；本轮不做人工视觉检查。
+
+### 8.9 孤儿附件
 
 聊天容器出现时会根据 SwiftData 引用清理 Drafts 与 Messages 目录中的孤儿附件。仍需要在真实文件系统和大附件集合上验证清理时机与性能。
 
-### 8.9 无障碍
+### 8.10 无障碍
 
 代码级语义已补齐：抽屉当前会话带选中 trait；首启页码、快门和发送禁用原因有本地化描述；确认卡组合标题、目标与字段；运行中和终态工具记录读出状态与详情；新确认出现时通过 `AccessibilityFocusState` 转移 VoiceOver 焦点。
 
 仍需真机完成 VoiceOver 全路径、焦点返回、极端 Dynamic Type、Increase Contrast 和 Bold Text 验收。
 
-### 8.10 幂等范围
+### 8.11 幂等范围
 
 EventKit commit 幂等状态只存在于当前进程。系统 save 完成后进程立即终止的边界需要专项验证。
 

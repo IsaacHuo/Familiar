@@ -291,3 +291,5 @@
 "notification.run.completed.body" = "Your response is ready. Open Familiar to review it.";
 "notification.run.failed.title" = "Familiar run failed";
 "notification.run.failed.body" = "Open Familiar to review the run and try again.";
+"spotlight.conversation.description" = "Open this local conversation in Familiar.";
+"spotlight.conversation.keyword" = "conversation";
