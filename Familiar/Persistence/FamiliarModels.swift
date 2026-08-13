@@ -47,6 +47,7 @@ final class FamiliarAgentRun {
     var startedAt: Date
     var finishedAt: Date?
     var finishReason: String?
+    var responseMessageID: UUID?
     var conversation: FamiliarConversation?
 
     @Relationship(deleteRule: .cascade, inverse: \FamiliarAgentStep.run)
@@ -143,6 +144,9 @@ final class FamiliarMessage {
     @Relationship(deleteRule: .cascade, inverse: \FamiliarAttachment.message)
     var attachments: [FamiliarAttachment]
 
+    @Relationship(deleteRule: .cascade, inverse: \FamiliarSourceRecord.message)
+    var sources: [FamiliarSourceRecord]
+
     init(
         id: UUID = UUID(),
         role: FamiliarMessageRole,
@@ -162,10 +166,53 @@ final class FamiliarMessage {
         self.modelID = modelID
         self.conversation = conversation
         attachments = []
+        sources = []
     }
 
     var role: FamiliarMessageRole {
         FamiliarMessageRole(rawValue: roleRawValue) ?? .assistant
+    }
+}
+
+@Model
+final class FamiliarSourceRecord {
+    @Attribute(.unique) var id: UUID
+    var sourceID: String
+    var kindRawValue: String
+    var title: String
+    var urlString: String
+    var siteName: String?
+    var snippet: String?
+    var sequence: Int
+    var retrievedAt: Date
+    var message: FamiliarMessage?
+
+    init(
+        id: UUID = UUID(),
+        sourceID: String,
+        kind: FamiliarSourceKind,
+        title: String,
+        urlString: String,
+        siteName: String?,
+        snippet: String? = nil,
+        sequence: Int,
+        retrievedAt: Date,
+        message: FamiliarMessage? = nil
+    ) {
+        self.id = id
+        self.sourceID = sourceID
+        kindRawValue = kind.rawValue
+        self.title = title
+        self.urlString = urlString
+        self.siteName = siteName
+        self.snippet = snippet
+        self.sequence = sequence
+        self.retrievedAt = retrievedAt
+        self.message = message
+    }
+
+    var kind: FamiliarSourceKind {
+        FamiliarSourceKind(rawValue: kindRawValue) ?? .searchResult
     }
 }
 

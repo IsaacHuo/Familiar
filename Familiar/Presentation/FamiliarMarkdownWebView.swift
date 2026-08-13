@@ -14,15 +14,18 @@ struct FamiliarMarkdownWebView: View {
     }
 
     let markdown: String
+    let sources: [FamiliarSource]
     let mode: Mode
     let isStreaming: Bool
 
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var contentHeight: CGFloat = 1
     @State private var didFailRendering = false
 
-    init(markdown: String, mode: Mode = .compact, isStreaming: Bool = false) {
+    init(markdown: String, sources: [FamiliarSource] = [], mode: Mode = .compact, isStreaming: Bool = false) {
         self.markdown = FamiliarMarkdownNormalizer.normalize(markdown)
+        self.sources = sources
         self.mode = mode
         self.isStreaming = isStreaming
     }
@@ -40,13 +43,19 @@ struct FamiliarMarkdownWebView: View {
             } else {
                 FamiliarMarkdownPlatformWebView(
                     markdown: markdown,
+                    sources: sources,
                     height: $contentHeight,
                     didFailRendering: $didFailRendering,
                     isScrollEnabled: mode == .document,
                     isStreaming: isStreaming,
+                    reduceMotion: reduceMotion,
                     openURL: { openURL($0) }
                 )
                 .frame(height: mode == .document ? nil : max(1, contentHeight))
+                .transaction { transaction in
+                    transaction.animation = nil
+                    transaction.disablesAnimations = true
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -145,15 +154,35 @@ enum FamiliarMarkdownHTML {
         }
         return String(arrayLiteral.dropFirst().dropLast())
     }
+
+    static func sourcesJSONString(_ sources: [FamiliarSource]) -> String {
+        let values = sources.map {
+            [
+                "id": $0.id,
+                "title": $0.title,
+                "url": $0.url.absoluteString,
+                "siteName": $0.siteName ?? $0.url.host ?? ""
+            ]
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: values),
+              let json = String(data: data, encoding: .utf8)
+        else { return "[]" }
+        return json
+            .replacingOccurrences(of: "<", with: "\\u003c")
+            .replacingOccurrences(of: ">", with: "\\u003e")
+            .replacingOccurrences(of: "&", with: "\\u0026")
+    }
 }
 
 #if os(iOS)
 private struct FamiliarMarkdownPlatformWebView: UIViewRepresentable {
     let markdown: String
+    let sources: [FamiliarSource]
     @Binding var height: CGFloat
     @Binding var didFailRendering: Bool
     let isScrollEnabled: Bool
     let isStreaming: Bool
+    let reduceMotion: Bool
     let openURL: (URL) -> Void
 
     func makeCoordinator() -> FamiliarMarkdownWebCoordinator {
@@ -172,7 +201,7 @@ private struct FamiliarMarkdownPlatformWebView: UIViewRepresentable {
 
     func updateUIView(_ webView: WKWebView, context: Context) {
         context.coordinator.openURL = openURL
-        context.coordinator.update(markdown: markdown, isStreaming: isStreaming, in: webView)
+        context.coordinator.update(markdown: markdown, sources: sources, isStreaming: isStreaming, reduceMotion: reduceMotion, in: webView)
     }
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: FamiliarMarkdownWebCoordinator) {
@@ -201,10 +230,12 @@ private struct FamiliarMarkdownPlatformWebView: UIViewRepresentable {
 #elseif os(macOS)
 private struct FamiliarMarkdownPlatformWebView: NSViewRepresentable {
     let markdown: String
+    let sources: [FamiliarSource]
     @Binding var height: CGFloat
     @Binding var didFailRendering: Bool
     let isScrollEnabled: Bool
     let isStreaming: Bool
+    let reduceMotion: Bool
     let openURL: (URL) -> Void
 
     func makeCoordinator() -> FamiliarMarkdownWebCoordinator {
@@ -223,7 +254,7 @@ private struct FamiliarMarkdownPlatformWebView: NSViewRepresentable {
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.openURL = openURL
-        context.coordinator.update(markdown: markdown, isStreaming: isStreaming, in: webView)
+        context.coordinator.update(markdown: markdown, sources: sources, isStreaming: isStreaming, reduceMotion: reduceMotion, in: webView)
     }
 
     static func dismantleNSView(_ webView: WKWebView, coordinator: FamiliarMarkdownWebCoordinator) {
@@ -256,8 +287,8 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
     private weak var webView: WKWebView?
     private var didStartLoading = false
     private var isRendererReady = false
-    private var pendingMarkdown = ""
-    private var renderedMarkdown: String?
+    private var pendingRender = FamiliarMarkdownRenderState(markdown: "", sourcesJSON: "[]", isStreaming: false, reduceMotion: false)
+    private var renderedState: FamiliarMarkdownRenderState?
     private var isRendering = false
     private var scheduledRender: DispatchWorkItem?
     var openURL: (URL) -> Void
@@ -276,11 +307,16 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
         self.webView = webView
     }
 
-    func update(markdown: String, isStreaming: Bool, in webView: WKWebView) {
+    func update(markdown: String, sources: [FamiliarSource], isStreaming: Bool, reduceMotion: Bool, in webView: WKWebView) {
         self.webView = webView
-        pendingMarkdown = markdown
+        pendingRender = .init(
+            markdown: markdown,
+            sourcesJSON: FamiliarMarkdownHTML.sourcesJSONString(sources),
+            isStreaming: isStreaming,
+            reduceMotion: reduceMotion
+        )
 
-        if renderedMarkdown != markdown && didFailRendering.wrappedValue {
+        if renderedState != pendingRender && didFailRendering.wrappedValue {
             DispatchQueue.main.async { [weak self] in
                 self?.didFailRendering.wrappedValue = false
             }
@@ -315,7 +351,13 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
             switch message.name {
             case "heightChanged":
                 if let value = message.body as? NSNumber {
-                    self.height.wrappedValue = max(1, min(CGFloat(truncating: value), 16_000))
+                    let newHeight = max(1, min(CGFloat(truncating: value), 16_000))
+                    guard abs(self.height.wrappedValue - newHeight) >= 1 else { break }
+                    var transaction = Transaction(animation: nil)
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        self.height.wrappedValue = newHeight
+                    }
                 }
             case "rendererReady":
                 self.isRendererReady = true
@@ -357,6 +399,11 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
             return
         }
 
+        if url.scheme?.lowercased() == "file", url.fragment != nil {
+            decisionHandler(.allow)
+            return
+        }
+
         _ = open(url)
         decisionHandler(.cancel)
     }
@@ -365,20 +412,20 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
         guard let webView,
               isRendererReady,
               !isRendering,
-              renderedMarkdown != pendingMarkdown
+              renderedState != pendingRender
         else { return }
 
-        let targetMarkdown = pendingMarkdown
-        let literal = FamiliarMarkdownHTML.javascriptStringLiteral(targetMarkdown)
+        let target = pendingRender
+        let literal = FamiliarMarkdownHTML.javascriptStringLiteral(target.markdown)
         isRendering = true
-        webView.evaluateJavaScript("window.FamiliarMarkdown.render(\(literal));") { [weak self] _, error in
+        webView.evaluateJavaScript("window.FamiliarMarkdown.render(\(literal), { sources: \(target.sourcesJSON), streaming: \(target.isStreaming), reduceMotion: \(target.reduceMotion) });") { [weak self] _, error in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isRendering = false
                 if error == nil {
-                    self.renderedMarkdown = targetMarkdown
-                    if self.pendingMarkdown != targetMarkdown {
-                        self.scheduleRender(isStreaming: true)
+                    self.renderedState = target
+                    if self.pendingRender != target {
+                        self.scheduleRender(isStreaming: self.pendingRender.isStreaming)
                     }
                 } else {
                     self.didFailRendering.wrappedValue = true
@@ -420,4 +467,11 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
         openURL(url)
         return true
     }
+}
+
+private struct FamiliarMarkdownRenderState: Equatable {
+    let markdown: String
+    let sourcesJSON: String
+    let isStreaming: Bool
+    let reduceMotion: Bool
 }

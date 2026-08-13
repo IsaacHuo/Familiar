@@ -64,6 +64,21 @@ struct FamiliarRuntimeTests {
         #expect(failed)
     }
 
+    @Test("Runtime enters responding on the first text delta")
+    func respondingState() async throws {
+        let registry = try FamiliarToolRegistry(tools: [])
+        let loop = FamiliarAgentLoop(provider: FamiliarFakeProvider(mode: .text), registry: registry, policy: .init(), confirmationCoordinator: .init(), undoStore: .init())
+        var payloads: [FamiliarRuntimeEventPayload] = []
+        for try await event in loop.stream(messages: [], settings: .defaultValue, apiKey: "key") {
+            payloads.append(event.payload)
+        }
+        let responding = payloads.firstIndex { if case .state(.responding) = $0 { true } else { false } }
+        let delta = payloads.firstIndex { if case .textDelta = $0 { true } else { false } }
+        #expect(responding != nil)
+        #expect(delta != nil)
+        #expect(responding! < delta!)
+    }
+
     @Test("Runtime rejects oversized context before provider execution")
     func contextLimit() async throws {
         let registry = try FamiliarToolRegistry(tools: [])

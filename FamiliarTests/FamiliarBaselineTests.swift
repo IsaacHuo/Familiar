@@ -45,6 +45,15 @@ struct FamiliarBaselineTests {
         #expect(!FamiliarMarkdownHTML.baseDocument.contains("img-src https:"))
     }
 
+    @Test("Conversation links open only web destinations in app")
+    func conversationLinkRouting() throws {
+        #expect(FamiliarConversationURLRouter.shouldOpenInApp(try #require(URL(string: "https://example.com/path"))))
+        #expect(FamiliarConversationURLRouter.shouldOpenInApp(try #require(URL(string: "HTTP://example.com"))))
+        #expect(!FamiliarConversationURLRouter.shouldOpenInApp(try #require(URL(string: "mailto:hello@example.com"))))
+        #expect(!FamiliarConversationURLRouter.shouldOpenInApp(try #require(URL(string: "https:///missing-host"))))
+        #expect(!FamiliarConversationURLRouter.shouldOpenInApp(try #require(URL(string: "file:///tmp/page.html"))))
+    }
+
     @Test("Deep links accept only bounded typed routes")
     func deepLinkParsing() throws {
         let conversationID = UUID()

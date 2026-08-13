@@ -2,6 +2,8 @@
   "use strict";
 
   const content = document.getElementById("content");
+  let pendingHeightFrame = null;
+  let lastReportedHeight = 0;
 
   function post(name, payload) {
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers[name]) {
@@ -10,16 +12,12 @@
   }
 
   function reportHeight() {
-    requestAnimationFrame(function () {
-      const body = document.body;
-      const html = document.documentElement;
-      const height = Math.max(
-        body.scrollHeight,
-        body.offsetHeight,
-        html.clientHeight,
-        html.scrollHeight,
-        html.offsetHeight
-      );
+    if (pendingHeightFrame !== null) return;
+    pendingHeightFrame = requestAnimationFrame(function () {
+      pendingHeightFrame = null;
+      const height = Math.ceil(Math.max(content.scrollHeight, content.getBoundingClientRect().height));
+      if (Math.abs(height - lastReportedHeight) < 1) return;
+      lastReportedHeight = height;
       post("heightChanged", height);
     });
   }
@@ -41,6 +39,23 @@
         return prefix + '<span class="' + className + '" aria-label="task item"></span> ';
       }
     );
+  }
+
+  function extractCitations(markdown, sources) {
+    const sourceMap = new Map();
+    (sources || []).forEach(function (source, index) {
+      if (source && typeof source.id === "string") {
+        sourceMap.set(source.id, { source: source, number: index + 1 });
+      }
+    });
+
+    return markdown.replace(/\[\[([^\]\n]+)\]\]/g, function (match, sourceID) {
+      const entry = sourceMap.get(sourceID.trim());
+      if (!entry) return match;
+      const source = entry.source;
+      const label = source.title || source.siteName || source.url;
+      return '<a class="citation-chip" href="' + escapeHTML(source.url) + '" title="' + escapeHTML(label) + '" aria-label="' + escapeHTML("Source " + entry.number + ": " + label) + '">' + entry.number + "</a>";
+    });
   }
 
   function extractFootnotes(markdown) {
@@ -414,7 +429,7 @@
     });
   }
 
-  function render(markdown) {
+  function render(markdown, options) {
     try {
       const md = createMarkdownIt();
       if (!md) {
@@ -423,7 +438,8 @@
         return;
       }
 
-      const footnoteResult = extractFootnotes(preprocessTaskLists(markdown || ""));
+      const citedMarkdown = extractCitations(markdown || "", options && options.sources);
+      const footnoteResult = extractFootnotes(preprocessTaskLists(citedMarkdown));
       const mathResult = extractMath(footnoteResult.markdown);
       const mermaidResult = extractMermaid(mathResult.markdown);
       const rawHTML = md.render(mermaidResult.markdown) + renderFootnotes(footnoteResult.notes, md);
@@ -451,7 +467,7 @@
   }
 
   if (window.ResizeObserver) {
-    new ResizeObserver(reportHeight).observe(document.body);
+    new ResizeObserver(reportHeight).observe(content);
   }
 
   window.FamiliarMarkdown = {

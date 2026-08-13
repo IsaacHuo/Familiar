@@ -9,6 +9,7 @@ struct FamiliarAppDependencies {
 
     init() {
         let eventKit = FamiliarEventKitService()
+        let web = FamiliarWebContentService()
         confirmationCoordinator = FamiliarToolConfirmationCoordinator()
         policy = FamiliarExecutionPolicy()
         undoStore = FamiliarUndoStore()
@@ -17,6 +18,8 @@ struct FamiliarAppDependencies {
                 tools: [
                     AnyFamiliarTool(FamiliarCurrentDateTimeTool()),
                     AnyFamiliarTool(FamiliarAppInformationTool()),
+                    AnyFamiliarTool(FamiliarWebSearchTool(service: web)),
+                    AnyFamiliarTool(FamiliarWebFetchTool(service: web)),
                     AnyFamiliarTool(FamiliarCalendarEventsTool(service: eventKit)),
                     AnyFamiliarTool(FamiliarCreateCalendarEventTool(service: eventKit)),
                     AnyFamiliarTool(FamiliarRemindersTool(service: eventKit)),

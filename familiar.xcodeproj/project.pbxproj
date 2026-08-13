@@ -12,6 +12,7 @@
 		C10000000000000000000007 /* FamiliarSharedInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000005 /* FamiliarSharedInbox.swift */; };
 		D10000000000000000000002 /* FamiliarWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = D10000000000000000000001 /* FamiliarWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		D10000000000000000000006 /* FamiliarControlIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000005 /* FamiliarControlIntent.swift */; };
+		E10000000000000000000001 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = E10000000000000000000002 /* SwiftSoup */; };
 		F20000000000000000000001 /* AnyDocBridge.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = F20000000000000000000002 /* AnyDocBridge.xcframework */; };
 /* End PBXBuildFile section */
 
@@ -73,17 +74,9 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		F10000000000000000000002 /* Exceptions for "Familiar" folder in "Familiar" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Resources/Info.plist,
-			);
-			target = F10000000000000000000010 /* Familiar */;
-		};
 		C10000000000000000000008 /* Exceptions for "FamiliarShareExtension" folder in "FamiliarShareExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				FamiliarShareExtension.entitlements,
 				Info.plist,
 			);
 			target = C10000000000000000000010 /* FamiliarShareExtension */;
@@ -94,6 +87,13 @@
 				Info.plist,
 			);
 			target = D10000000000000000000010 /* FamiliarWidgets */;
+		};
+		F10000000000000000000002 /* Exceptions for "Familiar" folder in "Familiar" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Resources/Info.plist,
+			);
+			target = F10000000000000000000010 /* Familiar */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -167,6 +167,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E10000000000000000000001 /* SwiftSoup in Frameworks */,
 				F20000000000000000000001 /* AnyDocBridge.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -330,6 +331,7 @@
 			);
 			name = Familiar;
 			packageProductDependencies = (
+				E10000000000000000000002 /* SwiftSoup */,
 			);
 			productName = Familiar;
 			productReference = F10000000000000000000001 /* Familiar.app */;
@@ -374,6 +376,9 @@
 			);
 			mainGroup = F10000000000000000000004;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				E10000000000000000000003 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F10000000000000000000005 /* Products */;
 			projectDirPath = "";
@@ -831,6 +836,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		E10000000000000000000003 /* XCRemoteSwiftPackageReference "SwiftSoup" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/scinfu/SwiftSoup.git";
+			requirement = {
+				kind = exactVersion;
+				version = 2.13.7;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		E10000000000000000000002 /* SwiftSoup */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E10000000000000000000003 /* XCRemoteSwiftPackageReference "SwiftSoup" */;
+			productName = SwiftSoup;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = F10000000000000000000020 /* Project object */;
 }

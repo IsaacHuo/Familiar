@@ -64,6 +64,7 @@
 "settings.privacy.local_history" = "会话历史仅保存在本机";
 "settings.privacy.local_documents" = "文档由 AnyDoc 在本机转换，仅随消息发送转换后的文字";
 "settings.privacy.remote_images" = "Markdown 远程图片不会自动加载，仅在你点击来源链接后打开";
+"settings.privacy.web_tools" = "网页搜索会把搜索词发送给 DuckDuckGo；网页读取会访问所选公开 HTTPS 站点，并把抽取文字发送给模型 Provider";
 "settings.error.title" = "设置失败";
 "settings.onboarding.restart" = "重新查看首启";
 "settings.onboarding.restart.title" = "重新查看首启？";

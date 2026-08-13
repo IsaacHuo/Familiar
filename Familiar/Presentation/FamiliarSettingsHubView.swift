@@ -301,6 +301,8 @@ private struct FamiliarToolsAndSkillsView: View {
     private let tools: [(String, String)] = [
         ("clock", String(localized: "tool.date_time")),
         ("info.circle", String(localized: "tool.app_information")),
+        ("magnifyingglass", String(localized: "tool.web_search", defaultValue: "搜索网页")),
+        ("globe", String(localized: "tool.web_fetch", defaultValue: "读取网页")),
         ("calendar", String(localized: "tool.calendar_query")),
         ("calendar.badge.plus", String(localized: "tool.calendar_create")),
         ("checklist", String(localized: "tool.reminders_query")),
@@ -763,6 +765,7 @@ private struct FamiliarPrivacySettingsView: View {
                 Label(String(localized: "settings.privacy.local_history"), systemImage: "internaldrive")
                 Label(String(localized: "settings.privacy.local_documents"), systemImage: "doc.text.magnifyingglass")
                 Label(String(localized: "settings.privacy.remote_images"), systemImage: "photo.badge.exclamationmark")
+                Label(String(localized: "settings.privacy.web_tools"), systemImage: "network")
             }
         }
         .navigationTitle(String(localized: "settings.privacy.title"))

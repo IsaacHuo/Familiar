@@ -64,6 +64,7 @@
 "settings.privacy.local_history" = "Conversation history stays on this device";
 "settings.privacy.local_documents" = "Documents are converted locally with AnyDoc; only the resulting text is sent with your message";
 "settings.privacy.remote_images" = "Remote Markdown images never load automatically; source links open only when you choose";
+"settings.privacy.web_tools" = "Web search sends queries to DuckDuckGo; web fetch contacts the selected public HTTPS site, then sends extracted text to your model provider";
 "settings.error.title" = "Couldn't Save Settings";
 "settings.onboarding.restart" = "Review setup";
 "settings.onboarding.restart.title" = "Review setup again?";

@@ -47,6 +47,50 @@ nonisolated struct FamiliarMessageSnapshot: Identifiable, Equatable, Sendable {
     let providerID: String?
     let modelID: String?
     let attachments: [FamiliarAttachmentSnapshot]
+    let sources: [FamiliarSource]
+
+    init(
+        id: UUID,
+        role: FamiliarMessageRole,
+        content: String,
+        createdAt: Date,
+        sequence: Int,
+        providerID: String?,
+        modelID: String?,
+        attachments: [FamiliarAttachmentSnapshot],
+        sources: [FamiliarSource] = []
+    ) {
+        self.id = id
+        self.role = role
+        self.content = content
+        self.createdAt = createdAt
+        self.sequence = sequence
+        self.providerID = providerID
+        self.modelID = modelID
+        self.attachments = attachments
+        self.sources = sources
+    }
+}
+
+nonisolated enum FamiliarSourceKind: String, Codable, Sendable {
+    case searchResult
+    case fetchedPage
+    case providerNative
+}
+
+nonisolated struct FamiliarSource: Identifiable, Codable, Equatable, Sendable {
+    let id: String
+    let kind: FamiliarSourceKind
+    let title: String
+    let url: URL
+    let siteName: String?
+    let snippet: String?
+    let retrievedAt: Date
+}
+
+nonisolated struct FamiliarCompletedResponse: Equatable, Sendable {
+    let text: String
+    let sources: [FamiliarSource]
 }
 
 nonisolated enum FamiliarPersistedConfirmationResult: String, Codable, Sendable {
@@ -79,6 +123,27 @@ nonisolated struct FamiliarToolRunSnapshot: Identifiable, Equatable, Sendable {
     let confirmation: FamiliarPersistedConfirmationResult
     let status: FamiliarToolRunTerminalStatus
     let sequence: Int
+    let startedAt: Date
+    let finishedAt: Date
+}
+
+nonisolated struct FamiliarAgentRunSnapshot: Identifiable, Equatable, Sendable {
+    let id: String
+    let responseMessageID: UUID?
+    let status: FamiliarAgentRunStatus
+    let startedAt: Date
+    let finishedAt: Date?
+    let steps: [FamiliarAgentStepSnapshot]
+}
+
+nonisolated struct FamiliarAgentStepSnapshot: Identifiable, Equatable, Sendable {
+    let id: UUID
+    let type: FamiliarAgentStepType
+    let toolName: String
+    let summary: String
+    let detail: String
+    let status: FamiliarToolRunTerminalStatus
+    let eventSequence: Int
     let startedAt: Date
     let finishedAt: Date
 }

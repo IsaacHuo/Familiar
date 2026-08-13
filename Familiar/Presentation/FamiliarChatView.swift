@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import SafariServices
 
 struct FamiliarChatView: View {
     @Environment(\.modelContext) private var modelContext
@@ -19,6 +20,7 @@ struct FamiliarChatView: View {
     @State private var speechBaseDraft = ""
     @State private var configuredProviderIDs: Set<String> = []
     @State private var isImportingSharedItem = false
+    @State private var webDestination: FamiliarWebDestination?
     @FocusState private var isComposerFocused: Bool
     private let onRestartOnboarding: () -> Void
     @Binding private var pendingSystemEntry: FamiliarSystemEntryRequest?
@@ -132,6 +134,14 @@ struct FamiliarChatView: View {
                     onRestartOnboarding: onRestartOnboarding
                 )
             }
+        }
+        .sheet(item: $webDestination) { destination in
+            FamiliarSafariView(url: destination.url) {
+                webDestination = nil
+            }
+            .ignoresSafeArea()
+            .presentationSizing(.page)
+            .presentationDragIndicator(.visible)
         }
         .alert(String(localized: "conversation.rename.title"), isPresented: Binding(
             get: { renameRequest != nil },
@@ -374,10 +384,12 @@ struct FamiliarChatView: View {
                 messages: controller.messages,
                 modelSwitches: controller.modelSwitches,
                 toolRunRecords: controller.toolRunRecords,
+                agentRuns: controller.agentRuns,
                 pendingConfirmations: controller.pendingConfirmations,
                 streamingMessageID: controller.streamingMessageID,
                 streamingText: controller.streamingText,
                 agentStatus: controller.agentStatus,
+                activeRunStartedAt: controller.activeRunStartedAt,
                 toolActivities: controller.toolActivities,
                 availableUndoKeys: controller.availableUndoKeys,
                 onResolveConfirmation: { request, decision in
@@ -387,6 +399,13 @@ struct FamiliarChatView: View {
                 onEdit: { pendingMessageOperation = .edit($0) },
                 onRetry: { pendingMessageOperation = .retry($0) }
             )
+            .environment(\.openURL, OpenURLAction { url in
+                guard FamiliarConversationURLRouter.shouldOpenInApp(url) else {
+                    return .systemAction
+                }
+                webDestination = FamiliarWebDestination(url: url)
+                return .handled
+            })
         }
     }
 
@@ -525,6 +544,51 @@ struct FamiliarChatView: View {
             isComposerFocused = true
         case .retry(let message):
             controller.retry(message, in: modelContext)
+        }
+    }
+}
+
+nonisolated enum FamiliarConversationURLRouter {
+    static func shouldOpenInApp(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased(),
+              ["http", "https"].contains(scheme),
+              url.host?.isEmpty == false
+        else { return false }
+        return true
+    }
+}
+
+private struct FamiliarWebDestination: Identifiable {
+    let url: URL
+    var id: String { url.absoluteString }
+}
+
+private struct FamiliarSafariView: UIViewControllerRepresentable {
+    let url: URL
+    let onFinish: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onFinish: onFinish)
+    }
+
+    func makeUIViewController(context: Context) -> SFSafariViewController {
+        let viewController = SFSafariViewController(url: url)
+        viewController.dismissButtonStyle = .close
+        viewController.delegate = context.coordinator
+        return viewController
+    }
+
+    func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
+
+    final class Coordinator: NSObject, SFSafariViewControllerDelegate {
+        let onFinish: () -> Void
+
+        init(onFinish: @escaping () -> Void) {
+            self.onFinish = onFinish
+        }
+
+        func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
+            onFinish()
         }
     }
 }

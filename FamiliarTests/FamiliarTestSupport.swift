@@ -14,7 +14,7 @@ struct FamiliarFixedUUIDGenerator: Sendable {
 enum FamiliarTestStore {
     @MainActor
     static func make() throws -> ModelContainer {
-        let schema = Schema([FamiliarConversation.self, FamiliarMessage.self, FamiliarAttachment.self, FamiliarModelSwitchRecord.self, FamiliarAgentRun.self, FamiliarAgentStep.self])
+        let schema = Schema([FamiliarConversation.self, FamiliarMessage.self, FamiliarSourceRecord.self, FamiliarAttachment.self, FamiliarModelSwitchRecord.self, FamiliarAgentRun.self, FamiliarAgentStep.self])
         return try ModelContainer(for: schema, configurations: [ModelConfiguration("FamiliarTests", schema: schema, isStoredInMemoryOnly: true)])
     }
 }

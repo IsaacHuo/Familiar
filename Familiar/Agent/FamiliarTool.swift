@@ -39,11 +39,13 @@ nonisolated struct FamiliarToolExecutionResult: Sendable {
     let modelContent: String
     let displayContent: String
     let artifactIdentifier: String?
+    let sources: [FamiliarSource]
 
-    init(modelContent: String, displayContent: String, artifactIdentifier: String? = nil) {
+    init(modelContent: String, displayContent: String, artifactIdentifier: String? = nil, sources: [FamiliarSource] = []) {
         self.modelContent = modelContent
         self.displayContent = displayContent
         self.artifactIdentifier = artifactIdentifier
+        self.sources = sources
     }
 }
 

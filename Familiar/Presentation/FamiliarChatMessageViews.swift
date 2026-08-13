@@ -6,10 +6,12 @@ struct FamiliarMessageTimeline: View {
     let messages: [FamiliarMessageSnapshot]
     let modelSwitches: [FamiliarModelSwitchSnapshot]
     let toolRunRecords: [FamiliarToolRunSnapshot]
+    let agentRuns: [FamiliarAgentRunSnapshot]
     let pendingConfirmations: [FamiliarToolConfirmationRequest]
     let streamingMessageID: UUID?
     let streamingText: String
     let agentStatus: FamiliarRuntimeState?
+    let activeRunStartedAt: Date?
     let toolActivities: [FamiliarToolProgress]
     let availableUndoKeys: Set<String>
     let onResolveConfirmation: (FamiliarToolConfirmationRequest, FamiliarToolConfirmationDecision) -> Void
@@ -23,7 +25,10 @@ struct FamiliarMessageTimeline: View {
     private var timelineItems: [FamiliarTimelineItem] {
         var items = messages.map { FamiliarTimelineItem.message(.init(snapshot: $0)) }
         items += modelSwitches.map(FamiliarTimelineItem.modelSwitch)
-        items += toolRunRecords.map(FamiliarTimelineItem.toolRecord)
+        let associatedRunIDs = Set(agentRuns.filter { $0.responseMessageID != nil }.map(\.id))
+        items += toolRunRecords.filter {
+            !associatedRunIDs.contains($0.runID) || availableUndoKeys.contains($0.runID + ":" + $0.toolCallID)
+        }.map(FamiliarTimelineItem.toolRecord)
         items.sort {
             if $0.sequence != $1.sequence { return $0.sequence < $1.sequence }
             return $0.createdAt < $1.createdAt
@@ -34,7 +39,9 @@ struct FamiliarMessageTimeline: View {
         if agentStatus != nil || !toolActivities.isEmpty {
             items.append(.agent(status: agentStatus, activities: toolActivities))
         }
-        if let streamingMessageID, !streamingText.isEmpty {
+        if let streamingMessageID,
+           !streamingText.isEmpty,
+           !messages.contains(where: { $0.id == streamingMessageID }) {
             items.append(.message(.init(
                 id: streamingMessageID,
                 role: .assistant,
@@ -44,6 +51,7 @@ struct FamiliarMessageTimeline: View {
                 providerID: nil,
                 modelID: nil,
                 attachments: [],
+                sources: [],
                 isStreaming: true,
                 source: nil
             )))
@@ -55,12 +63,13 @@ struct FamiliarMessageTimeline: View {
         GeometryReader { viewport in
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 22) {
+                    VStack(spacing: 22) {
                         ForEach(timelineItems) { item in
                             switch item {
                             case .message(let message):
                                 FamiliarMessageRow(
                                     message: message,
+                                    run: agentRuns.first(where: { $0.responseMessageID == message.id }),
                                     onEdit: onEdit,
                                     onRetry: onRetry
                                 )
@@ -83,7 +92,7 @@ struct FamiliarMessageTimeline: View {
                                 .id(item.id)
                                 .accessibilityFocused($focusedConfirmationID, equals: request.id)
                             case .agent(let status, let activities):
-                                FamiliarAgentRunRow(status: status, activities: activities)
+                                FamiliarAgentRunRow(status: status, startedAt: activeRunStartedAt, activities: activities)
                                     .id(item.id)
                             }
                         }
@@ -212,6 +221,7 @@ private struct FamiliarRenderedMessage {
     let providerID: String?
     let modelID: String?
     let attachments: [FamiliarAttachmentSnapshot]
+    let sources: [FamiliarSource]
     let isStreaming: Bool
     let source: FamiliarMessageSnapshot?
 
@@ -224,6 +234,7 @@ private struct FamiliarRenderedMessage {
         providerID = snapshot.providerID
         modelID = snapshot.modelID
         attachments = snapshot.attachments
+        sources = snapshot.sources
         isStreaming = false
         source = snapshot
     }
@@ -237,6 +248,7 @@ private struct FamiliarRenderedMessage {
         providerID: String?,
         modelID: String?,
         attachments: [FamiliarAttachmentSnapshot],
+        sources: [FamiliarSource],
         isStreaming: Bool,
         source: FamiliarMessageSnapshot?
     ) {
@@ -248,6 +260,7 @@ private struct FamiliarRenderedMessage {
         self.providerID = providerID
         self.modelID = modelID
         self.attachments = attachments
+        self.sources = sources
         self.isStreaming = isStreaming
         self.source = source
     }
@@ -255,6 +268,7 @@ private struct FamiliarRenderedMessage {
 
 private struct FamiliarMessageRow: View {
     let message: FamiliarRenderedMessage
+    let run: FamiliarAgentRunSnapshot?
     let onEdit: (FamiliarMessageSnapshot) -> Void
     let onRetry: (FamiliarMessageSnapshot) -> Void
 
@@ -347,16 +361,24 @@ private struct FamiliarMessageRow: View {
 
     private var assistantMessage: some View {
         VStack(alignment: .leading, spacing: 10) {
-            FamiliarMarkdownWebView(markdown: message.content, isStreaming: message.isStreaming)
-
             if message.isStreaming {
-                HStack(spacing: 7) {
-                    ProgressView().controlSize(.mini)
-                    Text(String(localized: "message.responding"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            } else if let source = message.source {
+                FamiliarMarkdownFallbackText(markdown: message.content)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                FamiliarMarkdownWebView(markdown: message.content, sources: message.sources)
+            }
+
+            if !message.isStreaming, let run, !run.steps.isEmpty {
+                FamiliarOperationTrace(run: run)
+            }
+
+            if !message.isStreaming, !message.sources.isEmpty {
+                FamiliarSourcesDisclosure(sources: message.sources)
+            }
+
+            if !message.isStreaming, let source = message.source {
                 if let sourceLabel {
                     Text(sourceLabel)
                         .font(.caption2)
@@ -583,16 +605,27 @@ private struct MessageActionButton: View {
 
 private struct FamiliarAgentRunRow: View {
     let status: FamiliarRuntimeState?
+    let startedAt: Date?
     let activities: [FamiliarToolProgress]
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
             if let status {
                 HStack(spacing: 9) {
-                    ProgressView().controlSize(.small)
+                    FamiliarOrbitLoadingView(reduceMotion: reduceMotion)
                         .accessibilityHidden(true)
                     Text(status.title)
                         .font(.subheadline.weight(.semibold))
+                    if let startedAt {
+                        TimelineView(.periodic(from: startedAt, by: 0.1)) { context in
+                            Text(Self.elapsed(from: startedAt, to: context.date))
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.tertiary)
+                        }
+                        .accessibilityHidden(true)
+                    }
                 }
                 .foregroundStyle(.secondary)
                 .accessibilityElement(children: .ignore)
@@ -602,9 +635,11 @@ private struct FamiliarAgentRunRow: View {
 
             ForEach(activities) { activity in
                 HStack(alignment: .top, spacing: 10) {
-                    activityIcon(activity.state)
-                        .frame(width: 20, height: 20)
-                        .accessibilityHidden(true)
+                    if activity.state != .running {
+                        activityIcon(activity.state)
+                            .frame(width: 20, height: 20)
+                            .accessibilityHidden(true)
+                    }
                     VStack(alignment: .leading, spacing: 3) {
                         Text(activity.title)
                             .font(.subheadline.weight(.semibold))
@@ -630,17 +665,216 @@ private struct FamiliarAgentRunRow: View {
         .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
+    private static func elapsed(from start: Date, to end: Date) -> String {
+        let interval = max(0, end.timeIntervalSince(start))
+        if interval < 60 { return String(format: "%.1fs", interval) }
+        return String(format: "%dm %.1fs", Int(interval / 60), interval.truncatingRemainder(dividingBy: 60))
+    }
+
     @ViewBuilder
     private func activityIcon(_ state: FamiliarToolProgressState) -> some View {
         switch state {
         case .running:
-            ProgressView().controlSize(.small)
+            EmptyView()
         case .succeeded:
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         case .cancelled:
             Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
         case .failed:
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+        }
+    }
+}
+
+private struct FamiliarOrbitLoadingView: View {
+    let reduceMotion: Bool
+    private let orbitOrder = [0, 1, 2, 5, 8, 7, 6, 3]
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 20.0, paused: reduceMotion)) { context in
+            let phase = Int(context.date.timeIntervalSinceReferenceDate / 0.11) % orbitOrder.count
+            Grid(horizontalSpacing: 1.5, verticalSpacing: 1.5) {
+                ForEach(0..<3, id: \.self) { row in
+                    GridRow {
+                        ForEach(0..<3, id: \.self) { column in
+                            let index = row * 3 + column
+                            RoundedRectangle(cornerRadius: 1)
+                                .fill(.secondary)
+                                .frame(width: 4, height: 4)
+                                .opacity(opacity(for: index, phase: phase))
+                        }
+                    }
+                }
+            }
+        }
+        .frame(width: 16, height: 16)
+    }
+
+    private func opacity(for index: Int, phase: Int) -> Double {
+        guard !reduceMotion, let position = orbitOrder.firstIndex(of: index) else {
+            return index == 4 ? 0.07 : 0.15
+        }
+        let distance = (phase - position + orbitOrder.count) % orbitOrder.count
+        if distance == 0 { return 1 }
+        if distance == 1 { return 0.45 }
+        return 0.15
+    }
+}
+
+private struct FamiliarOperationTrace: View {
+    let run: FamiliarAgentRunSnapshot
+    @State private var expanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $expanded) {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(run.steps) { step in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: symbol(for: step))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(tone(for: step))
+                            .frame(width: 16)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(step.summary)
+                                .font(.caption.weight(.medium))
+                            if step.type == .tool, !step.detail.isEmpty {
+                                Text(step.detail)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(3)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.top, 7)
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "sparkles")
+                Text(traceLabel)
+                Text(Self.duration(run))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+            }
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+        }
+        .transaction { transaction in
+            if reduceMotion { transaction.animation = nil }
+        }
+    }
+
+    private var traceLabel: String {
+        let toolCount = run.steps.filter { $0.type == .tool }.count
+        return toolCount == 0
+            ? String(localized: "message.operation_trace", defaultValue: "运行轨迹")
+            : String(format: String(localized: "message.operation_trace.tools", defaultValue: "%lld 个工具步骤"), toolCount)
+    }
+
+    private static func duration(_ run: FamiliarAgentRunSnapshot) -> String {
+        let value = max(0, (run.finishedAt ?? run.startedAt).timeIntervalSince(run.startedAt))
+        return value < 60 ? String(format: "%.1fs", value) : String(format: "%dm %.1fs", Int(value / 60), value.truncatingRemainder(dividingBy: 60))
+    }
+
+    private func symbol(for step: FamiliarAgentStepSnapshot) -> String {
+        switch step.status {
+        case .succeeded: step.type == .approval ? "checkmark.shield" : "checkmark.circle"
+        case .cancelled: "xmark.circle"
+        case .failed: "exclamationmark.triangle"
+        }
+    }
+
+    private func tone(for step: FamiliarAgentStepSnapshot) -> Color {
+        switch step.status {
+        case .succeeded: .secondary
+        case .cancelled: .secondary
+        case .failed: .orange
+        }
+    }
+}
+
+private struct FamiliarSourcesDisclosure: View {
+    let sources: [FamiliarSource]
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(sources) { source in
+                    Button {
+                        openURL(source.url)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 9) {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: source.kind.symbol)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(FamiliarTheme.accent)
+                                    .frame(width: 28, height: 28)
+                                    .background(FamiliarTheme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(source.title)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(2)
+                                    HStack(spacing: 6) {
+                                        Text(source.kind.label)
+                                        Text("·")
+                                        Text(source.siteName ?? source.url.host ?? source.url.absoluteString)
+                                            .lineLimit(1)
+                                    }
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 4)
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            if let snippet = source.snippet?.trimmingCharacters(in: .whitespacesAndNewlines), !snippet.isEmpty {
+                                Text(snippet)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(3)
+                            }
+                        }
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(FamiliarTheme.separator, lineWidth: 0.5)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.top, 5)
+        } label: {
+            Label(
+                String(format: String(localized: "message.sources.count", defaultValue: "%lld 个来源"), sources.count),
+                systemImage: "link"
+            )
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private extension FamiliarSourceKind {
+    var symbol: String {
+        switch self {
+        case .searchResult: "magnifyingglass"
+        case .fetchedPage: "doc.text"
+        case .providerNative: "sparkles"
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .searchResult: String(localized: "source.kind.search", defaultValue: "搜索结果")
+        case .fetchedPage: String(localized: "source.kind.page", defaultValue: "已读取网页")
+        case .providerNative: String(localized: "source.kind.provider", defaultValue: "模型来源")
         }
     }
 }

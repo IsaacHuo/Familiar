@@ -9,6 +9,7 @@ final class FamiliarChatController {
     var messages: [FamiliarMessageSnapshot] = []
     var modelSwitches: [FamiliarModelSwitchSnapshot] = []
     var toolRunRecords: [FamiliarToolRunSnapshot] = []
+    var agentRuns: [FamiliarAgentRunSnapshot] = []
     var pendingConfirmations: [FamiliarToolConfirmationRequest] = []
     var draft = ""
     var draftImages: [FamiliarDraftImage] = []
@@ -16,6 +17,7 @@ final class FamiliarChatController {
     var streamingText = ""
     var streamingMessageID: UUID?
     var agentStatus: FamiliarRuntimeState?
+    var activeRunStartedAt: Date?
     var toolActivities: [FamiliarToolProgress] = []
     var availableUndoKeys: Set<String> = []
     var isSending = false
@@ -95,6 +97,7 @@ final class FamiliarChatController {
             messages = []
             modelSwitches = []
             toolRunRecords = []
+            agentRuns = []
             availableUndoKeys = []
             resetTransientRunState()
             return conversation
@@ -120,6 +123,7 @@ final class FamiliarChatController {
                 messages = []
                 modelSwitches = []
                 toolRunRecords = []
+                agentRuns = []
                 availableUndoKeys = []
                 resetTransientRunState()
             }
@@ -197,7 +201,7 @@ final class FamiliarChatController {
         conversation.currentProviderID = requestSettings.providerID
         conversation.currentModelID = requestSettings.modelID
 
-        let nextSequence = (conversation.messages.map(\.sequence).max() ?? -1) + 1
+        let nextSequence = nextTimelineSequence(in: conversation)
         let messageID = UUID()
         var committedPaths: [String] = []
         do {
@@ -432,6 +436,7 @@ final class FamiliarChatController {
             messages = []
             modelSwitches = []
             toolRunRecords = []
+            agentRuns = []
             return
         }
         messages = conversation.messages
@@ -462,6 +467,20 @@ final class FamiliarChatController {
                                 extractionVersion: $0.extractionVersion,
                                 detectedFormat: $0.detectedFormat,
                                 usedOCR: $0.usedOCR
+                            )
+                        },
+                    sources: $0.sources
+                        .sorted { $0.sequence < $1.sequence }
+                        .compactMap { record in
+                            guard let url = URL(string: record.urlString) else { return nil }
+                            return FamiliarSource(
+                                id: record.sourceID,
+                                kind: record.kind,
+                                title: record.title,
+                                url: url,
+                                siteName: record.siteName,
+                                snippet: record.snippet,
+                                retrievedAt: record.retrievedAt
                             )
                         }
                 )
@@ -501,6 +520,33 @@ final class FamiliarChatController {
                     finishedAt: $0.finishedAt
                 )
             }
+        agentRuns = conversation.agentRuns
+            .sorted { $0.startedAt < $1.startedAt }
+            .map { run in
+                FamiliarAgentRunSnapshot(
+                    id: run.runtimeID,
+                    responseMessageID: run.responseMessageID,
+                    status: run.status,
+                    startedAt: run.startedAt,
+                    finishedAt: run.finishedAt,
+                    steps: run.steps
+                        .filter { $0.type != .result }
+                        .sorted { $0.eventSequence < $1.eventSequence }
+                        .map {
+                            FamiliarAgentStepSnapshot(
+                                id: $0.id,
+                                type: $0.type,
+                                toolName: $0.toolName,
+                                summary: $0.summary,
+                                detail: $0.detail,
+                                status: $0.status,
+                                eventSequence: $0.eventSequence,
+                                startedAt: $0.startedAt,
+                                finishedAt: $0.finishedAt
+                            )
+                        }
+                )
+            }
     }
 
     private func applySettings(_ value: FamiliarSettings, recordingSwitchIn context: ModelContext) {
@@ -514,7 +560,7 @@ final class FamiliarChatController {
             settings = value
             guard let conversation = selectedConversation(in: context) else { return }
             if oldValue.providerID != value.providerID || oldValue.modelID != value.modelID {
-                let nextSequence = (conversation.messages.map(\.sequence).max() ?? -1) + 1
+                let nextSequence = nextTimelineSequence(in: conversation)
                 let record = FamiliarModelSwitchRecord(
                     previousProviderID: conversation.currentProviderID,
                     previousModelID: conversation.currentModelID,
@@ -554,7 +600,7 @@ final class FamiliarChatController {
         var activeRunID: UUID?
         do {
             let agentLoop = dependencies.makeRuntime(for: descriptor)
-            var completedAnswer: String?
+            var completedResponse: FamiliarCompletedResponse?
             for try await event in agentLoop.stream(
                 messages: requestMessages,
                 settings: settings,
@@ -564,6 +610,7 @@ final class FamiliarChatController {
                 switch event.payload {
                 case .runStarted:
                     activeRunID = UUID(uuidString: event.runID)
+                    activeRunStartedAt = event.timestamp
                     ensureRun(runtimeID: event.runID, conversationID: conversationID, startedAt: event.timestamp, context: context)
                 case .state(let status):
                     agentStatus = status
@@ -587,9 +634,9 @@ final class FamiliarChatController {
                     if record.undoAvailable {
                         availableUndoKeys.insert(record.runID + ":" + record.toolCallID)
                     }
-                case .responseCompleted(let answer):
-                    completedAnswer = answer
-                    persistCheckpoint(type: .model, runtimeID: event.runID, eventSequence: event.sequence, summary: "模型回复", detail: String(answer.prefix(2_000)), context: context)
+                case .responseCompleted(let response):
+                    completedResponse = response
+                    persistCheckpoint(type: .model, runtimeID: event.runID, eventSequence: event.sequence, summary: "模型回复", detail: String(response.text.prefix(2_000)), context: context)
                 case .runCompleted:
                     finishRun(runtimeID: event.runID, status: .completed, reason: "completed", eventSequence: event.sequence, at: event.timestamp, context: context)
                 case .runCancelled:
@@ -601,13 +648,13 @@ final class FamiliarChatController {
             }
             try Task.checkCancellation()
 
-            let answer = (completedAnswer ?? streamingText).trimmingCharacters(in: .whitespacesAndNewlines)
+            let answer = (completedResponse?.text ?? streamingText).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !answer.isEmpty else { throw FamiliarAgentError.emptyResponse }
             guard let conversation = fetchConversation(id: conversationID, in: context) else {
                 throw CocoaError(.fileNoSuchFile)
             }
 
-            let nextSequence = (conversation.messages.map(\.sequence).max() ?? -1) + 1
+            let nextSequence = nextTimelineSequence(in: conversation)
             let assistantMessage = FamiliarMessage(
                 id: responseID,
                 role: .assistant,
@@ -618,6 +665,23 @@ final class FamiliarChatController {
                 conversation: conversation
             )
             context.insert(assistantMessage)
+            for (sequence, source) in (completedResponse?.sources ?? []).enumerated() {
+                context.insert(FamiliarSourceRecord(
+                    sourceID: source.id,
+                    kind: source.kind,
+                    title: source.title,
+                    urlString: source.url.absoluteString,
+                    siteName: source.siteName,
+                    snippet: source.snippet,
+                    sequence: sequence,
+                    retrievedAt: source.retrievedAt,
+                    message: assistantMessage
+                ))
+            }
+            if let activeRunID,
+               let run = conversation.agentRuns.first(where: { $0.id == activeRunID }) {
+                run.responseMessageID = responseID
+            }
             conversation.updatedAt = Date()
             try context.save()
             reloadMessages(in: context)
@@ -677,6 +741,7 @@ final class FamiliarChatController {
         streamingText = ""
         streamingMessageID = nil
         agentStatus = nil
+        activeRunStartedAt = nil
         toolActivities = []
         pendingConfirmations = []
     }
