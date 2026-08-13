@@ -208,7 +208,19 @@
 
 "common.yes" = "是";
 "common.no" = "否";
+"common.undo" = "撤销";
 "agent.status.awaiting_confirmation" = "等待你的确认";
+"onboarding.page_indicator" = "第 %1$ld 页，共 %2$ld 页";
+"camera.capture" = "拍照";
+"camera.capturing" = "正在拍照";
+"composer.disabled.importing" = "文件仍在导入。";
+"composer.disabled.empty" = "请输入消息或添加文档。";
+"accessibility.confirmation.required" = "需要确认";
+"accessibility.tool.status.running" = "正在执行";
+"accessibility.tool.status.succeeded" = "已成功";
+"accessibility.tool.status.cancelled" = "已取消";
+"accessibility.tool.status.failed" = "执行失败";
+"tool.undo.hint" = "仅撤销这次操作创建的系统项目";
 "tool.calendar_query" = "查询日历事件";
 "tool.calendar_create" = "添加日历事件";
 "tool.reminders_query" = "查询提醒事项";

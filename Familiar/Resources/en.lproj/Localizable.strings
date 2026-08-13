@@ -208,7 +208,19 @@
 
 "common.yes" = "Yes";
 "common.no" = "No";
+"common.undo" = "Undo";
 "agent.status.awaiting_confirmation" = "Waiting for your confirmation";
+"onboarding.page_indicator" = "Page %1$ld of %2$ld";
+"camera.capture" = "Take photo";
+"camera.capturing" = "Taking photo";
+"composer.disabled.importing" = "A document is still being imported.";
+"composer.disabled.empty" = "Enter a message or add a document.";
+"accessibility.confirmation.required" = "Confirmation required";
+"accessibility.tool.status.running" = "In progress";
+"accessibility.tool.status.succeeded" = "Succeeded";
+"accessibility.tool.status.cancelled" = "Cancelled";
+"accessibility.tool.status.failed" = "Failed";
+"tool.undo.hint" = "Only reverses the system item created by this action";
 "tool.calendar_query" = "Calendar events";
 "tool.calendar_create" = "Add calendar event";
 "tool.reminders_query" = "Reminders";

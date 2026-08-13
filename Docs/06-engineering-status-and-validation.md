@@ -139,8 +139,8 @@ Rust/FFI fixture 已通过：
 ### 3.5 自动化测试
 
 - 已建立 `FamiliarTests` 与 `FamiliarUITests` target。
-- `FamiliarTests/FamiliarBaselineTests` 已在 iOS 26.5 arm64 Simulator 通过 9 项，覆盖 Provider catalog、SSE framing、附件路径边界、写入策略、Run/Step SwiftData 持久化、确认取消幂等与 V2 store 恢复删除范围。
-- EventKit policy / action proposal 与 Agent Runtime 的多轮、事件顺序、最大轮次、上下文上限测试已实现；当前完整单元测试为 14 项、3 个套件通过。
+- `FamiliarTests/FamiliarBaselineTests` 已在 iOS 26.5 arm64 Simulator 通过 10 项，覆盖 Provider catalog、SSE framing、Markdown CSP、附件路径边界、写入策略、Run/Step SwiftData 持久化、确认取消幂等与 V2 store 恢复删除范围。
+- EventKit policy / action proposal 与 Agent Runtime 的多轮、事件顺序、最大轮次、上下文上限测试已实现；当前完整单元测试为 15 项、3 个套件通过。
 
 ## 4. SwiftData 启动问题
 
@@ -180,7 +180,7 @@ Application Support/Familiar/Persistence/FamiliarAgentV2.store
 - 修改后的真机签名构建：已通过。
 - 修改后的 iOS 18 arm64 Simulator 构建：已通过。
 - 覆盖安装到保留旧 store 的真机：设备离线，未完成。
-- Simulator 安装启动：命令被用户终止，未完成。
+- iOS 26.5 Simulator 安装与冷启动 UI 冒烟：通过。
 
 运行验收条件：
 
@@ -304,14 +304,9 @@ Provider fixture parser、Agent Runtime、EventKit policy 与附件路径已具�
 
 ### 8.5 无障碍
 
-需要补充：
+代码级语义已补齐：抽屉当前会话带选中 trait；首启页码、快门和发送禁用原因有本地化描述；确认卡组合标题、目标与字段；运行中和终态工具记录读出状态与详情；新确认出现时通过 `AccessibilityFocusState` 转移 VoiceOver 焦点。
 
-- 抽屉选中状态。
-- 确认卡组合语义。
-- 工具记录状态语义。
-- 快门按钮标签。
-- 焦点管理。
-- 极端 Dynamic Type。
+仍需真机完成 VoiceOver 全路径、焦点返回、极端 Dynamic Type、Increase Contrast 和 Bold Text 验收。
 
 ### 8.6 幂等范围
 

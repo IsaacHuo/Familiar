@@ -324,8 +324,8 @@ struct FamiliarComposer: View {
     private var sendDisabledReason: String? {
         if isSending { return nil }
         if !images.isEmpty { return String(localized: "attachment.image_send_blocked_detail") }
-        if importingFileCount > 0 { return "文件仍在导入。" }
-        if !hasText && documents.isEmpty { return "请输入消息或添加文档。" }
+        if importingFileCount > 0 { return String(localized: "composer.disabled.importing") }
+        if !hasText && documents.isEmpty { return String(localized: "composer.disabled.empty") }
         return nil
     }
 

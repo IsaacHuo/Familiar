@@ -55,6 +55,8 @@ struct FamiliarCameraView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(camera.state != .ready || camera.isCapturing)
+                .accessibilityLabel(String(localized: "camera.capture"))
+                .accessibilityValue(camera.isCapturing ? String(localized: "camera.capturing") : "")
                 Spacer()
                 cameraButton(systemName: "arrow.triangle.2.circlepath.camera", label: String(localized: "camera.switch"), disabled: !camera.canSwitchCamera, action: camera.switchCamera)
             }

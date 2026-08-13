@@ -18,6 +18,7 @@ struct FamiliarMessageTimeline: View {
     let onRetry: (FamiliarMessageSnapshot) -> Void
 
     @State private var isFollowingLatest = true
+    @AccessibilityFocusState private var focusedConfirmationID: UUID?
 
     private var timelineItems: [FamiliarTimelineItem] {
         var items = messages.map { FamiliarTimelineItem.message(.init(snapshot: $0)) }
@@ -80,6 +81,7 @@ struct FamiliarMessageTimeline: View {
                                     onDecision: { onResolveConfirmation(request, $0) }
                                 )
                                 .id(item.id)
+                                .accessibilityFocused($focusedConfirmationID, equals: request.id)
                             case .agent(let status, let activities):
                                 FamiliarAgentRunRow(status: status, activities: activities)
                                     .id(item.id)
@@ -114,6 +116,15 @@ struct FamiliarMessageTimeline: View {
                 }
                 .onChange(of: toolActivities) { _, _ in
                     scrollToLatestIfNeeded(proxy)
+                }
+                .onChange(of: pendingConfirmations.map(\.id)) { previousIDs, currentIDs in
+                    guard let newID = currentIDs.first(where: { !previousIDs.contains($0) }) else {
+                        if currentIDs.isEmpty {
+                            focusedConfirmationID = nil
+                        }
+                        return
+                    }
+                    focusedConfirmationID = newID
                 }
                 .overlay(alignment: .bottomTrailing) {
                     if !isFollowingLatest {
@@ -422,35 +433,41 @@ private struct FamiliarToolConfirmationCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
-                Image(systemName: isWrite ? "checklist.checked" : "hand.raised.fill")
-                    .font(.title3)
-                    .foregroundStyle(FamiliarTheme.accent)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(request.title)
-                        .font(.headline)
-                    if let target = request.target {
-                        Text(String(format: String(localized: "eventkit.target"), target))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 10) {
+                    Image(systemName: isWrite ? "checklist.checked" : "hand.raised.fill")
+                        .font(.title3)
+                        .foregroundStyle(FamiliarTheme.accent)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(request.title)
+                            .font(.headline)
+                        if let target = request.target {
+                            Text(String(format: String(localized: "eventkit.target"), target))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
-            }
 
-            VStack(spacing: 8) {
-                ForEach(request.fields.keys.sorted(), id: \.self) { key in
-                    HStack(alignment: .top, spacing: 12) {
-                        Text(key)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .frame(width: 82, alignment: .leading)
-                        Text(request.fields[key] ?? "")
-                            .font(.subheadline)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .textSelection(.enabled)
+                VStack(spacing: 8) {
+                    ForEach(request.fields.keys.sorted(), id: \.self) { key in
+                        HStack(alignment: .top, spacing: 12) {
+                            Text(key)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 82, alignment: .leading)
+                            Text(request.fields[key] ?? "")
+                                .font(.subheadline)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled)
+                        }
                     }
                 }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(request.title)
+            .accessibilityValue(confirmationAccessibilityValue)
 
             HStack(spacing: 10) {
                 Button(String(localized: "common.cancel")) {
@@ -472,7 +489,18 @@ private struct FamiliarToolConfirmationCard: View {
                 .stroke(FamiliarTheme.separator, lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(request.title)
+    }
+
+    private var confirmationAccessibilityValue: String {
+        var components = [String(localized: "accessibility.confirmation.required")]
+        if let target = request.target {
+            components.append(String(format: String(localized: "eventkit.target"), target))
+        }
+        components += request.fields.keys.sorted().compactMap { key in
+            guard let value = request.fields[key], !value.isEmpty else { return nil }
+            return "\(key): \(value)"
+        }
+        return components.joined(separator: ", ")
     }
 }
 
@@ -482,32 +510,46 @@ private struct FamiliarPersistedToolRunRow: View {
     let onUndo: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            statusIcon
-                .frame(width: 22, height: 22)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(record.summary)
-                    .font(.subheadline.weight(.semibold))
-                if !record.detail.isEmpty {
-                    Text(record.detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(5)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                statusIcon
+                    .frame(width: 22, height: 22)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(record.summary)
+                        .font(.subheadline.weight(.semibold))
+                    if !record.detail.isEmpty {
+                        Text(record.detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(5)
+                    }
+                    Text(record.finishedAt, style: .time)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
-                Text(record.finishedAt, style: .time)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                if canUndo {
-                    Button("撤销", action: onUndo)
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .accessibilityHint("仅撤销这次创建的系统项目")
-                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(record.summary)
+            .accessibilityValue(toolRecordAccessibilityValue)
+
+            if canUndo {
+                Button(String(localized: "common.undo"), action: onUndo)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityHint(String(localized: "tool.undo.hint"))
             }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityElement(children: .contain)
+    }
+
+    private var toolRecordAccessibilityValue: String {
+        [record.status.accessibilityDescription, record.detail]
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
     }
 
     @ViewBuilder
@@ -548,16 +590,21 @@ private struct FamiliarAgentRunRow: View {
             if let status {
                 HStack(spacing: 9) {
                     ProgressView().controlSize(.small)
+                        .accessibilityHidden(true)
                     Text(status.title)
                         .font(.subheadline.weight(.semibold))
                 }
                 .foregroundStyle(.secondary)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(status.title)
+                .accessibilityAddTraits(.updatesFrequently)
             }
 
             ForEach(activities) { activity in
                 HStack(alignment: .top, spacing: 10) {
                     activityIcon(activity.state)
                         .frame(width: 20, height: 20)
+                        .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(activity.title)
                             .font(.subheadline.weight(.semibold))
@@ -569,6 +616,13 @@ private struct FamiliarAgentRunRow: View {
                         }
                     }
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(activity.title)
+                .accessibilityValue(
+                    [activity.state.accessibilityDescription, activity.detail ?? ""]
+                        .filter { !$0.isEmpty }
+                        .joined(separator: ", ")
+                )
             }
         }
         .padding(14)
@@ -587,6 +641,27 @@ private struct FamiliarAgentRunRow: View {
             Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
         case .failed:
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+        }
+    }
+}
+
+private extension FamiliarToolProgressState {
+    var accessibilityDescription: String {
+        switch self {
+        case .running: String(localized: "accessibility.tool.status.running")
+        case .succeeded: String(localized: "accessibility.tool.status.succeeded")
+        case .cancelled: String(localized: "accessibility.tool.status.cancelled")
+        case .failed: String(localized: "accessibility.tool.status.failed")
+        }
+    }
+}
+
+private extension FamiliarToolRunTerminalStatus {
+    var accessibilityDescription: String {
+        switch self {
+        case .succeeded: String(localized: "accessibility.tool.status.succeeded")
+        case .cancelled: String(localized: "accessibility.tool.status.cancelled")
+        case .failed: String(localized: "accessibility.tool.status.failed")
         }
     }
 }

@@ -124,6 +124,14 @@ struct FamiliarOnboardingView: View {
                         .frame(width: index == step ? 24 : 7, height: 7)
                 }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(
+                String(
+                    format: String(localized: "onboarding.page_indicator"),
+                    step + 1,
+                    3
+                )
+            )
 
             Button(action: advance) {
                 HStack(spacing: 8) {
