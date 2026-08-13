@@ -34,7 +34,7 @@
 
 Familiar 把 iPhone 的原生能力转成一个可组合的 Agent Runtime。它不以 Linux 为执行环境，不依赖 Apple Intelligence，不把每一个用户需求硬编码成 workflow，也不从一开始做复杂多 Agent。
 
-App 采用 BYOK 模式：用户使用自己的模型 API Key，请求从设备直接发送到所选 Provider；会话、附件和工具记录保存在本机。
+App 采用 BYOK 模式：用户使用自己的模型 API Key，模型请求从设备直接发送到所选 Provider；会话、附件和工具记录保存在本机。使用网页工具时，搜索词会直接发送给 DuckDuckGo，网页请求会直接发送给所选公开 HTTPS 站点。
 
 > Familiar 目前处于持续开发阶段。AI 输出可能不准确，不应作为医疗、法律、财务或其他高风险决定的唯一依据。
 
@@ -381,7 +381,7 @@ Familiar 当前不包含：
 - Core ML LLM 或 Apple Intelligence 依赖
 - 实时语音对话
 - 修改或删除日历/提醒事项
-- Web Research 或自主浏览器操作
+- 自主浏览器操作、JavaScript 执行或递归爬取
 
 ## 第三方软件
 

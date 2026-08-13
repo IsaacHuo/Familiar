@@ -34,7 +34,7 @@
 
 Familiar turns the iPhone's native capabilities into a composable runtime for AI agents. It does not run on a Linux execution environment, does not depend on Apple Intelligence, does not hard-code every user request into a workflow, and does not start with complex multi-agent orchestration.
 
-The app is BYOK-only: users bring their own model API Key, requests go directly from the device to the selected Provider, and conversations, attachments and tool records stay on the device.
+The app is BYOK-only: users bring their own model API Key, model requests go directly from the device to the selected Provider, and conversations, attachments and tool records stay on the device. When web tools are used, search queries go directly to DuckDuckGo and page requests go directly to the selected public HTTPS site.
 
 > Familiar is under active development. AI output may be inaccurate and should not be the sole basis for medical, legal, financial or other high-risk decisions.
 
@@ -383,11 +383,11 @@ Familiar does not currently include:
 - Core ML LLM or Apple Intelligence dependency
 - Real-time voice conversation
 - Calendar/reminder modification or deletion
-- Web research or autonomous browser actions
+- Autonomous browser actions, JavaScript execution or recursive crawling
 
 ## Third-party software
 
-Familiar embeds AnyDoc under the MIT License. The required notice is included in:
+Familiar embeds AnyDoc and SwiftSoup under the MIT License. The required notices are included in:
 
 - `Vendor/AnyDocBridgeRust/LICENSE.anydoc`
 - `Familiar/Resources/ThirdPartyNotices.txt`
