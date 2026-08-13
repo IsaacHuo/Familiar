@@ -94,6 +94,13 @@ Swift 6 connected iPhone signed build
 Default Xcode DerivedData clean iPhone build
 ```
 
+当前 Runtime 基线额外验证：
+
+```text
+Debug iOS Simulator arm64 build
+Release generic iOS arm64 unsigned build
+```
+
 Swift 6 并发修复覆盖：
 
 - 确认请求值类型隔离。
@@ -132,8 +139,8 @@ Rust/FFI fixture 已通过：
 ### 3.5 自动化测试
 
 - 已建立 `FamiliarTests` 与 `FamiliarUITests` target。
-- `FamiliarTests/FamiliarBaselineTests` 已在 iOS 26.5 arm64 Simulator 通过，覆盖 Provider catalog、SSE framing、附件路径边界、写入策略、Run/Step SwiftData 持久化与确认取消幂等。
-- EventKit policy / action proposal 与 Agent Runtime 的多轮、事件顺序、最大轮次、上下文上限测试已实现，待每次 Runtime 改动运行完整套件。
+- `FamiliarTests/FamiliarBaselineTests` 已在 iOS 26.5 arm64 Simulator 通过 9 项，覆盖 Provider catalog、SSE framing、附件路径边界、写入策略、Run/Step SwiftData 持久化、确认取消幂等与 V2 store 恢复删除范围。
+- EventKit policy / action proposal 与 Agent Runtime 的多轮、事件顺序、最大轮次、上下文上限测试已实现；当前完整单元测试为 14 项、3 个套件通过。
 
 ## 4. SwiftData 启动问题
 
@@ -158,7 +165,7 @@ Application Support/default.store
 当前代码改用：
 
 ```text
-Application Support/Familiar/Persistence/FamiliarAgentV1.store
+Application Support/Familiar/Persistence/FamiliarAgentV2.store
 ```
 
 流程：
@@ -180,7 +187,7 @@ Application Support/Familiar/Persistence/FamiliarAgentV1.store
 - 保留旧 `default.store` 安装新版本。
 - App 启动进入首启或聊天界面。
 - 无 SwiftData migration crash。
-- 创建会话后生成 `FamiliarAgentV1.store`。
+- 创建会话后生成 `FamiliarAgentV2.store`。
 - 重新启动后会话可读取。
 
 ## 5. 待真实 Provider 验证
@@ -278,20 +285,14 @@ Provider fixture parser、Agent Runtime、EventKit policy 与附件路径已具�
 
 仍应补充：
 
-- SwiftData store bootstrap / 恢复测试。
 - 真实 Provider 端到端 smoke test 的可控测试入口。
 - 附件导入、OCR 与消息附件清理的文件系统集成测试。
 
 ### 8.2 SwiftData 恢复界面
 
-当前版本化 store 创建失败时仍使用 `fatalError`。磁盘损坏、空间不足或文件权限异常会导致启动终止。
+当前版本化 store 创建失败时会显示本地数据恢复界面，提供有限诊断信息。用户确认重建后，App 删除当前 V2 store、SQLite sidecar 和附件目录，保留 Keychain 中的 API Key，并提示用户重启。该删除范围已有临时目录单元测试覆盖。
 
-后续处理目标：
-
-- 显示本地数据错误界面。
-- 提供诊断信息。
-- 提供用户确认后的重建操作。
-- 重建前处理附件和 Keychain 保留范围。
+仍需在真机覆盖磁盘空间不足、文件权限异常和损坏 store 的实际启动行为。
 
 ### 8.3 远程 Markdown 图片
 

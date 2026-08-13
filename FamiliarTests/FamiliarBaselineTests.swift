@@ -92,4 +92,27 @@ struct FamiliarBaselineTests {
                 == .alreadyResolved(.cancelled)
         )
     }
+
+    @Test("Store recovery removes only the current store and local attachments") @MainActor
+    func storeRecovery() throws {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? fileManager.removeItem(at: root) }
+
+        let persistence = root.appendingPathComponent("Familiar/Persistence", isDirectory: true)
+        let attachments = root.appendingPathComponent("Familiar/Attachments", isDirectory: true)
+        try fileManager.createDirectory(at: persistence, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: attachments, withIntermediateDirectories: true)
+        try Data("store".utf8).write(to: persistence.appendingPathComponent("FamiliarAgentV2.store"))
+        try Data("wal".utf8).write(to: persistence.appendingPathComponent("FamiliarAgentV2.store-wal"))
+        try Data("old".utf8).write(to: persistence.appendingPathComponent("FamiliarAgentV1.store"))
+        try Data("attachment".utf8).write(to: attachments.appendingPathComponent("message.txt"))
+
+        try FamiliarApp.resetV2Store(in: root, fileManager: fileManager)
+
+        #expect(!fileManager.fileExists(atPath: persistence.appendingPathComponent("FamiliarAgentV2.store").path))
+        #expect(!fileManager.fileExists(atPath: persistence.appendingPathComponent("FamiliarAgentV2.store-wal").path))
+        #expect(fileManager.fileExists(atPath: persistence.appendingPathComponent("FamiliarAgentV1.store").path))
+        #expect(!fileManager.fileExists(atPath: attachments.path))
+    }
 }

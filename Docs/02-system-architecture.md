@@ -532,7 +532,7 @@ CSP 禁止脚本网络连接、媒体、对象、frame 和表单。`img-src` 当
 当前开发 Schema 使用版本化地址：
 
 ```text
-Application Support/Familiar/Persistence/FamiliarAgentV1.store
+Application Support/Familiar/Persistence/FamiliarAgentV2.store
 ```
 
 首次成功创建当前 store 后，App 清理旧开发 `default.store`、SQLite sidecar 和旧附件目录。该策略服务于开发阶段的直接 Schema 替换。后续公开版本发生 Schema 变化时，需要引入正式迁移方案或新的受控数据升级流程。
@@ -550,7 +550,7 @@ Application Support/Familiar/Persistence/FamiliarAgentV1.store
 | 写入取消 | 返回取消结果，不调用 EventKit save |
 | EventKit 保存失败 | 生成失败终态 |
 | Markdown 渲染失败 | 回退 SwiftUI attributed/plain text |
-| 当前 store 创建失败 | 启动 fatal error；后续需要恢复界面 |
+| 当前 store 创建失败 | 显示本地数据恢复界面，展示有限诊断；用户确认后删除当前 store、sidecar 与附件，保留 Keychain API Key，并要求重启 |
 
 ## 14. 架构约束
 

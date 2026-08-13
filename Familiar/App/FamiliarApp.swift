@@ -61,10 +61,15 @@ struct FamiliarApp: App {
     static func resetV2Store() throws {
         let fileManager = FileManager.default
         let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        try resetV2Store(in: support, fileManager: fileManager)
+    }
+
+    static func resetV2Store(in support: URL, fileManager: FileManager = .default) throws {
         let persistence = support.appendingPathComponent("Familiar/Persistence", isDirectory: true)
         removeStore(named: "FamiliarAgentV2", in: persistence, fileManager: fileManager)
         let attachments = support.appendingPathComponent("Familiar/Attachments", isDirectory: true)
-        try? fileManager.removeItem(at: attachments)
+        guard fileManager.fileExists(atPath: attachments.path) else { return }
+        try fileManager.removeItem(at: attachments)
     }
 
     private static func removeStore(named name: String, in directory: URL, fileManager: FileManager) {

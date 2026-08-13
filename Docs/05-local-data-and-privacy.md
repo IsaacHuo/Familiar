@@ -116,7 +116,7 @@ erDiagram
 当前开发 Schema 的 store 地址：
 
 ```text
-Application Support/Familiar/Persistence/FamiliarAgentV1.store
+Application Support/Familiar/Persistence/FamiliarAgentV2.store
 ```
 
 历史开发版本使用 SwiftData 默认地址：
@@ -127,7 +127,7 @@ Application Support/default.store
 
 旧 store 缺少 `FamiliarConversation.currentModelID` 等必填字段时，SwiftData 轻量迁移会返回 `NSCocoaErrorDomain 134110`。当前引导流程执行：
 
-1. 创建 `FamiliarAgentV1.store` 的目录和配置。
+1. 创建 `FamiliarAgentV2.store` 的目录和配置。
 2. 成功打开当前 `ModelContainer`。
 3. 当前 store 首次创建时检查旧 `default.store`。
 4. 清理旧 store、`-shm`、`-wal` 和旧附件目录。
@@ -139,6 +139,8 @@ Application Support/default.store
 - 提供 `VersionedSchema` 和迁移计划。
 - 提供用户可见的数据恢复与重建流程。
 - 在版本发布前明确声明数据兼容范围。
+
+当前版本在容器创建失败时不再终止启动：恢复界面展示有限诊断信息，并在用户再次确认后删除当前 V2 store、SQLite sidecar 与附件目录。该操作保留 Keychain 中的 Provider API Key，完成后要求用户重启 App。
 
 ## 5. 持久化时点
 

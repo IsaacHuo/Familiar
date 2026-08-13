@@ -205,13 +205,14 @@
 
 ## D-019 开发 Schema 使用版本化 store
 
-- 状态：生效，运行迁移场景待验证
-- 决策：当前 Schema 使用 `FamiliarAgentV1.store`。首次成功创建后清理旧 `default.store`。
+- 状态：生效，真机损坏 store 场景待验证
+- 决策：当前 Schema 使用 `FamiliarAgentV2.store`。首次成功创建后清理旧开发 store；当前 store 无法创建时显示恢复界面，由用户确认重建。
 - 依据：旧开发 store 缺少必填字段，SwiftData 自动迁移返回 134110；项目当前无正式用户，计划允许直接替换开发 Schema。
 - 影响：
-  - 旧开发会话和附件被清理。
-  - 用户无需手动卸载以绕过旧 store。
-  - 公开版本后需要正式迁移或恢复界面。
+- 旧开发会话和附件被清理。
+- 用户无需手动卸载以绕过旧 store。
+- 恢复重建会清理当前 store 和附件，并保留 Keychain API Key。
+- 公开版本仍需要正式迁移或明确的数据兼容声明。
 - 复审条件：首个公开版本冻结 Schema。
 
 ## D-020 项目正式使用 Swift 6
