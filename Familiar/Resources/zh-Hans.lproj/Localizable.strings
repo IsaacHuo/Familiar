@@ -281,3 +281,13 @@
 "Add a question before running this action." = "请先添加问题，再运行此操作。";
 "Add text before running this action." = "请先添加文本，再运行此操作。";
 "Opening Familiar." = "正在打开 Familiar。";
+"settings.notifications.title" = "通知";
+"settings.notifications.run_terminal" = "Run 结束时通知我";
+"settings.notifications.footer" = "当 Familiar 不在前台且 Run 完成或失败时，可以发送通知并带你回到对应 Run。通知预览不会包含你的问题或回答内容。";
+"settings.notifications.denied_footer" = "iOS 设置已关闭通知。请在系统设置中允许通知，以接收 Run 状态。";
+"settings.notifications.open_settings" = "打开通知设置";
+"settings.notifications.error" = "无法更新通知。%@";
+"notification.run.completed.title" = "Familiar 已完成";
+"notification.run.completed.body" = "回答已就绪。打开 Familiar 查看。";
+"notification.run.failed.title" = "Familiar 运行失败";
+"notification.run.failed.body" = "打开 Familiar 查看本次 Run，并可按需重试。";

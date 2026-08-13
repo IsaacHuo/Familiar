@@ -281,3 +281,13 @@
 "Add a question before running this action." = "Add a question before running this action.";
 "Add text before running this action." = "Add text before running this action.";
 "Opening Familiar." = "Opening Familiar.";
+"settings.notifications.title" = "Notifications";
+"settings.notifications.run_terminal" = "Notify when runs finish";
+"settings.notifications.footer" = "When Familiar is not in the foreground and a run finishes or fails, a notification can take you back to that run. Notification previews do not include your prompt or response.";
+"settings.notifications.denied_footer" = "Notifications are off in iOS Settings. Allow them there to receive run updates.";
+"settings.notifications.open_settings" = "Open notification settings";
+"settings.notifications.error" = "Unable to update notifications. %@";
+"notification.run.completed.title" = "Familiar finished";
+"notification.run.completed.body" = "Your response is ready. Open Familiar to review it.";
+"notification.run.failed.title" = "Familiar run failed";
+"notification.run.failed.body" = "Open Familiar to review the run and try again.";

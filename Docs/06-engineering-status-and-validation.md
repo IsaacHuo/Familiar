@@ -79,12 +79,14 @@
 - 扩展不访问 Keychain、Provider、Agent Runtime 或原生写工具，共享内容不自动发送。
 - 新增 `Ask Familiar`、`Process with Familiar`、`Open Familiar` 三项 App Intent 与双语 App Shortcut phrase；Ask / Process 只通过主 App handoff 启动现有发送链路，Open 不改变当前状态。
 - App Intent 输入限制为 20,000 字符；未发送草稿不会被覆盖，工具写入仍由现有 Execution Policy 决定。
+- 新增用户可选的 Run 结束本地通知；仅在 App 非活跃且 Run 完成或失败时安排，通知只显示通用状态并通过类型化路由返回本地 Run / 会话。
+- 通知权限按需请求，拒绝后提供系统设置入口；关闭功能会清理 Familiar 待处理与已投递通知。未注册远程推送，也未引入后台执行保证。
 
 ## 2.1 与目标架构的差距
 
 项目按 iPhone-native Agent Runtime 方向演进。当前实现聚焦聊天与有限 EventKit 工具，尚未交付的架构部分：
 
-- System Entry：App 内入口、Share Extension、Deep Link、App Intents 与 App Shortcuts 已交付；系统通知、Widgets / Controls 和实体级 Spotlight 索引尚未实现。
+- System Entry：App 内入口、Share Extension、Deep Link、Run 终态本地通知、App Intents 与 App Shortcuts 已交付；Widgets / Controls 和实体级 Spotlight 索引尚未实现。
 - Capability Registry：System Tools 仅 Calendar/Reminders；Workspace 仅 File/PDF/Text；Contacts、Photos、Maps、Location、Weather、Web 等未接入。
 - Execution Policy：已覆盖能力可用性、权限请求、结构化写入确认和单次 Undo；App Intents 只负责显式启动 Run，不承担或绕过授权。
 - Run/Step 与 Task Timeline：已持久化运行终态和工具终态，并渲染运行、确认与工具记录；完整可恢复重放尚未实现。
@@ -151,8 +153,8 @@ Rust/FFI fixture 已通过：
 ### 3.5 自动化测试
 
 - 已建立 `FamiliarTests` 与 `FamiliarUITests` target。
-- `FamiliarTests/FamiliarBaselineTests` 已在 iOS 26.5 arm64 Simulator 通过 16 项，覆盖 Provider catalog、SSE framing、Markdown CSP、Deep Link 解析与本地路由、App Intent 前台 handoff 与长度边界、Share Inbox 原子写入/文件副本/篡改路径拒绝及 AnyDoc 附件导入链路、附件路径边界、写入策略、Run/Step SwiftData 持久化、确认取消幂等与 V2 store 恢复删除范围。
-- EventKit policy / action proposal 与 Agent Runtime 的多轮、事件顺序、最大轮次、上下文上限测试已实现；当前完整单元测试为 21 项、3 个套件通过。
+- `FamiliarTests/FamiliarBaselineTests` 已在 iOS 26.5 arm64 Simulator 通过 17 项，覆盖 Provider catalog、SSE framing、Markdown CSP、Deep Link 与通知路由解析、本地路由、App Intent 前台 handoff 与长度边界、Share Inbox 原子写入/文件副本/篡改路径拒绝及 AnyDoc 附件导入链路、附件路径边界、写入策略、Run/Step SwiftData 持久化、确认取消幂等与 V2 store 恢复删除范围。
+- EventKit policy / action proposal 与 Agent Runtime 的多轮、事件顺序、最大轮次、上下文上限测试已实现；当前完整单元测试为 22 项、3 个套件通过。
 
 ## 4. SwiftData 启动问题
 
@@ -320,7 +322,7 @@ Provider fixture parser、Agent Runtime、EventKit policy 与附件路径已具�
 
 已注册 `familiar://`，支持预填新草稿、打开本地会话和打开包含指定 Run 的本地会话。解析器拒绝非 Familiar scheme、认证信息、端口、fragment、未知路径和无效 UUID，并限制预填文本长度。入口不会自动发送消息或执行工具；当前请求执行中时会延后导航。
 
-仍需在真机验证从 Notes、Safari、Shortcuts 等系统来源冷启动和回前台的行为。系统通知尚未实现；Run 入口当前定位到包含该 Run 的会话时间线，尚未提供精确滚动锚点。
+仍需在真机验证从 Notes、Safari、Shortcuts 等系统来源冷启动和回前台的行为。Run 入口当前定位到包含该 Run 的会话时间线，尚未提供精确滚动锚点。
 
 ### 8.6 App Intents / Shortcuts
 
@@ -328,17 +330,23 @@ Provider fixture parser、Agent Runtime、EventKit policy 与附件路径已具�
 
 App Intent handoff 与 20,000 字符边界已有单元测试。当前运行中请求会先完成；已有未发送草稿时保留草稿并拒绝本次入口。仍需在真机的 Siri、Shortcuts、Spotlight 与 Action Button 上完成冷启动、后台唤起、语音参数解析和实际 Provider 请求验收；本轮不做人工视觉检查。
 
-### 8.7 孤儿附件
+### 8.7 Run 终态本地通知
+
+已实现设置内显式开关、按需权限请求、拒绝后的系统设置恢复入口，以及完成 / 失败两类本地通知。通知只在 App 非活跃时安排，正文使用固定通用文案，不包含问题、回答、附件名或工具结果；payload 只保存本地 Run / 会话 UUID。点击通知复用现有 `FamiliarAppIntentHandoff` 与 `FamiliarDeepLink` 返回对应上下文，前台到达时不重复展示横幅。关闭开关会移除 Familiar 的待处理与已投递通知。
+
+类型化通知路由及 `userInfo` 解析已有单元测试。仍需在真机验证权限弹窗、系统设置恢复、锁屏呈现、完成 / 失败投递、冷启动点击和目标已删除时的恢复行为。当前没有 `BGContinuedProcessingTask`，因此通知只报告当前进程实际到达的终态，不保证 App 被系统挂起后 Run 仍会完成；本轮不做人工视觉检查。
+
+### 8.8 孤儿附件
 
 聊天容器出现时会根据 SwiftData 引用清理 Drafts 与 Messages 目录中的孤儿附件。仍需要在真实文件系统和大附件集合上验证清理时机与性能。
 
-### 8.8 无障碍
+### 8.9 无障碍
 
 代码级语义已补齐：抽屉当前会话带选中 trait；首启页码、快门和发送禁用原因有本地化描述；确认卡组合标题、目标与字段；运行中和终态工具记录读出状态与详情；新确认出现时通过 `AccessibilityFocusState` 转移 VoiceOver 焦点。
 
 仍需真机完成 VoiceOver 全路径、焦点返回、极端 Dynamic Type、Increase Contrast 和 Bold Text 验收。
 
-### 8.9 幂等范围
+### 8.10 幂等范围
 
 EventKit commit 幂等状态只存在于当前进程。系统 save 完成后进程立即终止的边界需要专项验证。
 

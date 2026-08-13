@@ -140,6 +140,8 @@ MCP、Skills、Core ML、Background、Memory、Subagent 都是能力，不是 MV
 
 当前 Share Extension 第一版通过 App Group 共享收件箱承接外部文本、网页 URL 和最多 3 个文件。扩展只复制输入并结束系统分享流程；主 App 下次进入前台且当前没有未发送草稿或运行中请求时，将最早一项导入为新草稿。共享内容不自动发送，扩展不读取 Keychain、不访问 Provider，也不运行工具。
 
+当前系统通知第一版只覆盖用户主动启动的 Run 终态。用户在设置中明确开启后，Run 在 App 非活跃期间完成或失败时可安排一条本地通知；通知只显示通用状态，不包含问题、回答、文件名或工具结果。点击通知复用类型化 Deep Link 回到对应 Run，无法取得 Run ID 时回到对应会话。该能力不使用远程推送、不引入 Familiar 后端，也不代表 Run 已具备独立后台执行能力。
+
 App Intents 不进入 Agent Core，位于外层：
 
 ```text
@@ -238,6 +240,7 @@ Phase 8   Skills → MCP Client → Core ML specialized models
 8. 内置模型 ID 失效时允许用户输入有效模型 ID，界面保持可恢复。
 9. SwiftData 启动路径能够处理当前开发 Schema 与旧开发 store 的切换。
 10. EventKit、相机、Speech 和安全作用域文件完成真机验收。
+11. 通知权限只在用户明确开启时请求；关闭后不再安排 Familiar 通知，并清理待处理与已投递通知。
 
 ## 11. 产品成功条件
 

@@ -551,6 +551,7 @@ final class FamiliarChatController {
             runningTask = nil
         }
 
+        var activeRunID: UUID?
         do {
             let agentLoop = dependencies.makeRuntime(for: descriptor)
             var completedAnswer: String?
@@ -562,6 +563,7 @@ final class FamiliarChatController {
                 try Task.checkCancellation()
                 switch event.payload {
                 case .runStarted:
+                    activeRunID = UUID(uuidString: event.runID)
                     ensureRun(runtimeID: event.runID, conversationID: conversationID, startedAt: event.timestamp, context: context)
                 case .state(let status):
                     agentStatus = status
@@ -620,6 +622,10 @@ final class FamiliarChatController {
             try context.save()
             reloadMessages(in: context)
             resetTransientRunState()
+            await FamiliarNotificationService.scheduleCompletedRun(
+                conversationID: conversationID,
+                runID: activeRunID
+            )
         } catch is CancellationError {
             finishActiveRuns(conversationID: conversationID, status: .cancelled, reason: "cancelled", context: context)
             resetTransientRunState()
@@ -629,6 +635,10 @@ final class FamiliarChatController {
             resetTransientRunState()
             errorMessage = error.localizedDescription
             reloadMessages(in: context)
+            await FamiliarNotificationService.scheduleFailedRun(
+                conversationID: conversationID,
+                runID: activeRunID
+            )
         }
     }
 

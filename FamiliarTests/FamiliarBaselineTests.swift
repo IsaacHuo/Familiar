@@ -123,6 +123,26 @@ struct FamiliarBaselineTests {
         #expect(handoff.takePendingRequest() == existing)
     }
 
+    @Test("Notification routes preserve local conversation and run identifiers")
+    @MainActor
+    func notificationRoutes() {
+        let conversationID = UUID()
+        let runID = UUID()
+
+        let conversation = FamiliarNotificationRoute.conversation(conversationID)
+        let run = FamiliarNotificationRoute.run(runID)
+        #expect(FamiliarNotificationRoute(encodedValue: conversation.encodedValue) == conversation)
+        #expect(FamiliarNotificationRoute(encodedValue: run.encodedValue) == run)
+        #expect(conversation.deepLink == .conversation(conversationID))
+        #expect(run.deepLink == .run(runID))
+        #expect(FamiliarNotificationService.route(from: [
+            FamiliarNotificationService.routeUserInfoKey: run.encodedValue
+        ]) == run)
+        #expect(FamiliarNotificationService.route(from: [:]) == nil)
+        #expect(FamiliarNotificationRoute(encodedValue: "run:not-a-uuid") == nil)
+        #expect(FamiliarNotificationRoute(encodedValue: "unknown:\(runID.uuidString)") == nil)
+    }
+
     @Test("Shared inbox stores bounded text and verified file copies")
     func sharedInboxRoundTrip() throws {
         let root = FileManager.default.temporaryDirectory

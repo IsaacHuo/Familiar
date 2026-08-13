@@ -107,6 +107,19 @@ const base = import.meta.env.BASE_URL;
         </details>
 
         <details>
+          <summary>如何收到 Run 完成或失败通知？</summary>
+          <div class="detail-content">
+            <ol>
+              <li>打开 Familiar 设置，开启“Run 结束时通知我”。</li>
+              <li>在系统提示中允许通知。此前拒绝过时，可使用设置页中的按钮前往 iOS 通知设置。</li>
+              <li>当 Familiar 不在前台且当前 Run 实际完成或失败时，系统会显示一条通用通知。</li>
+              <li>点击通知可返回对应 Run；如果没有 Run 标识，则返回对应会话。</li>
+            </ol>
+            <p>通知不会显示你的问题、回答、附件名或工具结果，也不使用远程推送。它只报告 App 实际到达的终态，不能保证被系统挂起后的任务继续运行。</p>
+          </div>
+        </details>
+
+        <details>
           <summary>如何删除聊天记录和附件？</summary>
           <div class="detail-content">
             <p>删除 Familiar 中的会话会同时清理该会话关联的本地内容。若要移除模型服务凭证，请另外前往设置清除 API Key。删除本地数据不会撤回此前已经发送给第三方模型服务的请求。</p>

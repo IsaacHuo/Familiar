@@ -16,6 +16,7 @@
 - Deep Link 只接受有长度上限的草稿文本或本地会话 / Run UUID；它不自动发送内容、不承载 API Key，也不授予工具写权限。
 - Share Extension 只把用户明确共享的文本、URL 和文件复制到 App Group 收件箱；扩展不读取 Keychain、会话、Provider 配置或 EventKit 数据。
 - Ask / Process App Intents 只把用户明确提供且经过长度限制的文本交给主 App；文本随后沿用普通消息的 BYOK 请求路径。Open Familiar 不创建草稿、不发送网络请求，所有 Intent 均不能授予工具写权限。
+- Run 终态通知是用户可选的本地通知，不使用远程推送；通知只包含通用状态与本地 Run / 会话标识，不包含问题、回答、附件名或工具结果。
 
 ## 2. 数据清单
 
@@ -41,6 +42,7 @@
 | Deep Link 输入 | 其他 App 或系统入口 | 草稿文本进入内存；会话 / Run UUID 仅用于本地查询 | 不因打开链接自动发送 | 链接处理或草稿生命周期 |
 | Share Extension 输入 | 用户从其他 App 明确共享 | App Group `ShareInbox`，导入后复制到 App 私有草稿附件目录 | 不因共享或导入自动发送 | 成功或终态失败处理后删除共享副本；草稿副本沿用附件生命周期 |
 | App Intent 文本 | 用户在 Siri / Shortcuts / Spotlight 明确提供 | 仅作为进程内 handoff 和新草稿短暂存在，发送后进入本地消息记录 | Ask / Process 通过当前选择的 BYOK Provider 发送；Open 不发送 | 未发送草稿被拒绝覆盖；成功提交后沿用会话生命周期 |
+| 本地通知状态 | Agent Run 终态 | iOS 通知中心保存通用文案和本地 Run / 会话 UUID；开关保存在 UserDefaults | 无 Familiar 服务或远程推送目的地 | 用户关闭功能时清理 Familiar 待处理与已投递通知；系统也可按自身策略清理 |
 
 ## 3. SwiftData Schema
 
@@ -406,6 +408,17 @@ App 容器中的 SwiftData、UserDefaults 和附件文件由系统删除。`kSec
 
 Agent Run 设计为可恢复，不是常驻 daemon。用户退出 App 后，必要时通过 `BGContinuedProcessingTask` 承接用户启动的长任务继续完成。Run/Step 终态已持久化，重新打开 App 后可恢复执行轨迹。后台运行不改变数据目的地：模型请求仍然直接发往用户选择的 Provider。
 
+当前版本尚未实现 `BGContinuedProcessingTask`。本地通知只会报告当前进程实际到达的完成或失败终态，不能让已被系统挂起的 Run 继续执行，也不应被描述为后台任务保证。
+
+## 14.6 本地通知
+
+- 权限只在用户于设置中开启“Run 结束时通知我”时请求。
+- 系统拒绝权限后，本地偏好保持关闭，并提供前往 iOS 设置的恢复入口。
+- 通知内容使用固定的双语完成或失败文案，不从会话、消息、附件或工具记录生成预览。
+- payload 只携带 `run:<UUID>` 或 `conversation:<UUID>`，点击后在本地解析；它不携带 API Key、Provider 配置或工具授权。
+- Familiar 不注册远程通知、不上传 device token，也不通过自有服务器发送通知。
+- 用户关闭功能时清理 Familiar 的待处理与已投递通知。
+
 ## 15. 隐私验收
 
 - 抓包确认 Provider 请求目的地。
@@ -418,3 +431,4 @@ Agent Run 设计为可恢复，不是常驻 daemon。用户退出 App 后，必�
 - 删除会话后附件目录无对应文件。
 - 停止语音后无录音文件。
 - 验证 Markdown CSP 不允许 HTTP/HTTPS 图片，且远程图片只呈现为用户主动打开的来源链接。
+- 验证通知只在用户明确开启后安排，锁屏文案不包含会话内容，关闭后清理待处理与已投递通知。

@@ -1,7 +1,10 @@
 import SwiftUI
+import UIKit
 
 struct FamiliarSettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
 
     let initialSettings: FamiliarSettings
     let onSaveSettings: (FamiliarSettings) -> Void
@@ -18,6 +21,9 @@ struct FamiliarSettingsView: View {
     @State private var errorMessage: String?
     @State private var configuredProviderIDs: Set<String>
     @State private var asksToRestartOnboarding = false
+    @State private var runNotificationsEnabled: Bool
+    @State private var notificationAuthorization: FamiliarNotificationAuthorizationState = .unknown
+    @State private var isUpdatingNotifications = false
 
     init(
         initialSettings: FamiliarSettings,
@@ -34,6 +40,7 @@ struct FamiliarSettingsView: View {
         _configuredProviderIDs = State(initialValue: FamiliarKeychainStore.configuredProviderIDs(
             in: FamiliarProviderCatalog.allProviderIDs
         ))
+        _runNotificationsEnabled = State(initialValue: FamiliarNotificationPreference.isEnabled)
     }
 
     var body: some View {
@@ -44,6 +51,7 @@ struct FamiliarSettingsView: View {
                 modelSection
                 keySection
                 responseSection
+                notificationSection
                 privacySection
                 onboardingSection
             }
@@ -81,6 +89,11 @@ struct FamiliarSettingsView: View {
             }
         }
         .tint(FamiliarTheme.accent)
+        .task { await refreshNotificationAuthorization() }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await refreshNotificationAuthorization() }
+        }
     }
 
     private var providerSection: some View {
@@ -227,6 +240,32 @@ struct FamiliarSettingsView: View {
         }
     }
 
+    private var notificationSection: some View {
+        Section {
+            Toggle(
+                String(localized: "settings.notifications.run_terminal"),
+                isOn: Binding(
+                    get: { runNotificationsEnabled },
+                    set: { enabled in
+                        Task { await updateRunNotifications(enabled) }
+                    }
+                )
+            )
+            .disabled(isUpdatingNotifications)
+
+            if notificationAuthorization == .denied,
+               let settingsURL = URL(string: UIApplication.openNotificationSettingsURLString) {
+                Button(String(localized: "settings.notifications.open_settings")) {
+                    openURL(settingsURL)
+                }
+            }
+        } header: {
+            Text(String(localized: "settings.notifications.title"))
+        } footer: {
+            Text(notificationFooter)
+        }
+    }
+
     private var onboardingSection: some View {
         Section {
             Button(String(localized: "settings.onboarding.restart")) {
@@ -326,6 +365,15 @@ struct FamiliarSettingsView: View {
         validationSucceeded || hasAPIKey ? .green : .orange
     }
 
+    private var notificationFooter: String {
+        switch notificationAuthorization {
+        case .denied:
+            String(localized: "settings.notifications.denied_footer")
+        case .unknown, .notDetermined, .enabled:
+            String(localized: "settings.notifications.footer")
+        }
+    }
+
     private func switchProvider(from oldID: String, to newID: String) {
         settings.providerConfigurations[oldID] = configuration
         configuration = settings.providerConfigurations[newID] ?? .empty
@@ -413,6 +461,33 @@ struct FamiliarSettingsView: View {
             validationSucceeded = false
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func refreshNotificationAuthorization() async {
+        let state = await FamiliarNotificationService.authorizationState()
+        notificationAuthorization = state
+        if state != .enabled {
+            FamiliarNotificationPreference.setEnabled(false)
+            runNotificationsEnabled = false
+        } else {
+            runNotificationsEnabled = FamiliarNotificationPreference.isEnabled
+        }
+    }
+
+    private func updateRunNotifications(_ enabled: Bool) async {
+        guard !isUpdatingNotifications else { return }
+        isUpdatingNotifications = true
+        defer { isUpdatingNotifications = false }
+        do {
+            notificationAuthorization = try await FamiliarNotificationService.setEnabled(enabled)
+            runNotificationsEnabled = enabled && notificationAuthorization == .enabled
+        } catch {
+            runNotificationsEnabled = false
+            errorMessage = String(
+                format: String(localized: "settings.notifications.error"),
+                error.localizedDescription
+            )
         }
     }
 }

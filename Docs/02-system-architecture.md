@@ -84,6 +84,8 @@ Familiar foreground ── validate / import ──▶ New Draft
 
 App Intents 位于外层，不进入 Agent Core。当前只暴露 `Ask Familiar`、`Process with Familiar`、`Open Familiar`：Ask / Process 接收有长度上限的文本，通过主 App 的单一 handoff 进入新草稿并启动同一套 Agent Runtime；Open 只把 Familiar 带到前台，不改变当前草稿或会话。Intent 本身不读取 Keychain、不复制 Provider adapter 或 Capability Registry，也不能授权工具写入。主 App 有未发送草稿时拒绝覆盖；已有 Run 执行中时等待其结束后再处理。iOS 18–25 使用前台打开兼容入口，iOS 26 起使用 `supportedModes`。
 
+本地通知同样位于 System Entry Layer。`FamiliarNotificationService` 只在用户显式开启、系统仍允许通知且 App 不处于活跃状态时，为完成或失败的 Run 安排本地通知。通知 payload 只保存 `run:<UUID>` 或 `conversation:<UUID>` 类型化路由，不保存问题、回答、附件名或工具结果；用户点击后由 `FamiliarAppDelegate` 交给现有 handoff，再走 `FamiliarDeepLink` 的本地查找路径。前台到达的通知不额外展示横幅。关闭功能会清理 Familiar 的待处理和已投递通知。当前实现不注册远程推送、不依赖 APNs，也不承担后台续跑。
+
 ### 2.2 Agent Runtime
 
 Agent Runtime 是骨架中最关键的一层。它尽量不碰 Apple Framework，完全不知道：
@@ -580,5 +582,6 @@ Application Support/Familiar/Persistence/FamiliarAgentV2.store
 - WebKit 不使用持久化网站数据存储。
 - SwiftData 的广泛 invalidation 不承载逐 token 更新。
 - App Intents 不复制 Capability Registry。
+- 本地通知只携带通用终态文案与本地类型化路由，不携带会话正文或授权信息。
 - 图片预处理是 Tool，不是强制 pipeline。
 - 权限由代码控制，不靠 Prompt。

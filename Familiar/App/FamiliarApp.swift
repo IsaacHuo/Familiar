@@ -4,6 +4,7 @@ import SwiftUI
 
 @main
 struct FamiliarApp: App {
+    @UIApplicationDelegateAdaptor(FamiliarAppDelegate.self) private var appDelegate
     private let modelContainer: ModelContainer?
     private let storeError: String?
     private let dependencies: FamiliarAppDependencies
