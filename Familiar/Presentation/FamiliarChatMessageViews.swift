@@ -9,9 +9,11 @@ struct FamiliarMessageTimeline: View {
     let pendingConfirmations: [FamiliarToolConfirmationRequest]
     let streamingMessageID: UUID?
     let streamingText: String
-    let agentStatus: FamiliarAgentStatus?
-    let toolActivities: [FamiliarToolActivity]
+    let agentStatus: FamiliarRuntimeState?
+    let toolActivities: [FamiliarToolProgress]
+    let availableUndoKeys: Set<String>
     let onResolveConfirmation: (FamiliarToolConfirmationRequest, FamiliarToolConfirmationDecision) -> Void
+    let onUndo: (FamiliarToolRunSnapshot) -> Void
     let onEdit: (FamiliarMessageSnapshot) -> Void
     let onRetry: (FamiliarMessageSnapshot) -> Void
 
@@ -66,7 +68,11 @@ struct FamiliarMessageTimeline: View {
                                 FamiliarModelSwitchRow(marker: marker)
                                     .id(item.id)
                             case .toolRecord(let record):
-                                FamiliarPersistedToolRunRow(record: record)
+                                FamiliarPersistedToolRunRow(
+                                    record: record,
+                                    canUndo: availableUndoKeys.contains(record.runID + ":" + record.toolCallID),
+                                    onUndo: { onUndo(record) }
+                                )
                                     .id(item.id)
                             case .confirmation(let request):
                                 FamiliarToolConfirmationCard(
@@ -153,7 +159,7 @@ private enum FamiliarTimelineItem: Identifiable {
     case modelSwitch(FamiliarModelSwitchSnapshot)
     case toolRecord(FamiliarToolRunSnapshot)
     case confirmation(FamiliarToolConfirmationRequest)
-    case agent(status: FamiliarAgentStatus?, activities: [FamiliarToolActivity])
+    case agent(status: FamiliarRuntimeState?, activities: [FamiliarToolProgress])
 
     var id: String {
         switch self {
@@ -411,7 +417,7 @@ private struct FamiliarToolConfirmationCard: View {
     let onDecision: (FamiliarToolConfirmationDecision) -> Void
 
     private var isWrite: Bool {
-        ["create_calendar_event", "create_reminder"].contains(request.toolName)
+        request.effect != .read
     }
 
     var body: some View {
@@ -465,11 +471,15 @@ private struct FamiliarToolConfirmationCard: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(FamiliarTheme.separator, lineWidth: 1)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(request.title)
     }
 }
 
 private struct FamiliarPersistedToolRunRow: View {
     let record: FamiliarToolRunSnapshot
+    let canUndo: Bool
+    let onUndo: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -487,6 +497,12 @@ private struct FamiliarPersistedToolRunRow: View {
                 Text(record.finishedAt, style: .time)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
+                if canUndo {
+                    Button("撤销", action: onUndo)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .accessibilityHint("仅撤销这次创建的系统项目")
+                }
             }
         }
         .padding(14)
@@ -524,8 +540,8 @@ private struct MessageActionButton: View {
 }
 
 private struct FamiliarAgentRunRow: View {
-    let status: FamiliarAgentStatus?
-    let activities: [FamiliarToolActivity]
+    let status: FamiliarRuntimeState?
+    let activities: [FamiliarToolProgress]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
@@ -561,7 +577,7 @@ private struct FamiliarAgentRunRow: View {
     }
 
     @ViewBuilder
-    private func activityIcon(_ state: FamiliarToolActivityState) -> some View {
+    private func activityIcon(_ state: FamiliarToolProgressState) -> some View {
         switch state {
         case .running:
             ProgressView().controlSize(.small)

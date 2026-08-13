@@ -1,13 +1,15 @@
 ## Project Context
 
-Familiar is a standalone iOS chat app.
+Familiar is a standalone iPhone-native Agent Runtime with a chat-first interface.
 
 - Core stack: SwiftUI, SwiftData, URLSession, WebKit, Keychain.
 - Minimum deployment target: iOS 18.
-- The current product scope is direct chat Q&A only.
-- The app has no account system, login, backend database, Supabase dependency, managed quota, subscription, entitlement flow, web research, personal-data context, external actions, or Artifact flow.
+- The current product scope is one main Agent, BYOK model access, local conversation history, native EventKit tools, local document processing, image drafts with a blocked send path, and editable speech transcription.
+- The app has no account system, login, backend database, Supabase dependency, managed quota, subscription, entitlement flow, cloud sync, arbitrary code execution, or multi-Agent orchestration.
 - Familiar never reads academic-system or other app data.
-- DeepSeek is BYOK-only. Keys remain in the device Keychain and requests go directly from iOS to DeepSeek.
+- Every Provider is BYOK-only. Keys remain in the device Keychain and requests go directly from iOS to the selected Provider.
+- The Agent Runtime only understands typed tool definitions, calls, results, policy decisions, and runtime events. Apple frameworks remain behind native tool adapters.
+- Permissions and write authorization are enforced in Swift code. Natural-language writes require structured confirmation; a model cannot authorize its own action.
 - Conversation history is local SwiftData. Keep transient streaming text out of broad persistence invalidation and persist only at explicit checkpoints and terminal states.
 - Markdown, code highlighting, Mermaid, and KaTeX are rendered from bundled local resources in a non-persistent WebKit view.
 - Use native iOS liquid-glass effects.

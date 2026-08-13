@@ -2,6 +2,7 @@ import SwiftUI
 
 nonisolated enum FamiliarTheme {
     static let accent = Color(red: 0.10, green: 0.53, blue: 0.98)
+    static let displayCornerRadius: CGFloat = 62
     static let brandViolet = Color(red: 0.55, green: 0.44, blue: 0.98)
     static let brandGlow = LinearGradient(
         colors: [accent.opacity(0.18), brandViolet.opacity(0.12), .clear],
@@ -9,8 +10,13 @@ nonisolated enum FamiliarTheme {
         endPoint: .bottomTrailing
     )
     static let assistantFill = Color(uiColor: .secondarySystemBackground)
-    static let userFill = Color(uiColor: .secondarySystemFill)
+    static let userFill = Color(uiColor: .tertiarySystemFill)
     static let elevatedFill = Color(uiColor: .secondarySystemBackground)
+    static let drawerFill = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? .secondarySystemBackground
+            : UIColor(red: 0.97, green: 0.97, blue: 0.98, alpha: 1)
+    })
     static let separator = Color.primary.opacity(0.10)
 }
 

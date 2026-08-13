@@ -37,7 +37,7 @@ nonisolated enum FamiliarAttachmentStoreError: LocalizedError, Sendable {
 }
 
 nonisolated enum FamiliarAttachmentStore {
-    private static let maximumSourceBytes: Int64 = 25 * 1024 * 1024
+    static let maximumSourceBytes: Int64 = 25 * 1024 * 1024
     private static var fileManager: FileManager { FileManager.default }
 
     private static var attachmentsURL: URL {
@@ -151,7 +151,7 @@ nonisolated enum FamiliarAttachmentStore {
         let size = try fileSize(of: sourceURL)
         guard size <= maximumSourceBytes else { throw FamiliarAttachmentStoreError.fileTooLarge }
         let directory = messagesURL(for: messageID)
-        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
         let destinationURL = directory.appendingPathComponent(
             draft.id.uuidString + "-" + sanitizedFilename(draft.filename),
             isDirectory: false
@@ -192,6 +192,16 @@ nonisolated enum FamiliarAttachmentStore {
         }
     }
 
+    static func pruneMessageFiles(keeping relativePaths: Set<String>) {
+        let root = attachmentsURL.appendingPathComponent("Messages", isDirectory: true)
+        guard let enumerator = fileManager.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else { return }
+        for case let url as URL in enumerator {
+            guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { continue }
+            let path = relativePath(for: url)
+            if !relativePaths.contains(path) { try? fileManager.removeItem(at: url) }
+        }
+    }
+
     private static func isSupported(_ filename: String) -> Bool {
         FamiliarAnyDocService.supportedExtensions.contains(
             URL(fileURLWithPath: filename).pathExtension.lowercased()
@@ -215,7 +225,7 @@ nonisolated enum FamiliarAttachmentStore {
     }
 
     private static func makeDraftURL(filename: String) throws -> URL {
-        try fileManager.createDirectory(at: draftsURL, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: draftsURL, withIntermediateDirectories: true, attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
         return draftsURL.appendingPathComponent(UUID().uuidString + "-" + sanitizedFilename(filename), isDirectory: false)
     }
 
@@ -226,10 +236,18 @@ nonisolated enum FamiliarAttachmentStore {
 
     private static func validatedStoreURL(for relativePath: String) throws -> URL {
         let path = relativePath.replacingOccurrences(of: "\\", with: "/")
-        guard !path.isEmpty, !path.hasPrefix("/"), !path.split(separator: "/").contains(where: { $0 == ".." || $0.isEmpty }) else { throw FamiliarAttachmentStoreError.invalidRelativePath }
+        guard isSafeRelativePath(path) else { throw FamiliarAttachmentStoreError.invalidRelativePath }
         let url = attachmentsURL.appendingPathComponent(path).standardizedFileURL
         guard url.path.hasPrefix(attachmentsURL.standardizedFileURL.path + "/") else { throw FamiliarAttachmentStoreError.invalidRelativePath }
         return url
+    }
+
+    static func isSafeRelativePath(_ relativePath: String) -> Bool {
+        let path = relativePath.replacingOccurrences(of: "\\", with: "/")
+        let components = path.split(separator: "/", omittingEmptySubsequences: false)
+        return !path.isEmpty
+            && !path.hasPrefix("/")
+            && !components.contains(where: { $0 == "." || $0 == ".." || $0.isEmpty })
     }
 
     private static func fileSize(of url: URL) throws -> Int64 {

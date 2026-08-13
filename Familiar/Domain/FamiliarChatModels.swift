@@ -61,6 +61,14 @@ nonisolated enum FamiliarToolRunTerminalStatus: String, Codable, Sendable {
     case failed
 }
 
+nonisolated enum FamiliarAgentRunStatus: String, Codable, Sendable {
+    case running, completed, cancelled, failed
+}
+
+nonisolated enum FamiliarAgentStepType: String, Codable, Sendable {
+    case model, tool, approval, result
+}
+
 nonisolated struct FamiliarToolRunSnapshot: Identifiable, Equatable, Sendable {
     let id: UUID
     let runID: String

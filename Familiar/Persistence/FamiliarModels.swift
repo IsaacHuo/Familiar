@@ -16,8 +16,8 @@ final class FamiliarConversation {
     @Relationship(deleteRule: .cascade, inverse: \FamiliarModelSwitchRecord.conversation)
     var modelSwitchRecords: [FamiliarModelSwitchRecord]
 
-    @Relationship(deleteRule: .cascade, inverse: \FamiliarToolRunRecord.conversation)
-    var toolRunRecords: [FamiliarToolRunRecord]
+    @Relationship(deleteRule: .cascade, inverse: \FamiliarAgentRun.conversation)
+    var agentRuns: [FamiliarAgentRun]
 
     init(
         id: UUID = UUID(),
@@ -35,51 +35,85 @@ final class FamiliarConversation {
         self.currentModelID = currentModelID
         messages = []
         modelSwitchRecords = []
-        toolRunRecords = []
+        agentRuns = []
     }
 }
 
 @Model
-final class FamiliarToolRunRecord {
+final class FamiliarAgentRun {
     @Attribute(.unique) var id: UUID
-    var runID: String
+    @Attribute(.unique) var runtimeID: String
+    var statusRawValue: String
+    var startedAt: Date
+    var finishedAt: Date?
+    var finishReason: String?
+    var conversation: FamiliarConversation?
+
+    @Relationship(deleteRule: .cascade, inverse: \FamiliarAgentStep.run)
+    var steps: [FamiliarAgentStep]
+
+    init(id: UUID = UUID(), runtimeID: String, status: FamiliarAgentRunStatus = .running, startedAt: Date = Date(), conversation: FamiliarConversation? = nil) {
+        self.id = id
+        self.runtimeID = runtimeID
+        statusRawValue = status.rawValue
+        self.startedAt = startedAt
+        self.conversation = conversation
+        steps = []
+    }
+
+    var status: FamiliarAgentRunStatus {
+        get { FamiliarAgentRunStatus(rawValue: statusRawValue) ?? .failed }
+        set { statusRawValue = newValue.rawValue }
+    }
+}
+
+@Model
+final class FamiliarAgentStep {
+    @Attribute(.unique) var id: UUID
+    var typeRawValue: String
+    var eventSequence: Int
+    var timelineSequence: Int
     var toolCallID: String
     var toolName: String
     var summary: String
     var detail: String
     var confirmationRawValue: String
     var statusRawValue: String
-    var sequence: Int
     var startedAt: Date
     var finishedAt: Date
-    var conversation: FamiliarConversation?
+    var artifactIdentifier: String?
+    var run: FamiliarAgentRun?
 
     init(
         id: UUID = UUID(),
-        runID: String,
+        type: FamiliarAgentStepType,
+        eventSequence: Int,
+        timelineSequence: Int,
         toolCallID: String,
         toolName: String,
         summary: String,
         detail: String,
         confirmation: FamiliarPersistedConfirmationResult,
         status: FamiliarToolRunTerminalStatus,
-        sequence: Int,
         startedAt: Date,
         finishedAt: Date,
-        conversation: FamiliarConversation? = nil
+        artifactIdentifier: String? = nil,
+        run: FamiliarAgentRun? = nil
     ) {
         self.id = id
-        self.runID = runID
+        typeRawValue = type.rawValue
+        self.eventSequence = eventSequence
+        self.timelineSequence = timelineSequence
         self.toolCallID = toolCallID
         self.toolName = toolName
         self.summary = summary
         self.detail = detail
         confirmationRawValue = confirmation.rawValue
         statusRawValue = status.rawValue
-        self.sequence = sequence
         self.startedAt = startedAt
         self.finishedAt = finishedAt
-        self.conversation = conversation
+        self.artifactIdentifier = artifactIdentifier
+        self.run = run
     }
 
     var confirmation: FamiliarPersistedConfirmationResult {
@@ -88,6 +122,10 @@ final class FamiliarToolRunRecord {
 
     var status: FamiliarToolRunTerminalStatus {
         FamiliarToolRunTerminalStatus(rawValue: statusRawValue) ?? .failed
+    }
+
+    var type: FamiliarAgentStepType {
+        FamiliarAgentStepType(rawValue: typeRawValue) ?? .result
     }
 }
 

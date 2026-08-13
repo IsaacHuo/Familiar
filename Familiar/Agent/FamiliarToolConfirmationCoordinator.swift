@@ -27,6 +27,7 @@ nonisolated public struct FamiliarToolConfirmationRequest: Identifiable, Sendabl
     public let runID: String
     public let toolCallID: String
     public let toolName: String
+    public let effect: FamiliarToolEffect
     public let title: String
     public let fields: [String: String]
     public let target: String?
@@ -36,6 +37,7 @@ nonisolated public struct FamiliarToolConfirmationRequest: Identifiable, Sendabl
         runID: String,
         toolCallID: String,
         toolName: String,
+        effect: FamiliarToolEffect = .read,
         title: String,
         fields: [String: String] = [:],
         target: String? = nil
@@ -44,6 +46,7 @@ nonisolated public struct FamiliarToolConfirmationRequest: Identifiable, Sendabl
         self.runID = runID
         self.toolCallID = toolCallID
         self.toolName = toolName
+        self.effect = effect
         self.title = title
         self.fields = fields
         self.target = target

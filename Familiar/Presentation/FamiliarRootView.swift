@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct FamiliarRootView: View {
+    let dependencies: FamiliarAppDependencies
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("familiar.onboarding.completed.v1") private var hasCompletedOnboarding = false
 
@@ -9,7 +10,7 @@ struct FamiliarRootView: View {
             Color(uiColor: .systemBackground).ignoresSafeArea()
 
             if hasCompletedOnboarding {
-                FamiliarChatView()
+                FamiliarChatView(dependencies: dependencies)
                     .transition(.opacity)
             } else {
                 FamiliarOnboardingView {

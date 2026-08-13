@@ -91,7 +91,7 @@ enum FamiliarMarkdownHTML {
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src https: data:; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
           <link rel="stylesheet" href="katex.min.css">
           <link rel="stylesheet" href="renderer.css">
         </head>
@@ -279,8 +279,10 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
         self.webView = webView
         pendingMarkdown = markdown
 
-        if renderedMarkdown != markdown {
-            didFailRendering.wrappedValue = false
+        if renderedMarkdown != markdown && didFailRendering.wrappedValue {
+            DispatchQueue.main.async { [weak self] in
+                self?.didFailRendering.wrappedValue = false
+            }
         }
 
         if !didStartLoading {

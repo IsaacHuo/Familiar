@@ -8,7 +8,7 @@ struct FamiliarChatView: View {
     @Query(sort: \FamiliarConversation.updatedAt, order: .reverse)
     private var conversations: [FamiliarConversation]
 
-    @StateObject private var controller = FamiliarChatController()
+    @State private var controller: FamiliarChatController
     @StateObject private var speechTranscriber = FamiliarSpeechTranscriber()
     @State private var isDrawerOpen = false
     @State private var drawerDrag: CGFloat = 0
@@ -20,18 +20,25 @@ struct FamiliarChatView: View {
     @State private var configuredProviderIDs: Set<String> = []
     @FocusState private var isComposerFocused: Bool
 
+    init(dependencies: FamiliarAppDependencies) {
+        _controller = State(initialValue: FamiliarChatController(dependencies: dependencies))
+    }
+
     var body: some View {
+        @Bindable var controller = controller
         GeometryReader { safeGeometry in
             let safeAreaInsets = safeGeometry.safeAreaInsets
+            let keyboardHeight = max(UIScreen.main.bounds.height - safeGeometry.size.height, 0)
+            let bottomInset = keyboardHeight > 0 ? 0 : safeAreaInsets.bottom
 
             GeometryReader { geometry in
                 let drawerWidth = geometry.size.width * 2 / 3
                 let visibleDrawerWidth = drawerOffset(width: drawerWidth)
                 let drawerProgress = visibleDrawerWidth / max(drawerWidth, 1)
-                let cornerRadius = 28 * drawerProgress
+                let cornerRadius = FamiliarTheme.displayCornerRadius * drawerProgress
 
                 ZStack(alignment: .leading) {
-                    Color(uiColor: .secondarySystemBackground)
+                    FamiliarTheme.drawerFill
                         .ignoresSafeArea()
 
                     FamiliarConversationDrawer(
@@ -51,9 +58,6 @@ struct FamiliarChatView: View {
                         },
                         onDelete: { conversation in
                             controller.delete([conversation], in: modelContext)
-                        },
-                        onSettings: {
-                            presentedSheet = .settings
                         }
                     )
                     .frame(width: drawerWidth)
@@ -69,9 +73,9 @@ struct FamiliarChatView: View {
                         )
                         .fill(Color(uiColor: .systemBackground))
 
-                        mainSurface(availableHeight: geometry.size.height - safeAreaInsets.top - safeAreaInsets.bottom)
+                        mainSurface(availableHeight: geometry.size.height - safeAreaInsets.top - bottomInset)
                             .padding(.top, safeAreaInsets.top)
-                            .padding(.bottom, safeAreaInsets.bottom)
+                            .padding(.bottom, bottomInset)
                     }
                     .clipShape(
                         UnevenRoundedRectangle(
@@ -101,7 +105,7 @@ struct FamiliarChatView: View {
                         .zIndex(100)
                         .accessibilityHidden(true)
                 }
-                .background(Color(uiColor: .secondarySystemBackground).ignoresSafeArea())
+                .background(FamiliarTheme.drawerFill.ignoresSafeArea())
             }
             .ignoresSafeArea(.container)
         }
@@ -159,6 +163,9 @@ struct FamiliarChatView: View {
             }
             refreshConfiguredProviders()
             FamiliarAttachmentStore.pruneDrafts(keeping: Set(controller.draftAttachments.map(\.relativePath)))
+            FamiliarAttachmentStore.pruneMessageFiles(keeping: Set(
+                conversations.flatMap { $0.messages.flatMap { $0.attachments.map(\.relativePath) } }
+            ))
         }
         .onChange(of: speechTranscriber.errorMessage) { _, message in
             if let message { controller.errorMessage = message }
@@ -188,6 +195,7 @@ struct FamiliarChatView: View {
                         onSpeech: toggleSpeech,
                         onSend: {
                             speechTranscriber.stop()
+                            isComposerFocused = false
                             if controller.isSending {
                                 controller.cancelSending(in: modelContext)
                             } else {
@@ -229,9 +237,11 @@ struct FamiliarChatView: View {
                 streamingText: controller.streamingText,
                 agentStatus: controller.agentStatus,
                 toolActivities: controller.toolActivities,
+                availableUndoKeys: controller.availableUndoKeys,
                 onResolveConfirmation: { request, decision in
                     controller.resolveConfirmation(request, decision: decision)
                 },
+                onUndo: { controller.undo($0, in: modelContext) },
                 onEdit: { pendingMessageOperation = .edit($0) },
                 onRetry: { pendingMessageOperation = .retry($0) }
             )
@@ -454,6 +464,15 @@ private struct FamiliarChatTopBar: View {
             .familiarGlassCircle(interactive: true)
             .accessibilityLabel(String(localized: "drawer.open"))
 
+            Button(action: onConfigure) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 18, weight: .semibold))
+                    .frame(width: 46, height: 46)
+            }
+            .buttonStyle(.plain)
+            .familiarGlassCircle(interactive: true)
+            .accessibilityLabel(String(localized: "drawer.settings"))
+
             Menu {
                 if providerOptions.isEmpty {
                     Button(action: onConfigure) {
@@ -619,14 +638,11 @@ private struct FamiliarConversationDrawer: View {
     let onSelect: (FamiliarConversation) -> Void
     let onRename: (FamiliarConversation) -> Void
     let onDelete: (FamiliarConversation) -> Void
-    let onSettings: () -> Void
 
     @State private var isSearchPresented = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            drawerHeader
-
+        ZStack(alignment: .top) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 3) {
                     if conversations.isEmpty {
@@ -649,14 +665,14 @@ private struct FamiliarConversationDrawer: View {
                         }
                     }
                 }
-                .padding(.top, 4)
+                .padding(.top, drawerHeaderHeight + 8)
                 .padding(.bottom, 12)
             }
             .scrollDismissesKeyboard(.interactively)
 
-            settingsRow
+            drawerHeader
         }
-        .background(Color(uiColor: .secondarySystemBackground))
+        .background(FamiliarTheme.drawerFill)
         .sheet(isPresented: $isSearchPresented) {
             FamiliarConversationSearchView(
                 conversations: conversations,
@@ -684,6 +700,7 @@ private struct FamiliarConversationDrawer: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(conversation.id == selectedConversationID ? .isSelected : [])
         .background(
             conversation.id == selectedConversationID
                 ? Color.primary.opacity(0.075)
@@ -724,41 +741,21 @@ private struct FamiliarConversationDrawer: View {
         .padding(.horizontal, 20)
         .padding(.top, safeAreaInsets.top + 10)
         .padding(.bottom, 12)
+        .background(alignment: .top) {
+            LinearGradient(
+                stops: [
+                    .init(color: Color(uiColor: .secondarySystemBackground).opacity(0.9), location: 0),
+                    .init(color: .clear, location: 1)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: safeAreaInsets.top + 56)
+        }
     }
 
-    private var settingsRow: some View {
-        Button(action: onSettings) {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle().fill(FamiliarTheme.accent.opacity(0.14))
-                    Text("F")
-                        .font(.headline)
-                        .foregroundStyle(FamiliarTheme.accent)
-                }
-                .frame(width: 34, height: 34)
-
-                Text(String(localized: "drawer.settings"))
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(.primary)
-
-                Spacer(minLength: 4)
-
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 18)
-            .frame(height: 56)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(FamiliarTheme.separator)
-                .frame(height: 0.5)
-        }
-        .padding(.bottom, safeAreaInsets.bottom)
-        .accessibilityLabel(String(localized: "drawer.settings"))
+    private var drawerHeaderHeight: CGFloat {
+        safeAreaInsets.top + 66
     }
 }
 

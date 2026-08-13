@@ -42,6 +42,7 @@ nonisolated public enum FamiliarEventKitError: LocalizedError, Sendable {
     case invalidResultLimit
     case missingCalendar
     case idempotencyKeyEmpty
+    case undoUnavailable
 
     public var errorDescription: String? {
         switch self {
@@ -54,6 +55,7 @@ nonisolated public enum FamiliarEventKitError: LocalizedError, Sendable {
         case .invalidResultLimit: return "结果上限必须在 1 到 200 之间。"
         case .missingCalendar: return "找不到指定的日历或提醒列表。"
         case .idempotencyKeyEmpty: return "幂等键不能为空。"
+        case .undoUnavailable: return "这次操作已经撤销，或撤销已失效。"
         }
     }
 }
@@ -118,9 +120,17 @@ nonisolated public protocol FamiliarEventKitWriteExecutor: Sendable {
     ) async throws -> FamiliarWriteCommitResult
 }
 
-public actor FamiliarEventKitService: FamiliarEventKitWriteExecutor {
+nonisolated protocol FamiliarEventKitServicing: FamiliarEventKitWriteExecutor, FamiliarCapabilityProviding {
+    func targetDescription(for request: FamiliarPendingWriteRequest) async throws -> String
+    func events(from startISO8601: String, to endISO8601: String, limit: Int) async throws -> [FamiliarCalendarEvent]
+    func reminders(from startISO8601: String?, to endISO8601: String?, text: String?, limit: Int) async throws -> [FamiliarReminder]
+    func undoCommit(idempotencyKey: String) async throws -> FamiliarToolExecutionResult
+}
+
+public actor FamiliarEventKitService: FamiliarEventKitServicing {
     private let store = EKEventStore()
     private var committedKeys: [String: FamiliarWriteCommitResult] = [:]
+    private var undoneKeys: Set<String> = []
 
     public init() {}
 
@@ -155,6 +165,31 @@ public actor FamiliarEventKitService: FamiliarEventKitWriteExecutor {
 
     public func requestFullAccessToReminders() async throws {
         try await requestFullAccess(for: .reminders)
+    }
+
+    func availability(for requirement: FamiliarCapabilityRequirement) -> FamiliarCapabilityAvailability {
+        let authorization: FamiliarEventKitAuthorization
+        switch requirement {
+        case .calendarFullAccess: authorization = FamiliarEventKitAuthorization(EKEventStore.authorizationStatus(for: .event))
+        case .remindersFullAccess: authorization = FamiliarEventKitAuthorization(EKEventStore.authorizationStatus(for: .reminder))
+        }
+        switch authorization {
+        case .fullAccess: return .available
+        case .notDetermined, .writeOnly: return .requestable
+        case .restricted, .denied: return .unavailable(reason: "系统权限不可用，请在设置中允许访问。")
+        }
+    }
+
+    func request(_ requirement: FamiliarCapabilityRequirement) async throws {
+        switch availability(for: requirement) {
+        case .available: return
+        case .unavailable(let reason): throw FamiliarToolRegistryError.capabilityUnavailable(reason)
+        case .requestable:
+            switch requirement {
+            case .calendarFullAccess: try await requestFullAccess(for: .events)
+            case .remindersFullAccess: try await requestFullAccess(for: .reminders)
+            }
+        }
     }
 
     public func targetDescription(for request: FamiliarPendingWriteRequest) throws -> String {
@@ -225,6 +260,31 @@ public actor FamiliarEventKitService: FamiliarEventKitWriteExecutor {
         }
         committedKeys[idempotencyKey] = result
         return result
+    }
+
+    func undoCommit(idempotencyKey: String) async throws -> FamiliarToolExecutionResult {
+        try Task.checkCancellation()
+        guard !undoneKeys.contains(idempotencyKey),
+              let committed = committedKeys[idempotencyKey]
+        else { throw FamiliarEventKitError.undoUnavailable }
+        switch committed.kind {
+        case .events:
+            guard let event = store.event(withIdentifier: committed.identifier) else {
+                throw FamiliarEventKitError.undoUnavailable
+            }
+            try store.remove(event, span: .thisEvent, commit: true)
+        case .reminders:
+            guard let reminder = store.calendarItem(withIdentifier: committed.identifier) as? EKReminder else {
+                throw FamiliarEventKitError.undoUnavailable
+            }
+            try store.remove(reminder, commit: true)
+        }
+        undoneKeys.insert(idempotencyKey)
+        return FamiliarToolExecutionResult(
+            modelContent: #"{"undone":true}"#,
+            displayContent: "已撤销",
+            artifactIdentifier: committed.identifier
+        )
     }
 
     private func fetchReminders(matching predicate: NSPredicate) async -> [FamiliarReminderCandidate] {

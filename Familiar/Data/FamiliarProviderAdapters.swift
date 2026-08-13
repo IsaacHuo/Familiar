@@ -220,7 +220,7 @@ private nonisolated extension AnthropicMessagesClient {
         let description: String
         let inputSchema: FamiliarJSONSchema
 
-        init(_ tool: FamiliarToolDefinition) {
+        init(_ tool: FamiliarToolManifest) {
             name = tool.name
             description = tool.description
             inputSchema = tool.parameters
@@ -460,7 +460,7 @@ private nonisolated extension GeminiGenerateContentClient {
         let description: String
         let parameters: FamiliarJSONSchema
 
-        init(_ tool: FamiliarToolDefinition) {
+        init(_ tool: FamiliarToolManifest) {
             name = tool.name
             description = tool.description
             parameters = tool.parameters

@@ -195,7 +195,7 @@ private nonisolated extension OpenAICompatibleClient {
         let type = "function"
         let function: Function
 
-        init(_ definition: FamiliarToolDefinition) {
+        init(_ definition: FamiliarToolManifest) {
             function = Function(
                 name: definition.name,
                 description: definition.description,

@@ -36,14 +36,16 @@
 
 ### Agent 与 EventKit
 
-- 有限 Agent Loop。
+- 有限 Agent Loop 与统一 Runtime Event 流。
+- 类型化 Capability Registry、Tool Router 与 Execution Policy。
 - 本机时间和 App 信息工具。
 - 日历查询和创建。
 - 提醒事项查询和创建。
 - 时间线确认卡。
 - 确认协调 actor。
-- 重复调用拦截。
-- 工具终态持久化。
+- Run ID + Tool Call ID 范围内的重复写入拦截。
+- 可逆 EventKit 写入的单次 Undo。
+- Run / Step 终态与检查点持久化。
 
 ### 文件与媒体
 
@@ -72,9 +74,9 @@
 
 - System Entry：Share Extension、系统通知 / Deep Link、Widgets / Controls、Spotlight、App Intents、Shortcuts。
 - Capability Registry：System Tools 仅 Calendar/Reminders；Workspace 仅 File/PDF/Text；Contacts、Photos、Maps、Location、Weather、Web 等未接入。
-- Execution Policy：当前为逐次确认，意图感知授权与 Undo 路径未实现。
-- Run/Step 正式数据模型与 Task Timeline：未实现。
-- Runtime Event 统一事件流：当前为聊天时间线事件，未泛化为 Agent 事件。
+- Execution Policy：已覆盖能力可用性、权限请求、结构化写入确认和单次 Undo；App Intents 的一次性授权入口尚未实现。
+- Run/Step 与 Task Timeline：已持久化运行终态和工具终态，并渲染运行、确认与工具记录；完整可恢复重放尚未实现。
+- Runtime Event：已由 Agent Loop 发出统一事件流；后台恢复事件尚未实现。
 - Memory 三层、Skills、Background（BGContinuedProcessingTask）与 MCP Client：未实现。
 - 单 Agent First 已确立；多 Agent 明确不做。
 
@@ -126,6 +128,12 @@ Rust/FFI fixture 已通过：
 - `git diff --check`
 - plist lint
 - 本地化重复键检查
+
+### 3.5 自动化测试
+
+- 已建立 `FamiliarTests` 与 `FamiliarUITests` target。
+- `FamiliarTests/FamiliarBaselineTests` 已在 iOS 26.5 arm64 Simulator 通过，覆盖 Provider catalog、SSE framing、附件路径边界、写入策略、Run/Step SwiftData 持久化与确认取消幂等。
+- EventKit policy / action proposal 与 Agent Runtime 的多轮、事件顺序、最大轮次、上下文上限测试已实现，待每次 Runtime 改动运行完整套件。
 
 ## 4. SwiftData 启动问题
 
@@ -199,7 +207,7 @@ Application Support/Familiar/Persistence/FamiliarAgentV1.store
 - Gemini SSE。
 - 工具调用增量和终止原因。
 
-当前仓库尚无完整 iOS 测试 target。Provider fixture 应在发布前加入自动测试。
+Provider fixture parser、Agent Runtime、EventKit policy 与附件路径已具备 iOS 测试覆盖。每个 Provider 的真实网络验证仍应在发布前完成。
 
 ## 6. 待真机验证
 
@@ -266,17 +274,13 @@ Application Support/Familiar/Persistence/FamiliarAgentV1.store
 
 ### 8.1 测试目标
 
-项目缺少 iOS 单元测试和 UI 测试 target。关键纯逻辑目前依赖构建和手工验收。
+已建立 iOS 单元测试和 UI 测试 target。关键纯逻辑已有 Provider fixture、Agent 重复调用/上下文上限、确认取消、EventKit action proposal、附件路径与 Run/Step 的基础覆盖。
 
-建议优先补充：
+仍应补充：
 
-- Provider fixture parser tests。
-- Agent duplicate-call tests。
-- Confirmation coordinator cancellation tests。
-- EventKit service protocol abstraction tests。
-- Attachment path validation tests。
-- Context length gate tests。
-- SwiftData store bootstrap tests。
+- SwiftData store bootstrap / 恢复测试。
+- 真实 Provider 端到端 smoke test 的可控测试入口。
+- 附件导入、OCR 与消息附件清理的文件系统集成测试。
 
 ### 8.2 SwiftData 恢复界面
 
@@ -295,7 +299,7 @@ WebKit CSP 允许 HTTPS 图片。发布前需要确定隐私策略并完成实�
 
 ### 8.4 孤儿附件
 
-Drafts 有清理逻辑。Messages 目录缺少全局引用扫描。
+聊天容器出现时会根据 SwiftData 引用清理 Drafts 与 Messages 目录中的孤儿附件。仍需要在真实文件系统和大附件集合上验证清理时机与性能。
 
 ### 8.5 无障碍
 

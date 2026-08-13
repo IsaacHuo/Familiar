@@ -13,6 +13,8 @@
 | [05-local-data-and-privacy.md](05-local-data-and-privacy.md) | SwiftData、附件、Run/Step、Memory、Keychain、权限、数据生命周期、恢复策略 |
 | [06-engineering-status-and-validation.md](06-engineering-status-and-validation.md) | 当前实现状态、与目标架构的差距、验证记录、待验证项目、发布门槛 |
 | [07-decision-log.md](07-decision-log.md) | 关键产品和工程决策、依据、影响、复审条件 |
+| [08-reference-repositories.md](08-reference-repositories.md) | 实现代码时的参考仓库（swift-sdk、OpenMinis、Swarm）、参考点、许可证与使用规则 |
+| [09-ui-component-reference.md](09-ui-component-reference.md) | 聊天页模型回复 UI 的 Beautiful UI 组件参考（Loading/Thinking/流式/确认/工具状态等 19 组件完整源码）、CSS 令牌与动画、Familiar 适配建议 |
 
 ## 状态术语
 
@@ -63,4 +65,6 @@
 - 附件格式、大小限制、OCR 或 AnyDoc 流程变化。
 - 图片发送、音频处理或外部数据传输范围变化。
 - 首启、抽屉、时间线、输入器和设置的信息架构变化。
+- 参考仓库的新增、移除或参考点变化。
+- UI 组件参考中组件的增删、源码更新或适配结论定型。
 - App Store 隐私说明、用途说明或支持页面变化。

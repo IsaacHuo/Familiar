@@ -127,16 +127,20 @@ nonisolated struct FamiliarJSONSchema: Codable, Equatable, Sendable {
     }
 }
 
-nonisolated struct FamiliarToolDefinition: Equatable, Sendable {
+nonisolated struct FamiliarToolManifest: Equatable, Sendable {
     let name: String
+    let title: String
     let description: String
     let parameters: FamiliarJSONSchema
+    let effect: FamiliarToolEffect
+    let risk: FamiliarToolRisk
+    let requirements: [FamiliarCapabilityRequirement]
 }
 
 nonisolated struct FamiliarModelRequest: Sendable {
     let model: String
     let messages: [FamiliarProviderMessage]
-    let tools: [FamiliarToolDefinition]
+    let tools: [FamiliarToolManifest]
 }
 
 nonisolated enum FamiliarModelFinishReason: String, Sendable {
