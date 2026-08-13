@@ -66,6 +66,8 @@ Familiar 是一个 iPhone-native Agent Runtime。网络请求从 App 直接发�
 | **第二优先级** | ④ Widgets / Controls · ⑤ Spotlight 等轻量系统入口 |
 | **兼容能力** | ⑥ App Intents · ⑦ Shortcuts |
 
+已实现的 Deep Link 由 `FamiliarDeepLink` 解析为有限类型：新草稿、会话和 Run。System Entry Layer 只负责恢复本地界面上下文；它不直接调用 Provider、不执行 Tool，也不授予写权限。新草稿链接只预填输入器，仍由用户主动发送；会话和 Run 链接只解析本地 UUID，找不到时显示可恢复错误。
+
 App Intents 位于外层，不进入 Agent Core。它只暴露 `Ask Familiar`、`Process with Familiar`、`Open Familiar`，让 Siri、Shortcuts、Spotlight、Widgets 和 Action Button 能启动一次 Agent Run。
 
 ### 2.2 Agent Runtime

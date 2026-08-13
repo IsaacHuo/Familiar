@@ -13,6 +13,7 @@
 - App 不创建原始录音文件。
 - App 不读取学术系统或其他 App 的私有数据。
 - App 不使用 Familiar 账户、业务后端或云端数据库。
+- Deep Link 只接受有长度上限的草稿文本或本地会话 / Run UUID；它不自动发送内容、不承载 API Key，也不授予工具写权限。
 
 ## 2. 数据清单
 
@@ -35,6 +36,7 @@
 | 语音转写 | Apple Speech | 输入草稿 | 发送后进入 Provider | 用户编辑或清空草稿 |
 | 原始录音 | 麦克风输入 | 不落盘 | Speech framework 按系统能力处理 | audio buffer 生命周期 |
 | 日历/提醒数据 | EventKit | 查询结果进入内存和工具记录摘要 | 可能作为工具结果进入 Provider | 运行结束和历史记录生命周期 |
+| Deep Link 输入 | 其他 App 或系统入口 | 草稿文本进入内存；会话 / Run UUID 仅用于本地查询 | 不因打开链接自动发送 | 链接处理或草稿生命周期 |
 
 ## 3. SwiftData Schema
 

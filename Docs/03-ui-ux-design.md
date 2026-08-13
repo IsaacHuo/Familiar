@@ -51,6 +51,13 @@ flowchart TD
 - App Intents 只暴露 `Ask Familiar`、`Process with Familiar`、`Open Familiar`，由系统表面触发 Agent Run。
 - 所有入口最终汇入同一个 Agent Runtime，不各自造一套执行逻辑。
 
+当前 Deep Link 交互约束：
+
+- 新草稿入口打开聊天主界面、关闭设置与抽屉、预填文本并聚焦输入器，绝不自动发送。
+- 会话入口选中对应本地会话；Run 入口选中包含该 Run 的会话并展示已有执行时间线。
+- App 正在执行请求时保留入口，等当前请求结束后再导航，避免切换会话破坏运行状态。
+- 无效或不存在的本地目标不创建替代数据，界面显示错误并保持可继续操作。
+
 ## 2.6 Runtime Event 驱动的 Agent 执行界面
 
 工具不自己造 UI。一次执行产生统一事件，界面只渲染这些事件：

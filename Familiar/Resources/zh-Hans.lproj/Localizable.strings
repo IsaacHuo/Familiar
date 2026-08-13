@@ -237,6 +237,9 @@
 "error.agent.tool_arguments_too_large" = "模型返回的工具参数过大。";
 "error.agent.tool_result_too_large" = "工具结果超过 Familiar 的本地安全上限。";
 "error.save_tool_record" = "保存工具记录失败：%@";
+"error.deep_link.busy" = "当前回答完成后，Familiar 会继续打开这个链接。";
+"error.deep_link.conversation_not_found" = "这个链接对应的会话已不在本机。";
+"error.deep_link.run_not_found" = "这个链接对应的任务已不在本机。";
 "eventkit.default_calendar" = "默认日历";
 "eventkit.default_reminder_list" = "默认提醒事项列表";
 "eventkit.target" = "目标：%@";

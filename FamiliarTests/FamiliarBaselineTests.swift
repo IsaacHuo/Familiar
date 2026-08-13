@@ -44,6 +44,54 @@ struct FamiliarBaselineTests {
         #expect(!FamiliarMarkdownHTML.baseDocument.contains("img-src https:"))
     }
 
+    @Test("Deep links accept only bounded typed routes")
+    func deepLinkParsing() throws {
+        let conversationID = UUID()
+        let runID = UUID()
+        #expect(
+            FamiliarDeepLink(url: try #require(URL(string: "familiar://new?text=Hello%20Familiar")))
+                == .newDraft(text: "Hello Familiar")
+        )
+        #expect(
+            FamiliarDeepLink(url: try #require(URL(string: "familiar://conversation/\(conversationID.uuidString)")))
+                == .conversation(conversationID)
+        )
+        #expect(
+            FamiliarDeepLink(url: try #require(URL(string: "familiar://run/\(runID.uuidString)")))
+                == .run(runID)
+        )
+        #expect(FamiliarDeepLink(url: try #require(URL(string: "https://example.com/new"))) == nil)
+        #expect(FamiliarDeepLink(url: try #require(URL(string: "familiar://conversation/not-a-uuid"))) == nil)
+
+        let oversized = String(repeating: "x", count: FamiliarDeepLink.maximumPrefillCharacters + 1)
+        let encoded = try #require(oversized.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed))
+        let bounded = FamiliarDeepLink(url: try #require(URL(string: "familiar://new?text=\(encoded)")))
+        #expect(bounded == .newDraft(text: String(oversized.prefix(FamiliarDeepLink.maximumPrefillCharacters))))
+    }
+
+    @Test("Deep links resolve conversation and run context") @MainActor
+    func deepLinkRouting() throws {
+        let container = try FamiliarTestStore.make()
+        let first = FamiliarConversation(title: "First")
+        let second = FamiliarConversation(title: "Second")
+        let runID = UUID()
+        let run = FamiliarAgentRun(runtimeID: runID.uuidString, status: .completed, conversation: second)
+        container.mainContext.insert(first)
+        container.mainContext.insert(second)
+        container.mainContext.insert(run)
+        try container.mainContext.save()
+
+        let conversations = try container.mainContext.fetch(FetchDescriptor<FamiliarConversation>())
+        let controller = FamiliarChatController(dependencies: FamiliarAppDependencies())
+        #expect(controller.openDeepLink(.conversation(first.id), conversations: conversations, in: container.mainContext))
+        #expect(controller.selectedConversationID == first.id)
+        #expect(controller.openDeepLink(.run(runID), conversations: conversations, in: container.mainContext))
+        #expect(controller.selectedConversationID == second.id)
+        #expect(controller.openDeepLink(.newDraft(text: "Draft"), conversations: conversations, in: container.mainContext))
+        #expect(controller.selectedConversationID == nil)
+        #expect(controller.draft == "Draft")
+    }
+
     @Test("SSE fixtures preserve OpenAI, Anthropic and Gemini framing")
     func sseFixtures() {
         let openAI = FamiliarSSEParser.events(in: "data: {\"choices\":[]}\n\ndata: [DONE]\n\n")

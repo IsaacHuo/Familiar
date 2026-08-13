@@ -20,13 +20,16 @@ struct FamiliarChatView: View {
     @State private var configuredProviderIDs: Set<String> = []
     @FocusState private var isComposerFocused: Bool
     private let onRestartOnboarding: () -> Void
+    @Binding private var pendingDeepLink: FamiliarDeepLink?
 
     init(
         dependencies: FamiliarAppDependencies,
-        onRestartOnboarding: @escaping () -> Void
+        onRestartOnboarding: @escaping () -> Void,
+        pendingDeepLink: Binding<FamiliarDeepLink?>
     ) {
         _controller = State(initialValue: FamiliarChatController(dependencies: dependencies))
         self.onRestartOnboarding = onRestartOnboarding
+        _pendingDeepLink = pendingDeepLink
     }
 
     var body: some View {
@@ -175,6 +178,7 @@ struct FamiliarChatView: View {
             FamiliarAttachmentStore.pruneMessageFiles(keeping: Set(
                 conversations.flatMap { $0.messages.flatMap { $0.attachments.map(\.relativePath) } }
             ))
+            handlePendingDeepLink()
         }
         .onChange(of: speechTranscriber.errorMessage) { _, message in
             if let message { controller.errorMessage = message }
@@ -185,6 +189,31 @@ struct FamiliarChatView: View {
             } else {
                 speechTranscriber.stop()
             }
+        }
+        .onChange(of: pendingDeepLink) { _, _ in
+            handlePendingDeepLink()
+        }
+        .onChange(of: controller.isSending) { _, isSending in
+            if !isSending {
+                handlePendingDeepLink()
+            }
+        }
+    }
+
+    private func handlePendingDeepLink() {
+        guard let deepLink = pendingDeepLink,
+              controller.openDeepLink(deepLink, conversations: conversations, in: modelContext)
+        else { return }
+
+        pendingDeepLink = nil
+        speechTranscriber.stop()
+        presentedSheet = nil
+        closeDrawer()
+        switch deepLink {
+        case .newDraft:
+            isComposerFocused = true
+        case .conversation, .run:
+            isComposerFocused = false
         }
     }
 

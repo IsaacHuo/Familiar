@@ -130,6 +130,13 @@ MCP、Skills、Core ML、Background、Memory、Subagent 都是能力，不是 MV
 | **第二优先级** | ④ Widgets / Controls · ⑤ Spotlight 等轻量系统入口 |
 | **兼容能力** | ⑥ App Intents · ⑦ Shortcuts |
 
+当前已交付第一版 Deep Link 外壳：
+
+- `familiar://new?text=...` 只打开新会话并预填草稿，不自动发送。
+- `familiar://conversation/<UUID>` 打开本地会话。
+- `familiar://run/<UUID>` 打开包含该 Run 的本地会话和现有时间线。
+- Deep Link 不接受 API Key、Provider 配置或工具授权，也不能绕过 Agent Runtime 与 Execution Policy。
+
 App Intents 不进入 Agent Core，位于外层：
 
 ```text

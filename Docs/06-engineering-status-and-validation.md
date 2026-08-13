@@ -68,11 +68,18 @@
 - 产品与工程 Docs。
 - Agent Runtime 目标架构文档（六层架构、入口优先级、Capability Registry、Execution Policy、Native Workspace）。
 
+### 系统入口
+
+- 注册 `familiar://` URL Scheme。
+- 类型化 Deep Link 支持新草稿、会话和 Run 三种本地入口。
+- 新草稿仅预填、不自动发送；会话和 Run 仅恢复本地上下文。
+- Deep Link 不能传入密钥、Provider 配置或工具授权，也不绕过 Execution Policy。
+
 ## 2.1 与目标架构的差距
 
 项目按 iPhone-native Agent Runtime 方向演进。当前实现聚焦聊天与有限 EventKit 工具，尚未交付的架构部分：
 
-- System Entry：Share Extension、系统通知 / Deep Link、Widgets / Controls、Spotlight、App Intents、Shortcuts。
+- System Entry：App 内入口和 Deep Link 已交付；Share Extension、系统通知、Widgets / Controls、Spotlight、App Intents、Shortcuts 尚未实现。
 - Capability Registry：System Tools 仅 Calendar/Reminders；Workspace 仅 File/PDF/Text；Contacts、Photos、Maps、Location、Weather、Web 等未接入。
 - Execution Policy：已覆盖能力可用性、权限请求、结构化写入确认和单次 Undo；App Intents 的一次性授权入口尚未实现。
 - Run/Step 与 Task Timeline：已持久化运行终态和工具终态，并渲染运行、确认与工具记录；完整可恢复重放尚未实现。
@@ -139,8 +146,8 @@ Rust/FFI fixture 已通过：
 ### 3.5 自动化测试
 
 - 已建立 `FamiliarTests` 与 `FamiliarUITests` target。
-- `FamiliarTests/FamiliarBaselineTests` 已在 iOS 26.5 arm64 Simulator 通过 10 项，覆盖 Provider catalog、SSE framing、Markdown CSP、附件路径边界、写入策略、Run/Step SwiftData 持久化、确认取消幂等与 V2 store 恢复删除范围。
-- EventKit policy / action proposal 与 Agent Runtime 的多轮、事件顺序、最大轮次、上下文上限测试已实现；当前完整单元测试为 15 项、3 个套件通过。
+- `FamiliarTests/FamiliarBaselineTests` 已在 iOS 26.5 arm64 Simulator 通过 12 项，覆盖 Provider catalog、SSE framing、Markdown CSP、Deep Link 解析与本地路由、附件路径边界、写入策略、Run/Step SwiftData 持久化、确认取消幂等与 V2 store 恢复删除范围。
+- EventKit policy / action proposal 与 Agent Runtime 的多轮、事件顺序、最大轮次、上下文上限测试已实现；当前完整单元测试为 17 项、3 个套件通过。
 
 ## 4. SwiftData 启动问题
 
@@ -298,17 +305,23 @@ Provider fixture parser、Agent Runtime、EventKit policy 与附件路径已具�
 
 已确定隐私优先策略。WebKit CSP 的 `img-src` 仅允许 Bundle 同源资源和 `data:`；渲染器在把清理后的 HTML 插入页面前，将 HTTPS 图片替换为来源链接。App 不会自动请求远程图片，用户主动点击后才由系统外部打开。CSP 边界已有单元测试，App 设置和官网隐私政策均已披露。
 
-### 8.4 孤儿附件
+### 8.4 Deep Link 系统入口
+
+已注册 `familiar://`，支持预填新草稿、打开本地会话和打开包含指定 Run 的本地会话。解析器拒绝非 Familiar scheme、认证信息、端口、fragment、未知路径和无效 UUID，并限制预填文本长度。入口不会自动发送消息或执行工具；当前请求执行中时会延后导航。
+
+仍需在真机验证从 Notes、Safari、Shortcuts 等系统来源冷启动和回前台的行为。系统通知尚未实现；Run 入口当前定位到包含该 Run 的会话时间线，尚未提供精确滚动锚点。
+
+### 8.5 孤儿附件
 
 聊天容器出现时会根据 SwiftData 引用清理 Drafts 与 Messages 目录中的孤儿附件。仍需要在真实文件系统和大附件集合上验证清理时机与性能。
 
-### 8.5 无障碍
+### 8.6 无障碍
 
 代码级语义已补齐：抽屉当前会话带选中 trait；首启页码、快门和发送禁用原因有本地化描述；确认卡组合标题、目标与字段；运行中和终态工具记录读出状态与详情；新确认出现时通过 `AccessibilityFocusState` 转移 VoiceOver 焦点。
 
 仍需真机完成 VoiceOver 全路径、焦点返回、极端 Dynamic Type、Increase Contrast 和 Bold Text 验收。
 
-### 8.6 幂等范围
+### 8.7 幂等范围
 
 EventKit commit 幂等状态只存在于当前进程。系统 save 完成后进程立即终止的边界需要专项验证。
 

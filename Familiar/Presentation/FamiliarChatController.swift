@@ -47,6 +47,40 @@ final class FamiliarChatController {
     }
 
     @discardableResult
+    func openDeepLink(
+        _ deepLink: FamiliarDeepLink,
+        conversations: [FamiliarConversation],
+        in context: ModelContext
+    ) -> Bool {
+        guard !isSending else {
+            errorMessage = String(localized: "error.deep_link.busy")
+            return false
+        }
+
+        switch deepLink {
+        case .newDraft(let text):
+            select(nil, in: context)
+            draft = text
+        case .conversation(let id):
+            guard conversations.contains(where: { $0.id == id }) else {
+                errorMessage = String(localized: "error.deep_link.conversation_not_found")
+                return true
+            }
+            select(id, in: context)
+        case .run(let id):
+            let runtimeID = id.uuidString
+            guard let conversation = conversations.first(where: {
+                $0.agentRuns.contains(where: { $0.runtimeID == runtimeID })
+            }) else {
+                errorMessage = String(localized: "error.deep_link.run_not_found")
+                return true
+            }
+            select(conversation.id, in: context)
+        }
+        return true
+    }
+
+    @discardableResult
     func createConversation(in context: ModelContext) -> FamiliarConversation? {
         discardDraftAttachments()
         draft = ""

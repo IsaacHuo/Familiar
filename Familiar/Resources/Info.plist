@@ -4,6 +4,19 @@
 <dict>
     <key>CFBundleDevelopmentRegion</key>
     <string>zh-Hans</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>CFBundleURLName</key>
+            <string>com.isaachuo.familiar</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>familiar</string>
+            </array>
+        </dict>
+    </array>
     <key>CFBundleDisplayName</key>
     <string>Familiar</string>
     <key>CFBundleExecutable</key>

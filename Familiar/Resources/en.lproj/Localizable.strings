@@ -237,6 +237,9 @@
 "error.agent.tool_arguments_too_large" = "The model returned tool arguments that are too large.";
 "error.agent.tool_result_too_large" = "The tool result exceeded Familiar's local safety limit.";
 "error.save_tool_record" = "Couldn't save the tool record: %@";
+"error.deep_link.busy" = "Familiar will open this link after the current response finishes.";
+"error.deep_link.conversation_not_found" = "The conversation in this link is no longer available on this device.";
+"error.deep_link.run_not_found" = "The task in this link is no longer available on this device.";
 "eventkit.default_calendar" = "Default calendar";
 "eventkit.default_reminder_list" = "Default reminder list";
 "eventkit.target" = "Target: %@";
