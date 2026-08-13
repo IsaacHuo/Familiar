@@ -18,6 +18,7 @@ struct FamiliarChatView: View {
     @State private var pendingMessageOperation: FamiliarPendingMessageOperation?
     @State private var speechBaseDraft = ""
     @State private var configuredProviderIDs: Set<String> = []
+    @State private var isImportingSharedItem = false
     @FocusState private var isComposerFocused: Bool
     private let onRestartOnboarding: () -> Void
     @Binding private var pendingDeepLink: FamiliarDeepLink?
@@ -179,6 +180,7 @@ struct FamiliarChatView: View {
                 conversations.flatMap { $0.messages.flatMap { $0.attachments.map(\.relativePath) } }
             ))
             handlePendingDeepLink()
+            handleSharedInbox()
         }
         .onChange(of: speechTranscriber.errorMessage) { _, message in
             if let message { controller.errorMessage = message }
@@ -186,6 +188,7 @@ struct FamiliarChatView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 refreshConfiguredProviders()
+                handleSharedInbox()
             } else {
                 speechTranscriber.stop()
             }
@@ -196,8 +199,12 @@ struct FamiliarChatView: View {
         .onChange(of: controller.isSending) { _, isSending in
             if !isSending {
                 handlePendingDeepLink()
+                handleSharedInbox()
             }
         }
+        .onChange(of: controller.draft) { _, _ in handleSharedInbox() }
+        .onChange(of: controller.draftAttachments) { _, _ in handleSharedInbox() }
+        .onChange(of: controller.draftImages.count) { _, _ in handleSharedInbox() }
     }
 
     private func handlePendingDeepLink() {
@@ -214,6 +221,59 @@ struct FamiliarChatView: View {
             isComposerFocused = true
         case .conversation, .run:
             isComposerFocused = false
+        }
+    }
+
+    private func handleSharedInbox() {
+        guard pendingDeepLink == nil,
+              !controller.isSending,
+              !isImportingSharedItem,
+              controller.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              controller.draftAttachments.isEmpty,
+              controller.draftImages.isEmpty
+        else { return }
+
+        isImportingSharedItem = true
+        Task { @MainActor in
+            defer { isImportingSharedItem = false }
+            do {
+                guard let prepared = try await FamiliarSharedDraftImportService.prepareNext() else { return }
+
+                guard !controller.isSending,
+                      controller.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      controller.draftAttachments.isEmpty,
+                      controller.draftImages.isEmpty
+                else {
+                    FamiliarSharedDraftImportService.discardPreparedAttachments(prepared)
+                    return
+                }
+
+                FamiliarSharedDraftImportService.consume(prepared)
+                guard !prepared.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !prepared.attachments.isEmpty else {
+                    controller.errorMessage = prepared.firstImportErrorDescription
+                        ?? String(localized: "share.error.no_supported_content")
+                    return
+                }
+
+                speechTranscriber.stop()
+                controller.select(nil, in: modelContext)
+                controller.draft = prepared.text
+                controller.draftAttachments = prepared.attachments
+                presentedSheet = nil
+                closeDrawer()
+                isComposerFocused = true
+                if let importErrorDescription = prepared.firstImportErrorDescription {
+                    controller.errorMessage = String(
+                        format: String(localized: "share.error.partial_import"),
+                        importErrorDescription
+                    )
+                }
+            } catch {
+                controller.errorMessage = String(
+                    format: String(localized: "share.error.import_failed"),
+                    error.localizedDescription
+                )
+            }
         }
     }
 

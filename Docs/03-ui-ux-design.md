@@ -45,7 +45,7 @@ flowchart TD
 
 界面设计约束：
 
-- Share Extension 承接外部选中的文本或文件，进入现有输入草稿或直接发起一次 Agent Run。
+- Share Extension 承接外部选中的文本、网页 URL 或文件；第一版保存到共享收件箱，由主 App 导入新草稿，不直接发起 Agent Run。
 - 系统通知 / Deep Link 把用户带回对应任务上下文（会话 + Run/Step 轨迹）。
 - Widgets / Controls 只暴露轻量动作（如快速提问、任务状态），不复制完整聊天界面。
 - App Intents 只暴露 `Ask Familiar`、`Process with Familiar`、`Open Familiar`，由系统表面触发 Agent Run。
@@ -57,6 +57,14 @@ flowchart TD
 - 会话入口选中对应本地会话；Run 入口选中包含该 Run 的会话并展示已有执行时间线。
 - App 正在执行请求时保留入口，等当前请求结束后再导航，避免切换会话破坏运行状态。
 - 无效或不存在的本地目标不创建替代数据，界面显示错误并保持可继续操作。
+
+当前 Share Extension 交互约束：
+
+- 使用系统 Share Extension 编辑器，允许用户在共享内容之外添加可选备注。
+- 一次最多接收 3 个文件，每个文件沿用 25 MiB 上限；图片和视频不进入此入口。
+- 点击系统“发布/发送”动作只表示保存到 Familiar 共享收件箱，不代表向模型发送。
+- 主 App 仅在当前草稿为空且没有运行中请求时导入最早一项；否则保持排队，不覆盖用户内容。
+- 导入后关闭设置与会话抽屉，打开新草稿并聚焦输入器；用户检查、编辑后主动发送。
 
 ## 2.6 Runtime Event 驱动的 Agent 执行界面
 

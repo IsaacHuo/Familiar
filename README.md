@@ -49,6 +49,7 @@ The app is BYOK-only: users bring their own model API Key, requests go directly 
 - **Local-first and BYOK** — API Keys are stored per Provider in the iOS Keychain; requests never pass through Familiar servers.
 - **Multi-provider catalog** — OpenAI, Anthropic, Gemini, DeepSeek, Groq, xAI, OpenRouter, Qwen, Kimi, GLM, MiniMax, SiliconFlow, and custom OpenAI-compatible endpoints.
 - **Local document conversion** — AnyDoc converts Office, OpenDocument, RTF, EPUB, CSV and PDF files to Markdown on the device; scanned PDFs use Vision OCR.
+- **System entry** — Share selected text, web links or documents into an App Group inbox, then review the imported draft in Familiar; typed Deep Links open a new draft, local conversation or Run context without auto-sending.
 - **Rich answer rendering** — local Markdown, syntax highlighting, tables, block quotes, Mermaid, KaTeX, code copying and safe external links.
 - **Voice transcription** — Apple Speech and `AVAudioEngine` generate editable text drafts; original recordings are not stored.
 - **Bilingual UI** — complete Simplified Chinese and English resources, Light and Dark Mode, Dynamic Type, VoiceOver, Reduce Motion and Reduce Transparency.
@@ -125,6 +126,8 @@ System entry points are prioritized:
 | **First** | ① Familiar App · ② Share Extension · ③ System notifications / Deep Links |
 | **Second** | ④ Widgets / Controls · ⑤ Spotlight and other lightweight system entries |
 | **Compatibility** | ⑥ App Intents · ⑦ Shortcuts |
+
+The current System Entry layer includes the Familiar App, a Share Extension and typed Deep Links. Shared content is staged locally and imported only when the current draft is empty; neither entry sends a model request or authorizes a tool action by itself.
 
 App Intents stay outside the Agent core: they expose a small surface (`Ask Familiar`, `Process with Familiar`, `Open Familiar`) to Siri, Shortcuts, Spotlight, Widgets and Action Button. The full Capability Registry is not duplicated into App Intents.
 

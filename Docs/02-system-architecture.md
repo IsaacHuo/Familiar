@@ -68,6 +68,20 @@ Familiar 是一个 iPhone-native Agent Runtime。网络请求从 App 直接发�
 
 已实现的 Deep Link 由 `FamiliarDeepLink` 解析为有限类型：新草稿、会话和 Run。System Entry Layer 只负责恢复本地界面上下文；它不直接调用 Provider、不执行 Tool，也不授予写权限。新草稿链接只预填输入器，仍由用户主动发送；会话和 Run 链接只解析本地 UUID，找不到时显示可恢复错误。
 
+Share Extension 与主 App 通过 `group.com.isaachuo.familiar` 的 App Group 文件容器交换一次性 payload：
+
+```text
+Host App Share Sheet
+        │
+        ▼
+Share Extension ── copy text / URL / files ──▶ Shared Inbox
+                                                     │
+                                                     ▼
+Familiar foreground ── validate / import ──▶ New Draft
+```
+
+共享收件箱使用临时目录写入 manifest 与文件，完成后原子移动为可消费目录。主 App 校验 ID、文件名、数量、大小和实际文件长度，再经现有 AttachmentStore / AnyDoc 路径导入。扩展 target 不链接 Agent Runtime、Provider adapter、Keychain 或 EventKit。
+
 App Intents 位于外层，不进入 Agent Core。它只暴露 `Ask Familiar`、`Process with Familiar`、`Open Familiar`，让 Siri、Shortcuts、Spotlight、Widgets 和 Action Button 能启动一次 Agent Run。
 
 ### 2.2 Agent Runtime

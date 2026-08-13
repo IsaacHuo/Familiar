@@ -240,6 +240,16 @@
 "error.deep_link.busy" = "当前回答完成后，Familiar 会继续打开这个链接。";
 "error.deep_link.conversation_not_found" = "这个链接对应的会话已不在本机。";
 "error.deep_link.run_not_found" = "这个链接对应的任务已不在本机。";
+"share.error.import_failed" = "无法导入共享内容。%@";
+"share.error.container_unavailable" = "Familiar 共享收件箱暂不可用。";
+"share.error.file_too_large" = "每个共享文件不能超过 25 MiB。";
+"share.error.invalid_payload" = "共享内容无效。";
+"share.error.no_content" = "没有可共享的文本或文件。";
+"share.error.no_supported_content" = "共享内容中没有可用文本或受支持的文档。";
+"share.error.partial_import" = "部分共享文件未能导入。%@";
+"share.error.source_unavailable" = "共享文件已不可用。";
+"share.error.too_many_files" = "一次最多共享 3 个文件。";
+"share.error.write_failed" = "无法保存共享内容。";
 "eventkit.default_calendar" = "默认日历";
 "eventkit.default_reminder_list" = "默认提醒事项列表";
 "eventkit.target" = "目标：%@";

@@ -288,6 +288,8 @@
   - App Intents 位于 Agent Core 之外，只暴露 Ask / Process / Open Familiar。
   - 不把整个 Capability Registry 复制到 App Intents。
   - Share Extension 承接外部文本/文件进入现有执行链路。
+  - 第一版 Share Extension 只写入 App Group 一次性收件箱；主 App 复用现有附件处理路径导入新草稿，不从扩展直接运行 Agent。
+  - 当主 App 有未发送草稿或运行中请求时，共享项保持排队，禁止覆盖当前用户状态。
   - Deep Link 只恢复本地界面上下文或预填草稿，不自动发送、不调用工具、不携带密钥或授权。
   - 第一版 URL 为 `familiar://new?text=...`、`familiar://conversation/<UUID>` 与 `familiar://run/<UUID>`；后续通知和其他入口复用同一类型化路由。
 - 复审条件：系统入口需求或 Apple 系统能力变化。

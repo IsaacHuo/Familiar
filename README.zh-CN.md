@@ -49,6 +49,7 @@ App 采用 BYOK 模式：用户使用自己的模型 API Key，请求从设备�
 - **本地优先与 BYOK** — API Key 按 Provider 分别保存在 iOS Keychain；请求不经过 Familiar 服务器。
 - **完整 Provider Catalog** — OpenAI、Anthropic、Gemini、DeepSeek、Groq、xAI、OpenRouter、Qwen、Kimi、GLM、MiniMax、SiliconFlow，以及自定义 OpenAI-compatible endpoint。
 - **本地文档转换** — AnyDoc 在设备上将 Office、OpenDocument、RTF、EPUB、CSV 与 PDF 转换为 Markdown；扫描 PDF 使用 Vision OCR。
+- **系统入口** — 从其他 App 将选中文本、网页链接或文档保存到 App Group 收件箱，再回到 Familiar 检查导入草稿；类型化 Deep Link 可打开新草稿、本地会话或 Run 上下文，均不会自动发送。
 - **富文本回答渲染** — 本地 Markdown、代码高亮、表格、引用、Mermaid、KaTeX、代码复制和安全外链。
 - **语音转写** — 使用 Apple Speech 与 `AVAudioEngine` 生成可编辑文字草稿，不保存原始录音。
 - **双语界面** — 完整简体中文与英文资源，支持深浅色、Dynamic Type、VoiceOver、Reduce Motion 和 Reduce Transparency。
@@ -125,6 +126,8 @@ Agent Runtime 是最关键的一层：它只认识 `ToolDefinition`、`ToolCall`
 | **第一优先级** | ① Familiar App 本身 · ② Share Extension · ③ 系统通知 / Deep Link |
 | **第二优先级** | ④ Widgets / Controls · ⑤ Spotlight 等轻量系统入口 |
 | **兼容能力** | ⑥ App Intents · ⑦ Shortcuts |
+
+当前 System Entry Layer 已包含 Familiar App、Share Extension 与类型化 Deep Link。共享内容只在本机暂存，并在当前草稿为空时导入；这些入口本身不会发起模型请求，也不能授权工具操作。
 
 App Intents 位于 Agent Core 之外：它只向 Siri、Shortcuts、Spotlight、Widgets 与 Action Button 暴露一个很小的表面（`Ask Familiar`、`Process with Familiar`、`Open Familiar`），不会把整个 Capability Registry 复制到 App Intents。
 

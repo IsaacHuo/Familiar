@@ -240,6 +240,16 @@
 "error.deep_link.busy" = "Familiar will open this link after the current response finishes.";
 "error.deep_link.conversation_not_found" = "The conversation in this link is no longer available on this device.";
 "error.deep_link.run_not_found" = "The task in this link is no longer available on this device.";
+"share.error.import_failed" = "The shared item could not be imported. %@";
+"share.error.container_unavailable" = "Familiar’s shared inbox is unavailable.";
+"share.error.file_too_large" = "Each shared file must be 25 MiB or smaller.";
+"share.error.invalid_payload" = "The shared item is invalid.";
+"share.error.no_content" = "There is no text or file to share.";
+"share.error.no_supported_content" = "The shared item does not contain a supported document or usable text.";
+"share.error.partial_import" = "Some shared files could not be imported. %@";
+"share.error.source_unavailable" = "A shared file is no longer available.";
+"share.error.too_many_files" = "You can share up to 3 files at a time.";
+"share.error.write_failed" = "The shared item could not be saved.";
 "eventkit.default_calendar" = "Default calendar";
 "eventkit.default_reminder_list" = "Default reminder list";
 "eventkit.target" = "Target: %@";

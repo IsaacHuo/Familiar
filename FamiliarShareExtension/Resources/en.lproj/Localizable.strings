@@ -1,0 +1,10 @@
+"share.comment.accessibility_label" = "Optional note to add to the Familiar draft";
+"share.error.container_unavailable" = "Familiar’s shared inbox is unavailable.";
+"share.error.file_too_large" = "Each shared file must be 25 MiB or smaller.";
+"share.error.invalid_payload" = "The shared item is invalid.";
+"share.error.no_content" = "There is no text or file to share.";
+"share.error.source_unavailable" = "A shared file is no longer available.";
+"share.error.title" = "Couldn’t Save to Familiar";
+"share.error.too_many_files" = "You can share up to 3 files at a time.";
+"share.error.write_failed" = "The shared item could not be saved.";
+"share.retry" = "Try Again";

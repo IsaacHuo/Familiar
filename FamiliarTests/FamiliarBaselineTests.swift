@@ -92,6 +92,82 @@ struct FamiliarBaselineTests {
         #expect(controller.draft == "Draft")
     }
 
+    @Test("Shared inbox stores bounded text and verified file copies")
+    func sharedInboxRoundTrip() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FamiliarSharedInboxTests-\(UUID().uuidString)", isDirectory: true)
+        let source = root.appendingPathComponent("source.txt", isDirectory: false)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data("shared document".utf8).write(to: source)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let oversizedText = String(repeating: "x", count: FamiliarSharedInbox.maximumTextCharacters + 1)
+        let id = try FamiliarSharedInbox.enqueue(text: oversizedText, fileURLs: [source], rootURL: root)
+        let item = try #require(FamiliarSharedInbox.pendingItems(rootURL: root).first)
+        #expect(item.payload.id == id)
+        #expect(item.payload.text.count == FamiliarSharedInbox.maximumTextCharacters)
+        #expect(item.payload.files.map(\.originalName) == ["source.txt"])
+        #expect(try Data(contentsOf: #require(item.fileURLs.first)) == Data("shared document".utf8))
+
+        let symbolicLink = root.appendingPathComponent("source-link.txt", isDirectory: false)
+        try FileManager.default.createSymbolicLink(at: symbolicLink, withDestinationURL: source)
+        #expect(throws: FamiliarSharedInboxError.self) {
+            try FamiliarSharedInbox.enqueue(text: "", fileURLs: [symbolicLink], rootURL: root)
+        }
+
+        FamiliarSharedInbox.remove(item)
+        #expect(try FamiliarSharedInbox.pendingItems(rootURL: root).isEmpty)
+    }
+
+    @Test("Shared inbox rejects traversal in a tampered manifest")
+    func sharedInboxRejectsTraversal() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FamiliarSharedInboxTamperTests-\(UUID().uuidString)", isDirectory: true)
+        let payloadID = UUID()
+        let payloadDirectory = root
+            .appendingPathComponent("ShareInbox", isDirectory: true)
+            .appendingPathComponent(payloadID.uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: payloadDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let payload = FamiliarSharedInboxPayload(
+            id: payloadID,
+            createdAt: Date(),
+            text: "",
+            files: [.init(storedName: "../escape.txt", originalName: "escape.txt", byteSize: 1)]
+        )
+        try JSONEncoder().encode(payload).write(
+            to: payloadDirectory.appendingPathComponent("manifest.json"),
+            options: .atomic
+        )
+
+        #expect(throws: FamiliarSharedInboxError.self) {
+            try FamiliarSharedInbox.pendingItems(rootURL: root)
+        }
+        #expect(!FileManager.default.fileExists(atPath: payloadDirectory.path))
+    }
+
+    @Test("Shared inbox documents enter the existing attachment pipeline")
+    func sharedInboxAttachmentPipeline() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FamiliarSharedDraftImportTests-\(UUID().uuidString)", isDirectory: true)
+        let source = root.appendingPathComponent("notes.txt", isDirectory: false)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data("shared attachment body".utf8).write(to: source)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try FamiliarSharedInbox.enqueue(text: "Review this", fileURLs: [source], rootURL: root)
+        let prepared = try #require(await FamiliarSharedDraftImportService.prepareNext(rootURL: root))
+        #expect(prepared.text == "Review this")
+        #expect(prepared.attachments.count == 1)
+        #expect(prepared.attachments.first?.extractedText.contains("shared attachment body") == true)
+        #expect(prepared.firstImportErrorDescription == nil)
+
+        FamiliarSharedDraftImportService.consume(prepared)
+        FamiliarSharedDraftImportService.discardPreparedAttachments(prepared)
+        #expect(try FamiliarSharedInbox.pendingItems(rootURL: root).isEmpty)
+    }
+
     @Test("SSE fixtures preserve OpenAI, Anthropic and Gemini framing")
     func sseFixtures() {
         let openAI = FamiliarSSEParser.events(in: "data: {\"choices\":[]}\n\ndata: [DONE]\n\n")

@@ -137,6 +137,8 @@ MCP、Skills、Core ML、Background、Memory、Subagent 都是能力，不是 MV
 - `familiar://run/<UUID>` 打开包含该 Run 的本地会话和现有时间线。
 - Deep Link 不接受 API Key、Provider 配置或工具授权，也不能绕过 Agent Runtime 与 Execution Policy。
 
+当前 Share Extension 第一版通过 App Group 共享收件箱承接外部文本、网页 URL 和最多 3 个文件。扩展只复制输入并结束系统分享流程；主 App 下次进入前台且当前没有未发送草稿或运行中请求时，将最早一项导入为新草稿。共享内容不自动发送，扩展不读取 Keychain、不访问 Provider，也不运行工具。
+
 App Intents 不进入 Agent Core，位于外层：
 
 ```text

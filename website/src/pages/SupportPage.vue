@@ -82,6 +82,19 @@ const base = import.meta.env.BASE_URL;
         </details>
 
         <details>
+          <summary>如何从其他 App 共享内容到 Familiar？</summary>
+          <div class="detail-content">
+            <ol>
+              <li>在支持系统共享的 App 中选择文本、网页链接或文档。</li>
+              <li>打开共享菜单并选择 Familiar，可按需添加备注。</li>
+              <li>保存后打开 Familiar。当前草稿为空且没有正在生成的回答时，共享内容会进入新的可编辑草稿。</li>
+              <li>检查草稿和附件，再主动发送给所选模型服务。</li>
+            </ol>
+            <p>共享操作不会自动向模型发送内容。一次最多共享 3 个文件，每个文件不能超过 25 MiB；图片和视频暂不通过此入口导入。</p>
+          </div>
+        </details>
+
+        <details>
           <summary>如何删除聊天记录和附件？</summary>
           <div class="detail-content">
             <p>删除 Familiar 中的会话会同时清理该会话关联的本地内容。若要移除模型服务凭证，请另外前往设置清除 API Key。删除本地数据不会撤回此前已经发送给第三方模型服务的请求。</p>
