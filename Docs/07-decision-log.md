@@ -287,6 +287,9 @@
 - 影响：
   - App Intents 位于 Agent Core 之外，只暴露 Ask / Process / Open Familiar。
   - 不把整个 Capability Registry 复制到 App Intents。
+  - Ask / Process 通过主 App 的单一 handoff 启动现有 Agent Runtime，输入限制为 20,000 字符；Open 只打开 App。
+  - App Intents 不读取 Keychain 或直接调用 Provider，不授予工具权限；已有草稿时禁止覆盖，运行中请求结束后再处理。
+  - iOS 18–25 使用 `openAppWhenRun`，iOS 26 起使用 `supportedModes`，保持当前最低系统版本与新 API 一致。
   - Share Extension 承接外部文本/文件进入现有执行链路。
   - 第一版 Share Extension 只写入 App Group 一次性收件箱；主 App 复用现有附件处理路径导入新草稿，不从扩展直接运行 Agent。
   - 当主 App 有未发送草稿或运行中请求时，共享项保持排队，禁止覆盖当前用户状态。

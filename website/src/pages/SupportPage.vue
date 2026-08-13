@@ -95,6 +95,18 @@ const base = import.meta.env.BASE_URL;
         </details>
 
         <details>
+          <summary>如何在 Siri 或快捷指令中使用 Familiar？</summary>
+          <div class="detail-content">
+            <ul>
+              <li>“询问 Familiar”接收一个问题，打开 Familiar 后使用当前选择的模型服务发起请求。</li>
+              <li>“用 Familiar 处理文本”可以接收快捷指令上一步输出的文字。</li>
+              <li>“打开 Familiar”只打开 App，不改变当前草稿或会话。</li>
+            </ul>
+            <p>如果 Familiar 已有未发送草稿，新操作不会覆盖它。App Intent 不能跳过日历或提醒事项写入确认，也不会在后台直接读取 API Key。</p>
+          </div>
+        </details>
+
+        <details>
           <summary>如何删除聊天记录和附件？</summary>
           <div class="detail-content">
             <p>删除 Familiar 中的会话会同时清理该会话关联的本地内容。若要移除模型服务凭证，请另外前往设置清除 API Key。删除本地数据不会撤回此前已经发送给第三方模型服务的请求。</p>

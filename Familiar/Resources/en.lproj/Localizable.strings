@@ -269,3 +269,15 @@
 "eventkit.disclosure.events.data" = "Events only in the time range needed for this question";
 "eventkit.disclosure.reminders.data" = "Reminders matching the time or text requested in this question";
 "eventkit.disclosure.flow.value" = "Read on this iPhone, sent only to your selected model provider for this answer";
+"error.system_entry.draft_pending" = "Your current draft was kept. Clear or send it before running another system action.";
+"Ask Familiar" = "Ask Familiar";
+"Process with Familiar" = "Process with Familiar";
+"Open Familiar" = "Open Familiar";
+"Open Familiar and run a question with the selected model provider." = "Open Familiar and run a question with the selected model provider.";
+"Open Familiar and run provided text as a new request." = "Open Familiar and run provided text as a new request.";
+"Open Familiar without changing the current draft or conversation." = "Open Familiar without changing the current draft or conversation.";
+"Question" = "Question";
+"Text" = "Text";
+"Add a question before running this action." = "Add a question before running this action.";
+"Add text before running this action." = "Add text before running this action.";
+"Opening Familiar." = "Opening Familiar.";

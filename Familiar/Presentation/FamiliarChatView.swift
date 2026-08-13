@@ -21,16 +21,16 @@ struct FamiliarChatView: View {
     @State private var isImportingSharedItem = false
     @FocusState private var isComposerFocused: Bool
     private let onRestartOnboarding: () -> Void
-    @Binding private var pendingDeepLink: FamiliarDeepLink?
+    @Binding private var pendingSystemEntry: FamiliarSystemEntryRequest?
 
     init(
         dependencies: FamiliarAppDependencies,
         onRestartOnboarding: @escaping () -> Void,
-        pendingDeepLink: Binding<FamiliarDeepLink?>
+        pendingSystemEntry: Binding<FamiliarSystemEntryRequest?>
     ) {
         _controller = State(initialValue: FamiliarChatController(dependencies: dependencies))
         self.onRestartOnboarding = onRestartOnboarding
-        _pendingDeepLink = pendingDeepLink
+        _pendingSystemEntry = pendingSystemEntry
     }
 
     var body: some View {
@@ -179,7 +179,7 @@ struct FamiliarChatView: View {
             FamiliarAttachmentStore.pruneMessageFiles(keeping: Set(
                 conversations.flatMap { $0.messages.flatMap { $0.attachments.map(\.relativePath) } }
             ))
-            handlePendingDeepLink()
+            handlePendingSystemEntry()
             handleSharedInbox()
         }
         .onChange(of: speechTranscriber.errorMessage) { _, message in
@@ -193,39 +193,60 @@ struct FamiliarChatView: View {
                 speechTranscriber.stop()
             }
         }
-        .onChange(of: pendingDeepLink) { _, _ in
-            handlePendingDeepLink()
+        .onChange(of: pendingSystemEntry) { _, _ in
+            handlePendingSystemEntry()
         }
         .onChange(of: controller.isSending) { _, isSending in
             if !isSending {
-                handlePendingDeepLink()
+                handlePendingSystemEntry()
                 handleSharedInbox()
             }
         }
-        .onChange(of: controller.draft) { _, _ in handleSharedInbox() }
-        .onChange(of: controller.draftAttachments) { _, _ in handleSharedInbox() }
-        .onChange(of: controller.draftImages.count) { _, _ in handleSharedInbox() }
+        .onChange(of: controller.draft) { _, _ in
+            handlePendingSystemEntry()
+            handleSharedInbox()
+        }
+        .onChange(of: controller.draftAttachments) { _, _ in
+            handlePendingSystemEntry()
+            handleSharedInbox()
+        }
+        .onChange(of: controller.draftImages.count) { _, _ in
+            handlePendingSystemEntry()
+            handleSharedInbox()
+        }
     }
 
-    private func handlePendingDeepLink() {
-        guard let deepLink = pendingDeepLink,
-              controller.openDeepLink(deepLink, conversations: conversations, in: modelContext)
-        else { return }
+    private func handlePendingSystemEntry() {
+        guard let request = pendingSystemEntry, !controller.isSending else { return }
 
-        pendingDeepLink = nil
+        let hasUnsentDraft = !controller.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !controller.draftAttachments.isEmpty
+            || !controller.draftImages.isEmpty
+        guard !hasUnsentDraft else {
+            pendingSystemEntry = nil
+            controller.errorMessage = String(localized: "error.system_entry.draft_pending")
+            return
+        }
+
+        guard controller.openDeepLink(request.deepLink, conversations: conversations, in: modelContext) else { return }
+
+        pendingSystemEntry = nil
         speechTranscriber.stop()
         presentedSheet = nil
         closeDrawer()
-        switch deepLink {
+        switch request.deepLink {
         case .newDraft:
             isComposerFocused = true
         case .conversation, .run:
             isComposerFocused = false
         }
+        if request.automaticallySubmit {
+            controller.startSending(in: modelContext)
+        }
     }
 
     private func handleSharedInbox() {
-        guard pendingDeepLink == nil,
+        guard pendingSystemEntry == nil,
               !controller.isSending,
               !isImportingSharedItem,
               controller.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,

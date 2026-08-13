@@ -82,7 +82,7 @@ Familiar foreground ── validate / import ──▶ New Draft
 
 共享收件箱使用临时目录写入 manifest 与文件，完成后原子移动为可消费目录。主 App 校验 ID、文件名、数量、大小和实际文件长度，再经现有 AttachmentStore / AnyDoc 路径导入。扩展 target 不链接 Agent Runtime、Provider adapter、Keychain 或 EventKit。
 
-App Intents 位于外层，不进入 Agent Core。它只暴露 `Ask Familiar`、`Process with Familiar`、`Open Familiar`，让 Siri、Shortcuts、Spotlight、Widgets 和 Action Button 能启动一次 Agent Run。
+App Intents 位于外层，不进入 Agent Core。当前只暴露 `Ask Familiar`、`Process with Familiar`、`Open Familiar`：Ask / Process 接收有长度上限的文本，通过主 App 的单一 handoff 进入新草稿并启动同一套 Agent Runtime；Open 只把 Familiar 带到前台，不改变当前草稿或会话。Intent 本身不读取 Keychain、不复制 Provider adapter 或 Capability Registry，也不能授权工具写入。主 App 有未发送草稿时拒绝覆盖；已有 Run 执行中时等待其结束后再处理。iOS 18–25 使用前台打开兼容入口，iOS 26 起使用 `supportedModes`。
 
 ### 2.2 Agent Runtime
 

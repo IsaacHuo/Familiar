@@ -4,7 +4,8 @@ struct FamiliarRootView: View {
     let dependencies: FamiliarAppDependencies
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("familiar.onboarding.completed.v1") private var hasCompletedOnboarding = false
-    @State private var pendingDeepLink: FamiliarDeepLink?
+    @State private var pendingSystemEntry: FamiliarSystemEntryRequest?
+    @State private var appIntentHandoff = FamiliarAppIntentHandoff.shared
 
     var body: some View {
         ZStack {
@@ -14,7 +15,7 @@ struct FamiliarRootView: View {
                 FamiliarChatView(
                     dependencies: dependencies,
                     onRestartOnboarding: { setOnboardingCompleted(false) },
-                    pendingDeepLink: $pendingDeepLink
+                    pendingSystemEntry: $pendingSystemEntry
                 )
                     .transition(.opacity)
             } else {
@@ -24,11 +25,19 @@ struct FamiliarRootView: View {
                 .transition(.opacity)
             }
         }
+        .onAppear { handlePendingAppIntent() }
+        .onChange(of: appIntentHandoff.pendingRequest) { _, _ in handlePendingAppIntent() }
         .onOpenURL { url in
             guard let deepLink = FamiliarDeepLink(url: url) else { return }
-            pendingDeepLink = deepLink
+            pendingSystemEntry = .deepLink(deepLink)
             setOnboardingCompleted(true)
         }
+    }
+
+    private func handlePendingAppIntent() {
+        guard let request = appIntentHandoff.takePendingRequest() else { return }
+        pendingSystemEntry = request
+        setOnboardingCompleted(true)
     }
 
     private func setOnboardingCompleted(_ completed: Bool) {

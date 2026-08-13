@@ -77,14 +77,16 @@
 - 新增独立 Share Extension target，支持文本、网页 URL 和最多 3 个文件。
 - Share Extension 与主 App 通过 App Group 一次性收件箱交接；主 App 仅在草稿为空且没有运行中请求时导入新草稿。
 - 扩展不访问 Keychain、Provider、Agent Runtime 或原生写工具，共享内容不自动发送。
+- 新增 `Ask Familiar`、`Process with Familiar`、`Open Familiar` 三项 App Intent 与双语 App Shortcut phrase；Ask / Process 只通过主 App handoff 启动现有发送链路，Open 不改变当前状态。
+- App Intent 输入限制为 20,000 字符；未发送草稿不会被覆盖，工具写入仍由现有 Execution Policy 决定。
 
 ## 2.1 与目标架构的差距
 
 项目按 iPhone-native Agent Runtime 方向演进。当前实现聚焦聊天与有限 EventKit 工具，尚未交付的架构部分：
 
-- System Entry：App 内入口、Share Extension 和 Deep Link 已交付；系统通知、Widgets / Controls、Spotlight、App Intents、Shortcuts 尚未实现。
+- System Entry：App 内入口、Share Extension、Deep Link、App Intents 与 App Shortcuts 已交付；系统通知、Widgets / Controls 和实体级 Spotlight 索引尚未实现。
 - Capability Registry：System Tools 仅 Calendar/Reminders；Workspace 仅 File/PDF/Text；Contacts、Photos、Maps、Location、Weather、Web 等未接入。
-- Execution Policy：已覆盖能力可用性、权限请求、结构化写入确认和单次 Undo；App Intents 的一次性授权入口尚未实现。
+- Execution Policy：已覆盖能力可用性、权限请求、结构化写入确认和单次 Undo；App Intents 只负责显式启动 Run，不承担或绕过授权。
 - Run/Step 与 Task Timeline：已持久化运行终态和工具终态，并渲染运行、确认与工具记录；完整可恢复重放尚未实现。
 - Runtime Event：已由 Agent Loop 发出统一事件流；后台恢复事件尚未实现。
 - Memory 三层、Skills、Background（BGContinuedProcessingTask）与 MCP Client：未实现。
@@ -149,8 +151,8 @@ Rust/FFI fixture 已通过：
 ### 3.5 自动化测试
 
 - 已建立 `FamiliarTests` 与 `FamiliarUITests` target。
-- `FamiliarTests/FamiliarBaselineTests` 已在 iOS 26.5 arm64 Simulator 通过 15 项，覆盖 Provider catalog、SSE framing、Markdown CSP、Deep Link 解析与本地路由、Share Inbox 原子写入/文件副本/篡改路径拒绝及 AnyDoc 附件导入链路、附件路径边界、写入策略、Run/Step SwiftData 持久化、确认取消幂等与 V2 store 恢复删除范围。
-- EventKit policy / action proposal 与 Agent Runtime 的多轮、事件顺序、最大轮次、上下文上限测试已实现；当前完整单元测试为 20 项、3 个套件通过。
+- `FamiliarTests/FamiliarBaselineTests` 已在 iOS 26.5 arm64 Simulator 通过 16 项，覆盖 Provider catalog、SSE framing、Markdown CSP、Deep Link 解析与本地路由、App Intent 前台 handoff 与长度边界、Share Inbox 原子写入/文件副本/篡改路径拒绝及 AnyDoc 附件导入链路、附件路径边界、写入策略、Run/Step SwiftData 持久化、确认取消幂等与 V2 store 恢复删除范围。
+- EventKit policy / action proposal 与 Agent Runtime 的多轮、事件顺序、最大轮次、上下文上限测试已实现；当前完整单元测试为 21 项、3 个套件通过。
 
 ## 4. SwiftData 启动问题
 
@@ -320,17 +322,23 @@ Provider fixture parser、Agent Runtime、EventKit policy 与附件路径已具�
 
 仍需在真机验证从 Notes、Safari、Shortcuts 等系统来源冷启动和回前台的行为。系统通知尚未实现；Run 入口当前定位到包含该 Run 的会话时间线，尚未提供精确滚动锚点。
 
-### 8.6 孤儿附件
+### 8.6 App Intents / Shortcuts
+
+已实现 `Ask Familiar`、`Process with Familiar`、`Open Familiar` 与 3 项 App Shortcut。Ask 接收问题，Process 支持接收上一步 Shortcut 的文本输出，两者通过 `FamiliarAppIntentHandoff` 进入主 App 并调用现有 `FamiliarChatController.startSending`；Open 只打开 App。系统提取产物已确认包含 3 项 discoverable Intent、3 项 Shortcut，以及英语和简体中文 NLU phrase。iOS 18–25 使用 `openAppWhenRun`，iOS 26+ 使用 `supportedModes = .foreground`。
+
+App Intent handoff 与 20,000 字符边界已有单元测试。当前运行中请求会先完成；已有未发送草稿时保留草稿并拒绝本次入口。仍需在真机的 Siri、Shortcuts、Spotlight 与 Action Button 上完成冷启动、后台唤起、语音参数解析和实际 Provider 请求验收；本轮不做人工视觉检查。
+
+### 8.7 孤儿附件
 
 聊天容器出现时会根据 SwiftData 引用清理 Drafts 与 Messages 目录中的孤儿附件。仍需要在真实文件系统和大附件集合上验证清理时机与性能。
 
-### 8.7 无障碍
+### 8.8 无障碍
 
 代码级语义已补齐：抽屉当前会话带选中 trait；首启页码、快门和发送禁用原因有本地化描述；确认卡组合标题、目标与字段；运行中和终态工具记录读出状态与详情；新确认出现时通过 `AccessibilityFocusState` 转移 VoiceOver 焦点。
 
 仍需真机完成 VoiceOver 全路径、焦点返回、极端 Dynamic Type、Increase Contrast 和 Bold Text 验收。
 
-### 8.8 幂等范围
+### 8.9 幂等范围
 
 EventKit commit 幂等状态只存在于当前进程。系统 save 完成后进程立即终止的边界需要专项验证。
 

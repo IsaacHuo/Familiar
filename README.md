@@ -49,7 +49,7 @@ The app is BYOK-only: users bring their own model API Key, requests go directly 
 - **Local-first and BYOK** — API Keys are stored per Provider in the iOS Keychain; requests never pass through Familiar servers.
 - **Multi-provider catalog** — OpenAI, Anthropic, Gemini, DeepSeek, Groq, xAI, OpenRouter, Qwen, Kimi, GLM, MiniMax, SiliconFlow, and custom OpenAI-compatible endpoints.
 - **Local document conversion** — AnyDoc converts Office, OpenDocument, RTF, EPUB, CSV and PDF files to Markdown on the device; scanned PDFs use Vision OCR.
-- **System entry** — Share selected text, web links or documents into an App Group inbox, then review the imported draft in Familiar; typed Deep Links open a new draft, local conversation or Run context without auto-sending.
+- **System entry** — Share selected text, web links or documents into an App Group inbox; typed Deep Links restore local context; Siri, Shortcuts and Spotlight expose `Ask Familiar`, `Process with Familiar` and `Open Familiar`.
 - **Rich answer rendering** — local Markdown, syntax highlighting, tables, block quotes, Mermaid, KaTeX, code copying and safe external links.
 - **Voice transcription** — Apple Speech and `AVAudioEngine` generate editable text drafts; original recordings are not stored.
 - **Bilingual UI** — complete Simplified Chinese and English resources, Light and Dark Mode, Dynamic Type, VoiceOver, Reduce Motion and Reduce Transparency.
@@ -127,9 +127,9 @@ System entry points are prioritized:
 | **Second** | ④ Widgets / Controls · ⑤ Spotlight and other lightweight system entries |
 | **Compatibility** | ⑥ App Intents · ⑦ Shortcuts |
 
-The current System Entry layer includes the Familiar App, a Share Extension and typed Deep Links. Shared content is staged locally and imported only when the current draft is empty; neither entry sends a model request or authorizes a tool action by itself.
+The current System Entry layer includes the Familiar App, a Share Extension, typed Deep Links, three App Intents and bilingual App Shortcuts. Shared content is staged locally and Deep Links only restore or prefill context. `Ask Familiar` and `Process with Familiar` explicitly start the existing in-app send path; `Open Familiar` changes no draft or conversation. None of these entries can authorize a tool action.
 
-App Intents stay outside the Agent core: they expose a small surface (`Ask Familiar`, `Process with Familiar`, `Open Familiar`) to Siri, Shortcuts, Spotlight, Widgets and Action Button. The full Capability Registry is not duplicated into App Intents.
+App Intents stay outside the Agent core. Their text input is bounded, they never read Keychain or call a Provider directly, and they refuse to overwrite an unsent draft. The full Capability Registry is not duplicated into App Intents.
 
 ## Agent runtime
 

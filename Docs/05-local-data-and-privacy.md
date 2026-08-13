@@ -15,6 +15,7 @@
 - App 不使用 Familiar 账户、业务后端或云端数据库。
 - Deep Link 只接受有长度上限的草稿文本或本地会话 / Run UUID；它不自动发送内容、不承载 API Key，也不授予工具写权限。
 - Share Extension 只把用户明确共享的文本、URL 和文件复制到 App Group 收件箱；扩展不读取 Keychain、会话、Provider 配置或 EventKit 数据。
+- Ask / Process App Intents 只把用户明确提供且经过长度限制的文本交给主 App；文本随后沿用普通消息的 BYOK 请求路径。Open Familiar 不创建草稿、不发送网络请求，所有 Intent 均不能授予工具写权限。
 
 ## 2. 数据清单
 
@@ -39,6 +40,7 @@
 | 日历/提醒数据 | EventKit | 查询结果进入内存和工具记录摘要 | 可能作为工具结果进入 Provider | 运行结束和历史记录生命周期 |
 | Deep Link 输入 | 其他 App 或系统入口 | 草稿文本进入内存；会话 / Run UUID 仅用于本地查询 | 不因打开链接自动发送 | 链接处理或草稿生命周期 |
 | Share Extension 输入 | 用户从其他 App 明确共享 | App Group `ShareInbox`，导入后复制到 App 私有草稿附件目录 | 不因共享或导入自动发送 | 成功或终态失败处理后删除共享副本；草稿副本沿用附件生命周期 |
+| App Intent 文本 | 用户在 Siri / Shortcuts / Spotlight 明确提供 | 仅作为进程内 handoff 和新草稿短暂存在，发送后进入本地消息记录 | Ask / Process 通过当前选择的 BYOK Provider 发送；Open 不发送 | 未发送草稿被拒绝覆盖；成功提交后沿用会话生命周期 |
 
 ## 3. SwiftData Schema
 

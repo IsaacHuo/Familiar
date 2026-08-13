@@ -269,3 +269,15 @@
 "eventkit.disclosure.events.data" = "仅查询回答本次问题所需时间范围内的事件";
 "eventkit.disclosure.reminders.data" = "仅查询本次问题指定时间或文字条件匹配的提醒事项";
 "eventkit.disclosure.flow.value" = "在本机读取，仅为本次回答发送给你选择的模型服务商";
+"error.system_entry.draft_pending" = "已保留当前草稿。请先发送或清空草稿，再运行其他系统操作。";
+"Ask Familiar" = "询问 Familiar";
+"Process with Familiar" = "用 Familiar 处理文本";
+"Open Familiar" = "打开 Familiar";
+"Open Familiar and run a question with the selected model provider." = "打开 Familiar，并使用当前选择的模型服务商处理问题。";
+"Open Familiar and run provided text as a new request." = "打开 Familiar，并将提供的文本作为新请求处理。";
+"Open Familiar without changing the current draft or conversation." = "打开 Familiar，不更改当前草稿或会话。";
+"Question" = "问题";
+"Text" = "文本";
+"Add a question before running this action." = "请先添加问题，再运行此操作。";
+"Add text before running this action." = "请先添加文本，再运行此操作。";
+"Opening Familiar." = "正在打开 Familiar。";

@@ -92,6 +92,37 @@ struct FamiliarBaselineTests {
         #expect(controller.draft == "Draft")
     }
 
+    @Test("App Intents create bounded typed foreground handoffs") @MainActor
+    func appIntentHandoff() async throws {
+        let handoff = FamiliarAppIntentHandoff.shared
+        _ = handoff.takePendingRequest()
+
+        var emptyAsk = AskFamiliarIntent()
+        emptyAsk.question = "   "
+        _ = try await emptyAsk.perform()
+        #expect(handoff.pendingRequest == nil)
+
+        let oversized = String(repeating: "x", count: FamiliarDeepLink.maximumPrefillCharacters + 1)
+        var ask = AskFamiliarIntent()
+        ask.question = "  \(oversized)  "
+        _ = try await ask.perform()
+        let askRequest = try #require(handoff.takePendingRequest())
+        #expect(askRequest.automaticallySubmit)
+        #expect(askRequest.deepLink == .newDraft(text: String(oversized.prefix(FamiliarDeepLink.maximumPrefillCharacters))))
+
+        var process = ProcessWithFamiliarIntent()
+        process.text = "Process this"
+        _ = try await process.perform()
+        let processRequest = try #require(handoff.takePendingRequest())
+        #expect(processRequest.automaticallySubmit)
+        #expect(processRequest.deepLink == .newDraft(text: "Process this"))
+
+        let existing = FamiliarSystemEntryRequest.deepLink(.newDraft(text: "Keep me"))
+        handoff.submit(existing)
+        _ = try await OpenFamiliarIntent().perform()
+        #expect(handoff.takePendingRequest() == existing)
+    }
+
     @Test("Shared inbox stores bounded text and verified file copies")
     func sharedInboxRoundTrip() throws {
         let root = FileManager.default.temporaryDirectory

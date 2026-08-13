@@ -48,7 +48,7 @@ flowchart TD
 - Share Extension 承接外部选中的文本、网页 URL 或文件；第一版保存到共享收件箱，由主 App 导入新草稿，不直接发起 Agent Run。
 - 系统通知 / Deep Link 把用户带回对应任务上下文（会话 + Run/Step 轨迹）。
 - Widgets / Controls 只暴露轻量动作（如快速提问、任务状态），不复制完整聊天界面。
-- App Intents 只暴露 `Ask Familiar`、`Process with Familiar`、`Open Familiar`，由系统表面触发 Agent Run。
+- App Intents 只暴露 `Ask Familiar`、`Process with Familiar`、`Open Familiar`。Ask / Process 从 Siri、Shortcuts 或 Spotlight 打开主 App 并启动新 Run；Open 只打开 App，不改变当前状态。
 - 所有入口最终汇入同一个 Agent Runtime，不各自造一套执行逻辑。
 
 当前 Deep Link 交互约束：
@@ -56,6 +56,7 @@ flowchart TD
 - 新草稿入口打开聊天主界面、关闭设置与抽屉、预填文本并聚焦输入器，绝不自动发送。
 - 会话入口选中对应本地会话；Run 入口选中包含该 Run 的会话并展示已有执行时间线。
 - App 正在执行请求时保留入口，等当前请求结束后再导航，避免切换会话破坏运行状态。
+- App Intents 的 Ask / Process 只有在当前没有未发送草稿时才创建并提交新草稿；若已有草稿则保留原内容、取消本次入口并显示可恢复提示。Open Familiar 永不清空草稿。
 - 无效或不存在的本地目标不创建替代数据，界面显示错误并保持可继续操作。
 
 当前 Share Extension 交互约束：

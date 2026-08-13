@@ -55,6 +55,7 @@ Familiar 为用户提供统一的移动问答与 Agent 执行入口。产品首�
 4. 将本机文档转换为可发送的文本上下文。
 5. 将语音转换为可编辑的输入草稿。
 6. 在本机保存会话历史、Run/Step 执行记录和工具终态。
+7. 通过 Share Extension、Deep Link、Siri 与 Shortcuts 安全进入同一套草稿和 Agent Runtime。
 
 ## 4. 核心用户任务
 
