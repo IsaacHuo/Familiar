@@ -491,7 +491,7 @@ Provider 消息、Agent 事件、确认请求、EventKit DTO、附件快照等�
 - 代码复制
 - 系统外链打开
 
-CSP 禁止脚本网络连接、媒体、对象、frame 和表单。`img-src` 当前允许 `https:` 和 `data:`，远程 Markdown 图片可能产生网络请求。该行为需要在隐私审核时单独确认。
+CSP 禁止脚本网络连接、媒体、对象、frame 和表单，`img-src` 仅允许 Bundle 同源资源与 `data:`。渲染器在将 HTML 插入文档前，把 HTTPS 远程图片替换为来源链接；只有用户主动点击后才交由系统外部打开，WebView 不自动发起图片请求。
 
 ## 11. iOS 18 与 iOS 26
 

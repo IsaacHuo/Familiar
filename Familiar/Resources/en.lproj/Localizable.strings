@@ -62,6 +62,7 @@
 "settings.privacy.no_other_apps" = "Does not read data from other apps";
 "settings.privacy.local_history" = "Conversation history stays on this device";
 "settings.privacy.local_documents" = "Documents are converted locally with AnyDoc; only the resulting text is sent with your message";
+"settings.privacy.remote_images" = "Remote Markdown images never load automatically; source links open only when you choose";
 "settings.error.title" = "Couldn't Save Settings";
 
 "drawer.open" = "Open conversations";

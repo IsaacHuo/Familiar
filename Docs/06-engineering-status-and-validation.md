@@ -296,7 +296,7 @@ Provider fixture parser、Agent Runtime、EventKit policy 与附件路径已具�
 
 ### 8.3 远程 Markdown 图片
 
-WebKit CSP 允许 HTTPS 图片。发布前需要确定隐私策略并完成实现。
+已确定隐私优先策略。WebKit CSP 的 `img-src` 仅允许 Bundle 同源资源和 `data:`；渲染器在把清理后的 HTML 插入页面前，将 HTTPS 图片替换为来源链接。App 不会自动请求远程图片，用户主动点击后才由系统外部打开。CSP 边界已有单元测试，App 设置和官网隐私政策均已披露。
 
 ### 8.4 孤儿附件
 
@@ -352,7 +352,7 @@ EventKit commit 幂等状态只存在于当前进程。系统 save 完成后进�
 - 图片 bytes 不进入请求。
 - 原文件 bytes 不进入请求。
 - Speech 和 EventKit 用途说明与调用一致。
-- Markdown 远程图片策略确定并披露。
+- Markdown 远程图片不自动加载，策略在 App 与官网披露。
 
 ### App Store
 

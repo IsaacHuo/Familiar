@@ -27,6 +27,23 @@ struct FamiliarBaselineTests {
         #expect(FamiliarMarkdownNormalizer.normalize("a\r\nb\rc") == "a\nb\nc")
     }
 
+    @Test("Markdown CSP blocks automatic remote image requests")
+    @MainActor func markdownRemoteImagePolicy() {
+        let directives = Dictionary(
+            uniqueKeysWithValues: FamiliarMarkdownHTML.contentSecurityPolicy
+                .split(separator: ";")
+                .compactMap { directive -> (String, [Substring])? in
+                    let tokens = directive.split(whereSeparator: \.isWhitespace)
+                    guard let name = tokens.first else { return nil }
+                    return (String(name), Array(tokens.dropFirst()))
+                }
+        )
+
+        #expect(directives["img-src"] == ["'self'", "data:"])
+        #expect(directives["connect-src"] == ["'none'"])
+        #expect(!FamiliarMarkdownHTML.baseDocument.contains("img-src https:"))
+    }
+
     @Test("SSE fixtures preserve OpenAI, Anthropic and Gemini framing")
     func sseFixtures() {
         let openAI = FamiliarSSEParser.events(in: "data: {\"choices\":[]}\n\ndata: [DONE]\n\n")

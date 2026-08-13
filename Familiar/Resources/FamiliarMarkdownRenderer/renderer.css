@@ -94,6 +94,40 @@ a:active {
   opacity: 0.65;
 }
 
+a:focus-visible {
+  outline: 2px solid #1a87fa;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.remote-image-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5em;
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: 0.65em 0;
+  padding: 0.5em 0.7em;
+  border: 1px solid rgba(26, 135, 250, 0.22);
+  border-radius: 8px;
+  background: rgba(26, 135, 250, 0.06);
+}
+
+.remote-image-link::before {
+  content: "↗";
+  flex: 0 0 auto;
+}
+
+.remote-image-label,
+.remote-image-host {
+  overflow-wrap: anywhere;
+}
+
+.remote-image-host {
+  color: #666666;
+  font-size: 0.82em;
+}
+
 img {
   display: block;
   max-width: 100%;

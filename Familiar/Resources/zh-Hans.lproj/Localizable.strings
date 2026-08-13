@@ -62,6 +62,7 @@
 "settings.privacy.no_other_apps" = "不会读取其他 App 的数据";
 "settings.privacy.local_history" = "会话历史仅保存在本机";
 "settings.privacy.local_documents" = "文档由 AnyDoc 在本机转换，仅随消息发送转换后的文字";
+"settings.privacy.remote_images" = "Markdown 远程图片不会自动加载，仅在你点击来源链接后打开";
 "settings.error.title" = "设置失败";
 
 "drawer.open" = "打开会话列表";

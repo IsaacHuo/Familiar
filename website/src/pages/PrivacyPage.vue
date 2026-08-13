@@ -9,7 +9,7 @@ const base = import.meta.env.BASE_URL;
       <h1>隐私政策</h1>
       <p>我们希望你准确知道 Familiar 在设备上保存什么、何时会发送数据，以及你可以怎样保持控制。</p>
       <div class="meta-row">
-        <span>生效日期：2026 年 8 月 11 日</span>
+        <span>生效日期：2026 年 8 月 13 日</span>
         <span>适用于 Familiar 1.0 及本网站</span>
       </div>
     </header>
@@ -46,6 +46,7 @@ const base = import.meta.env.BASE_URL;
 
           <h3>文档与图片</h3>
           <p>你主动选择的文档会复制到 App 的本地存储，并由 AnyDoc 在设备上转换为 Markdown；扫描 PDF 的无文本页面会使用 Apple Vision 在本机进行 OCR。发送消息时，只有转换后的文档文字会随请求发送给所选模型服务，原始文件不会上传。相机拍摄或选择的图片只作为本地消息草稿处理；当前版本会阻止图片发送，不创建消息，也不上传图片。</p>
+          <p>模型回复或导入 Markdown 中引用的远程图片不会在 App 内自动加载。Familiar 只显示对应来源链接；只有在你主动点击后，iOS 才会将该地址交给外部应用打开，届时目标网站的隐私政策适用。</p>
         </section>
 
         <section id="provider-data">

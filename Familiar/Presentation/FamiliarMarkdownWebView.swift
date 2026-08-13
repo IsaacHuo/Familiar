@@ -73,6 +73,7 @@ struct FamiliarMarkdownFallbackText: View {
 
 enum FamiliarMarkdownHTML {
     static let resourceDirectoryName = "FamiliarMarkdownRenderer"
+    static let contentSecurityPolicy = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
     static let requiredResourceNames = [
         "markdown-it.min.js",
         "purify.min.js",
@@ -91,7 +92,7 @@ enum FamiliarMarkdownHTML {
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+          <meta http-equiv="Content-Security-Policy" content="\(contentSecurityPolicy)">
           <link rel="stylesheet" href="katex.min.css">
           <link rel="stylesheet" href="renderer.css">
         </head>

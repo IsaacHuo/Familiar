@@ -236,6 +236,45 @@
   }
 
   function hardenLinksAndImages(root) {
+    root.querySelectorAll("img").forEach(function (image) {
+      const source = image.getAttribute("src") || "";
+      let url;
+      try {
+        url = new URL(source);
+      } catch (_) {
+        image.remove();
+        return;
+      }
+
+      if (url.protocol !== "https:") {
+        image.remove();
+        return;
+      }
+
+      const link = document.createElement("a");
+      const description = (image.getAttribute("alt") || "").trim();
+      const label = document.createElement("span");
+      const host = document.createElement("span");
+
+      link.className = "remote-image-link";
+      link.href = url.href;
+      link.setAttribute("target", "_blank");
+      link.setAttribute("rel", "noopener noreferrer");
+      link.setAttribute("aria-label", description ? description + " (" + url.hostname + ")" : url.hostname);
+
+      label.className = "remote-image-label";
+      label.textContent = description || url.hostname;
+      link.appendChild(label);
+
+      if (description && description !== url.hostname) {
+        host.className = "remote-image-host";
+        host.textContent = url.hostname;
+        link.appendChild(host);
+      }
+
+      image.replaceWith(link);
+    });
+
     root.querySelectorAll("a").forEach(function (link) {
       const href = link.getAttribute("href") || "";
       if (/^(https?:|mailto:)/i.test(href)) {
@@ -246,12 +285,6 @@
       }
     });
 
-    root.querySelectorAll("img").forEach(function (image) {
-      const src = image.getAttribute("src") || "";
-      if (!/^https:\/\//i.test(src)) {
-        image.remove();
-      }
-    });
   }
 
   function renderMath(root, math) {
@@ -394,8 +427,10 @@
       const mathResult = extractMath(footnoteResult.markdown);
       const mermaidResult = extractMermaid(mathResult.markdown);
       const rawHTML = md.render(mermaidResult.markdown) + renderFootnotes(footnoteResult.notes, md);
-      content.innerHTML = sanitize(rawHTML);
-      hardenLinksAndImages(content);
+      const template = document.createElement("template");
+      template.innerHTML = sanitize(rawHTML);
+      hardenLinksAndImages(template.content);
+      content.replaceChildren(template.content);
       renderMath(content, mathResult.math);
       renderMermaid(content, mermaidResult.diagrams)
         .catch(function () {

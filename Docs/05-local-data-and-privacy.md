@@ -284,11 +284,7 @@ CSP 主要限制：
 - `frame-src 'none'`
 - `form-action 'none'`
 
-`img-src https: data:` 允许 Markdown 中的 HTTPS 图片加载。该请求可能向图片主机暴露 IP、User-Agent 和访问时间。发布前需要选择以下策略：
-
-- 将 `img-src` 收紧为 `data:` 或本地资源。
-- 增加远程图片加载开关和明确提示。
-- 保持现状，并在隐私说明中披露。
+`img-src` 仅允许 Bundle 同源资源与 `data:`，不允许 HTTP 或 HTTPS 图片。渲染器先在 inert template 中清理 Markdown HTML，把 HTTPS 图片替换为带有替代文本和主机名的来源链接，再插入 WebView 文档。因此渲染过程不会向图片主机暴露 IP、User-Agent 或访问时间。只有用户主动点击来源链接后，系统才会在外部打开该地址，此后的网络请求受目标网站隐私政策约束。
 
 ## 10. EventKit 数据
 
@@ -415,4 +411,4 @@ Agent Run 设计为可恢复，不是常驻 daemon。用户退出 App 后，必�
 - 取消写入确认时零写入。
 - 删除会话后附件目录无对应文件。
 - 停止语音后无录音文件。
-- 检查 Markdown 远程图片请求策略。
+- 验证 Markdown CSP 不允许 HTTP/HTTPS 图片，且远程图片只呈现为用户主动打开的来源链接。
