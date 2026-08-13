@@ -127,7 +127,7 @@ Agent Runtime 是最关键的一层：它只认识 `ToolDefinition`、`ToolCall`
 | **第二优先级** | ④ Widgets / Controls · ⑤ Spotlight 等轻量系统入口 |
 | **兼容能力** | ⑥ App Intents · ⑦ Shortcuts |
 
-当前 System Entry Layer 已包含 Familiar App、Share Extension、类型化 Deep Link、三项 App Intent 和双语 App Shortcut。共享内容只在本机暂存，Deep Link 只恢复或预填上下文；`Ask Familiar` 与 `Process with Familiar` 会明确启动现有 App 内发送链路，`Open Familiar` 不改变草稿或会话。所有入口都不能授权工具操作。
+当前 System Entry Layer 已包含 Familiar App、Share Extension、类型化 Deep Link、Run 终态本地通知、受保护的 Spotlight 会话索引、启动 Widget、控制中心 Control、三项 App Intent 和双语 App Shortcut。Widget 打开新的可编辑草稿，Control 打开 Familiar 且不替换当前上下文。共享内容只在本机暂存，Deep Link 只恢复或预填上下文；`Ask Familiar` 与 `Process with Familiar` 会明确启动现有 App 内发送链路，`Open Familiar` 不改变草稿或会话。所有入口都不能授权工具操作。
 
 App Intents 位于 Agent Core 之外。其文本输入有长度上限，不读取 Keychain，也不直接调用 Provider；存在未发送草稿时拒绝覆盖。完整 Capability Registry 不会复制到 App Intents。
 
@@ -303,6 +303,8 @@ Familiar/
 ├── Speech/         原生语音转写
 └── Support/        主题与平台兼容辅助代码
 
+FamiliarWidgets/    主屏幕/锁屏启动 Widget 与控制中心 Control
+
 Vendor/
 ├── AnyDocBridge.xcframework/
 └── AnyDocBridgeRust/
@@ -342,6 +344,8 @@ xcodebuild \
   -scheme Familiar \
   -configuration Debug \
   -destination 'generic/platform=iOS Simulator' \
+  ARCHS=arm64 \
+  ONLY_ACTIVE_ARCH=YES \
   CODE_SIGNING_ALLOWED=NO \
   build
 ```

@@ -83,12 +83,13 @@
 - 通知权限按需请求，拒绝后提供系统设置入口；关闭功能会清理 Familiar 待处理与已投递通知。未注册远程推送，也未引入后台执行保证。
 - 新增受保护的 Core Spotlight 会话索引；仅索引已有内容会话的最多 80 字符标题、更新时间和本地 UUID，点击后复用现有会话 Deep Link。
 - Spotlight 不索引消息正文、附件名、工具结果、密钥或 Provider 配置；重命名和删除通过当前完整会话集合刷新。
+- 新增 Home/Lock Screen 启动 Widget 与控制中心 Control；Widget 复用 `familiar://new` 打开新草稿，Control 仅打开 Familiar，不执行发送或工具操作。
 
 ## 2.1 与目标架构的差距
 
 项目按 iPhone-native Agent Runtime 方向演进。当前实现聚焦聊天与有限 EventKit 工具，尚未交付的架构部分：
 
-- System Entry：App 内入口、Share Extension、Deep Link、Run 终态本地通知、会话级 Spotlight 索引、App Intents 与 App Shortcuts 已交付；Widgets / Controls 尚未实现。
+- System Entry：App 内入口、Share Extension、Deep Link、Run 终态本地通知、会话级 Spotlight 索引、Widget / Control、App Intents 与 App Shortcuts 已交付。
 - Capability Registry：System Tools 仅 Calendar/Reminders；Workspace 仅 File/PDF/Text；Contacts、Photos、Maps、Location、Weather、Web 等未接入。
 - Execution Policy：已覆盖能力可用性、权限请求、结构化写入确认和单次 Undo；App Intents 只负责显式启动 Run，不承担或绕过授权。
 - Run/Step 与 Task Timeline：已持久化运行终态和工具终态，并渲染运行、确认与工具记录；完整可恢复重放尚未实现。
@@ -344,17 +345,23 @@ App Intent handoff 与 20,000 字符边界已有单元测试。当前运行中�
 
 Spotlight item 元数据边界、严格标识解析和 `NSUserActivity` 路由已有单元测试。仍需在真机验证系统索引延迟、中英文查询、设备锁定后的数据保护、冷启动点击、重命名和删除后的结果刷新；本轮不做人工视觉检查。
 
-### 8.9 孤儿附件
+### 8.9 Widgets / Controls
+
+已建立独立 `FamiliarWidgets` extension target，并嵌入主 App。Home/Lock Screen Widget 支持主屏幕小号、中号及锁屏圆形、矩形样式，通过现有 `familiar://new` 路由打开新草稿；控制中心 Control 使用 `OpenIntent` 打开 Familiar。两者均不携带 Provider 配置、授权或自动发送行为，英语和简体中文资源已提供。
+
+Widget target 与主 App 的 Debug arm64 Simulator 编译及嵌入校验已通过。仍需在真机验证 Widget Gallery 展示、主屏幕和锁屏启动、控制中心注册、冷启动与已有未发送草稿时的保护行为。
+
+### 8.10 孤儿附件
 
 聊天容器出现时会根据 SwiftData 引用清理 Drafts 与 Messages 目录中的孤儿附件。仍需要在真实文件系统和大附件集合上验证清理时机与性能。
 
-### 8.10 无障碍
+### 8.11 无障碍
 
 代码级语义已补齐：抽屉当前会话带选中 trait；首启页码、快门和发送禁用原因有本地化描述；确认卡组合标题、目标与字段；运行中和终态工具记录读出状态与详情；新确认出现时通过 `AccessibilityFocusState` 转移 VoiceOver 焦点。
 
 仍需真机完成 VoiceOver 全路径、焦点返回、极端 Dynamic Type、Increase Contrast 和 Bold Text 验收。
 
-### 8.11 幂等范围
+### 8.12 幂等范围
 
 EventKit commit 幂等状态只存在于当前进程。系统 save 完成后进程立即终止的边界需要专项验证。
 

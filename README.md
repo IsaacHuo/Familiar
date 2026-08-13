@@ -127,7 +127,7 @@ System entry points are prioritized:
 | **Second** | ④ Widgets / Controls · ⑤ Spotlight and other lightweight system entries |
 | **Compatibility** | ⑥ App Intents · ⑦ Shortcuts |
 
-The current System Entry layer includes the Familiar App, a Share Extension, typed Deep Links, opt-in local Run notifications, a protected on-device Spotlight conversation index, three App Intents and bilingual App Shortcuts. Shared content is staged locally and Deep Links only restore or prefill context. Run notifications use generic text and carry only a local Run or conversation identifier; they do not use remote push or provide background execution. Spotlight indexes only bounded conversation titles, modification dates and local identifiers, never transcripts or attachment metadata. `Ask Familiar` and `Process with Familiar` explicitly start the existing in-app send path; `Open Familiar` changes no draft or conversation. None of these entries can authorize a tool action.
+The current System Entry layer includes the Familiar App, a Share Extension, typed Deep Links, opt-in local Run notifications, a protected on-device Spotlight conversation index, a launcher Widget and Control, three App Intents and bilingual App Shortcuts. The Widget opens a new editable draft and the Control opens Familiar without replacing the current context. Shared content is staged locally and Deep Links only restore or prefill context. Run notifications use generic text and carry only a local Run or conversation identifier; they do not use remote push or provide background execution. Spotlight indexes only bounded conversation titles, modification dates and local identifiers, never transcripts or attachment metadata. `Ask Familiar` and `Process with Familiar` explicitly start the existing in-app send path; `Open Familiar` changes no draft or conversation. None of these entries can authorize a tool action.
 
 App Intents stay outside the Agent core. Their text input is bounded, they never read Keychain or call a Provider directly, and they refuse to overwrite an unsent draft. The full Capability Registry is not duplicated into App Intents.
 
@@ -305,6 +305,8 @@ Familiar/
 ├── Speech/         Native voice transcription
 └── Support/        Theme and platform compatibility helpers
 
+FamiliarWidgets/    Home/Lock Screen launcher Widget and Control Center control
+
 Vendor/
 ├── AnyDocBridge.xcframework/
 └── AnyDocBridgeRust/
@@ -344,6 +346,8 @@ xcodebuild \
   -scheme Familiar \
   -configuration Debug \
   -destination 'generic/platform=iOS Simulator' \
+  ARCHS=arm64 \
+  ONLY_ACTIVE_ARCH=YES \
   CODE_SIGNING_ALLOWED=NO \
   build
 ```
