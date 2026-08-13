@@ -121,9 +121,10 @@ struct FamiliarChatView: View {
         .ignoresSafeArea(.keyboard, edges: isDrawerOpen ? .all : [])
         .sheet(item: $presentedSheet, onDismiss: refreshConfiguredProviders) { destination in
             switch destination {
-            case .settings:
+            case .settings(let route):
                 FamiliarSettingsView(
                     initialSettings: controller.settings,
+                    initialRoute: route,
                     onSaveSettings: {
                         controller.updateSettings($0, in: modelContext)
                         refreshConfiguredProviders()
@@ -147,7 +148,7 @@ struct FamiliarChatView: View {
         )) {
             if !configuredProviderIDs.contains(controller.settings.providerID) {
                 Button(String(localized: "common.open_settings")) {
-                    presentedSheet = .settings
+                    presentedSheet = .settings(nil)
                 }
             }
             Button(String(localized: "common.ok"), role: .cancel) {}
@@ -333,6 +334,7 @@ struct FamiliarChatView: View {
                         draftScopeID: controller.selectedConversationID,
                         focus: $isComposerFocused,
                         onSpeech: toggleSpeech,
+                        onSlashCommand: handleSlashCommand,
                         onSend: {
                             speechTranscriber.stop()
                             isComposerFocused = false
@@ -361,7 +363,7 @@ struct FamiliarChatView: View {
            controller.toolActivities.isEmpty {
             FamiliarEmptyConversationView(
                 isProviderConfigured: configuredProviderIDs.contains(controller.settings.providerID),
-                onConfigure: { presentedSheet = .settings },
+                onConfigure: { presentedSheet = .settings(nil) },
                 onPrompt: { prompt in
                     controller.draft = prompt
                     isComposerFocused = true
@@ -407,7 +409,7 @@ struct FamiliarChatView: View {
             onSelectModel: { providerID, modelID in
                 controller.selectModel(providerID: providerID, modelID: modelID, in: modelContext)
             },
-            onConfigure: { presentedSheet = .settings },
+            onConfigure: { presentedSheet = .settings(nil) },
             onNewConversation: {
                 speechTranscriber.stop()
                 _ = controller.createConversation(in: modelContext)
@@ -482,6 +484,26 @@ struct FamiliarChatView: View {
         }
     }
 
+    private func handleSlashCommand(_ command: FamiliarSlashCommand) {
+        controller.draft = ""
+        isComposerFocused = false
+        switch command {
+        case .newConversation:
+            _ = controller.createConversation(in: modelContext)
+            isComposerFocused = true
+        case .settings:
+            presentedSheet = .settings(nil)
+        case .soul:
+            presentedSheet = .settings(.soul)
+        case .memory:
+            presentedSheet = .settings(.memory)
+        case .mcp:
+            presentedSheet = .settings(.mcp)
+        case .runHistory:
+            presentedSheet = .settings(.runHistory)
+        }
+    }
+
     private func refreshConfiguredProviders() {
         configuredProviderIDs = FamiliarKeychainStore.configuredProviderIDs(
             in: FamiliarProviderCatalog.allProviderIDs
@@ -507,9 +529,14 @@ struct FamiliarChatView: View {
     }
 }
 
-private enum FamiliarSheetDestination: String, Identifiable {
-    case settings
-    var id: String { rawValue }
+private enum FamiliarSheetDestination: Identifiable {
+    case settings(FamiliarSettingsRoute?)
+
+    var id: String {
+        switch self {
+        case .settings(let route): "settings-\(route?.rawValue ?? "root")"
+        }
+    }
 }
 
 private struct FamiliarRenameRequest: Identifiable {
@@ -642,8 +669,8 @@ private struct FamiliarChatTopBar: View {
             Spacer(minLength: 0)
 
             Button(action: onNewConversation) {
-                Image(systemName: "square.and.pencil")
-                    .font(.system(size: 17, weight: .semibold))
+                Image(systemName: "plus")
+                    .font(.system(size: 20, weight: .semibold))
                     .frame(width: 46, height: 46)
             }
             .buttonStyle(.plain)

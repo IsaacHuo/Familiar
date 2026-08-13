@@ -5,6 +5,7 @@ struct FamiliarRootView: View {
     let dependencies: FamiliarAppDependencies
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("familiar.onboarding.completed.v1") private var hasCompletedOnboarding = false
+    @AppStorage(FamiliarAppearancePreference.storageKey) private var appearance = FamiliarAppearancePreference.system.rawValue
     @State private var pendingSystemEntry: FamiliarSystemEntryRequest?
     @State private var appIntentHandoff = FamiliarAppIntentHandoff.shared
 
@@ -26,6 +27,7 @@ struct FamiliarRootView: View {
                 .transition(.opacity)
             }
         }
+        .preferredColorScheme(FamiliarAppearancePreference(rawValue: appearance)?.colorScheme)
         .onAppear { handlePendingAppIntent() }
         .onChange(of: appIntentHandoff.pendingRequest) { _, _ in handlePendingAppIntent() }
         .onOpenURL { url in

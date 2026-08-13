@@ -1,0 +1,827 @@
+import AVFoundation
+import EventKit
+import Speech
+import SwiftData
+import SwiftUI
+import UIKit
+
+enum FamiliarSettingsRoute: String, Hashable {
+    case modelService
+    case tokenUsage
+    case appearance
+    case tools
+    case soul
+    case memory
+    case mcp
+    case storage
+    case permissions
+    case runHistory
+    case privacy
+    case about
+}
+
+struct FamiliarSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let initialSettings: FamiliarSettings
+    let initialRoute: FamiliarSettingsRoute?
+    let onSaveSettings: (FamiliarSettings) -> Void
+    let onRestartOnboarding: () -> Void
+
+    @State private var settings: FamiliarSettings
+    @State private var path: [FamiliarSettingsRoute]
+
+    init(
+        initialSettings: FamiliarSettings,
+        initialRoute: FamiliarSettingsRoute? = nil,
+        onSaveSettings: @escaping (FamiliarSettings) -> Void,
+        onRestartOnboarding: @escaping () -> Void
+    ) {
+        self.initialSettings = initialSettings
+        self.initialRoute = initialRoute
+        self.onSaveSettings = onSaveSettings
+        self.onRestartOnboarding = onRestartOnboarding
+        _settings = State(initialValue: initialSettings)
+        _path = State(initialValue: initialRoute.map { [$0] } ?? [])
+    }
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            List {
+                Section(String(localized: "settings.hub.models", defaultValue: "Models")) {
+                    settingsLink(
+                        .modelService,
+                        title: String(localized: "settings.hub.model_service", defaultValue: "Model Service"),
+                        subtitle: "\(settings.selectedProvider.displayName) · \(settings.selectedModel.displayName)",
+                        symbol: "key.horizontal.fill",
+                        color: FamiliarTheme.accent
+                    )
+                    settingsLink(
+                        .tokenUsage,
+                        title: String(localized: "settings.hub.usage", defaultValue: "Token Usage"),
+                        subtitle: String(localized: "settings.hub.usage.detail", defaultValue: "Provider reporting is not available yet"),
+                        symbol: "chart.xyaxis.line",
+                        color: .indigo
+                    )
+                }
+
+                Section(String(localized: "settings.hub.agent", defaultValue: "Agent")) {
+                    settingsLink(
+                        .tools,
+                        title: String(localized: "settings.hub.tools", defaultValue: "Tools & Skills"),
+                        subtitle: String(localized: "settings.hub.tools.detail", defaultValue: "Native capabilities and planned skills"),
+                        symbol: "puzzlepiece.extension.fill",
+                        color: .blue
+                    )
+                    settingsLink(
+                        .soul,
+                        title: String(localized: "settings.hub.soul", defaultValue: "Soul"),
+                        subtitle: String(localized: "settings.hub.soul.detail", defaultValue: "Personality and response style"),
+                        symbol: "sparkles",
+                        color: .pink
+                    )
+                    settingsLink(
+                        .memory,
+                        title: String(localized: "settings.hub.memory", defaultValue: "Long-term Memory"),
+                        subtitle: String(localized: "settings.status.planned", defaultValue: "Planned"),
+                        symbol: "brain.head.profile.fill",
+                        color: .purple,
+                        badge: String(localized: "settings.status.preview", defaultValue: "Preview")
+                    )
+                    settingsLink(
+                        .mcp,
+                        title: String(localized: "settings.hub.mcp", defaultValue: "MCP Connections"),
+                        subtitle: String(localized: "settings.status.planned", defaultValue: "Planned"),
+                        symbol: "point.3.connected.trianglepath.dotted",
+                        color: .teal,
+                        badge: String(localized: "settings.status.preview", defaultValue: "Preview")
+                    )
+                }
+
+                Section(String(localized: "settings.hub.app", defaultValue: "App")) {
+                    settingsLink(
+                        .appearance,
+                        title: String(localized: "settings.hub.appearance", defaultValue: "Appearance"),
+                        subtitle: FamiliarAppearancePreference.current.localizedTitle,
+                        symbol: "paintbrush.fill",
+                        color: .indigo
+                    )
+                    settingsLink(
+                        .storage,
+                        title: String(localized: "settings.hub.storage", defaultValue: "Local Storage"),
+                        subtitle: String(localized: "settings.hub.storage.detail", defaultValue: "Conversations and attachments on this iPhone"),
+                        symbol: "internaldrive.fill",
+                        color: .blue
+                    )
+                    settingsLink(
+                        .permissions,
+                        title: String(localized: "settings.hub.permissions", defaultValue: "Permissions"),
+                        subtitle: String(localized: "settings.hub.permissions.detail", defaultValue: "Review access managed by iOS"),
+                        symbol: "hand.raised.fill",
+                        color: .orange
+                    )
+                    settingsLink(
+                        .runHistory,
+                        title: String(localized: "settings.hub.run_history", defaultValue: "Run History"),
+                        subtitle: String(localized: "settings.hub.run_history.detail", defaultValue: "Local Agent activity"),
+                        symbol: "clock.arrow.circlepath",
+                        color: .gray
+                    )
+                }
+
+                Section(String(localized: "settings.hub.support", defaultValue: "Privacy & Support")) {
+                    settingsLink(
+                        .privacy,
+                        title: String(localized: "settings.privacy.title"),
+                        subtitle: String(localized: "settings.hub.privacy.detail", defaultValue: "How Familiar handles your data"),
+                        symbol: "hand.raised.square.fill",
+                        color: .cyan
+                    )
+                    settingsLink(
+                        .about,
+                        title: String(localized: "settings.hub.about", defaultValue: "About Familiar"),
+                        subtitle: appVersion,
+                        symbol: "info.circle.fill",
+                        color: .indigo
+                    )
+                    Button(String(localized: "settings.onboarding.restart")) {
+                        onRestartOnboarding()
+                    }
+                }
+            }
+            .navigationTitle(String(localized: "drawer.settings"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(String(localized: "common.done", defaultValue: "Done")) {
+                        onSaveSettings(settings)
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+            .navigationDestination(for: FamiliarSettingsRoute.self, destination: destination)
+        }
+        .tint(FamiliarTheme.accent)
+    }
+
+    private func settingsLink(
+        _ route: FamiliarSettingsRoute,
+        title: String,
+        subtitle: String,
+        symbol: String,
+        color: Color,
+        badge: String? = nil
+    ) -> some View {
+        NavigationLink(value: route) {
+            HStack(spacing: 13) {
+                Image(systemName: symbol)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 30, height: 30)
+                    .background(color.gradient, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 7) {
+                        Text(title)
+                        if let badge {
+                            Text(badge)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(FamiliarTheme.accent)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(FamiliarTheme.accent.opacity(0.12), in: Capsule())
+                        }
+                    }
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .accessibilityValue(badge ?? subtitle)
+    }
+
+    @ViewBuilder
+    private func destination(_ route: FamiliarSettingsRoute) -> some View {
+        switch route {
+        case .modelService:
+            FamiliarModelServiceSettingsView(
+                initialSettings: settings,
+                onSaveSettings: { value in
+                    settings = value
+                    onSaveSettings(value)
+                },
+                onRestartOnboarding: onRestartOnboarding
+            )
+        case .tokenUsage:
+            FamiliarTokenUsageView()
+        case .appearance:
+            FamiliarAppearanceSettingsView()
+        case .tools:
+            FamiliarToolsAndSkillsView()
+        case .soul:
+            FamiliarSoulSettingsView(systemPrompt: $settings.systemPrompt)
+        case .memory:
+            FamiliarMemoryPreviewView()
+        case .mcp:
+            FamiliarMCPPreviewView()
+        case .storage:
+            FamiliarStorageSettingsView()
+        case .permissions:
+            FamiliarPermissionsSettingsView()
+        case .runHistory:
+            FamiliarRunHistoryView()
+        case .privacy:
+            FamiliarPrivacySettingsView()
+        case .about:
+            FamiliarAboutView()
+        }
+    }
+
+    private var appVersion: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+        return String(format: String(localized: "settings.about.version", defaultValue: "Version %@ (%@)"), version, build)
+    }
+}
+
+private struct FamiliarTokenUsageView: View {
+    var body: some View {
+        ContentUnavailableView {
+            Label(String(localized: "settings.usage.empty.title", defaultValue: "Usage unavailable"), systemImage: "chart.xyaxis.line")
+        } description: {
+            Text(String(localized: "settings.usage.empty.detail", defaultValue: "Familiar does not currently collect or estimate token usage. Provider-reported usage will appear here when it is supported."))
+        }
+        .navigationTitle(String(localized: "settings.hub.usage", defaultValue: "Token Usage"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct FamiliarSoulSettingsView: View {
+    @Binding var systemPrompt: String
+
+    var body: some View {
+        Form {
+            Section {
+                TextEditor(text: $systemPrompt)
+                    .frame(minHeight: 260)
+                    .accessibilityLabel(String(localized: "settings.soul.editor", defaultValue: "Personality prompt"))
+            } header: {
+                Text(String(localized: "settings.soul.personality", defaultValue: "Personality"))
+            } footer: {
+                Text(String(localized: "settings.soul.footer", defaultValue: "This changes Familiar's tone and response style. Tool permissions and safety rules remain enforced by the app."))
+            }
+
+            Section {
+                HStack {
+                    Text(String(localized: "settings.soul.characters", defaultValue: "Characters"))
+                    Spacer()
+                    Text("\(min(systemPrompt.count, 3_000)) / 3,000")
+                        .foregroundStyle(.secondary)
+                }
+                Button(String(localized: "settings.soul.restore", defaultValue: "Restore Familiar Default"), role: .destructive) {
+                    systemPrompt = FamiliarSettings.defaultValue.systemPrompt
+                }
+            }
+        }
+        .onChange(of: systemPrompt) { _, value in
+            if value.count > 3_000 { systemPrompt = String(value.prefix(3_000)) }
+        }
+        .navigationTitle(String(localized: "settings.hub.soul", defaultValue: "Soul"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct FamiliarToolsAndSkillsView: View {
+    @State private var showsPreviewNotice = false
+
+    private let tools: [(String, String)] = [
+        ("clock", String(localized: "tool.date_time")),
+        ("info.circle", String(localized: "tool.app_information")),
+        ("calendar", String(localized: "tool.calendar_query")),
+        ("calendar.badge.plus", String(localized: "tool.calendar_create")),
+        ("checklist", String(localized: "tool.reminders_query")),
+        ("checkmark.circle", String(localized: "tool.reminder_create"))
+    ]
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(tools, id: \.1) { tool in
+                    Label(tool.1, systemImage: tool.0)
+                }
+            } header: {
+                Text(String(localized: "settings.tools.native", defaultValue: "Native Tools"))
+            } footer: {
+                Text(String(localized: "settings.tools.native.footer", defaultValue: "Familiar exposes only tools supported by the selected model and current iOS permissions."))
+            }
+
+            Section {
+                Button {
+                    showsPreviewNotice = true
+                } label: {
+                    Label(String(localized: "settings.skills.add", defaultValue: "Add Skill"), systemImage: "plus")
+                }
+            } header: {
+                Text(String(localized: "settings.skills.title", defaultValue: "Skills"))
+            } footer: {
+                Text(String(localized: "settings.skills.preview", defaultValue: "Custom instruction bundles are planned. No skill is currently installed or injected into model context."))
+            }
+        }
+        .navigationTitle(String(localized: "settings.hub.tools", defaultValue: "Tools & Skills"))
+        .navigationBarTitleDisplayMode(.inline)
+        .alert(String(localized: "settings.preview.unavailable.title", defaultValue: "Planned Feature"), isPresented: $showsPreviewNotice) {
+            Button(String(localized: "common.ok"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "settings.skills.unavailable", defaultValue: "Skill installation is not connected to Familiar's runtime yet."))
+        }
+    }
+}
+
+private struct FamiliarMemoryPreviewView: View {
+    @State private var previewEnabled = false
+    @State private var searchText = ""
+    @State private var showsEditor = false
+
+    var body: some View {
+        List {
+            FamiliarPreviewBanner(
+                title: String(localized: "settings.memory.preview.title", defaultValue: "Memory Preview"),
+                detail: String(localized: "settings.memory.preview.detail", defaultValue: "Long-term memory is not connected to conversations or model context in this version.")
+            )
+
+            Section {
+                Toggle(String(localized: "settings.memory.enable", defaultValue: "Enable for New Conversations"), isOn: $previewEnabled)
+                Button {
+                    showsEditor = true
+                } label: {
+                    Label(String(localized: "settings.memory.add", defaultValue: "Add Memory"), systemImage: "plus")
+                }
+            }
+
+            Section {
+                ContentUnavailableView(
+                    String(localized: "settings.memory.empty.title", defaultValue: "No long-term memories"),
+                    systemImage: "brain.head.profile",
+                    description: Text(String(localized: "settings.memory.empty.detail", defaultValue: "Future memories will be reviewable, editable, and removable here."))
+                )
+            }
+        }
+        .searchable(text: $searchText, prompt: String(localized: "settings.memory.search", defaultValue: "Search memories"))
+        .navigationTitle(String(localized: "settings.hub.memory", defaultValue: "Long-term Memory"))
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showsEditor) {
+            FamiliarMemoryPreviewEditor()
+        }
+        .accessibilityValue(String(localized: "settings.preview.accessibility", defaultValue: "Preview, unavailable"))
+    }
+}
+
+private struct FamiliarMemoryPreviewEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    @State private var category = 0
+    @State private var showsUnavailable = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Picker(String(localized: "settings.memory.category", defaultValue: "Category"), selection: $category) {
+                    Text(String(localized: "settings.memory.category.preference", defaultValue: "Preference")).tag(0)
+                    Text(String(localized: "settings.memory.category.detail", defaultValue: "Personal Detail")).tag(1)
+                    Text(String(localized: "settings.memory.category.instruction", defaultValue: "Instruction")).tag(2)
+                }
+                TextEditor(text: $text)
+                    .frame(minHeight: 180)
+            }
+            .navigationTitle(String(localized: "settings.memory.new", defaultValue: "New Memory"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(String(localized: "common.cancel")) { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(String(localized: "common.save")) { showsUnavailable = true }
+                        .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .alert(String(localized: "settings.preview.unavailable.title", defaultValue: "Planned Feature"), isPresented: $showsUnavailable) {
+                Button(String(localized: "common.ok"), role: .cancel) {}
+            } message: {
+                Text(String(localized: "settings.memory.save.unavailable", defaultValue: "Memory storage and context injection are not available yet. Nothing was saved."))
+            }
+        }
+    }
+}
+
+private struct FamiliarMCPPreviewView: View {
+    @State private var showsAddServer = false
+
+    var body: some View {
+        List {
+            FamiliarPreviewBanner(
+                title: String(localized: "settings.mcp.preview.title", defaultValue: "MCP Preview"),
+                detail: String(localized: "settings.mcp.preview.detail", defaultValue: "MCP connections are not registered with Familiar's tool runtime in this version.")
+            )
+
+            Section {
+                ContentUnavailableView(
+                    String(localized: "settings.mcp.empty.title", defaultValue: "No MCP servers"),
+                    systemImage: "point.3.connected.trianglepath.dotted",
+                    description: Text(String(localized: "settings.mcp.empty.detail", defaultValue: "Remote HTTPS servers will appear here after MCP support is released."))
+                )
+            }
+        }
+        .navigationTitle(String(localized: "settings.hub.mcp", defaultValue: "MCP Connections"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { showsAddServer = true } label: { Image(systemName: "plus") }
+                    .accessibilityLabel(String(localized: "settings.mcp.add", defaultValue: "Add MCP server"))
+            }
+        }
+        .sheet(isPresented: $showsAddServer) {
+            FamiliarMCPServerPreviewEditor()
+        }
+        .accessibilityValue(String(localized: "settings.preview.accessibility", defaultValue: "Preview, unavailable"))
+    }
+}
+
+private struct FamiliarMCPServerPreviewEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var endpoint = ""
+    @State private var authentication = 0
+    @State private var showsUnavailable = false
+
+    private var isValid: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && URL(string: endpoint)?.scheme == "https"
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField(String(localized: "settings.mcp.name", defaultValue: "Server Name"), text: $name)
+                    TextField("https://example.com/mcp", text: $endpoint)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
+                        .autocorrectionDisabled()
+                    Picker(String(localized: "settings.mcp.auth", defaultValue: "Authentication"), selection: $authentication) {
+                        Text(String(localized: "settings.mcp.auth.none", defaultValue: "None")).tag(0)
+                        Text(String(localized: "settings.mcp.auth.bearer", defaultValue: "Bearer Token")).tag(1)
+                    }
+                } footer: {
+                    Text(String(localized: "settings.mcp.security", defaultValue: "Future credentials will be scoped to this server and stored in Keychain. MCP tools will still pass through Familiar's permission policy."))
+                }
+            }
+            .navigationTitle(String(localized: "settings.mcp.new", defaultValue: "New MCP Server"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(String(localized: "common.cancel")) { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(String(localized: "settings.mcp.connect", defaultValue: "Connect")) { showsUnavailable = true }
+                        .disabled(!isValid)
+                }
+            }
+            .alert(String(localized: "settings.preview.unavailable.title", defaultValue: "Planned Feature"), isPresented: $showsUnavailable) {
+                Button(String(localized: "common.ok"), role: .cancel) {}
+            } message: {
+                Text(String(localized: "settings.mcp.connect.unavailable", defaultValue: "MCP networking and tool discovery are not available yet. No server or credential was saved."))
+            }
+        }
+    }
+}
+
+private struct FamiliarPreviewBanner: View {
+    let title: String
+    let detail: String
+
+    var body: some View {
+        Section {
+            Label {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title).font(.headline)
+                    Text(detail).font(.subheadline).foregroundStyle(.secondary)
+                }
+            } icon: {
+                Image(systemName: "hammer.fill").foregroundStyle(FamiliarTheme.accent)
+            }
+        }
+    }
+}
+
+private struct FamiliarStorageSettingsView: View {
+    @Query private var conversations: [FamiliarConversation]
+    @Query private var messages: [FamiliarMessage]
+    @Query private var attachments: [FamiliarAttachment]
+
+    var body: some View {
+        List {
+            Section(String(localized: "settings.storage.overview", defaultValue: "Overview")) {
+                storageRow(String(localized: "settings.storage.conversations", defaultValue: "Conversations"), value: conversations.count, symbol: "bubble.left.and.bubble.right")
+                storageRow(String(localized: "settings.storage.messages", defaultValue: "Messages"), value: messages.count, symbol: "text.bubble")
+                HStack {
+                    Label(String(localized: "settings.storage.attachments", defaultValue: "Attachments"), systemImage: "doc")
+                    Spacer()
+                    Text(ByteCountFormatter.string(fromByteCount: attachmentBytes, countStyle: .file))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Section {
+                Text(String(localized: "settings.storage.local.detail", defaultValue: "Conversation history and imported document copies stay in Familiar's private storage on this iPhone. Familiar does not use CloudKit or iCloud sync."))
+            }
+        }
+        .navigationTitle(String(localized: "settings.hub.storage", defaultValue: "Local Storage"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var attachmentBytes: Int64 { attachments.reduce(0) { $0 + $1.byteSize } }
+
+    private func storageRow(_ title: String, value: Int, symbol: String) -> some View {
+        HStack {
+            Label(title, systemImage: symbol)
+            Spacer()
+            Text(value.formatted()).foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct FamiliarPermissionsSettingsView: View {
+    @Environment(\.openURL) private var openURL
+    @State private var notificationState: FamiliarNotificationAuthorizationState = .unknown
+    @State private var notificationsEnabled = FamiliarNotificationPreference.isEnabled
+    @State private var isUpdatingNotifications = false
+
+    var body: some View {
+        List {
+            Section {
+                Toggle(
+                    String(localized: "settings.notifications.run_terminal"),
+                    isOn: Binding(
+                        get: { notificationsEnabled },
+                        set: { enabled in Task { await updateNotifications(enabled) } }
+                    )
+                )
+                .disabled(isUpdatingNotifications)
+                permissionRow(String(localized: "settings.permissions.calendar", defaultValue: "Calendar"), symbol: "calendar", status: eventStatus(.event))
+                permissionRow(String(localized: "settings.permissions.reminders", defaultValue: "Reminders"), symbol: "checklist", status: eventStatus(.reminder))
+                permissionRow(String(localized: "settings.permissions.camera", defaultValue: "Camera"), symbol: "camera", status: mediaStatus(AVCaptureDevice.authorizationStatus(for: .video)))
+                permissionRow(String(localized: "settings.permissions.microphone", defaultValue: "Microphone"), symbol: "mic", status: mediaStatus(AVCaptureDevice.authorizationStatus(for: .audio)))
+                permissionRow(String(localized: "settings.permissions.speech", defaultValue: "Speech Recognition"), symbol: "waveform", status: speechStatus)
+                permissionRow(String(localized: "settings.notifications.title"), symbol: "bell", status: notificationStatus)
+            } footer: {
+                Text(String(localized: "settings.permissions.footer", defaultValue: "Familiar asks for access only when you use the related feature. Permissions are controlled by iOS."))
+            }
+
+            Section {
+                Button(String(localized: "settings.permissions.open", defaultValue: "Open Familiar in iOS Settings")) {
+                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                    openURL(url)
+                }
+            }
+        }
+        .navigationTitle(String(localized: "settings.hub.permissions", defaultValue: "Permissions"))
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            notificationState = await FamiliarNotificationService.authorizationState()
+            notificationsEnabled = FamiliarNotificationPreference.isEnabled && notificationState == .enabled
+        }
+    }
+
+    private func permissionRow(_ title: String, symbol: String, status: String) -> some View {
+        HStack {
+            Label(title, systemImage: symbol)
+            Spacer()
+            Text(status).foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func eventStatus(_ entity: EKEntityType) -> String {
+        authorizationTitle(EKEventStore.authorizationStatus(for: entity).rawValue)
+    }
+
+    private func mediaStatus(_ status: AVAuthorizationStatus) -> String {
+        switch status {
+        case .authorized: allowed
+        case .denied: denied
+        case .restricted: restricted
+        case .notDetermined: notRequested
+        @unknown default: restricted
+        }
+    }
+
+    private var speechStatus: String {
+        switch SFSpeechRecognizer.authorizationStatus() {
+        case .authorized: allowed
+        case .denied: denied
+        case .restricted: restricted
+        case .notDetermined: notRequested
+        @unknown default: restricted
+        }
+    }
+
+    private var notificationStatus: String {
+        switch notificationState {
+        case .enabled: allowed
+        case .denied: denied
+        case .notDetermined, .unknown: notRequested
+        }
+    }
+
+    private func updateNotifications(_ enabled: Bool) async {
+        guard !isUpdatingNotifications else { return }
+        isUpdatingNotifications = true
+        defer { isUpdatingNotifications = false }
+        do {
+            notificationState = try await FamiliarNotificationService.setEnabled(enabled)
+            notificationsEnabled = enabled && notificationState == .enabled
+        } catch {
+            notificationsEnabled = false
+        }
+    }
+
+    private func authorizationTitle(_ rawValue: Int) -> String {
+        switch EKAuthorizationStatus(rawValue: rawValue) {
+        case .fullAccess, .authorized: allowed
+        case .writeOnly: String(localized: "settings.permissions.write_only", defaultValue: "Write Only")
+        case .denied: denied
+        case .restricted: restricted
+        case .notDetermined: notRequested
+        case nil: restricted
+        @unknown default: restricted
+        }
+    }
+
+    private var allowed: String { String(localized: "settings.permissions.allowed", defaultValue: "Allowed") }
+    private var denied: String { String(localized: "settings.permissions.denied", defaultValue: "Denied") }
+    private var restricted: String { String(localized: "settings.permissions.restricted", defaultValue: "Restricted") }
+    private var notRequested: String { String(localized: "settings.permissions.not_requested", defaultValue: "Not Requested") }
+}
+
+private struct FamiliarRunHistoryView: View {
+    @Query(sort: \FamiliarAgentRun.startedAt, order: .reverse) private var runs: [FamiliarAgentRun]
+
+    var body: some View {
+        Group {
+            if runs.isEmpty {
+                ContentUnavailableView(
+                    String(localized: "settings.runs.empty.title", defaultValue: "No runs yet"),
+                    systemImage: "clock.arrow.circlepath",
+                    description: Text(String(localized: "settings.runs.empty.detail", defaultValue: "Completed and failed Agent runs will appear here."))
+                )
+            } else {
+                List(runs) { run in
+                    NavigationLink {
+                        FamiliarRunDetailView(run: run)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack {
+                                Text(run.conversation?.title ?? String(localized: "conversation.new"))
+                                    .font(.headline)
+                                    .lineLimit(1)
+                                Spacer()
+                                Text(runStatus(run)).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Text(run.startedAt, format: .dateTime.year().month().day().hour().minute())
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 3)
+                    }
+                }
+            }
+        }
+        .navigationTitle(String(localized: "settings.hub.run_history", defaultValue: "Run History"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func runStatus(_ run: FamiliarAgentRun) -> String {
+        switch run.status {
+        case .running: String(localized: "settings.runs.running", defaultValue: "Running")
+        case .completed: String(localized: "settings.runs.completed", defaultValue: "Completed")
+        case .cancelled: String(localized: "settings.runs.cancelled", defaultValue: "Cancelled")
+        case .failed: String(localized: "settings.runs.failed", defaultValue: "Failed")
+        }
+    }
+}
+
+private struct FamiliarRunDetailView: View {
+    let run: FamiliarAgentRun
+
+    var body: some View {
+        List {
+            Section {
+                LabeledContent(String(localized: "settings.runs.started", defaultValue: "Started")) {
+                    Text(run.startedAt, format: .dateTime.year().month().day().hour().minute().second())
+                }
+                if let finishedAt = run.finishedAt {
+                    LabeledContent(String(localized: "settings.runs.finished", defaultValue: "Finished")) {
+                        Text(finishedAt, format: .dateTime.year().month().day().hour().minute().second())
+                    }
+                }
+                if let reason = run.finishReason, !reason.isEmpty {
+                    LabeledContent(String(localized: "settings.runs.result", defaultValue: "Result"), value: reason)
+                }
+            }
+
+            Section(String(localized: "settings.runs.steps", defaultValue: "Steps")) {
+                if run.steps.isEmpty {
+                    Text(String(localized: "settings.runs.no_steps", defaultValue: "No persisted tool steps"))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(run.steps.sorted { $0.timelineSequence < $1.timelineSequence }) { step in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(step.summary).font(.headline)
+                            if !step.detail.isEmpty {
+                                Text(step.detail).font(.subheadline).foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 3)
+                    }
+                }
+            }
+        }
+        .navigationTitle(run.conversation?.title ?? String(localized: "settings.hub.run_history", defaultValue: "Run History"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct FamiliarPrivacySettingsView: View {
+    var body: some View {
+        List {
+            Section {
+                Label(String(localized: "settings.privacy.no_account"), systemImage: "person.crop.circle.badge.xmark")
+                Label(String(localized: "settings.privacy.permission_tools"), systemImage: "hand.raised")
+                Label(String(localized: "settings.privacy.local_history"), systemImage: "internaldrive")
+                Label(String(localized: "settings.privacy.local_documents"), systemImage: "doc.text.magnifyingglass")
+                Label(String(localized: "settings.privacy.remote_images"), systemImage: "photo.badge.exclamationmark")
+            }
+        }
+        .navigationTitle(String(localized: "settings.privacy.title"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct FamiliarAboutView: View {
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        List {
+            Section {
+                VStack(spacing: 10) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 34, weight: .medium))
+                        .foregroundStyle(FamiliarTheme.accent)
+                        .frame(width: 72, height: 72)
+                        .background(FamiliarTheme.brandGlow, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    Text(String(localized: "app.name")).font(.title2.bold())
+                    Text(version).font(.subheadline).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+            }
+
+            Section {
+                Link(String(localized: "settings.about.privacy", defaultValue: "Privacy Policy"), destination: URL(string: "https://isaachuo.github.io/familiar/privacy/")!)
+                Link(String(localized: "settings.about.support", defaultValue: "Support"), destination: URL(string: "https://isaachuo.github.io/familiar/support/")!)
+                Link(String(localized: "settings.about.feedback", defaultValue: "Report an Issue"), destination: URL(string: "https://github.com/IsaacHuo/familiar/issues")!)
+            }
+
+            Section {
+                NavigationLink(String(localized: "settings.about.notices", defaultValue: "Third-Party Notices")) {
+                    ScrollView {
+                        Text(thirdPartyNotices)
+                            .font(.footnote.monospaced())
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                    }
+                    .navigationTitle(String(localized: "settings.about.notices", defaultValue: "Third-Party Notices"))
+                    .navigationBarTitleDisplayMode(.inline)
+                }
+            }
+        }
+        .navigationTitle(String(localized: "settings.hub.about", defaultValue: "About Familiar"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var version: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+        return String(format: String(localized: "settings.about.version", defaultValue: "Version %@ (%@)"), version, build)
+    }
+
+    private var thirdPartyNotices: String {
+        guard let url = Bundle.main.url(forResource: "ThirdPartyNotices", withExtension: "txt"),
+              let value = try? String(contentsOf: url, encoding: .utf8)
+        else { return String(localized: "settings.about.notices.unavailable", defaultValue: "Notices are unavailable.") }
+        return value
+    }
+}

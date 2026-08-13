@@ -1,5 +1,56 @@
 import SwiftUI
 
+enum FamiliarAppearancePreference: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    static let storageKey = "familiar.appearance.v1"
+    static var current: FamiliarAppearancePreference {
+        FamiliarAppearancePreference(rawValue: UserDefaults.standard.string(forKey: storageKey) ?? "system") ?? .system
+    }
+
+    var id: String { rawValue }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
+        }
+    }
+
+    var localizedTitle: String {
+        switch self {
+        case .system: String(localized: "settings.appearance.system", defaultValue: "System")
+        case .light: String(localized: "settings.appearance.light", defaultValue: "Light")
+        case .dark: String(localized: "settings.appearance.dark", defaultValue: "Dark")
+        }
+    }
+}
+
+struct FamiliarAppearanceSettingsView: View {
+    @AppStorage(FamiliarAppearancePreference.storageKey) private var selection = FamiliarAppearancePreference.system.rawValue
+
+    var body: some View {
+        Form {
+            Section {
+                Picker(String(localized: "settings.hub.appearance", defaultValue: "Appearance"), selection: $selection) {
+                    ForEach(FamiliarAppearancePreference.allCases) { preference in
+                        Text(preference.localizedTitle).tag(preference.rawValue)
+                    }
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            } footer: {
+                Text(String(localized: "settings.appearance.footer", defaultValue: "This setting overrides the iPhone appearance for Familiar."))
+            }
+        }
+        .navigationTitle(String(localized: "settings.hub.appearance", defaultValue: "Appearance"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
 nonisolated enum FamiliarTheme {
     static let accent = Color(red: 0.10, green: 0.53, blue: 0.98)
     static let displayCornerRadius: CGFloat = 62

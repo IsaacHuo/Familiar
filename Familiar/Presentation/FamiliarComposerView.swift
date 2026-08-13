@@ -25,6 +25,50 @@ private enum FamiliarComposerAddDestination {
     case files
 }
 
+enum FamiliarSlashCommand: String, CaseIterable, Identifiable {
+    case newConversation = "new"
+    case settings
+    case soul
+    case memory
+    case mcp
+    case runHistory = "runs"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .newConversation: String(localized: "conversation.new")
+        case .settings: String(localized: "drawer.settings")
+        case .soul: String(localized: "settings.hub.soul", defaultValue: "Soul")
+        case .memory: String(localized: "settings.hub.memory", defaultValue: "Long-term Memory")
+        case .mcp: String(localized: "settings.hub.mcp", defaultValue: "MCP Connections")
+        case .runHistory: String(localized: "settings.hub.run_history", defaultValue: "Run History")
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .newConversation: String(localized: "slash.new.detail", defaultValue: "Start a new local conversation")
+        case .settings: String(localized: "slash.settings.detail", defaultValue: "Open Familiar settings")
+        case .soul: String(localized: "slash.soul.detail", defaultValue: "Edit personality and response style")
+        case .memory: String(localized: "slash.memory.detail", defaultValue: "Open the long-term memory preview")
+        case .mcp: String(localized: "slash.mcp.detail", defaultValue: "Open the MCP connections preview")
+        case .runHistory: String(localized: "slash.runs.detail", defaultValue: "Review local Agent runs")
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .newConversation: "square.and.pencil"
+        case .settings: "gearshape"
+        case .soul: "sparkles"
+        case .memory: "brain.head.profile"
+        case .mcp: "point.3.connected.trianglepath.dotted"
+        case .runHistory: "clock.arrow.circlepath"
+        }
+    }
+}
+
 private struct FamiliarComposerTextHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
@@ -125,6 +169,7 @@ struct FamiliarComposer: View {
     let draftScopeID: UUID?
     let focus: FocusState<Bool>.Binding
     let onSpeech: () -> Void
+    let onSlashCommand: (FamiliarSlashCommand) -> Void
     let onSend: () -> Void
 
     @State private var mode: FamiliarComposerMode = .compact
@@ -135,6 +180,7 @@ struct FamiliarComposer: View {
     @State private var photoSelection: [PhotosPickerItem] = []
     @State private var fullPhotoSelection: [PhotosPickerItem] = []
     @State private var pendingDestination: FamiliarComposerAddDestination?
+    @State private var showsAddMenu = false
     @State private var showsCamera = false
     @State private var showsPhotos = false
     @State private var showsFullPhotos = false
@@ -154,6 +200,7 @@ struct FamiliarComposer: View {
         draftScopeID: UUID?,
         focus: FocusState<Bool>.Binding,
         onSpeech: @escaping () -> Void,
+        onSlashCommand: @escaping (FamiliarSlashCommand) -> Void,
         onSend: @escaping () -> Void,
         availableHeight: CGFloat = UIScreen.main.bounds.height
     ) {
@@ -165,6 +212,7 @@ struct FamiliarComposer: View {
         self.draftScopeID = draftScopeID
         self.focus = focus
         self.onSpeech = onSpeech
+        self.onSlashCommand = onSlashCommand
         self.onSend = onSend
         self.availableHeight = availableHeight
     }
@@ -185,6 +233,7 @@ struct FamiliarComposer: View {
 
     var body: some View {
         VStack(spacing: 8) {
+            slashCommandPalette
             draftPreview
             FamiliarComposerLayout(mode: mode, editorHeight: editorHeight) {
                 editor
@@ -232,6 +281,63 @@ struct FamiliarComposer: View {
         .onPreferenceChange(FamiliarComposerTextHeightKey.self) { measuredTextHeight = $0; updateModeForText() }
     }
 
+    @ViewBuilder
+    private var slashCommandPalette: some View {
+        if showsSlashCommands {
+            VStack(spacing: 0) {
+                ForEach(filteredSlashCommands) { command in
+                    Button {
+                        onSlashCommand(command)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: command.symbol)
+                                .frame(width: 24)
+                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("/\(command.rawValue)")
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
+                                Text(command.detail)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                        }
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: 58)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("/\(command.rawValue), \(command.title)")
+                    if command.id != filteredSlashCommands.last?.id {
+                        Divider().padding(.leading, 50)
+                    }
+                }
+            }
+            .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(FamiliarTheme.separator, lineWidth: 1)
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(String(localized: "slash.palette", defaultValue: "Slash commands"))
+        }
+    }
+
+    private var showsSlashCommands: Bool {
+        draft.first == "/" && !filteredSlashCommands.isEmpty && !isSending
+    }
+
+    private var filteredSlashCommands: [FamiliarSlashCommand] {
+        guard draft.first == "/" else { return [] }
+        let query = String(draft.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.contains(where: { $0.isWhitespace }) else { return [] }
+        return FamiliarSlashCommand.allCases.filter {
+            query.isEmpty || $0.rawValue.localizedCaseInsensitiveContains(query) || $0.title.localizedCaseInsensitiveContains(query)
+        }
+    }
+
     private var editor: some View {
         ZStack(alignment: .topLeading) {
             if draft.isEmpty {
@@ -271,15 +377,11 @@ struct FamiliarComposer: View {
     }
 
     private var addButton: some View {
-        Menu {
-            Button { choose(.camera) } label: {
-                Label(String(localized: "attachment.camera"), systemImage: "camera")
-            }
-            Button { choose(.photos) } label: {
-                Label(String(localized: "attachment.photos"), systemImage: "photo")
-            }
-            Button { choose(.files) } label: {
-                Label(String(localized: "attachment.files"), systemImage: "paperclip")
+        Button {
+            focus.wrappedValue = true
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(180))
+                showsAddMenu = true
             }
         } label: {
             Image(systemName: "plus")
@@ -288,7 +390,30 @@ struct FamiliarComposer: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .popover(isPresented: $showsAddMenu, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 0) {
+                addMenuButton(.camera, title: String(localized: "attachment.camera"), symbol: "camera")
+                addMenuButton(.photos, title: String(localized: "attachment.photos"), symbol: "photo")
+                addMenuButton(.files, title: String(localized: "attachment.files"), symbol: "paperclip")
+            }
+            .padding(.vertical, 8)
+            .frame(minWidth: 220)
+            .presentationCompactAdaptation(.popover)
+        }
         .accessibilityLabel(String(localized: "attachment.add"))
+    }
+
+    private func addMenuButton(_ destination: FamiliarComposerAddDestination, title: String, symbol: String) -> some View {
+        Button {
+            showsAddMenu = false
+            choose(destination)
+        } label: {
+            Label(title, systemImage: symbol)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .padding(.horizontal, 16)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var micButton: some View {

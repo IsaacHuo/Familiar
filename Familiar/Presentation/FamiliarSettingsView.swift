@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-struct FamiliarSettingsView: View {
+struct FamiliarModelServiceSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
@@ -44,49 +44,27 @@ struct FamiliarSettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                brandHeader
-                providerSection
-                modelSection
-                keySection
-                responseSection
-                notificationSection
-                privacySection
-                onboardingSection
+        Form {
+            providerSection
+            modelSection
+            keySection
+        }
+        .navigationTitle(String(localized: "settings.hub.model_service", defaultValue: "Model Service"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button(String(localized: "common.save")) { save() }
+                    .fontWeight(.semibold)
+                    .disabled(currentDescriptor == nil || normalizedModelID.isEmpty)
             }
-            .navigationTitle(String(localized: "drawer.settings"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(String(localized: "common.cancel")) { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(String(localized: "common.save")) { save() }
-                        .fontWeight(.semibold)
-                        .disabled(currentDescriptor == nil || normalizedModelID.isEmpty)
-                }
-            }
-            .alert(String(localized: "settings.error.title"), isPresented: Binding(
-                get: { errorMessage != nil },
-                set: { if !$0 { errorMessage = nil } }
-            )) {
-                Button(String(localized: "common.ok"), role: .cancel) {}
-            } message: {
-                Text(errorMessage ?? String(localized: "error.unknown"))
-            }
-            .confirmationDialog(
-                String(localized: "settings.onboarding.restart.title"),
-                isPresented: $asksToRestartOnboarding,
-                titleVisibility: .visible
-            ) {
-                Button(String(localized: "settings.onboarding.restart.confirm")) {
-                    onRestartOnboarding()
-                }
-                Button(String(localized: "common.cancel"), role: .cancel) {}
-            } message: {
-                Text(String(localized: "settings.onboarding.restart.detail"))
-            }
+        }
+        .alert(String(localized: "settings.error.title"), isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button(String(localized: "common.ok"), role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? String(localized: "error.unknown"))
         }
         .tint(FamiliarTheme.accent)
         .task { await refreshNotificationAuthorization() }
