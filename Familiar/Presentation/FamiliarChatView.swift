@@ -19,9 +19,14 @@ struct FamiliarChatView: View {
     @State private var speechBaseDraft = ""
     @State private var configuredProviderIDs: Set<String> = []
     @FocusState private var isComposerFocused: Bool
+    private let onRestartOnboarding: () -> Void
 
-    init(dependencies: FamiliarAppDependencies) {
+    init(
+        dependencies: FamiliarAppDependencies,
+        onRestartOnboarding: @escaping () -> Void
+    ) {
         _controller = State(initialValue: FamiliarChatController(dependencies: dependencies))
+        self.onRestartOnboarding = onRestartOnboarding
     }
 
     var body: some View {
@@ -113,10 +118,14 @@ struct FamiliarChatView: View {
         .sheet(item: $presentedSheet, onDismiss: refreshConfiguredProviders) { destination in
             switch destination {
             case .settings:
-                FamiliarSettingsView(initialSettings: controller.settings) {
-                    controller.updateSettings($0, in: modelContext)
-                    refreshConfiguredProviders()
-                }
+                FamiliarSettingsView(
+                    initialSettings: controller.settings,
+                    onSaveSettings: {
+                        controller.updateSettings($0, in: modelContext)
+                        refreshConfiguredProviders()
+                    },
+                    onRestartOnboarding: onRestartOnboarding
+                )
             }
         }
         .alert(String(localized: "conversation.rename.title"), isPresented: Binding(

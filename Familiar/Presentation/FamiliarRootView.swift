@@ -10,19 +10,26 @@ struct FamiliarRootView: View {
             Color(uiColor: .systemBackground).ignoresSafeArea()
 
             if hasCompletedOnboarding {
-                FamiliarChatView(dependencies: dependencies)
+                FamiliarChatView(
+                    dependencies: dependencies,
+                    onRestartOnboarding: { setOnboardingCompleted(false) }
+                )
                     .transition(.opacity)
             } else {
                 FamiliarOnboardingView {
-                    if reduceMotion {
-                        hasCompletedOnboarding = true
-                    } else {
-                        withAnimation(.easeInOut(duration: 0.28)) {
-                            hasCompletedOnboarding = true
-                        }
-                    }
+                    setOnboardingCompleted(true)
                 }
                 .transition(.opacity)
+            }
+        }
+    }
+
+    private func setOnboardingCompleted(_ completed: Bool) {
+        if reduceMotion {
+            hasCompletedOnboarding = completed
+        } else {
+            withAnimation(.easeInOut(duration: 0.28)) {
+                hasCompletedOnboarding = completed
             }
         }
     }

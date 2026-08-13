@@ -8,7 +8,7 @@
 - 决策：用户提供各 Provider API Key。iPhone 直接调用 Provider。
 - 依据：降低服务端数据责任，保持用户与 Provider 的直接费用关系，支持多 Provider。
 - 影响：
-  - 首启需要 Provider 配置。
+  - 发送模型请求前需要 Provider 配置；首启允许先浏览 App 和本地内容。
   - App 需要处理不同 endpoint、认证和协议。
   - Provider 可用性和费用由用户选择决定。
   - 公开发布前需要逐 Provider 真实冒烟。

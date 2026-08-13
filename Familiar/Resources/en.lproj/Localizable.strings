@@ -26,6 +26,7 @@
 "onboarding.ready.permissions" = "Familiar asks before using system permissions";
 "onboarding.verify" = "Verify and Continue";
 "onboarding.start" = "Start Using Familiar";
+"onboarding.browse_without_setup" = "Browse Familiar without setup";
 "onboarding.validation_failed" = "Connection Failed";
 
 "provider.deepseek.detail" = "Balanced speed and reasoning";
@@ -64,6 +65,11 @@
 "settings.privacy.local_documents" = "Documents are converted locally with AnyDoc; only the resulting text is sent with your message";
 "settings.privacy.remote_images" = "Remote Markdown images never load automatically; source links open only when you choose";
 "settings.error.title" = "Couldn't Save Settings";
+"settings.onboarding.restart" = "Review setup";
+"settings.onboarding.restart.title" = "Review setup again?";
+"settings.onboarding.restart.detail" = "This returns to onboarding without deleting conversations, settings, or saved API keys.";
+"settings.onboarding.restart.confirm" = "Review Setup";
+"settings.onboarding.restart.footer" = "You can revisit onboarding at any time. Your local data and API keys stay in place.";
 
 "drawer.open" = "Open conversations";
 "drawer.search" = "Search chats";

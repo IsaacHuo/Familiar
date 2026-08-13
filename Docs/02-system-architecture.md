@@ -195,8 +195,8 @@ EventKit、Vision、MapKit、WebKit、Photos、PDFKit、Core ML、Foundation。�
 
 主要组件：
 
-- `FamiliarRootView`：首启与主界面切换。
-- `FamiliarOnboardingView`：三步 Provider 配置。
+- `FamiliarRootView`：首启与主界面切换，并支持从设置重新进入首启。
+- `FamiliarOnboardingView`：三步 Provider 配置，也可不发起网络请求直接进入浏览状态。
 - `FamiliarChatView`：抽屉、顶栏、时间线、输入器和设置入口。
 - `FamiliarChatController`：聊天状态、SwiftData 保存、网络任务和确认状态协调。
 - `FamiliarChatMessageViews`：消息、模型切换、工具记录和确认卡。

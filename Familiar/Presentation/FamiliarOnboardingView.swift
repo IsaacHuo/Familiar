@@ -147,13 +147,21 @@ struct FamiliarOnboardingView: View {
             .disabled(isPrimaryDisabled)
             .opacity(isPrimaryDisabled ? 0.45 : 1)
 
+            if step < 2 {
+                Button(String(localized: "onboarding.browse_without_setup")) {
+                    isKeyFocused = false
+                    onComplete()
+                }
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+                .disabled(isValidating)
+            }
+
             if step > 0 {
                 Button(String(localized: "common.back")) { setStep(step - 1) }
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
                     .disabled(isValidating)
-            } else {
-                Color.clear.frame(height: 20)
             }
         }
         .padding(.horizontal, 24)

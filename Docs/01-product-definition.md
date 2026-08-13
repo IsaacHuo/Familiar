@@ -60,7 +60,7 @@ Familiar 为用户提供统一的移动问答与 Agent 执行入口。产品首�
 
 ### 4.1 配置模型服务
 
-用户在首启流程中选择 Provider、填写 API Key、选择或输入模型 ID，并执行连接验证。API Key 写入设备 Keychain。Provider 配置和偏好写入本地设置。
+用户可以在首启流程中选择 Provider、填写 API Key、选择或输入模型 ID，并执行连接验证。API Key 写入设备 Keychain，Provider 配置和偏好写入本地设置。用户也可以先跳过配置浏览聊天壳层、本地历史和设置；在真正发送模型请求前，仍必须完成 BYOK 配置。
 
 ### 4.2 连续对话
 

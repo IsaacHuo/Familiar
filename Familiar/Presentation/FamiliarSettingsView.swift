@@ -5,6 +5,7 @@ struct FamiliarSettingsView: View {
 
     let initialSettings: FamiliarSettings
     let onSaveSettings: (FamiliarSettings) -> Void
+    let onRestartOnboarding: () -> Void
 
     @State private var settings: FamiliarSettings
     @State private var configuration: FamiliarProviderConfiguration
@@ -16,13 +17,16 @@ struct FamiliarSettingsView: View {
     @State private var validationSucceeded = false
     @State private var errorMessage: String?
     @State private var configuredProviderIDs: Set<String>
+    @State private var asksToRestartOnboarding = false
 
     init(
         initialSettings: FamiliarSettings,
-        onSaveSettings: @escaping (FamiliarSettings) -> Void
+        onSaveSettings: @escaping (FamiliarSettings) -> Void,
+        onRestartOnboarding: @escaping () -> Void
     ) {
         self.initialSettings = initialSettings
         self.onSaveSettings = onSaveSettings
+        self.onRestartOnboarding = onRestartOnboarding
         _settings = State(initialValue: initialSettings)
         _configuration = State(initialValue: initialSettings.providerConfiguration)
         _models = State(initialValue: initialSettings.selectedProvider.curatedModels)
@@ -41,6 +45,7 @@ struct FamiliarSettingsView: View {
                 keySection
                 responseSection
                 privacySection
+                onboardingSection
             }
             .navigationTitle(String(localized: "drawer.settings"))
             .navigationBarTitleDisplayMode(.inline)
@@ -61,6 +66,18 @@ struct FamiliarSettingsView: View {
                 Button(String(localized: "common.ok"), role: .cancel) {}
             } message: {
                 Text(errorMessage ?? String(localized: "error.unknown"))
+            }
+            .confirmationDialog(
+                String(localized: "settings.onboarding.restart.title"),
+                isPresented: $asksToRestartOnboarding,
+                titleVisibility: .visible
+            ) {
+                Button(String(localized: "settings.onboarding.restart.confirm")) {
+                    onRestartOnboarding()
+                }
+                Button(String(localized: "common.cancel"), role: .cancel) {}
+            } message: {
+                Text(String(localized: "settings.onboarding.restart.detail"))
             }
         }
         .tint(FamiliarTheme.accent)
@@ -207,6 +224,16 @@ struct FamiliarSettingsView: View {
             Label(String(localized: "settings.privacy.local_history"), systemImage: "internaldrive")
             Label(String(localized: "settings.privacy.local_documents"), systemImage: "doc.text.magnifyingglass")
             Label(String(localized: "settings.privacy.remote_images"), systemImage: "photo.badge.exclamationmark")
+        }
+    }
+
+    private var onboardingSection: some View {
+        Section {
+            Button(String(localized: "settings.onboarding.restart")) {
+                asksToRestartOnboarding = true
+            }
+        } footer: {
+            Text(String(localized: "settings.onboarding.restart.footer"))
         }
     }
 
