@@ -16,6 +16,10 @@ Familiar is a standalone iPhone-native Agent Runtime with a chat-first interface
 
 ## Engineering Principles
 
+### Verification
+
+- By default, verify code changes with an arm64 iOS Simulator build only. Do not boot or run a Simulator unless the user explicitly requests it; the user performs visual acceptance on a physical device.
+
 ### Git Workflow
 
 - Develop directly on `main` by default. Do not create a new branch unless the user explicitly requests one.
