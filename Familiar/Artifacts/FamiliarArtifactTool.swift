@@ -4,7 +4,7 @@ nonisolated struct FamiliarArtifactWriteTool: FamiliarTool {
     struct Input: Decodable, Sendable { let title: String; let content: String; let format: FamiliarArtifactFormat? }
     let store: FamiliarArtifactStore
     let manifest = FamiliarToolManifest(
-        name: "artifact.write", title: "写入 Artifact", description: "将 Markdown 或纯文本保存到当前项目的 Artifact 目录。普通聊天没有项目作用域，不能使用此工具。",
+        name: "artifact_write", title: "写入 Artifact", description: "将 Markdown 或纯文本保存到当前项目的 Artifact 目录。普通聊天没有项目作用域，不能使用此工具。",
         parameters: FamiliarJSONSchema(type: .object, properties: [
             "title": .init(type: .string, description: "文件标题"), "content": .init(type: .string, description: "Markdown 或纯文本正文"),
             "format": .init(type: .string, description: "markdown 或 plainText")
