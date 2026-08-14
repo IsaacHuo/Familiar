@@ -296,10 +296,15 @@ typealias FamiliarResource = FamiliarSchemaV3.FamiliarResource
 typealias FamiliarResourceVersion = FamiliarSchemaV3.FamiliarResourceVersion
 typealias FamiliarContextSnapshotRecord = FamiliarSchemaV3.FamiliarContextSnapshotRecord
 typealias FamiliarContextResourceReference = FamiliarSchemaV3.FamiliarContextResourceReference
+typealias FamiliarArtifact = FamiliarSchemaV4.FamiliarArtifact
+typealias FamiliarCapabilitySnapshotRecord = FamiliarSchemaV5.FamiliarCapabilitySnapshotRecord
+typealias FamiliarAuthorizationGrantRecord = FamiliarSchemaV5.FamiliarAuthorizationGrantRecord
+typealias FamiliarRunResumeCursorRecord = FamiliarSchemaV6.FamiliarRunResumeCursorRecord
+typealias FamiliarToolInvocationRecord = FamiliarSchemaV6.FamiliarToolInvocationRecord
 
 enum FamiliarSchemaMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [FamiliarSchemaV1.self, FamiliarSchemaV2.self, FamiliarSchemaV3.self]
+        [FamiliarSchemaV1.self, FamiliarSchemaV2.self, FamiliarSchemaV3.self, FamiliarSchemaV4.self, FamiliarSchemaV5.self, FamiliarSchemaV6.self]
     }
 
     static var stages: [MigrationStage] {
@@ -311,6 +316,18 @@ enum FamiliarSchemaMigrationPlan: SchemaMigrationPlan {
             .lightweight(
                 fromVersion: FamiliarSchemaV2.self,
                 toVersion: FamiliarSchemaV3.self
+            ),
+            .lightweight(
+                fromVersion: FamiliarSchemaV3.self,
+                toVersion: FamiliarSchemaV4.self
+            ),
+            .lightweight(
+                fromVersion: FamiliarSchemaV4.self,
+                toVersion: FamiliarSchemaV5.self
+            ),
+            .lightweight(
+                fromVersion: FamiliarSchemaV5.self,
+                toVersion: FamiliarSchemaV6.self
             )
         ]
     }
@@ -321,7 +338,7 @@ enum FamiliarModelContainer {
     static let storeFilename = storeName + ".store"
 
     static var currentSchema: Schema {
-        Schema(versionedSchema: FamiliarSchemaV3.self)
+        Schema(versionedSchema: FamiliarSchemaV6.self)
     }
 
     static func make(at storeURL: URL) throws -> ModelContainer {

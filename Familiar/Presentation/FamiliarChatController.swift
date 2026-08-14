@@ -646,6 +646,7 @@ final class FamiliarChatController {
                     pendingConfirmations.removeAll { $0.id == requestID }
                 case .toolFinished(let record):
                     persistToolRecord(record, eventSequence: event.sequence, conversationID: conversationID, context: context)
+                    persistToolOutputs(record, conversationID: conversationID, context: context)
                     if record.undoAvailable {
                         availableUndoKeys.insert(record.runID + ":" + record.toolCallID)
                     }
@@ -773,6 +774,23 @@ final class FamiliarChatController {
             }
         } catch {
             errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
+        }
+    }
+
+    private func persistToolOutputs(_ event: FamiliarToolRunTerminalEvent, conversationID: UUID, context: ModelContext) {
+        guard event.status == .succeeded else { return }
+        do {
+            if let descriptor = event.artifact {
+                try FamiliarArtifactService().persist(descriptor, in: context)
+            }
+            if let project = fetchConversation(id: conversationID, in: context)?.project {
+                let service = FamiliarProjectResourceService()
+                for capture in event.sources.contains(where: { $0.kind == .fetchedPage }) ? event.webCaptures : [] {
+                    _ = try service.importFetchedWebText(capture, into: project, in: context)
+                }
+            }
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 

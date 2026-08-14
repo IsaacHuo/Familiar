@@ -88,6 +88,23 @@ struct FamiliarProjectResourceService {
         }
     }
 
+    func importFetchedWebText(_ capture: FamiliarWebCapture, into project: FamiliarProject, in context: ModelContext) throws -> FamiliarResource {
+        let resourceID = UUID()
+        let versionID = UUID()
+        let filename = "Web-\(capture.captureID).txt"
+        let copied = try store.copyText(capture.text, projectID: project.id, resourceID: resourceID, version: 1, versionID: versionID, filename: filename)
+        let now = capture.accessedAt
+        let resource = FamiliarResource(id: resourceID, displayName: capture.urlString, createdAt: now, updatedAt: now, project: project)
+        let version = FamiliarResourceVersion(id: versionID, version: 1, source: .fetchedWeb, sourceURLString: capture.urlString,
+            filename: filename, mimeType: "text/plain", originalRelativePath: copied.relativePath, byteSize: copied.byteSize,
+            contentHash: copied.contentHash, extractedText: capture.text, extractedTextHash: capture.contentHash,
+            extractionEngine: "web_fetch", extractionVersion: "1", detectedFormat: "txt", usedOCR: false, createdAt: now, resource: resource)
+        context.insert(resource)
+        context.insert(version)
+        do { project.updatedAt = now; try context.save(); return resource }
+        catch { context.rollback(); try? store.removeVersion(relativePath: copied.relativePath); throw error }
+    }
+
     func quickLookURL(for version: FamiliarResourceVersion) -> URL? {
         store.url(for: version.originalRelativePath)
     }

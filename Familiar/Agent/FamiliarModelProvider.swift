@@ -127,7 +127,9 @@ nonisolated struct FamiliarJSONSchema: Codable, Equatable, Sendable {
     }
 }
 
-nonisolated struct FamiliarToolManifest: Equatable, Sendable {
+nonisolated struct FamiliarToolManifest: Codable, Equatable, Sendable {
+    let id: String
+    let version: String
     let name: String
     let title: String
     let description: String
@@ -135,6 +137,58 @@ nonisolated struct FamiliarToolManifest: Equatable, Sendable {
     let effect: FamiliarToolEffect
     let risk: FamiliarToolRisk
     let requirements: [FamiliarCapabilityRequirement]
+    let source: FamiliarCapabilitySource
+    let payloadLimit: Int
+    let dataDomains: [String]
+    let networkDomains: [String]
+    let privacyLabels: [String]
+    let supportsIdempotency: Bool
+    let supportsCancellation: Bool
+    let supportsRecovery: Bool
+    let supportsParallelism: Bool
+    let requiredScopes: [String]
+
+    init(
+        id: String? = nil,
+        version: String = "1",
+        name: String,
+        title: String,
+        description: String,
+        parameters: FamiliarJSONSchema,
+        effect: FamiliarToolEffect,
+        risk: FamiliarToolRisk,
+        requirements: [FamiliarCapabilityRequirement] = [],
+        source: FamiliarCapabilitySource = .builtIn,
+        payloadLimit: Int = 16_000,
+        dataDomains: [String] = [],
+        networkDomains: [String] = [],
+        privacyLabels: [String] = [],
+        supportsIdempotency: Bool = true,
+        supportsCancellation: Bool = true,
+        supportsRecovery: Bool = false,
+        supportsParallelism: Bool = false,
+        requiredScopes: [String] = []
+    ) {
+        self.id = id ?? name
+        self.version = version
+        self.name = name
+        self.title = title
+        self.description = description
+        self.parameters = parameters
+        self.effect = effect
+        self.risk = risk
+        self.requirements = requirements
+        self.source = source
+        self.payloadLimit = payloadLimit
+        self.dataDomains = dataDomains.sorted()
+        self.networkDomains = networkDomains.sorted()
+        self.privacyLabels = privacyLabels.sorted()
+        self.supportsIdempotency = supportsIdempotency
+        self.supportsCancellation = supportsCancellation
+        self.supportsRecovery = supportsRecovery
+        self.supportsParallelism = supportsParallelism
+        self.requiredScopes = requiredScopes.sorted()
+    }
 }
 
 nonisolated struct FamiliarModelRequest: Sendable {

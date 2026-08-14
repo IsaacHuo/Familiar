@@ -584,4 +584,5 @@ nonisolated enum FamiliarResourceDocumentKind: String, Codable, Sendable {
 nonisolated enum FamiliarResourceVersionSource: String, Codable, Sendable {
     case importedFile
     case messageAttachment
+    case fetchedWeb
 }

@@ -279,7 +279,9 @@ struct FamiliarBaselineTests {
         let policy = FamiliarExecutionPolicy()
         #expect(policy.decide(manifest: manifest, availability: .available, idempotencyKey: "run:call") == .requestApproval)
         let token = FamiliarOneShotAuthorization(toolName: "write", idempotencyKey: "run:call", source: .appIntent)
-        #expect(policy.decide(manifest: manifest, availability: .available, authorization: token, idempotencyKey: "run:call") == .execute)
+        #expect(policy.decide(manifest: manifest, availability: .available, authorization: token, idempotencyKey: "run:call") == .requestApproval)
+        let grant = FamiliarAuthorizationGrant(id: UUID(), userAction: "confirm", source: .builtIn, capabilityID: manifest.id, capabilityVersion: manifest.version, argumentsHash: FamiliarAuthorizationGrant.argumentsHash("{}"), projectID: nil, expiresAt: Date().addingTimeInterval(60), singleUse: true, evidence: "fixture", consumedAt: nil, state: .issued)
+        #expect(policy.decide(manifest: manifest, availability: .available, grant: grant, arguments: "{}", projectID: nil) == .requestApproval)
     }
 
     @Test("V2 Run and Step persist in the in-memory store") @MainActor

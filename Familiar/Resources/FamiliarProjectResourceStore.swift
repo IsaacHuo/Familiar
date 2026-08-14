@@ -73,6 +73,14 @@ nonisolated struct FamiliarProjectResourceStore {
         return FamiliarStoredResourceFile(relativePath: relativePath, byteSize: size, contentHash: sourceHash)
     }
 
+    func copyText(_ text: String, projectID: UUID, resourceID: UUID, version: Int, versionID: UUID, filename: String) throws -> FamiliarStoredResourceFile {
+        try createDirectory(rootURL)
+        let temporary = rootURL.appendingPathComponent(".text-\(UUID().uuidString)")
+        try Data(text.utf8).write(to: temporary, options: .atomic)
+        defer { try? fileManager.removeItem(at: temporary) }
+        return try copyVersion(from: temporary, projectID: projectID, resourceID: resourceID, version: version, versionID: versionID, filename: filename)
+    }
+
     func url(for relativePath: String) -> URL? {
         guard let url = try? validatedURL(for: relativePath),
               isRegularFileWithoutSymlinks(url)

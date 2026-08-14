@@ -39,8 +39,10 @@ nonisolated struct FamiliarToolRunTerminalEvent: Sendable {
     let artifactIdentifier: String?
     let undoAvailable: Bool
     let sources: [FamiliarSource]
+    let webCaptures: [FamiliarWebCapture]
+    let artifact: FamiliarArtifactDescriptor?
 
-    init(runID: String, toolCallID: String, toolName: String, summary: String, detail: String, confirmation: FamiliarPersistedConfirmationResult, status: FamiliarToolRunTerminalStatus, startedAt: Date, finishedAt: Date, artifactIdentifier: String? = nil, undoAvailable: Bool = false, sources: [FamiliarSource] = []) {
+    init(runID: String, toolCallID: String, toolName: String, summary: String, detail: String, confirmation: FamiliarPersistedConfirmationResult, status: FamiliarToolRunTerminalStatus, startedAt: Date, finishedAt: Date, artifactIdentifier: String? = nil, undoAvailable: Bool = false, sources: [FamiliarSource] = [], webCaptures: [FamiliarWebCapture] = [], artifact: FamiliarArtifactDescriptor? = nil) {
         self.runID = runID
         self.toolCallID = toolCallID
         self.toolName = toolName
@@ -53,6 +55,8 @@ nonisolated struct FamiliarToolRunTerminalEvent: Sendable {
         self.artifactIdentifier = artifactIdentifier
         self.undoAvailable = undoAvailable
         self.sources = sources
+        self.webCaptures = webCaptures
+        self.artifact = artifact
     }
 }
 
@@ -264,7 +268,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                     if manifest.effect == .read {
                         try await registry.prepareCapabilities(for: manifest)
                     }
-                    let outcome = try await registry.execute(name: call.name, arguments: call.arguments, context: .init(runID: runID, toolCallID: call.id))
+                    let outcome = try await registry.execute(name: call.name, arguments: call.arguments, context: .init(runID: runID, toolCallID: call.id, projectID: contextSnapshot.projectID))
                     let resolved: (FamiliarToolExecutionResult, FamiliarPersistedConfirmationResult)
                     switch outcome {
                     case .result(let result): resolved = (result, manifest.effect == .read && decision == .requestApproval ? .confirmed : .notRequired)
@@ -287,7 +291,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                     }
                     guard resolved.0.modelContent.count <= 48_000 else { throw FamiliarAgentError.toolResultTooLarge }
                     collectedSources = Self.mergingSources(collectedSources, with: resolved.0.sources)
-                    let record = terminal(runID: runID, call: call, manifest: manifest, detail: String(resolved.0.displayContent.prefix(2_000)), confirmation: resolved.1, status: .succeeded, startedAt: startedAt, artifactIdentifier: resolved.0.artifactIdentifier, undoAvailable: resolved.0.artifactIdentifier != nil && manifest.effect == .reversibleWrite, sources: resolved.0.sources)
+                    let record = terminal(runID: runID, call: call, manifest: manifest, detail: String(resolved.0.displayContent.prefix(2_000)), confirmation: resolved.1, status: .succeeded, startedAt: startedAt, artifactIdentifier: resolved.0.artifactIdentifier, undoAvailable: resolved.0.artifactIdentifier != nil && manifest.effect == .reversibleWrite, sources: resolved.0.sources, webCaptures: resolved.0.webCaptures, artifact: resolved.0.artifact)
                     await emitTerminal(record, emitter: emitter)
                     messages.append(.tool(resolved.0.modelContent, toolCallID: call.id, name: call.name))
                 } catch is CancellationError { throw CancellationError() }
@@ -310,8 +314,8 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         return decision == .confirmed
     }
 
-    private func terminal(runID: String, call: FamiliarProviderToolCall, manifest: FamiliarToolManifest, detail: String, confirmation: FamiliarPersistedConfirmationResult, status: FamiliarToolRunTerminalStatus, startedAt: Date, artifactIdentifier: String? = nil, undoAvailable: Bool = false, sources: [FamiliarSource] = []) -> FamiliarToolRunTerminalEvent {
-        .init(runID: runID, toolCallID: call.id, toolName: call.name, summary: manifest.title, detail: detail, confirmation: confirmation, status: status, startedAt: startedAt, finishedAt: Date(), artifactIdentifier: artifactIdentifier, undoAvailable: undoAvailable, sources: sources)
+    private func terminal(runID: String, call: FamiliarProviderToolCall, manifest: FamiliarToolManifest, detail: String, confirmation: FamiliarPersistedConfirmationResult, status: FamiliarToolRunTerminalStatus, startedAt: Date, artifactIdentifier: String? = nil, undoAvailable: Bool = false, sources: [FamiliarSource] = [], webCaptures: [FamiliarWebCapture] = [], artifact: FamiliarArtifactDescriptor? = nil) -> FamiliarToolRunTerminalEvent {
+        .init(runID: runID, toolCallID: call.id, toolName: call.name, summary: manifest.title, detail: detail, confirmation: confirmation, status: status, startedAt: startedAt, finishedAt: Date(), artifactIdentifier: artifactIdentifier, undoAvailable: undoAvailable, sources: sources, webCaptures: webCaptures, artifact: artifact)
     }
 
     private func emitTerminal(_ record: FamiliarToolRunTerminalEvent, emitter: FamiliarRuntimeEventEmitter) async {

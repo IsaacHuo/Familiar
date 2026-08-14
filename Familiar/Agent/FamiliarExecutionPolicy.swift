@@ -27,9 +27,23 @@ nonisolated struct FamiliarExecutionPolicy: Sendable {
             return availability == .requestable ? .requestApproval : .execute
         }
         if manifest.effect == .reversibleWrite,
-           authorization?.toolName == manifest.name,
-           authorization?.idempotencyKey == idempotencyKey {
-            return .execute
+           authorization != nil { return .requestApproval }
+        return .requestApproval
+    }
+
+    func decide(
+        manifest: FamiliarToolManifest,
+        availability: FamiliarCapabilityAvailability,
+        grant: FamiliarAuthorizationGrant?,
+        arguments: String,
+        projectID: UUID?,
+        now: Date = Date()
+    ) -> FamiliarExecutionPolicyDecision {
+        if case .unavailable(let reason) = availability { return .deny(reason) }
+        if manifest.effect == .destructiveWrite || manifest.risk == .high { return .requestApproval }
+        if manifest.effect == .read { return availability == .requestable ? .requestApproval : .execute }
+        guard let grant, grant.isValid(for: manifest, arguments: arguments, projectID: projectID, now: now) else {
+            return .requestApproval
         }
         return .requestApproval
     }

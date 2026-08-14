@@ -26,10 +26,12 @@ nonisolated enum FamiliarCapabilityAvailability: Equatable, Sendable {
 nonisolated struct FamiliarToolContext: Sendable {
     let runID: String
     let toolCallID: String
+    let projectID: UUID?
 
-    init(runID: String = "standalone", toolCallID: String = UUID().uuidString) {
+    init(runID: String = "standalone", toolCallID: String = UUID().uuidString, projectID: UUID? = nil) {
         self.runID = runID
         self.toolCallID = toolCallID
+        self.projectID = projectID
     }
 
     var idempotencyKey: String { runID + ":" + toolCallID }
@@ -40,12 +42,16 @@ nonisolated struct FamiliarToolExecutionResult: Sendable {
     let displayContent: String
     let artifactIdentifier: String?
     let sources: [FamiliarSource]
+    let webCaptures: [FamiliarWebCapture]
+    let artifact: FamiliarArtifactDescriptor?
 
-    init(modelContent: String, displayContent: String, artifactIdentifier: String? = nil, sources: [FamiliarSource] = []) {
+    init(modelContent: String, displayContent: String, artifactIdentifier: String? = nil, sources: [FamiliarSource] = [], webCaptures: [FamiliarWebCapture] = [], artifact: FamiliarArtifactDescriptor? = nil) {
         self.modelContent = modelContent
         self.displayContent = displayContent
         self.artifactIdentifier = artifactIdentifier
         self.sources = sources
+        self.webCaptures = webCaptures
+        self.artifact = artifact
     }
 }
 

@@ -92,6 +92,16 @@ nonisolated struct FamiliarWebFetchOutput: Codable, Sendable {
     let truncated: Bool
 }
 
+nonisolated struct FamiliarWebCapture: Codable, Sendable, Equatable {
+    let captureID: String
+    let urlString: String
+    let accessedAt: Date
+    let contentHash: String
+    let text: String
+    let truncated: Bool
+    let sourceID: String
+}
+
 nonisolated enum FamiliarSourceIdentifier {
     static func make(for url: URL) -> String {
         let digest = SHA256.hash(data: Data(url.absoluteString.utf8))

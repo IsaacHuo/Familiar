@@ -59,7 +59,9 @@ nonisolated struct FamiliarWebFetchTool: FamiliarTool {
         return .result(.init(
             modelContent: String(decoding: data, as: UTF8.self),
             displayContent: String(format: String(localized: "tool.web_fetch.result", defaultValue: "已读取 %@"), source.siteName ?? source.title),
-            sources: [source]
+            sources: [source],
+            webCaptures: [FamiliarWebCapture(captureID: source.id, urlString: source.url.absoluteString, accessedAt: source.retrievedAt,
+                contentHash: FamiliarProjectResourceService.sha256(output.text), text: output.text, truncated: output.truncated, sourceID: source.id)]
         ))
     }
 }

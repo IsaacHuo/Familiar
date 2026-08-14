@@ -5,7 +5,7 @@ import Testing
 
 @Suite("Familiar schema migration")
 struct FamiliarSchemaMigrationTests {
-    @Test("A populated disk-backed V1 store migrates to V3 without data loss")
+    @Test("A populated disk-backed V1 store migrates to V4 without data loss")
     @MainActor
     func populatedV1StoreReopensThroughMigrationPlan() throws {
         let fileManager = FileManager.default
@@ -165,7 +165,7 @@ struct FamiliarSchemaMigrationTests {
     func inMemoryHelperUsesVersionedSchema() throws {
         let container = try FamiliarTestStore.make()
 
-        #expect(container.schema.version == FamiliarSchemaV3.versionIdentifier)
+        #expect(container.schema.version == FamiliarSchemaV6.versionIdentifier)
         #expect(container.migrationPlan != nil)
         #expect(Set(container.schema.entities.map(\.name)) == [
             "FamiliarConversation",
@@ -181,6 +181,11 @@ struct FamiliarSchemaMigrationTests {
             "FamiliarResourceVersion",
             "FamiliarContextSnapshotRecord",
             "FamiliarContextResourceReference"
+             ,"FamiliarArtifact",
+             "FamiliarCapabilitySnapshotRecord",
+             "FamiliarAuthorizationGrantRecord",
+             "FamiliarRunResumeCursorRecord",
+             "FamiliarToolInvocationRecord"
         ])
     }
 

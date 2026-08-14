@@ -158,12 +158,14 @@
 
 目标：让 Agent 结果成为长期可管理对象。
 
+状态：2026-08-15 已完成。`FamiliarSchemaV4` 通过 V3→V4 轻量迁移加入 Artifact；Artifact 文件与资源同属独立受保护目录，写入/读取/重命名/删除/导出均按项目作用域与 hash 校验，事务失败回滚；`web_fetch` 把本次实际正文作为 capture 随结果返回，经 `importFetchedWebText` 直接落为 Project Resource，不二次 refetch，并记录 URL/访问时间/hash/truncated/source lineage；`artifact.write` 工具仅项目聊天可用，写入仍逐次结构化确认。Share 导入后的项目选择分流未在本阶段实现，仍走普通草稿。
+
 工作项：
 
-- 新增 Artifact，第一版只支持 Markdown/纯文本生成结果。
-- 实现受控 `artifact.write`、查看、重命名、删除和导出；第一版写入逐次结构化确认。
-- 允许把本次 Run 实际使用的 `web_fetch` 可读文本保存为 Project Resource，记录 URL、访问时间、内容 hash、截断状态和来源；不通过二次 refetch 冒充原始版本。
-- Share Extension 导入后允许选择普通草稿、新项目或已有项目。
+- [x] 新增 Artifact，第一版只支持 Markdown/纯文本生成结果。
+- [x] 实现受控 `artifact.write`、查看、重命名、删除和导出；第一版写入逐次结构化确认。
+- [x] 允许把本次 Run 实际使用的 `web_fetch` 可读文本保存为 Project Resource，记录 URL、访问时间、内容 hash、截断状态和来源；不通过二次 refetch 冒充原始版本。
+- [ ] Share Extension 导入后允许选择普通草稿、新项目或已有项目。
 
 验收：
 
@@ -174,12 +176,14 @@
 
 目标：在 Skills/MCP 前建立统一治理层。
 
+状态：2026-08-15 已完成数据契约。Manifest v2 增加稳定 ID/版本/来源、payload limit、data/network domains、privacy labels、幂等/取消/恢复/并行属性与所需作用域；`FamiliarCapabilityCatalog/Resolver` 生成确定性的 `FamiliarCapabilitySnapshot`；`FamiliarSchemaV5` 持久化 CapabilitySnapshot 与 AuthorizationGrant；`FamiliarAuthorizationGrant` 使用规范化 arguments hash，并验证 source/scope/expiry/args 匹配。Share/AppIntent/DeepLink 来源不能签发写 grant；即使 grant 匹配，WP7 完成前写入仍逐次确认。旧 `FamiliarOneShotAuthorization` 来源式写授权已停用。CapabilityBindingStore 的运行时项目绑定 UI 未接入，当前只保留内置工具默认行为。
+
 工作项：
 
-- Manifest v2 增加稳定 ID/版本/来源、Schema、载荷上限、effect/risk、数据与网络域、隐私标签、幂等/取消/恢复/并行属性和所需作用域。
-- 拆分 CapabilityCatalog、CapabilityResolver 和 CapabilityBindingStore。
-- 引入 AuthorizationGrant 数据模型：user action、source、capability、规范化 arguments hash、project scope、expiry、single-use 和 evidence；WP6 不启用免确认写入。
-- 删除或替代当前来源枚举式 `FamiliarOneShotAuthorization`。
+- [x] Manifest v2 增加稳定 ID/版本/来源、Schema、载荷上限、effect/risk、数据与网络域、隐私标签、幂等/取消/恢复/并行属性和所需作用域。
+- [x] 拆分 CapabilityCatalog、CapabilityResolver 和 CapabilityBindingStore（数据契约）。
+- [x] 引入 AuthorizationGrant 数据模型：user action、source、capability、规范化 arguments hash、project scope、expiry、single-use 和 evidence；WP6 不启用免确认写入。
+- [x] 删除或替代当前来源枚举式 `FamiliarOneShotAuthorization`。
 
 验收：
 
@@ -191,14 +195,16 @@
 
 目标：先完成恢复数据契约，再考虑后台承接。
 
+状态：2026-08-15 已完成恢复数据契约。`FamiliarSchemaV6` 新增 RunResumeCursor 与 ToolInvocation 记录；工具调用以稳定幂等键 `run:toolCallID` 持久化 requested/approved/committing/committed/failed/cancelled 状态，已 committed 的重复提交被拒绝，避免中断恢复重复写入；cursor 记录 next iteration、phase（model/awaitingApproval/committingTool/terminal）与最后事件序列。错误分类、有限重试、token/成本/总耗时/工具调用预算与后台承接（`BGContinuedProcessingTask`）未接入运行时，仅数据契约先行。
+
 工作项：
 
-- 持久化 Context/Capability/Authorization snapshot、完整工具调用或稳定引用、Artifact/Result 引用和 ResumeCursor。
-- 持久化幂等状态，保证中断恢复不重复写入。
-- grant 的单次消费与副作用提交使用可验证的崩溃安全状态机；只有该路径通过中断测试后，才允许匹配 grant 的可逆写入免重复确认。
-- 定义可恢复、不可恢复、安全终止三类结果。
-- 增加错误分类、有限重试和 token/成本/总耗时/工具调用预算；失败不能通过静默 fallback 隐藏。
-- iOS 26+ 再评估 `BGContinuedProcessingTask`；iOS 18–25 明确尽力执行或提醒用户继续。
+- [x] 持久化 Context/Capability/Authorization snapshot、完整工具调用或稳定引用、Artifact/Result 引用和 ResumeCursor。
+- [x] 持久化幂等状态，保证中断恢复不重复写入（数据契约与已提交拒绝）。
+- [ ] grant 的单次消费与副作用提交使用可验证的崩溃安全状态机；只有该路径通过中断测试后，才允许匹配 grant 的可逆写入免重复确认。
+- [ ] 定义可恢复、不可恢复、安全终止三类结果（UI 终态展示）。
+- [ ] 增加错误分类、有限重试和 token/成本/总耗时/工具调用预算；失败不能通过静默 fallback 隐藏。
+- [ ] iOS 26+ 再评估 `BGContinuedProcessingTask`；iOS 18–25 明确尽力执行或提醒用户继续。
 
 验收：
 

@@ -20,6 +20,7 @@ struct FamiliarAppDependencies {
                     AnyFamiliarTool(FamiliarAppInformationTool()),
                     AnyFamiliarTool(FamiliarWebSearchTool(service: web)),
                     AnyFamiliarTool(FamiliarWebFetchTool(service: web)),
+                    AnyFamiliarTool(FamiliarArtifactWriteTool(store: FamiliarArtifactStore())),
                     AnyFamiliarTool(FamiliarCalendarEventsTool(service: eventKit)),
                     AnyFamiliarTool(FamiliarCreateCalendarEventTool(service: eventKit)),
                     AnyFamiliarTool(FamiliarRemindersTool(service: eventKit)),
