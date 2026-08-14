@@ -34,23 +34,13 @@ struct FamiliarApp: App {
     }
 
     private static func makeModelContainer() throws -> ModelContainer {
-        let schema = Schema([
-            FamiliarConversation.self,
-            FamiliarMessage.self,
-            FamiliarSourceRecord.self,
-            FamiliarAttachment.self,
-            FamiliarModelSwitchRecord.self,
-            FamiliarAgentRun.self,
-            FamiliarAgentStep.self
-        ])
         let fileManager = FileManager.default
         let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let persistence = support.appendingPathComponent("Familiar/Persistence", isDirectory: true)
         try fileManager.createDirectory(at: persistence, withIntermediateDirectories: true, attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
-        let storeURL = persistence.appendingPathComponent("FamiliarAgentV2.store")
+        let storeURL = persistence.appendingPathComponent(FamiliarModelContainer.storeFilename)
         let isNew = !fileManager.fileExists(atPath: storeURL.path)
-        let configuration = ModelConfiguration("FamiliarAgentV2", schema: schema, url: storeURL, cloudKitDatabase: .none)
-        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let container = try FamiliarModelContainer.make(at: storeURL)
         if isNew {
             removeStore(named: "FamiliarAgentV1", in: persistence, fileManager: fileManager)
             removeStore(named: "default", in: support, fileManager: fileManager)
@@ -68,10 +58,11 @@ struct FamiliarApp: App {
 
     static func resetV2Store(in support: URL, fileManager: FileManager = .default) throws {
         let persistence = support.appendingPathComponent("Familiar/Persistence", isDirectory: true)
-        removeStore(named: "FamiliarAgentV2", in: persistence, fileManager: fileManager)
+        removeStore(named: FamiliarModelContainer.storeName, in: persistence, fileManager: fileManager)
         let attachments = support.appendingPathComponent("Familiar/Attachments", isDirectory: true)
-        guard fileManager.fileExists(atPath: attachments.path) else { return }
-        try fileManager.removeItem(at: attachments)
+        if fileManager.fileExists(atPath: attachments.path) { try fileManager.removeItem(at: attachments) }
+        let projectResources = support.appendingPathComponent("Familiar/ProjectResources", isDirectory: true)
+        if fileManager.fileExists(atPath: projectResources.path) { try fileManager.removeItem(at: projectResources) }
     }
 
     private static func removeStore(named name: String, in directory: URL, fileManager: FileManager) {

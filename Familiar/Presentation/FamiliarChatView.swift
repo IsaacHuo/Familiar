@@ -8,6 +8,11 @@ struct FamiliarChatView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \FamiliarConversation.updatedAt, order: .reverse)
     private var conversations: [FamiliarConversation]
+    @Query(
+        filter: #Predicate<FamiliarProject> { $0.statusRawValue == "active" },
+        sort: \FamiliarProject.updatedAt,
+        order: .reverse
+    ) private var activeProjects: [FamiliarProject]
 
     @State private var controller: FamiliarChatController
     @StateObject private var speechTranscriber = FamiliarSpeechTranscriber()
@@ -22,6 +27,7 @@ struct FamiliarChatView: View {
     @State private var isImportingSharedItem = false
     @State private var webDestination: FamiliarWebDestination?
     @FocusState private var isComposerFocused: Bool
+    private let toolRegistry: FamiliarToolRegistry
     private let onRestartOnboarding: () -> Void
     @Binding private var pendingSystemEntry: FamiliarSystemEntryRequest?
 
@@ -31,6 +37,7 @@ struct FamiliarChatView: View {
         pendingSystemEntry: Binding<FamiliarSystemEntryRequest?>
     ) {
         _controller = State(initialValue: FamiliarChatController(dependencies: dependencies))
+        toolRegistry = dependencies.registry
         self.onRestartOnboarding = onRestartOnboarding
         _pendingSystemEntry = pendingSystemEntry
     }
@@ -54,6 +61,7 @@ struct FamiliarChatView: View {
 
                     FamiliarConversationDrawer(
                         conversations: conversations,
+                        projects: activeProjects,
                         selectedConversationID: controller.selectedConversationID,
                         safeAreaInsets: safeAreaInsets,
                         onSelect: { conversation in
@@ -69,6 +77,14 @@ struct FamiliarChatView: View {
                         },
                         onDelete: { conversation in
                             controller.delete([conversation], in: modelContext)
+                        },
+                        onSelectProject: { project in
+                            presentedSheet = .projects(project.id)
+                            closeDrawer()
+                        },
+                        onAllProjects: {
+                            presentedSheet = .projects(nil)
+                            closeDrawer()
                         }
                     )
                     .frame(width: drawerWidth)
@@ -127,11 +143,26 @@ struct FamiliarChatView: View {
                 FamiliarSettingsView(
                     initialSettings: controller.settings,
                     initialRoute: route,
+                    registry: toolRegistry,
                     onSaveSettings: {
                         controller.updateSettings($0, in: modelContext)
                         refreshConfiguredProviders()
                     },
                     onRestartOnboarding: onRestartOnboarding
+                )
+            case .projects(let projectID):
+                FamiliarProjectsView(
+                    initialProjectID: projectID,
+                    onSelectConversation: { conversation in
+                        speechTranscriber.stop()
+                        controller.select(conversation.id, in: modelContext)
+                        isComposerFocused = false
+                    },
+                    onNewConversation: { project in
+                        speechTranscriber.stop()
+                        _ = controller.createConversation(project: project, in: modelContext)
+                        isComposerFocused = true
+                    }
                 )
             }
         }
@@ -431,7 +462,8 @@ struct FamiliarChatView: View {
             onConfigure: { presentedSheet = .settings(nil) },
             onNewConversation: {
                 speechTranscriber.stop()
-                _ = controller.createConversation(in: modelContext)
+                let project = conversations.first { $0.id == controller.selectedConversationID }?.project
+                _ = controller.createConversation(project: project, in: modelContext)
                 isComposerFocused = true
             }
         )
@@ -514,10 +546,6 @@ struct FamiliarChatView: View {
             presentedSheet = .settings(nil)
         case .soul:
             presentedSheet = .settings(.soul)
-        case .memory:
-            presentedSheet = .settings(.memory)
-        case .mcp:
-            presentedSheet = .settings(.mcp)
         case .runHistory:
             presentedSheet = .settings(.runHistory)
         }
@@ -595,10 +623,12 @@ private struct FamiliarSafariView: UIViewControllerRepresentable {
 
 private enum FamiliarSheetDestination: Identifiable {
     case settings(FamiliarSettingsRoute?)
+    case projects(UUID?)
 
     var id: String {
         switch self {
         case .settings(let route): "settings-\(route?.rawValue ?? "root")"
+        case .projects(let projectID): "projects-\(projectID?.uuidString ?? "all")"
         }
     }
 }
@@ -741,6 +771,7 @@ private struct FamiliarChatTopBar: View {
             .familiarGlassCircle(interactive: true)
             .disabled(isSending)
             .accessibilityLabel(String(localized: "conversation.new"))
+            .accessibilityIdentifier("chat.new")
         }
     }
 
@@ -864,11 +895,14 @@ private struct PromptSuggestion: View {
 
 private struct FamiliarConversationDrawer: View {
     let conversations: [FamiliarConversation]
+    let projects: [FamiliarProject]
     let selectedConversationID: UUID?
     let safeAreaInsets: EdgeInsets
     let onSelect: (FamiliarConversation) -> Void
     let onRename: (FamiliarConversation) -> Void
     let onDelete: (FamiliarConversation) -> Void
+    let onSelectProject: (FamiliarProject) -> Void
+    let onAllProjects: () -> Void
 
     @State private var isSearchPresented = false
 
@@ -876,6 +910,44 @@ private struct FamiliarConversationDrawer: View {
         ZStack(alignment: .top) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 3) {
+                    Text(String(localized: "project.projects"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 4)
+                        .padding(.bottom, 4)
+
+                    ForEach(projects) { project in
+                        Button {
+                            onSelectProject(project)
+                        } label: {
+                            Label(project.name, systemImage: "folder")
+                                .font(.body)
+                                .lineLimit(1)
+                                .padding(.horizontal, 14)
+                                .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 10)
+                    }
+
+                    Button(action: onAllProjects) {
+                        HStack {
+                            Label(String(localized: "project.all"), systemImage: "tray.full")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .font(.body)
+                        .padding(.horizontal, 14)
+                        .frame(height: 46)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 10)
+
                     if conversations.isEmpty {
                         Text(String(localized: "drawer.no_conversations"))
                             .font(.subheadline)
@@ -888,7 +960,7 @@ private struct FamiliarConversationDrawer: View {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 20)
-                            .padding(.top, 4)
+                            .padding(.top, 16)
                             .padding(.bottom, 4)
 
                         ForEach(conversations) { conversation in

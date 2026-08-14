@@ -2,11 +2,22 @@
 
 ## 1. 系统边界
 
-Familiar 是一个 iPhone-native Agent Runtime。网络请求从 App 直接发送到用户选择的 AI Provider。日历、提醒事项、相机、麦克风、Speech、文件选择和 Keychain 通过系统框架访问。项目没有 Familiar 业务后端。
+Familiar 是一个 iPhone 原生、安全、可检查的个人 AI 工作台。Project 是目标产品中的长期工作单元，聊天是主要入口，单 Agent Runtime 是执行内核。网络请求从 App 直接发送到用户选择的 AI Provider；只读 Web 请求直接发送到 DuckDuckGo 或用户选择的公共 HTTPS 站点。项目没有 Familiar 业务后端。
 
 它不以 Linux 为执行环境，不依赖 Apple Intelligence，不把用户需求硬编码成 workflow，也不从复杂多 Agent 开始。
 
-## 2. 六层架构
+## 2. 目标六层架构
+
+下图描述目标架构，不代表所有模块已经实现。当前实现矩阵如下：
+
+| 层 | 当前状态 |
+|---|---|
+| System Entry | App、Share、Deep Link、通知、Spotlight、Widget/Control、App Intents 已实现，暂时冻结扩张 |
+| Agent Runtime | 有限顺序 Tool Loop 与 Runtime Event 已实现；项目上下文、并行规划、严格恢复和重放未实现 |
+| Capability Registry | 启动时静态注册 8 个工具；只有权限可用性过滤，无发现、安装、版本和项目绑定 |
+| Execution Policy | effect/risk/availability 与结构化确认已实现；生产路径没有可审计 AuthorizationGrant |
+| Workspace | 当前只有消息附件抽取与上下文注入；Project、Resource、Artifact、lineage 和可写工作区未实现 |
+| State | Conversation、Message、Attachment、Source、Run/Step 摘要已实现；Project、Memory、完整 snapshot 和 ResumeCursor 未实现 |
 
 ```text
 ┌─────────────────────────────────────────┐
@@ -19,7 +30,7 @@ Familiar 是一个 iPhone-native Agent Runtime。网络请求从 App 直接发�
 ┌─────────────────────────────────────────┐
 │               Agent Runtime             │
 │                                         │
-│ Agent Loop / Context Manager            │
+│ Agent Loop / Context Assembly           │
 │ Model Router / Tool Router              │
 │ Run / Step State                        │
 └────────────────────┬────────────────────┘
@@ -107,7 +118,7 @@ ToolDefinition / ToolCall / ToolResult
 ```text
 User
   → AgentRun
-  → Context Assembler
+  → Request Context Assembly（当前）/ ProjectContextAssembler（目标）
   → Model
   → Tool Call?
        ├── No ──→ Final Answer
@@ -125,14 +136,17 @@ User
 内部组件：
 
 - Agent Loop：有限轮次循环。
-- Context Manager：组装 Resources、历史与工具结果。
+- Request Context Assembly：当前组装系统提示、会话历史、附件抽取文本与工具结果。
+- ProjectContextAssembler：目标组件，生成不可变 `ContextSnapshot`；当前未实现。
 - Model Router：把 Tool Call 决策交给模型，聚合流式增量。
 - Tool Router：通过 Capability Registry 分发 Tool 执行。
 - Run / Step State：一次 Agent Run 的执行状态。
 
 ### 2.3 Capability Registry
 
-Registry 是 Familiar 真正的核心资产，组织成两大能力体系：
+Registry 是 Familiar 的目标核心资产之一。当前实现为启动时传入 8 个 `AnyFamiliarTool` 的静态字典，其中 2 个本机信息工具、2 个只读 Web 工具、4 个 EventKit 工具；EventKit availability 决定部分工具是否暴露。
+
+目标 Registry 组织成两大能力体系：
 
 | Native System | Native Workspace |
 | --- | --- |
@@ -148,30 +162,30 @@ Registry 是 Familiar 真正的核心资产，组织成两大能力体系：
 | Clipboard | Web |
 
 - Native System 工具负责操作 iPhone 和用户的数字环境。
-- Native Workspace 工具给 Agent 一个不依赖 Linux 的通用工作空间。
+- 目标 Native Workspace 通过 Project、Resource 和 Artifact 提供不依赖 Linux 的通用工作空间；当前只有附件处理。
 - 当前设备、地区、系统版本、用户授权不可用的 Tool 不暴露给模型。
+- 目标实现拆分为 `CapabilityCatalog + CapabilityResolver + CapabilityBindingStore`，支持稳定 ID/版本/来源、隐私与网络域、安装状态和项目绑定。
 
 ### 2.4 Execution Policy Layer
 
 位于 Registry 与 Native Layer 之间，承担：
 
 - 能力可用性检查。
-- 权限与授权决策（意图感知授权）。
+- 权限与授权决策。当前写入逐次结构化确认；目标 `AuthorizationGrant` 尚未实现。
 - 写操作审批。
 - 参数校验、超时与取消。
 - 破坏性与财务敏感操作的强确认。
 
 ### 2.5 Native Layer
 
-EventKit、Vision、MapKit、WebKit、Photos、PDFKit、Core ML、Foundation。只被注册为 Tool 的执行后端调用，不被 Agent Runtime 直接感知。
+当前执行后端包含 EventKit、Foundation/Network.framework Web、Vision 与 PDFKit；附件和输入路径还使用 PhotosPicker、AVFoundation、Speech 与 WebKit 渲染。MapKit、Core ML 等是目标能力。Apple Framework 只通过适配层进入相应功能，不被 Agent Runtime 直接感知。
 
 ### 2.6 State Layer
 
-- Session：会话、消息、Run/Step。
-- Workspace：附件、抽取文本、工件。
-- Memory：Working Context / Session History / Long-term Memory。
-- Trace：模型调用、Tool Call、失败、权限请求、耗时。
-- History：工具终态与执行记录。
+- 当前 Session：Conversation、Message、Attachment、Source、Run/Step 摘要。
+- 当前 Trace：运行事件、审批和工具终态的用户可见摘要；不包含完整模型请求、工具载荷和授权快照。
+- 目标 Project Workspace：Project、Resource、Artifact、Instruction、Binding、MemoryItem 与 Schedule。
+- 目标 Run Workspace：不可变 Context/Capability/Authorization snapshot、工具输入输出引用与 ResumeCursor。
 
 ## 3. 技术基线
 
@@ -282,7 +296,19 @@ EventKit、Vision、MapKit、WebKit、Photos、PDFKit、Core ML、Foundation。�
 - `FamiliarToolConfirmationCoordinator.swift`
 - `FamiliarNativeTools.swift`
 
-### 4.6 EventKit
+### 4.6 Web
+
+路径：`Familiar/Web/`
+
+职责：
+
+- 提供 `web_search` 与 `web_fetch` 只读工具。
+- 限制公共 HTTPS、端口、DNS、重定向、响应大小和内容类型。
+- 把远程正文视为不可信内容，并生成可持久化的 Sources。
+
+尚未实现独立 `web.read`、Project URL Resource、登录、表单提交或浏览器自动化。
+
+### 4.7 EventKit
 
 路径：`Familiar/EventKit/`
 
@@ -298,7 +324,7 @@ EventKit、Vision、MapKit、WebKit、Photos、PDFKit、Core ML、Foundation。�
 - `FamiliarEventKitService.swift`
 - `FamiliarEventKitTools.swift`
 
-### 4.7 Persistence 与 Attachments
+### 4.8 Persistence 与 Attachments
 
 路径：
 
@@ -311,7 +337,7 @@ EventKit、Vision、MapKit、WebKit、Photos、PDFKit、Core ML、Foundation。�
 - 文件导入、大小限制、路径校验、草稿复制和清理。
 - AnyDoc、PDFKit 和 Vision 的内容抽取协调。
 
-### 4.8 AnyDoc Bridge
+### 4.9 AnyDoc Bridge
 
 路径：
 
@@ -350,7 +376,7 @@ sequenceDiagram
         C-->>V: Update transient timeline
     end
     A-->>C: Final text and tool records
-    C->>S: Save assistant message and terminal records
+    C->>S: Save assistant message, Sources and terminal records
     C-->>V: Reload persisted timeline
 ```
 
@@ -392,19 +418,18 @@ sequenceDiagram
 
 ## 6. Runtime Event
 
-一次执行产生统一事件，UI 只渲染这些事件，工具不自己造 UI：
+当前代码由 `FamiliarRuntimeEventPayload` 产生统一事件，UI 只渲染这些事件，工具不自己造 UI：
 
 ```text
-AgentRunStarted
-ModelThinking
-ToolRequested
-ToolAwaitingApproval
-ToolStarted
-ToolProgress
-ToolSucceeded
-ToolFailed
-ArtifactProduced
-AgentRunCompleted
+runStarted
+state(thinking / usingTool / awaitingApproval / responding)
+textDelta
+toolRequested
+toolProgress
+approvalRequested / approvalResolved
+toolFinished
+responseCompleted
+runCompleted / runCancelled / runFailed
 ```
 
 例如：
@@ -418,24 +443,22 @@ AgentRunCompleted
   等待确认
 ```
 
-这套事件同时解决 Task Timeline、Debug、History、Background resume 和 Trace；以后甚至可以重放一次任务。
+这套事件已支撑运行中 UI 与摘要历史。它为未来 Trace、恢复和重放提供顺序基础，但当前没有完整 snapshot 或 ResumeCursor，不能严格重放或继续中断的任务。
 
 ## 7. Run / Step 数据模型
 
-不只保存 Chat Message，Agent 执行状态也要正式建模：
+当前不只保存 Chat Message，也保存 Run 和摘要性 Step：
 
 ```text
-AgentSession
+Conversation
     ├── Messages
     └── Runs
-         └── Steps
-              ├── ModelStep
-              ├── ToolStep
-              ├── ApprovalStep
-              └── ResultStep
+         └── Steps (model / tool / approval / result summaries)
 ```
 
-一个复杂任务：
+目标严格恢复还需要保存 `ContextSnapshot`、`CapabilitySnapshot`、`AuthorizationSnapshot`、完整输入输出引用和 `ResumeCursor`。
+
+目标复杂任务：
 
 ```text
 "分析这个 PDF，找到考试日期，加到日历。"
@@ -456,7 +479,7 @@ Run #827
 | 助手消息 | SwiftData | 回答终态 |
 | 模型切换 | SwiftData | 会话内切换时 |
 | 工具记录 | SwiftData | 成功、取消或失败终态 |
-| Run/Step | SwiftData | Run 与 Step 终态 |
+| Run/Step | SwiftData | Run 创建、审批/模型摘要检查点与终态；不足以恢复 |
 | 流式文本 | 内存 | 运行期间 |
 | 待确认请求 | 内存 | 等待用户决策期间 |
 | Provider 配置 | UserDefaults | 设置保存时 |
@@ -541,13 +564,15 @@ CSP 禁止脚本网络连接、媒体、对象、frame 和表单，`img-src` 仅
 
 ## 12. 启动与本地 store
 
-`FamiliarApp` 创建以下 Schema：
+`FamiliarApp` 当前创建以下 7 个实体：
 
 - `FamiliarConversation`
 - `FamiliarMessage`
+- `FamiliarSourceRecord`
 - `FamiliarAttachment`
 - `FamiliarModelSwitchRecord`
-- `FamiliarToolRunRecord`
+- `FamiliarAgentRun`
+- `FamiliarAgentStep`
 
 当前开发 Schema 使用版本化地址：
 
@@ -555,13 +580,14 @@ CSP 禁止脚本网络连接、媒体、对象、frame 和表单，`img-src` 仅
 Application Support/Familiar/Persistence/FamiliarAgentV2.store
 ```
 
-首次成功创建当前 store 后，App 清理旧开发 `default.store`、SQLite sidecar 和旧附件目录。该策略服务于开发阶段的直接 Schema 替换。后续公开版本发生 Schema 变化时，需要引入正式迁移方案或新的受控数据升级流程。
+当前 7 实体已固化为 `FamiliarSchemaV1`，生产和测试容器均通过 `FamiliarSchemaMigrationPlan` 打开。首次成功创建当前 store 后，App 仍清理旧开发 `default.store`、SQLite sidecar 和旧附件目录；当前 store 打开或迁移失败时只展示错误，不自动重置。后续 Project Schema 必须从 V1 增加版本和 migration stage，不能把用户确认后的全量重建作为正常升级路径。
 
 ## 13. 错误边界
 
 | 场景 | 当前处理 |
 |---|---|
 | Provider 非 2xx | 提取有限长度错误正文并显示错误 |
+| Web 私网、危险重定向或超限响应 | 拒绝请求并返回明确工具失败 |
 | SSE 空响应 | 抛出 empty response |
 | 上下文超限 | 请求前阻止发送 |
 | 图片草稿 | 请求前阻止发送并保留草稿 |
@@ -584,6 +610,9 @@ Application Support/Familiar/Persistence/FamiliarAgentV2.store
 - WebKit 不使用持久化网站数据存储。
 - SwiftData 的广泛 invalidation 不承载逐 token 更新。
 - App Intents 不复制 Capability Registry。
+- Share Extension、App Intent 与 Deep Link 只提供输入来源，永不授予写权限。
+- 远程 Web/MCP 内容与 server annotation 均按不可信输入处理。
+- 每次 Project Run 使用不可变 ContextSnapshot；该约束待实现。
 - 本地通知只携带通用终态文案与本地类型化路由，不携带会话正文或授权信息。
 - Spotlight 只索引受保护的本地会话标题与 UUID，不索引聊天正文或运行详情。
 - 图片预处理是 Tool，不是强制 pipeline。

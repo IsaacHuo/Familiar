@@ -41,7 +41,8 @@ struct FamiliarRuntimeTests {
         let registry = try FamiliarToolRegistry(tools: [AnyFamiliarTool(FamiliarFakeTool())])
         let loop = FamiliarAgentLoop(provider: FamiliarFakeProvider(mode: .toolThenText), registry: registry, policy: .init(), confirmationCoordinator: .init(), undoStore: .init())
         var events: [FamiliarRuntimeEvent] = []
-        for try await event in loop.stream(messages: [], settings: .defaultValue, apiKey: "key") { events.append(event) }
+        let snapshot = try familiarTestContextSnapshot(manifests: await registry.manifests())
+        for try await event in loop.stream(contextSnapshot: snapshot, apiKey: "key") { events.append(event) }
         #expect(Set(events.map(\.runID)).count == 1)
         #expect(events.map(\.sequence) == Array(0..<events.count))
         if case .runStarted = events.first?.payload {} else { Issue.record("Missing runStarted") }
@@ -55,7 +56,8 @@ struct FamiliarRuntimeTests {
         let loop = FamiliarAgentLoop(provider: FamiliarFakeProvider(mode: .repeatedTool), registry: registry, policy: .init(), confirmationCoordinator: .init(), undoStore: .init(), maximumIterations: 2)
         var failed = false
         do {
-            for try await event in loop.stream(messages: [], settings: .defaultValue, apiKey: "key") {
+            let snapshot = try familiarTestContextSnapshot(manifests: await registry.manifests())
+            for try await event in loop.stream(contextSnapshot: snapshot, apiKey: "key") {
                 if case .runFailed = event.payload { failed = true }
             }
         } catch FamiliarAgentError.maxIterationsExceeded {
@@ -69,7 +71,8 @@ struct FamiliarRuntimeTests {
         let registry = try FamiliarToolRegistry(tools: [])
         let loop = FamiliarAgentLoop(provider: FamiliarFakeProvider(mode: .text), registry: registry, policy: .init(), confirmationCoordinator: .init(), undoStore: .init())
         var payloads: [FamiliarRuntimeEventPayload] = []
-        for try await event in loop.stream(messages: [], settings: .defaultValue, apiKey: "key") {
+        let snapshot = try familiarTestContextSnapshot()
+        for try await event in loop.stream(contextSnapshot: snapshot, apiKey: "key") {
             payloads.append(event.payload)
         }
         let responding = payloads.firstIndex { if case .state(.responding) = $0 { true } else { false } }
@@ -81,11 +84,9 @@ struct FamiliarRuntimeTests {
 
     @Test("Runtime rejects oversized context before provider execution")
     func contextLimit() async throws {
-        let registry = try FamiliarToolRegistry(tools: [])
-        let loop = FamiliarAgentLoop(provider: FamiliarFakeProvider(mode: .text), registry: registry, policy: .init(), confirmationCoordinator: .init(), undoStore: .init())
         let message = FamiliarMessageSnapshot(id: UUID(), role: .user, content: String(repeating: "x", count: 400_000), createdAt: Date(), sequence: 0, providerID: nil, modelID: nil, attachments: [])
-        await #expect(throws: FamiliarAgentError.self) {
-            for try await _ in loop.stream(messages: [message], settings: .defaultValue, apiKey: "key") {}
+        #expect(throws: FamiliarAgentError.self) {
+            _ = try familiarTestContextSnapshot(messages: [message])
         }
     }
 }

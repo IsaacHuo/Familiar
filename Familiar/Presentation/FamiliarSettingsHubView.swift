@@ -11,8 +11,6 @@ enum FamiliarSettingsRoute: String, Hashable {
     case appearance
     case tools
     case soul
-    case memory
-    case mcp
     case storage
     case permissions
     case runHistory
@@ -25,6 +23,7 @@ struct FamiliarSettingsView: View {
 
     let initialSettings: FamiliarSettings
     let initialRoute: FamiliarSettingsRoute?
+    let registry: FamiliarToolRegistry
     let onSaveSettings: (FamiliarSettings) -> Void
     let onRestartOnboarding: () -> Void
 
@@ -34,11 +33,13 @@ struct FamiliarSettingsView: View {
     init(
         initialSettings: FamiliarSettings,
         initialRoute: FamiliarSettingsRoute? = nil,
+        registry: FamiliarToolRegistry,
         onSaveSettings: @escaping (FamiliarSettings) -> Void,
         onRestartOnboarding: @escaping () -> Void
     ) {
         self.initialSettings = initialSettings
         self.initialRoute = initialRoute
+        self.registry = registry
         self.onSaveSettings = onSaveSettings
         self.onRestartOnboarding = onRestartOnboarding
         _settings = State(initialValue: initialSettings)
@@ -68,8 +69,8 @@ struct FamiliarSettingsView: View {
                 Section(String(localized: "settings.hub.agent", defaultValue: "Agent")) {
                     settingsLink(
                         .tools,
-                        title: String(localized: "settings.hub.tools", defaultValue: "Tools & Skills"),
-                        subtitle: String(localized: "settings.hub.tools.detail", defaultValue: "Native capabilities and planned skills"),
+                        title: String(localized: "settings.hub.tools", defaultValue: "Tools"),
+                        subtitle: String(localized: "settings.hub.tools.detail", defaultValue: "Capabilities registered with the Agent Runtime"),
                         symbol: "puzzlepiece.extension.fill",
                         color: .blue
                     )
@@ -79,22 +80,6 @@ struct FamiliarSettingsView: View {
                         subtitle: String(localized: "settings.hub.soul.detail", defaultValue: "Personality and response style"),
                         symbol: "sparkles",
                         color: .pink
-                    )
-                    settingsLink(
-                        .memory,
-                        title: String(localized: "settings.hub.memory", defaultValue: "Long-term Memory"),
-                        subtitle: String(localized: "settings.status.planned", defaultValue: "Planned"),
-                        symbol: "brain.head.profile.fill",
-                        color: .purple,
-                        badge: String(localized: "settings.status.preview", defaultValue: "Preview")
-                    )
-                    settingsLink(
-                        .mcp,
-                        title: String(localized: "settings.hub.mcp", defaultValue: "MCP Connections"),
-                        subtitle: String(localized: "settings.status.planned", defaultValue: "Planned"),
-                        symbol: "point.3.connected.trianglepath.dotted",
-                        color: .teal,
-                        badge: String(localized: "settings.status.preview", defaultValue: "Preview")
                     )
                 }
 
@@ -221,13 +206,9 @@ struct FamiliarSettingsView: View {
         case .appearance:
             FamiliarAppearanceSettingsView()
         case .tools:
-            FamiliarToolsAndSkillsView()
+            FamiliarToolsSettingsView(registry: registry)
         case .soul:
             FamiliarSoulSettingsView(systemPrompt: $settings.systemPrompt)
-        case .memory:
-            FamiliarMemoryPreviewView()
-        case .mcp:
-            FamiliarMCPPreviewView()
         case .storage:
             FamiliarStorageSettingsView()
         case .permissions:
@@ -295,226 +276,51 @@ private struct FamiliarSoulSettingsView: View {
     }
 }
 
-private struct FamiliarToolsAndSkillsView: View {
-    @State private var showsPreviewNotice = false
-
-    private let tools: [(String, String)] = [
-        ("clock", String(localized: "tool.date_time")),
-        ("info.circle", String(localized: "tool.app_information")),
-        ("magnifyingglass", String(localized: "tool.web_search", defaultValue: "搜索网页")),
-        ("globe", String(localized: "tool.web_fetch", defaultValue: "读取网页")),
-        ("calendar", String(localized: "tool.calendar_query")),
-        ("calendar.badge.plus", String(localized: "tool.calendar_create")),
-        ("checklist", String(localized: "tool.reminders_query")),
-        ("checkmark.circle", String(localized: "tool.reminder_create"))
-    ]
+private struct FamiliarToolsSettingsView: View {
+    let registry: FamiliarToolRegistry
+    @State private var tools: [FamiliarToolManifest] = []
 
     var body: some View {
         List {
             Section {
-                ForEach(tools, id: \.1) { tool in
-                    Label(tool.1, systemImage: tool.0)
-                }
-            } header: {
-                Text(String(localized: "settings.tools.native", defaultValue: "Native Tools"))
-            } footer: {
-                Text(String(localized: "settings.tools.native.footer", defaultValue: "Familiar exposes only tools supported by the selected model and current iOS permissions."))
-            }
-
-            Section {
-                Button {
-                    showsPreviewNotice = true
-                } label: {
-                    Label(String(localized: "settings.skills.add", defaultValue: "Add Skill"), systemImage: "plus")
-                }
-            } header: {
-                Text(String(localized: "settings.skills.title", defaultValue: "Skills"))
-            } footer: {
-                Text(String(localized: "settings.skills.preview", defaultValue: "Custom instruction bundles are planned. No skill is currently installed or injected into model context."))
-            }
-        }
-        .navigationTitle(String(localized: "settings.hub.tools", defaultValue: "Tools & Skills"))
-        .navigationBarTitleDisplayMode(.inline)
-        .alert(String(localized: "settings.preview.unavailable.title", defaultValue: "Planned Feature"), isPresented: $showsPreviewNotice) {
-            Button(String(localized: "common.ok"), role: .cancel) {}
-        } message: {
-            Text(String(localized: "settings.skills.unavailable", defaultValue: "Skill installation is not connected to Familiar's runtime yet."))
-        }
-    }
-}
-
-private struct FamiliarMemoryPreviewView: View {
-    @State private var previewEnabled = false
-    @State private var searchText = ""
-    @State private var showsEditor = false
-
-    var body: some View {
-        List {
-            FamiliarPreviewBanner(
-                title: String(localized: "settings.memory.preview.title", defaultValue: "Memory Preview"),
-                detail: String(localized: "settings.memory.preview.detail", defaultValue: "Long-term memory is not connected to conversations or model context in this version.")
-            )
-
-            Section {
-                Toggle(String(localized: "settings.memory.enable", defaultValue: "Enable for New Conversations"), isOn: $previewEnabled)
-                Button {
-                    showsEditor = true
-                } label: {
-                    Label(String(localized: "settings.memory.add", defaultValue: "Add Memory"), systemImage: "plus")
-                }
-            }
-
-            Section {
-                ContentUnavailableView(
-                    String(localized: "settings.memory.empty.title", defaultValue: "No long-term memories"),
-                    systemImage: "brain.head.profile",
-                    description: Text(String(localized: "settings.memory.empty.detail", defaultValue: "Future memories will be reviewable, editable, and removable here."))
-                )
-            }
-        }
-        .searchable(text: $searchText, prompt: String(localized: "settings.memory.search", defaultValue: "Search memories"))
-        .navigationTitle(String(localized: "settings.hub.memory", defaultValue: "Long-term Memory"))
-        .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $showsEditor) {
-            FamiliarMemoryPreviewEditor()
-        }
-        .accessibilityValue(String(localized: "settings.preview.accessibility", defaultValue: "Preview, unavailable"))
-    }
-}
-
-private struct FamiliarMemoryPreviewEditor: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var text = ""
-    @State private var category = 0
-    @State private var showsUnavailable = false
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Picker(String(localized: "settings.memory.category", defaultValue: "Category"), selection: $category) {
-                    Text(String(localized: "settings.memory.category.preference", defaultValue: "Preference")).tag(0)
-                    Text(String(localized: "settings.memory.category.detail", defaultValue: "Personal Detail")).tag(1)
-                    Text(String(localized: "settings.memory.category.instruction", defaultValue: "Instruction")).tag(2)
-                }
-                TextEditor(text: $text)
-                    .frame(minHeight: 180)
-            }
-            .navigationTitle(String(localized: "settings.memory.new", defaultValue: "New Memory"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(String(localized: "common.cancel")) { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(String(localized: "common.save")) { showsUnavailable = true }
-                        .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-            .alert(String(localized: "settings.preview.unavailable.title", defaultValue: "Planned Feature"), isPresented: $showsUnavailable) {
-                Button(String(localized: "common.ok"), role: .cancel) {}
-            } message: {
-                Text(String(localized: "settings.memory.save.unavailable", defaultValue: "Memory storage and context injection are not available yet. Nothing was saved."))
-            }
-        }
-    }
-}
-
-private struct FamiliarMCPPreviewView: View {
-    @State private var showsAddServer = false
-
-    var body: some View {
-        List {
-            FamiliarPreviewBanner(
-                title: String(localized: "settings.mcp.preview.title", defaultValue: "MCP Preview"),
-                detail: String(localized: "settings.mcp.preview.detail", defaultValue: "MCP connections are not registered with Familiar's tool runtime in this version.")
-            )
-
-            Section {
-                ContentUnavailableView(
-                    String(localized: "settings.mcp.empty.title", defaultValue: "No MCP servers"),
-                    systemImage: "point.3.connected.trianglepath.dotted",
-                    description: Text(String(localized: "settings.mcp.empty.detail", defaultValue: "Remote HTTPS servers will appear here after MCP support is released."))
-                )
-            }
-        }
-        .navigationTitle(String(localized: "settings.hub.mcp", defaultValue: "MCP Connections"))
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button { showsAddServer = true } label: { Image(systemName: "plus") }
-                    .accessibilityLabel(String(localized: "settings.mcp.add", defaultValue: "Add MCP server"))
-            }
-        }
-        .sheet(isPresented: $showsAddServer) {
-            FamiliarMCPServerPreviewEditor()
-        }
-        .accessibilityValue(String(localized: "settings.preview.accessibility", defaultValue: "Preview, unavailable"))
-    }
-}
-
-private struct FamiliarMCPServerPreviewEditor: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var name = ""
-    @State private var endpoint = ""
-    @State private var authentication = 0
-    @State private var showsUnavailable = false
-
-    private var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && URL(string: endpoint)?.scheme == "https"
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField(String(localized: "settings.mcp.name", defaultValue: "Server Name"), text: $name)
-                    TextField("https://example.com/mcp", text: $endpoint)
-                        .textInputAutocapitalization(.never)
-                        .keyboardType(.URL)
-                        .autocorrectionDisabled()
-                    Picker(String(localized: "settings.mcp.auth", defaultValue: "Authentication"), selection: $authentication) {
-                        Text(String(localized: "settings.mcp.auth.none", defaultValue: "None")).tag(0)
-                        Text(String(localized: "settings.mcp.auth.bearer", defaultValue: "Bearer Token")).tag(1)
+                ForEach(tools, id: \.name) { tool in
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(tool.title)
+                            Text(tool.name)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: FamiliarToolPresentation.symbol(for: tool.name))
                     }
-                } footer: {
-                    Text(String(localized: "settings.mcp.security", defaultValue: "Future credentials will be scoped to this server and stored in Keychain. MCP tools will still pass through Familiar's permission policy."))
                 }
+            } header: {
+                Text(String(localized: "settings.tools.registered", defaultValue: "Registered Tools"))
+            } footer: {
+                Text(String(localized: "settings.tools.registered.footer", defaultValue: "This read-only list reflects the tools registered with Familiar's Agent Runtime. Availability is checked only when a run uses a tool."))
             }
-            .navigationTitle(String(localized: "settings.mcp.new", defaultValue: "New MCP Server"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(String(localized: "common.cancel")) { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(String(localized: "settings.mcp.connect", defaultValue: "Connect")) { showsUnavailable = true }
-                        .disabled(!isValid)
-                }
-            }
-            .alert(String(localized: "settings.preview.unavailable.title", defaultValue: "Planned Feature"), isPresented: $showsUnavailable) {
-                Button(String(localized: "common.ok"), role: .cancel) {}
-            } message: {
-                Text(String(localized: "settings.mcp.connect.unavailable", defaultValue: "MCP networking and tool discovery are not available yet. No server or credential was saved."))
-            }
+        }
+        .navigationTitle(String(localized: "settings.hub.tools", defaultValue: "Tools"))
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            tools = await registry.snapshot()
         }
     }
 }
 
-private struct FamiliarPreviewBanner: View {
-    let title: String
-    let detail: String
-
-    var body: some View {
-        Section {
-            Label {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(.headline)
-                    Text(detail).font(.subheadline).foregroundStyle(.secondary)
-                }
-            } icon: {
-                Image(systemName: "hammer.fill").foregroundStyle(FamiliarTheme.accent)
-            }
+nonisolated enum FamiliarToolPresentation {
+    static func symbol(for name: String) -> String {
+        switch name {
+        case "current_date_time": "clock"
+        case "app_information": "info.circle"
+        case "web_search": "magnifyingglass"
+        case "web_fetch": "globe"
+        case "calendar_events": "calendar"
+        case "create_calendar_event": "calendar.badge.plus"
+        case "reminders": "checklist"
+        case "create_reminder": "checkmark.circle"
+        default: "wrench.and.screwdriver"
         }
     }
 }

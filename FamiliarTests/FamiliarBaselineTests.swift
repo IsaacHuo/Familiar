@@ -328,12 +328,15 @@ struct FamiliarBaselineTests {
 
         let persistence = root.appendingPathComponent("Familiar/Persistence", isDirectory: true)
         let attachments = root.appendingPathComponent("Familiar/Attachments", isDirectory: true)
+        let projectResources = root.appendingPathComponent("Familiar/ProjectResources", isDirectory: true)
         try fileManager.createDirectory(at: persistence, withIntermediateDirectories: true)
         try fileManager.createDirectory(at: attachments, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: projectResources, withIntermediateDirectories: true)
         try Data("store".utf8).write(to: persistence.appendingPathComponent("FamiliarAgentV2.store"))
         try Data("wal".utf8).write(to: persistence.appendingPathComponent("FamiliarAgentV2.store-wal"))
         try Data("old".utf8).write(to: persistence.appendingPathComponent("FamiliarAgentV1.store"))
         try Data("attachment".utf8).write(to: attachments.appendingPathComponent("message.txt"))
+        try Data("resource".utf8).write(to: projectResources.appendingPathComponent("resource.txt"))
 
         try FamiliarApp.resetV2Store(in: root, fileManager: fileManager)
 
@@ -341,5 +344,6 @@ struct FamiliarBaselineTests {
         #expect(!fileManager.fileExists(atPath: persistence.appendingPathComponent("FamiliarAgentV2.store-wal").path))
         #expect(fileManager.fileExists(atPath: persistence.appendingPathComponent("FamiliarAgentV1.store").path))
         #expect(!fileManager.fileExists(atPath: attachments.path))
+        #expect(!fileManager.fileExists(atPath: projectResources.path))
     }
 }

@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 
+extension FamiliarSchemaV1 {
 @Model
 final class FamiliarModelSwitchRecord {
     @Attribute(.unique) var id: UUID
@@ -32,3 +33,6 @@ final class FamiliarModelSwitchRecord {
         self.conversation = conversation
     }
 }
+}
+
+typealias FamiliarModelSwitchRecord = FamiliarSchemaV3.FamiliarModelSwitchRecord

@@ -13,10 +13,32 @@ struct FamiliarFixedUUIDGenerator: Sendable {
 
 enum FamiliarTestStore {
     @MainActor
-    static func make() throws -> ModelContainer {
-        let schema = Schema([FamiliarConversation.self, FamiliarMessage.self, FamiliarSourceRecord.self, FamiliarAttachment.self, FamiliarModelSwitchRecord.self, FamiliarAgentRun.self, FamiliarAgentStep.self])
-        return try ModelContainer(for: schema, configurations: [ModelConfiguration("FamiliarTests", schema: schema, isStoredInMemoryOnly: true)])
+    static func make(name: String = "FamiliarTests") throws -> ModelContainer {
+        try FamiliarModelContainer.makeInMemory(name: name)
     }
+}
+
+func familiarTestContextSnapshot(
+    messages: [FamiliarMessageSnapshot] = [],
+    settings: FamiliarSettings = .defaultValue,
+    manifests: [FamiliarToolManifest] = [],
+    projectID: UUID? = nil,
+    projectName: String? = nil,
+    projectInstruction: String? = nil,
+    resources: [FamiliarContextResource] = []
+) throws -> FamiliarContextSnapshot {
+    try FamiliarProjectContextAssembler.assemble(
+        seed: FamiliarProjectContextSeed(
+            projectID: projectID,
+            projectName: projectName,
+            conversationID: UUID(),
+            projectInstruction: projectInstruction,
+            resources: resources
+        ),
+        settings: settings,
+        messages: messages,
+        toolManifests: manifests
+    )
 }
 
 actor FamiliarFakeCapabilities: FamiliarCapabilityProviding {

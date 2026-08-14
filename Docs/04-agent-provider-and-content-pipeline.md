@@ -105,12 +105,10 @@ UI gate 位于 `FamiliarChatController.startSending(in:)`。Agent gate 位于 `F
 
 输入：`FamiliarModelRequest`
 
-统一事件：
+当前统一事件：
 
 - `textDelta`
-- `reasoningDelta`
-- `toolCall`
-- `usage`
+- `toolCallDelta`
 - `completed`
 
 终止原因统一映射为：
@@ -225,14 +223,14 @@ sequenceDiagram
     participant K as ConfirmationCoordinator
     participant E as EventKitService
 
-    C->>A: Run with snapshots and capabilities
+    C->>A: Run with conversation snapshots and capabilities
     loop Maximum 6 iterations
         A->>P: Stream request
         P-->>A: Text and tool-call deltas
         A-->>C: Runtime events
         alt No tool calls
             A-->>C: Final response
-        else Read tool
+        else Read or Web tool
             A->>R: Execute query
             R-->>A: Tool result
         else Write tool
@@ -251,6 +249,8 @@ sequenceDiagram
     end
 ```
 
+同一轮的多个 Tool Call 当前按模型返回顺序串行执行。并行执行、依赖图和独立规划层尚未实现。
+
 ### 8.2 运行限制
 
 - 默认最多 6 轮。
@@ -267,18 +267,7 @@ sequenceDiagram
 
 Agent Loop 只产生统一事件，UI 只渲染这些事件，工具不自己造 UI：
 
-```text
-AgentRunStarted
-ModelThinking
-ToolRequested
-ToolAwaitingApproval
-ToolStarted
-ToolProgress
-ToolSucceeded
-ToolFailed
-ArtifactProduced
-AgentRunCompleted
-```
+当前 `FamiliarRuntimeEventPayload` 包含 `runStarted`、`state`、`textDelta`、`toolRequested`、`toolProgress`、approval、`toolFinished`、`responseCompleted` 和三类 Run 终态。Artifact 仍是目标对象，不是当前 Runtime Event。
 
 ### 8.4 系统策略
 
@@ -286,7 +275,7 @@ AgentRunCompleted
 
 ### 8.5 Run / Step 模型
 
-不只保存 Chat Message：
+当前不只保存 Chat Message，也保存 Run 和摘要性 Step；这些记录不能用于严格恢复或重放：
 
 ```text
 AgentSession
@@ -299,47 +288,50 @@ AgentSession
               └── ResultStep
 ```
 
+### 8.6 只读 Web
+
+路径：`Familiar/Web/`
+
+- `web_search` 使用 DuckDuckGo HTML/Lite，属于无需额外 Key 的 best-effort 搜索。
+- `web_fetch` 获取公共 HTTPS 页面并抽取可读文本，不运行 JavaScript、不加载子资源、不保留 Cookie。
+- URL policy 拒绝认证信息、非 443 端口、私网/保留地址和危险 host；每次 HTTPS 重定向都重新校验。
+- DNS 解析要求地址全部公开，连接使用固定解析结果，并限制超时、重定向次数、响应字节和内容类型。
+- 页面正文是不可信远程内容，不能授予工具权限；来源标题、URL、站点和访问时间随助手消息保存。
+
+尚未实现独立 `web.read(selector/readerMode)`、Project URL Resource、浏览器登录、表单提交、Cookie 会话或自动点击。
+
 ## 9. Tool 设计
 
 ### 9.1 强类型 Tool
 
-```swift
-protocol NativeTool {
-    associatedtype Input: Decodable & Sendable
-    associatedtype Output: Encodable & Sendable
+当前协议为 `FamiliarTool`，使用类型化 `Input`，执行结果统一映射为 `FamiliarToolOutcome`；Registry 存储 `AnyFamiliarTool`。
 
-    static var manifest: ToolManifest { get }
-    func execute(
-        _ input: Input,
-        context: ToolContext
-    ) async throws -> Output
-}
-```
-
-`ToolManifest`：
+当前 `FamiliarToolManifest`：
 
 ```swift
-struct ToolManifest {
-    let id: ToolID
+struct FamiliarToolManifest {
+    let name: String
     let title: String
     let description: String
-    let effect: ToolEffect     // read / write / destructiveWrite
-    let risk: ToolRisk         // low / high
-    let requirements: [CapabilityRequirement]
+    let parameters: FamiliarJSONSchema
+    let effect: FamiliarToolEffect
+    let risk: FamiliarToolRisk
+    let requirements: [FamiliarCapabilityRequirement]
 }
 ```
 
-Tool Registry 存储 `AnyNativeTool`，提供给 Agent。
+Manifest v2 目标增加稳定 ID、版本、来源、输入/输出与载荷上限、网络/数据/隐私域、幂等、取消、恢复、并行、系统权限和项目作用域。
 
 ### 9.2 Resources / Tools / Instructions
 
 借鉴 MCP 的思想，但内部直接用 Swift：
 
-- **Resources**（application-controlled）：附件、当前位置、Workspace 文件、会话上下文、Memory。
-- **Tools**（model-controlled）：calendar.create、pdf.extract、maps.search、file.write。
-- **Instructions**（user-controlled）：Base Agent Policy、Skills。
+- **当前 Resources**（application-controlled）：会话历史、消息附件抽取文本。
+- **当前 Tools**（model-controlled）：8 个静态注册的本机信息、Web 和 EventKit 工具。
+- **目标 Resources**：Project 文件、URL、Artifact、Project/Conversation Memory。
+- **目标 Instructions**（user-controlled）：Base Agent Policy、ProjectInstruction、Skills。
 
-外部服务（GitHub、Notion、Supabase 等）未来通过 `MCPClient` 接入，把 MCP Tools 转成 Familiar `AnyTool`。
+外部服务（GitHub、Notion 等）未来通过远程 `MCPClient` 接入，把 MCP Tools 转成 Familiar Manifest，并继续经过项目绑定和 Execution Policy。
 
 > **MCP 是 Adapter，不是 Kernel。**
 
@@ -363,24 +355,19 @@ Tool Registry 存储 `AnyNativeTool`，提供给 Agent。
 
 ## 10. Execution Policy 与意图感知授权
 
-权限由代码控制，不靠 Prompt。风险模型：
+权限由代码控制，不靠 Prompt。当前生产风险模型：
 
 | 操作 | 默认行为 |
 |---|---|
 | Read + 低风险 | 自动执行 |
-| 明确的可逆写入 | 执行 + Undo |
-| 推断出的写入 | 确认 |
-| 敏感读取 | Permission / policy |
+| 可逆写入 | 结构化确认，成功后当前进程内一次性 Undo |
+| 推断出的写入 | 结构化确认 |
+| Web 敏感读取 | 当前自动执行受限公网请求；不授予后续工具权限 |
+| EventKit 可申请读取 | 结构化确认后请求系统权限 |
 | 破坏性操作 | 确认 |
 | 财务 / 外部重大影响 | 强确认 |
 
-例如用户明确说 "帮我明天下午三点创建一个日程"，Agent 调 `calendar.create`：
-
-- 明确用户意图 + 低风险 + 可逆 → 直接执行，然后显示 "✓ 已创建 撤销"。
-
-但 Agent 自己推断 "既然他说周六出去玩，我顺便给他加个提醒"：
-
-- 不是用户明确授权 → 需要确认。
+生产 Agent Loop 没有传入 `FamiliarOneShotAuthorization`，因此自然语言中的“明确意图”不会直接授权写入。未来使用 `AuthorizationGrant` 记录 user action、source、capability、规范化 arguments hash、project scope、expiry、single-use 和 confirmation evidence。Share Extension、App Intent 与 Deep Link 只记录输入来源，永远不自行产生写授权。
 
 ## 11. EventKit 权限与查询
 
@@ -552,15 +539,17 @@ Native preprocessing 是 Tool，不是强制 pipeline，避免因为提前 OCR �
 
 设备支持本地识别时设置 `requiresOnDeviceRecognition = true`。系统不支持本地识别时，Speech framework 可能使用 Apple 服务。隐私文案需要保留该条件描述。
 
-## 16. Memory
+## 16. Memory（目标，未实现）
 
-三层 Memory：
+目标 Memory 使用三种作用域：
 
-- Working Context：当前 Run。
-- Session History：当前 Conversation。
-- Long-term Memory：跨 Session 的用户信息。
+- global：跨项目个人偏好。
+- project：项目事实与约定。
+- conversation：单个对话的局部信息。
 
-Long-term Memory 第一版：
+第一版采用结构化条目，记录 provenance、scope、confidence、createdBy、lastUsedAt 和可见性，不做向量数据库。自动写入默认关闭；候选条目由用户确认或明确规则写入。
+
+目标工具：
 
 - `memory.search`
 - `memory.write`
@@ -568,9 +557,9 @@ Long-term Memory 第一版：
 
 `memory.write` 保守执行：优先保存 "用户习惯提前 15 分钟提醒" 这类明确事实，而不是把全部聊天自动向量化。等真实数据量出现后再决定是否需要 embeddings。
 
-## 17. Skills
+## 17. Skills（目标，未实现）
 
-Familiar Skill 第一版不包含 Python、Shell、Executable Script。一个 Skill 就是：
+Familiar Skill 第一版不包含 Python、Shell、Executable Script。支持 Files/Share 导入、内容预览、明确安装、项目绑定、禁用和删除。Skill 只能收窄 Tool Scope，不能扩大用户授权。一个 Skill 包含：
 
 ```text
 Skill
@@ -591,9 +580,9 @@ Travel Assistant
 
 本质是 Instruction Package + Tool Scope。
 
-## 18. Background 与可恢复 Run
+## 18. Background 与可恢复 Run（目标，未实现）
 
-Agent Run 设计为可恢复，不是常驻 daemon：
+Agent Run 的目标是可中断和可恢复，不是常驻 daemon。当前 Run/Step 只保存摘要和终态，没有 Context/Capability/Authorization snapshot 或 ResumeCursor：
 
 ```text
 用户发起
@@ -602,7 +591,9 @@ Agent Run 设计为可恢复，不是常驻 daemon：
   → 必要时继续完成
 ```
 
-使用 `BGContinuedProcessingTask` 承接用户启动的长任务。系统允许这类任务在转入后台后继续进行网络、Vision、Core ML、Accelerate 等工作。Agent Runtime 提供 resumable AgentRun 语义，而不是 daemon / cron / always alive agent。
+- iOS 26+：可条件使用 `BGContinuedProcessingTask` 承接用户在前台启动的长任务，仍需保存恢复游标并处理 expiration。
+- iOS 18–25：`BGProcessingTask` 由系统择机执行，不能保证精确时间；适合的网络传输可使用 background `URLSession`。
+- 无后端时不承诺可靠 cron。“已计划”必须标明精确、尽力或需用户继续的保证等级。
 
 ## 19. 验证要求
 
@@ -628,4 +619,4 @@ Agent Run 设计为可恢复，不是常驻 daemon：
 
 ### Benchmark
 
-MVP Benchmark 任务（见 01-product-definition）：每一次提交影响 Agent 行为，都应跑这些任务验证端到端。
+MVP Benchmark 任务（见 01-product-definition）已由 `FamiliarBenchmarkTests` 参数化运行 8 个确定性场景。`Scripts/run-agent-benchmarks.sh` 是本地入口；每个场景记录模型轮数、工具/审批序列、终态、耗时和 usage 可用性。真实 Provider 验收见 `11-real-provider-smoke-checklist.md`。

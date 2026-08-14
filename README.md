@@ -5,7 +5,7 @@
 <h1 align="center">Familiar</h1>
 
 <p align="center">
-  A native, local-first BYOK AI agent runtime for iPhone.
+  A native, safe and inspectable personal AI workspace for iPhone.
 </p>
 
 <p align="center">
@@ -30,9 +30,9 @@
 
 ## Overview
 
-> **Familiar = an iPhone-native Agent Runtime.** A cloud / replaceable LLM handles understanding, decision-making and orchestration; native iOS frameworks handle perception, computation and action; the Native Workspace provides general content-processing capabilities.
+> **Familiar is a native, safe and inspectable personal AI workspace.** Projects are the long-lived work unit, chat is the primary entry, and native tools plus read-only Web form the current execution surface. The single-Agent Runtime is the execution kernel.
 
-Familiar turns the iPhone's native capabilities into a composable runtime for AI agents. It does not run on a Linux execution environment, does not depend on Apple Intelligence, does not hard-code every user request into a workflow, and does not start with complex multi-agent orchestration.
+Familiar turns the iPhone's native capabilities into a composable runtime without adopting a Linux execution environment, Apple Intelligence dependency or multi-agent orchestration. Project and versioned document resources are implemented; artifacts, writable workspace capabilities, and resumable execution remain the next product layer.
 
 The app is BYOK-only: users bring their own model API Key, model requests go directly from the device to the selected Provider, and conversations, attachments and tool records stay on the device. When web tools are used, search queries go directly to DuckDuckGo and page requests go directly to the selected public HTTPS site.
 
@@ -43,8 +43,8 @@ The app is BYOK-only: users bring their own model API Key, model requests go dir
 - **iPhone-native Agent Runtime** — a single primary Agent that plans with tools and executes through native iOS frameworks; no Linux environment, no Apple Intelligence dependency.
 - **Tools as the core abstraction** — Calendar, Vision, PDF, Maps and more are just Tools registered in a Capability Registry; each tool is small, orthogonal and composable.
 - **Native First** — reuse EventKit, Vision, MapKit, PDFKit, Photos and Foundation instead of reimplementing calendar, OCR, maps or document rendering.
-- **Native Workspace** — a Linux-free working space for general content: File, PDF, Text, Image, Audio, Video, CSV/JSON, Archive and Document processing.
-- **Intent-aware authorization** — low-risk reads run automatically, explicit reversible writes execute with Undo, inferred or destructive writes require confirmation.
+- **Project workspace v1** — projects share an instruction and versioned local document resources across chats; resources use independent protected storage and immutable Run context references. Artifact and writable workspace capabilities remain planned.
+- **Code-enforced authorization** — low-risk reads run automatically; current EventKit writes require structured per-action confirmation and provide an in-process, one-shot Undo after success.
 - **Runtime-event-driven UI** — the timeline renders Agent events (model thinking, tool progress, approval, success and failure) instead of each tool owning its own UI.
 - **Local-first and BYOK** — API Keys are stored per Provider in the iOS Keychain; requests never pass through Familiar servers.
 - **Multi-provider catalog** — OpenAI, Anthropic, Gemini, DeepSeek, Groq, xAI, OpenRouter, Qwen, Kimi, GLM, MiniMax, SiliconFlow, and custom OpenAI-compatible endpoints.
@@ -54,9 +54,9 @@ The app is BYOK-only: users bring their own model API Key, model requests go dir
 - **Voice transcription** — Apple Speech and `AVAudioEngine` generate editable text drafts; original recordings are not stored.
 - **Bilingual UI** — complete Simplified Chinese and English resources, Light and Dark Mode, Dynamic Type, VoiceOver, Reduce Motion and Reduce Transparency.
 
-## Architecture
+## Target architecture
 
-Familiar is organized into six layers:
+Familiar is evolving toward six layers. The diagram includes planned capabilities and is not a current implementation inventory:
 
 ```text
 ┌─────────────────────────────────────────┐
@@ -69,7 +69,7 @@ Familiar is organized into six layers:
 ┌─────────────────────────────────────────┐
 │               Agent Runtime             │
 │                                         │
-│ Agent Loop / Context Manager            │
+│ Agent Loop / Context Assembly           │
 │ Model Router / Tool Router              │
 │ Run / Step State                        │
 └────────────────────┬────────────────────┘
@@ -106,6 +106,8 @@ Familiar is organized into six layers:
   Artifacts / Trace / History
 ```
 
+Current implementation: ordinary conversations remain available alongside Project-owned chats. The runtime has a bounded sequential tool loop, eight statically registered tools, structured EventKit approval, read-only Web search/fetch, Project instructions/resources, immutable input context records, and summary Run/Step persistence. Artifact, durable Memory, Skills, MCP, and resumable runs are not yet implemented.
+
 ```mermaid
 flowchart TD
     Entry[System Entry Layer] --> Runtime[Agent Runtime]
@@ -138,7 +140,7 @@ Familiar uses a single-Agent-first design with a composable tool loop:
 ```text
 User
   → AgentRun
-  → Context Assembler
+  → Conversation context assembly (current) / ProjectContextAssembler (target)
   → Model
   → Tool Call?
        ├── No ──→ Final Answer
@@ -157,25 +159,25 @@ The agent loop is bounded: a maximum number of iterations, tool-result length li
 
 ## Tools
 
-Tools are strongly typed in Swift; the Registry performs type erasure:
+Tools are strongly typed in Swift; the Registry stores `AnyFamiliarTool` values. The current protocol uses a typed `Input` and returns a `FamiliarToolOutcome`:
 
 ```swift
-protocol NativeTool {
+protocol FamiliarTool {
     associatedtype Input: Decodable & Sendable
-    associatedtype Output: Encodable & Sendable
 
-    static var manifest: ToolManifest { get }
-    func execute(_ input: Input, context: ToolContext) async throws -> Output
+    var manifest: FamiliarToolManifest { get }
+    func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome
 }
 ```
 
-`ToolManifest` carries more than a name:
+The current `FamiliarToolManifest` carries:
 
 ```text
-ToolManifest
-  id
+FamiliarToolManifest
+  name
   title
   description
+  parameters
   effect        read / write / destructiveWrite
   risk          low / high
   requirements  EventKit, Calendar permission, ...
@@ -183,15 +185,16 @@ ToolManifest
 
 Internally Familiar separates, following the spirit of MCP but in native Swift:
 
-- **Resources** — attachments, current location, workspace files, conversation context, memory (application-controlled)
-- **Tools** — calendar.create, pdf.extract, maps.search, file.write (model-controlled)
-- **Instructions** — base agent policy, skills (user-controlled)
+- **Current resources** — conversation history and extracted message attachments (application-controlled)
+- **Current tools** — two device-information, two read-only Web and four EventKit tools (model-controlled)
+- **Target resources** — Project files, URLs, Artifacts and scoped Memory
+- **Target instructions** — base policy, Project instructions and Skills (user-controlled)
 
-MCP is an adapter, not the kernel: when external services arrive, an `MCPClient` converts MCP Tools into Familiar `AnyTool` without changing the core architecture.
+MCP is an adapter, not the kernel. A future remote HTTPS client will convert MCP Tools into Familiar manifests and continue to apply Familiar policy; MCP is not currently implemented.
 
 ## Capability Registry
 
-The Registry is the project's core asset, organized into two capability families:
+The target Registry is a core asset organized into two capability families:
 
 | Native System | Native Workspace |
 | --- | --- |
@@ -206,22 +209,24 @@ The Registry is the project's core asset, organized into two capability families
 | Notifications | Document |
 | Clipboard | Web |
 
-Native System tools operate the iPhone and the user's digital environment; Native Workspace tools give the Agent a general working space without Linux. Unavailable capabilities (by device, region, OS version or authorization) are simply not exposed to the model.
+The current Registry is a startup-supplied dictionary of eight tools with EventKit availability filtering. Native Workspace in the table is a target built from Project + Resource + Artifact; runtime discovery, installation, versioning and project binding are not implemented.
 
 ## Permission model
 
-Familiar uses intent-aware authorization instead of confirming every write:
+Current production authorization behavior:
 
 | Operation | Default behavior |
 | --- | --- |
 | Read + low risk | Automatic |
-| Explicit reversible write | Execute + Undo |
-| Inferred write | Confirm |
+| Reversible write | Structured confirmation, then in-process one-shot Undo |
+| Inferred write | Structured confirmation |
 | Sensitive read | Permission / policy |
 | Destructive | Confirm |
 | Financial / external consequential | Strong confirmation |
 
 Permissions are controlled by code, not by prompt: the model cannot bypass HealthKit permissions, delete confirmations or sensitive-data policy with a sentence.
+
+The target authorization model may avoid repeated confirmation only when a user action creates an auditable, single-use grant that matches the capability, normalized arguments, scope and expiry. Share Extension, App Intent and Deep Link provenance never grants write authority.
 
 ## Provider support
 
@@ -233,7 +238,7 @@ Permissions are controlled by code, not by prompt: the model cannot bypass Healt
 
 Each Provider has its own Keychain item, endpoint configuration, headers and model-catalog policy. Model capabilities are marked by `providerID + modelID`; unknown custom models are text-only by default.
 
-The model layer is a simple `ModelProvider` abstraction with OpenAI, Anthropic, OpenAI-compatible and (optional) local providers. The first phase establishes an Agent benchmark with the strongest available model before any token-saving model splitting.
+The model layer uses a simple `FamiliarModelProvider` abstraction with OpenAI Chat, Anthropic Messages and Gemini adapters. The next phase establishes deterministic Agent benchmarks before any model splitting or local-model work.
 
 ## Document pipeline
 
@@ -372,7 +377,8 @@ npm --prefix website run build
 Familiar does not currently include:
 
 - iPad support
-- Account or workspace systems
+- Account systems
+- Artifact, writable workspace, and resumable Run systems (planned, not currently implemented)
 - Familiar-hosted model proxying
 - Subscription or entitlement flows
 - Linux / iSH execution environment

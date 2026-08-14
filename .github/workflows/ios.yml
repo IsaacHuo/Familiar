@@ -1,0 +1,125 @@
+name: iOS build and tests
+
+on:
+  pull_request:
+    paths:
+      - "Familiar/**"
+      - "FamiliarTests/**"
+      - "FamiliarUITests/**"
+      - "FamiliarShareExtension/**"
+      - "FamiliarWidgets/**"
+      - "Vendor/**"
+      - "familiar.xcodeproj/**"
+      - ".github/workflows/ios.yml"
+  push:
+    branches: [main]
+    paths:
+      - "Familiar/**"
+      - "FamiliarTests/**"
+      - "FamiliarUITests/**"
+      - "FamiliarShareExtension/**"
+      - "FamiliarWidgets/**"
+      - "Vendor/**"
+      - "familiar.xcodeproj/**"
+      - ".github/workflows/ios.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulator-build:
+    name: arm64 Simulator build
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: xcodebuild -version && uname -m
+      - name: Build
+        run: >-
+          xcodebuild
+          -project familiar.xcodeproj
+          -scheme Familiar
+          -configuration Debug
+          -destination 'generic/platform=iOS Simulator'
+          ARCHS=arm64
+          ONLY_ACTIVE_ARCH=YES
+          CODE_SIGNING_ALLOWED=NO
+          build
+
+  unit-tests:
+    name: Unit and benchmark tests
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Simulator
+        id: simulator
+        shell: bash
+        run: |
+          xcodebuild -version
+          SIMULATOR_ID=$(python3 - <<'PY'
+          import json, subprocess
+          devices = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))["devices"]
+          candidates = [(runtime, device) for runtime, values in devices.items() if "iOS" in runtime for device in values if device["name"].startswith("iPhone")]
+          if not candidates:
+              raise SystemExit("No available iPhone Simulator")
+          print(sorted(candidates, key=lambda item: item[0], reverse=True)[0][1]["udid"])
+          PY
+          )
+          echo "id=$SIMULATOR_ID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$SIMULATOR_ID"
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+      - name: Test
+        run: >-
+          xcodebuild
+          -project familiar.xcodeproj
+          -scheme Familiar
+          -configuration Debug
+          -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.id }}'
+          ARCHS=arm64
+          ONLY_ACTIVE_ARCH=YES
+          CODE_SIGNING_ALLOWED=NO
+          -only-testing:FamiliarTests
+          test
+
+  ui-smoke:
+    name: UI cold-launch smoke
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Simulator
+        id: simulator
+        shell: bash
+        run: |
+          xcodebuild -version
+          SIMULATOR_ID=$(python3 - <<'PY'
+          import json, subprocess
+          devices = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))["devices"]
+          candidates = [(runtime, device) for runtime, values in devices.items() if "iOS" in runtime for device in values if device["name"].startswith("iPhone")]
+          if not candidates:
+              raise SystemExit("No available iPhone Simulator")
+          print(sorted(candidates, key=lambda item: item[0], reverse=True)[0][1]["udid"])
+          PY
+          )
+          echo "id=$SIMULATOR_ID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$SIMULATOR_ID"
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+      - name: Test
+        run: >-
+          xcodebuild
+          -project familiar.xcodeproj
+          -scheme Familiar
+          -configuration Debug
+          -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.id }}'
+          ARCHS=arm64
+          ONLY_ACTIVE_ARCH=YES
+          CODE_SIGNING_ALLOWED=NO
+          -only-testing:FamiliarUITests/FamiliarColdLaunchUITests
+          test

@@ -144,13 +144,17 @@ actor FamiliarToolRegistry {
 
     func manifests() async -> [FamiliarToolManifest] {
         var result: [FamiliarToolManifest] = []
-        for tool in toolsByName.values {
-            guard case .unavailable = await availability(for: tool.manifest) else {
-                result.append(tool.manifest)
+        for manifest in snapshot() {
+            guard case .unavailable = await availability(for: manifest) else {
+                result.append(manifest)
                 continue
             }
         }
-        return result.sorted { $0.name < $1.name }
+        return result
+    }
+
+    func snapshot() -> [FamiliarToolManifest] {
+        toolsByName.values.map(\.manifest).sorted { $0.name < $1.name }
     }
 
     func manifest(named name: String) throws -> FamiliarToolManifest {

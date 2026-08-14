@@ -7,6 +7,3 @@ DerivedData/
 # Familiar website
 website/node_modules/
 website/dist/
-
-# Docs
-Docs/

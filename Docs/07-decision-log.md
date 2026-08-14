@@ -49,13 +49,13 @@
 
 ## D-005 采用 ChatGPT 移动端信息结构参考
 
-- 状态：生效
+- 状态：部分被 D-036 替代
 - 决策：参考其抽屉、顶栏、时间线、输入器比例和反馈节奏。
 - 依据：目标用户已熟悉聊天型 AI 产品的信息结构。
 - 影响：
   - Familiar 使用蓝紫品牌体系。
   - 入口只对应当前真实能力。
-  - 账户、订阅、项目和工作区入口不进入界面。
+  - 账户和订阅入口不进入界面；Project 按 D-036 成为一级工作单元。
 - 复审条件：可用性测试显示主要任务路径需要调整。
 
 ## D-006 输入器参考 Leafy 日迹页
@@ -205,7 +205,7 @@
 
 ## D-019 开发 Schema 使用版本化 store
 
-- 状态：生效，真机损坏 store 场景待验证
+- 状态：已由 D-039 补充，真机损坏 store 场景待验证
 - 决策：当前 Schema 使用 `FamiliarAgentV2.store`。首次成功创建后清理旧开发 store；当前 store 无法创建时显示恢复界面，由用户确认重建。
 - 依据：旧开发 store 缺少必填字段，SwiftData 自动迁移返回 134110；项目当前无正式用户，计划允许直接替换开发 Schema。
 - 影响：
@@ -214,6 +214,14 @@
 - 恢复重建会清理当前 store 和附件，并保留 Keychain API Key。
 - 公开版本仍需要正式迁移或明确的数据兼容声明。
 - 复审条件：首个公开版本冻结 Schema。
+
+## D-039 当前 7 实体冻结为 SwiftData V1
+
+- 状态：生效
+- 决策：当前 7 实体冻结为 `FamiliarSchemaV1` 1.0.0，所有生产和测试容器通过 `FamiliarSchemaMigrationPlan` 打开，文件名继续使用 `FamiliarAgentV2.store`。顶层模型名由 typealias 指向 V1 模型，现有调用点不变。
+- 依据：Project/Resource 引入前需要稳定的迁移起点；磁盘测试已证明旧直接 Schema store 可通过 migration plan 重开并保持全部实体数据和关系。
+- 影响：后续持久化字段变更必须新增 VersionedSchema 和 migration stage。打开或迁移失败保持可观察，只有用户在恢复界面再次确认后才删除 store 与附件。
+- 复审条件：设计 V2 Schema 或 SwiftData 改变 migration API/行为。
 
 ## D-020 项目正式使用 Swift 6
 
@@ -228,13 +236,13 @@
 
 ## D-021 Familiar 定位为 iPhone-native Agent Runtime
 
-- 状态：生效
+- 状态：作为执行内核继续生效，产品定位由 D-036 补充
 - 决策：产品定义为 Agent Runtime：云端/可替换 LLM 负责理解、决策与编排；iOS 原生 Framework 负责感知、计算与行动；Native Workspace 提供通用内容处理能力。North Star：Familiar turns the iPhone's native capabilities into a composable runtime for AI agents。
 - 依据：不以 Linux 为执行环境，不依赖 Apple Intelligence，不把用户需求硬编码成 workflow，也不从复杂多 Agent 开始。
 - 影响：
   - 六层架构成为后续设计与实现基准：System Entry / Agent Runtime / Capability Registry / Execution Policy / Native Layer + State Layer。
   - 最核心资产是 Capability Registry、Agent Runtime、Execution Policy、Native Workspace。
-  - 接入新 Apple Framework、MCP Server、新模型都只是 Adapter。
+  - Manifest v2、Resolver 和 BindingStore 完成后，新 Apple Framework、远程 MCP Server和模型主要通过 Adapter 接入。
 - 复审条件：出现必须偏离 Agent Runtime 定位的明确需求。
 
 ## D-022 单 Agent First
@@ -253,15 +261,15 @@
 - 决策：Calendar、Vision、PDF、Maps 等都只是 Capability Registry 中的 Tool。Tool 要小、正交、可组合。
 - 依据：LLM 决定做什么，Swift 决定怎么做；模型只生成结构化 Tool Call。
 - 影响：
-  - 强类型 `NativeTool` 协议 + Registry type erasure。
-  - `ToolManifest` 包含 effect、risk、requirements。
+  - 强类型 `FamiliarTool` 协议 + `AnyFamiliarTool` type erasure。
+  - `FamiliarToolManifest` 当前包含 name、parameters、effect、risk、requirements；Manifest v2 仍待实现。
   - 不做 `summarizePDFAndCreateCalendarEvent` 这类大而全的工具。
 - 复审条件：需要比 Tool 更粗粒度的编排抽象。
 
-## D-024 Capability 动态注册
+## D-024 Capability 可用性过滤
 
 - 状态：生效
-- 决策：当前设备、地区、系统版本、用户授权不可用的 Tool 不暴露给模型。
+- 决策：启动时静态注册工具；当前设备、地区、系统版本、用户授权不可用的 Tool 不暴露给模型。运行时发现、安装和项目绑定尚未实现。
 - 依据：避免模型调用不可用能力，减少错误与误操作。
 - 影响：
   - Capability Registry 运行时过滤工具。
@@ -270,8 +278,8 @@
 
 ## D-025 所有执行必须可观察（Trace）
 
-- 状态：生效
-- 决策：一次 Agent Run 中的模型调用、Tool Call、失败、权限请求、耗时都可 Trace。
+- 状态：部分实现
+- 决策：目标是一次 Agent Run 中的模型调用、Tool Call、失败、权限请求、耗时都可 Trace。当前 Runtime Event 驱动内存状态，只选择性持久化审批、模型、工具和结果摘要，不保存完整事件流。
 - 依据：Agent 执行需要可调试、可重放、可审计。
 - 影响：
   - Runtime Event 统一事件流。
@@ -306,17 +314,18 @@
 ## D-027 MCP 是 Adapter，不是 Kernel
 
 - 状态：生效
-- 决策：内部借鉴 MCP 的 Resources/Tools/Instructions 分离，但直接用 Swift。外部服务通过 `MCPClient` 把 MCP Tools 转成 Familiar `AnyTool`。
+- 决策：内部借鉴 MCP 的 Resources/Tools/Instructions 分离，但直接用 Swift。只支持远程 HTTPS Streamable HTTP Client，不支持本机 stdio Server；外部工具转换为 Familiar Manifest 后继续通过 Familiar Policy。
 - 依据：MCP 是接入外部能力的协议，不定义 Familiar 内部架构。
 - 影响：
   - 内部不引入 MCP Server。
-  - 未来接 GitHub、Notion、Supabase 等只增加 Adapter。
+  - OAuth/PKCE 凭据按 Server Identity 隔离在 Keychain。
+  - 工具按项目/会话显式绑定，默认不全量开启；MCP annotation 不作为授权依据。
 - 复审条件：需要在 iPhone 上托管 MCP Server。
 
 ## D-028 意图感知授权
 
-- 状态：生效
-- 决策：不采用"所有写操作都弹窗"。低风险读取自动执行；明确可逆写入执行 + Undo；推断写入、破坏性操作、财务/外部重大影响要求确认。
+- 状态：目标设计，生产路径未实现
+- 决策：目标授权模型允许精确匹配可审计 `AuthorizationGrant` 的单次可逆写入免除重复确认。当前按 D-011 对所有 EventKit 写入逐次结构化确认，成功后提供进程内一次性 Undo。
 - 依据：权限由代码控制，不靠 Prompt；个人 Agent 需要比简单 Read/Write 更细的风险模型。
 - 影响：
   - Execution Policy Layer 承担审批。
@@ -325,28 +334,28 @@
 
 ## D-029 Agent UI 由 Runtime Event 驱动
 
-- 状态：生效
-- 决策：工具不自己造 UI。一次执行产生统一事件（AgentRunStarted…AgentRunCompleted），UI 只渲染这些事件。
-- 依据：解决 Task Timeline、Debug、History、Background resume 与 Trace 复用问题。
+- 状态：部分实现
+- 决策：工具不自己造 UI。一次执行产生统一 `FamiliarRuntimeEventPayload`，UI 只渲染事件状态、文本、工具、审批、响应和 Run 终态。
+- 依据：统一 Task Timeline、Debug 与 History，并为未来 Background resume 与 Trace 提供顺序基础。
 - 影响：
   - 时间线即执行轨迹。
-  - 任务可重放。
+  - 当前只能查看摘要轨迹；严格重放需要 snapshot 与 ResumeCursor。
 - 复审条件：出现必须由工具自建 UI 的交互。
 
 ## D-030 Run/Step 成为正式数据模型
 
-- 状态：生效
-- 决策：不只保存 Chat Message。AgentSession → Runs → Steps（ModelStep / ToolStep / ApprovalStep / ResultStep）。
+- 状态：部分实现
+- 决策：不只保存 Chat Message。当前 Conversation → Runs → 摘要 Steps（model / tool / approval / result）。
 - 依据：复杂任务需要真正的执行状态。
 - 影响：
   - Run 与 Step 终态持久化。
-  - 支持恢复、Trace 与重放。
+  - 为未来恢复、Trace 与重放提供部分基础；当前未保存完整 snapshot 与 ResumeCursor。
 - 复审条件：持久化成本与收益失衡。
 
 ## D-031 Memory 三层，不做 RAG 大工程
 
-- 状态：生效
-- 决策：Working Context / Session History / Long-term Memory 三层。Long-term Memory 第一版为 memory.search / write / delete，写入保守。
+- 状态：目标设计，未实现
+- 决策：Memory 使用 global / project / conversation 作用域。第一版为结构化条目和 memory.search / write / delete，自动写入默认关闭。
 - 依据：先保存明确事实，等真实数据量出现后再决定是否 embeddings。
 - 影响：
   - 不做向量数据库。
@@ -355,7 +364,7 @@
 
 ## D-032 Skills 不含 Python/Shell/Executable
 
-- 状态：生效
+- 状态：目标设计，未实现
 - 决策：Familiar Skill 是 Instruction Package + Tool Scope：id、description、instructions、allowedTools、examples。
 - 依据：不引入任意代码执行面。
 - 影响：
@@ -365,11 +374,11 @@
 
 ## D-033 Background 按可恢复 AgentRun 设计
 
-- 状态：生效
-- 决策：Agent Run 是 resumable AgentRun，不是 daemon/cron/always alive。必要时通过 `BGContinuedProcessingTask` 承接用户启动的长任务。
-- 依据：现代 iOS 提供 BGContinuedProcessingTask 承接后台网络、Vision、Core ML 等工作。
+- 状态：目标设计，未实现
+- 决策：Agent Run 是 resumable AgentRun，不是 daemon/cron/always alive。iOS 26+ 可条件使用 `BGContinuedProcessingTask` 承接用户启动的长任务；iOS 18–25 只提供系统择机执行、合适的 background URLSession 或提醒用户继续。
+- 依据：iOS 不提供可靠 cron，所有系统版本都需要可中断数据契约与明确执行保证等级。
 - 影响：
-  - Run/Step 终态持久化支撑恢复。
+  - 先补齐 snapshot、ResumeCursor 和持久化幂等状态，再接后台承接能力。
   - 不做常驻 Agent。
 - 复审条件：产品要求自主后台任务。
 
@@ -392,6 +401,33 @@
   - 不把每张图片都 OCR。
   - Core ML 只在明确任务（Embedding、分类、目标检测）时使用。
 - 复审条件：出现必须统一预处理的场景。
+
+## D-036 Project 是第一层工作单元
+
+- 状态：生效，未实现
+- 决策：Familiar 的产品定位是原生、安全、可检查的个人 AI 工作台。Project 是长期、有边界、可恢复的工作上下文；Conversation 可以属于 Project，也可以作为普通聊天独立存在。
+- 依据：聊天、资料、项目指令、能力和执行记录需要稳定共同作用域，附件注入无法支撑长期 Workspace。
+- 影响：
+  - 先建立 Project、Resource、Artifact、ProjectInstruction、Binding 与 ContextSnapshot，再开放 Project UI。
+  - 侧栏按新聊天、项目、最近对话、设置组织；运行与计划只在能力真实可用后出现。
+  - Skills、MCP、Memory 和 Schedule 必须服务 Project 主链路，不作为孤立菜单扩张。
+- 复审条件：真实使用证明长期工作不需要项目边界。
+
+## D-037 当前不具备严格恢复与重放
+
+- 状态：生效
+- 决策：现有 Run/Step 只表示摘要执行轨迹。只有保存 ContextSnapshot、CapabilitySnapshot、AuthorizationSnapshot、稳定输入输出引用、持久化幂等状态和 ResumeCursor 后，才能声明恢复或重放。
+- 依据：当前持久化不包含完整模型请求、工具参数/结果、授权证据和恢复游标。
+- 影响：后台 API 接入不能先于恢复数据契约；产品文案不得把终态查看描述为恢复或重放。
+- 复审条件：上述数据契约完成并通过中断恢复测试。
+
+## D-038 冻结入口扩张，优先能力内核
+
+- 状态：生效
+- 决策：暂停新增 Provider、Widget、系统入口和近似可用的预览页，优先 benchmark/CI、迁移、Project/Context/Workspace 和可恢复 Run。
+- 依据：当前系统入口和展示面扩张快于能力内核。
+- 影响：Memory、Skills、MCP 维持隐藏或明确 Labs 状态；新功能以端到端任务成功率验收。
+- 复审条件：Project 主链路与自动 benchmark 稳定通过。
 
 ## 决策维护
 

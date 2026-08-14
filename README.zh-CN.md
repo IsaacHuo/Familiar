@@ -5,7 +5,7 @@
 <h1 align="center">Familiar</h1>
 
 <p align="center">
-  为 iPhone 打造的原生、本地优先 BYOK AI Agent Runtime。
+  为 iPhone 打造的原生、安全、可检查的个人 AI 工作台。
 </p>
 
 <p align="center">
@@ -30,9 +30,9 @@
 
 ## 项目概览
 
-> **Familiar = 一个 iPhone-native Agent Runtime。** 云端/可替换 LLM 负责理解、决策与编排；iOS 原生 Framework 负责感知、计算与行动；Native Workspace 提供通用内容处理能力。
+> **Familiar 是一个原生、安全、可检查的个人 AI 工作台。** Project 是长期工作单元，聊天是主要入口，原生工具与只读 Web 是当前执行面，单 Agent Runtime 是执行内核。
 
-Familiar 把 iPhone 的原生能力转成一个可组合的 Agent Runtime。它不以 Linux 为执行环境，不依赖 Apple Intelligence，不把每一个用户需求硬编码成 workflow，也不从一开始做复杂多 Agent。
+Familiar 把 iPhone 的原生能力转成一个可组合的 Runtime，不引入 Linux 执行环境、Apple Intelligence 依赖或复杂多 Agent。Project 与共享文档资源已进入当前实现，Artifact、可写 Workspace 和可恢复执行仍是下一阶段能力。
 
 App 采用 BYOK 模式：用户使用自己的模型 API Key，模型请求从设备直接发送到所选 Provider；会话、附件和工具记录保存在本机。使用网页工具时，搜索词会直接发送给 DuckDuckGo，网页请求会直接发送给所选公开 HTTPS 站点。
 
@@ -43,8 +43,8 @@ App 采用 BYOK 模式：用户使用自己的模型 API Key，模型请求从�
 - **iPhone 原生 Agent Runtime** — 单一主 Agent 通过 Tool 规划，并由 iOS 原生 Framework 执行；无 Linux 环境，无 Apple Intelligence 依赖。
 - **Tool 是最核心的抽象** — Calendar、Vision、PDF、Maps 都只是注册在 Capability Registry 中的 Tool；每个 Tool 小而正交、可组合。
 - **Native First** — 复用 EventKit、Vision、MapKit、PDFKit、Photos 与 Foundation，而不是重新实现日历、OCR、地图或文档渲染。
-- **Native Workspace** — 一个不依赖 Linux 的通用工作空间：File、PDF、Text、Image、Audio、Video、CSV/JSON、Archive 与 Document 处理。
-- **意图感知授权** — 低风险读取自动执行，明确可逆写入执行并支持撤销，推断或破坏性写入要求确认。
+- **Project Workspace v1** — 项目指令和版本化本地文档资源可跨项目对话共享；资源使用独立受保护目录，并在 Run 中保存不可变上下文引用。Artifact 和可写 Workspace 仍属后续架构。
+- **代码强制授权** — 低风险读取自动执行；当前 EventKit 写入逐次结构化确认，成功后提供当前进程内的一次性 Undo。
 - **Runtime Event 驱动的 UI** — 时间线渲染 Agent 事件（模型思考、工具进度、审批、成功与失败），而不是每个工具自造一套 UI。
 - **本地优先与 BYOK** — API Key 按 Provider 分别保存在 iOS Keychain；请求不经过 Familiar 服务器。
 - **完整 Provider Catalog** — OpenAI、Anthropic、Gemini、DeepSeek、Groq、xAI、OpenRouter、Qwen、Kimi、GLM、MiniMax、SiliconFlow，以及自定义 OpenAI-compatible endpoint。
@@ -54,9 +54,9 @@ App 采用 BYOK 模式：用户使用自己的模型 API Key，模型请求从�
 - **语音转写** — 使用 Apple Speech 与 `AVAudioEngine` 生成可编辑文字草稿，不保存原始录音。
 - **双语界面** — 完整简体中文与英文资源，支持深浅色、Dynamic Type、VoiceOver、Reduce Motion 和 Reduce Transparency。
 
-## 架构
+## 目标架构
 
-Familiar 整体划分为六层：
+Familiar 正在向六层架构演进。下图包含规划能力，不是当前实现清单：
 
 ```text
 ┌─────────────────────────────────────────┐
@@ -69,7 +69,7 @@ Familiar 整体划分为六层：
 ┌─────────────────────────────────────────┐
 │               Agent Runtime             │
 │                                         │
-│ Agent Loop / Context Manager            │
+│ Agent Loop / Context Assembly           │
 │ Model Router / Tool Router              │
 │ Run / Step State                        │
 └────────────────────┬────────────────────┘
@@ -106,6 +106,8 @@ Familiar 整体划分为六层：
   Artifacts / Trace / History
 ```
 
+当前实现同时支持普通 Conversation 与 Project 对话，包含有限串行 Tool Loop、8 个静态注册工具、EventKit 结构化确认、只读 Web Search/Fetch、Project 指令/资源、不可变输入上下文记录和摘要性 Run/Step 持久化。Artifact、长期 Memory、Skills、MCP 与可恢复 Run 尚未实现。
+
 ```mermaid
 flowchart TD
     Entry[System Entry Layer] --> Runtime[Agent Runtime]
@@ -138,7 +140,7 @@ Familiar 采用单 Agent First 设计，核心是可组合的 Tool Loop：
 ```text
 User
   → AgentRun
-  → Context Assembler
+  → 会话上下文组装（当前）/ ProjectContextAssembler（目标）
   → Model
   → Tool Call?
        ├── No ──→ Final Answer
@@ -157,25 +159,25 @@ Agent Loop 是有限循环：有最大迭代轮数、工具结果长度上限和
 
 ## Tool 设计
 
-Tool 使用强类型 Swift，Registry 再做 type erasure：
+Tool 使用强类型 Swift，Registry 存储 `AnyFamiliarTool`。当前协议使用类型化 `Input` 并返回 `FamiliarToolOutcome`：
 
 ```swift
-protocol NativeTool {
+protocol FamiliarTool {
     associatedtype Input: Decodable & Sendable
-    associatedtype Output: Encodable & Sendable
 
-    static var manifest: ToolManifest { get }
-    func execute(_ input: Input, context: ToolContext) async throws -> Output
+    var manifest: FamiliarToolManifest { get }
+    func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome
 }
 ```
 
-`ToolManifest` 不只是名字：
+当前 `FamiliarToolManifest` 包含：
 
 ```text
-ToolManifest
-  id
+FamiliarToolManifest
+  name
   title
   description
+  parameters
   effect        read / write / destructiveWrite
   risk          low / high
   requirements  EventKit, Calendar permission, ...
@@ -183,15 +185,16 @@ ToolManifest
 
 Familiar 内部借鉴 MCP 的思想但不把它当作内核，用原生 Swift 实现三种资源分离：
 
-- **Resources** — 附件、当前位置、Workspace 文件、会话上下文、Memory（application-controlled）
-- **Tools** — calendar.create、pdf.extract、maps.search、file.write（model-controlled）
-- **Instructions** — Base Agent Policy、Skills（user-controlled）
+- **当前 Resources** — 会话历史和消息附件抽取文本（application-controlled）
+- **当前 Tools** — 2 个本机信息、2 个只读 Web 和 4 个 EventKit 工具（model-controlled）
+- **目标 Resources** — Project 文件、URL、Artifact 和 scoped Memory
+- **目标 Instructions** — Base Policy、ProjectInstruction 和 Skills（user-controlled）
 
-> **MCP 是 Adapter，不是 Kernel。** 以后接入外部服务时通过 `MCPClient` 把 MCP Tools 转成 Familiar `AnyTool`，不需要修改基本架构。
+> **MCP 是 Adapter，不是 Kernel。** 未来远程 HTTPS Client 把 MCP Tools 转成 Familiar Manifest，并继续经过 Familiar Policy；MCP 当前尚未实现。
 
 ## Capability Registry
 
-Registry 才是 Familiar 真正的核心资产，组织成两大能力体系：
+目标 Registry 是 Familiar 的核心资产，组织成两大能力体系：
 
 | Native System | Native Workspace |
 | --- | --- |
@@ -206,22 +209,24 @@ Registry 才是 Familiar 真正的核心资产，组织成两大能力体系：
 | Notifications | Document |
 | Clipboard | Web |
 
-Native System 工具负责操作 iPhone 和用户的数字环境；Native Workspace 工具给 Agent 一个不依赖 Linux 的通用工作空间。当前设备、地区、系统版本、用户授权不可用的能力，直接不暴露给模型。
+当前 Registry 是启动时提供的 8 工具字典，并按 EventKit availability 过滤。表中的 Native Workspace 是由 Project + Resource + Artifact 构成的目标；运行时发现、安装、版本治理和项目绑定尚未实现。
 
 ## 权限模型
 
-Familiar 采用意图感知授权，而不是对每个写操作都弹窗：
+当前生产授权行为：
 
 | 操作 | 默认行为 |
 | --- | --- |
 | Read + 低风险 | 自动执行 |
-| 明确的可逆写入 | 执行 + Undo |
-| 推断出的写入 | 确认 |
+| 可逆写入 | 结构化确认，成功后提供当前进程内一次性 Undo |
+| 推断出的写入 | 结构化确认 |
 | 敏感读取 | Permission / policy |
 | 破坏性操作 | 确认 |
 | 财务 / 外部重大影响 | 强确认 |
 
 权限由代码控制，不靠 Prompt：模型无法用一句话绕过 HealthKit 权限、删除确认或敏感数据策略。
+
+目标授权模型只有在用户动作生成可审计、单次使用且精确匹配 capability、规范化参数、作用域和有效期的 grant 后，才可能免除重复确认。Share Extension、App Intent 与 Deep Link 的来源信息永远不授予写权限。
 
 ## Provider 支持
 
@@ -233,7 +238,7 @@ Familiar 采用意图感知授权，而不是对每个写操作都弹窗：
 
 每个 Provider 拥有独立 Keychain 项、端点配置、Header 和模型目录策略。模型能力按 `providerID + modelID` 标记；未知自定义模型默认仅文本。
 
-模型层是简单的 `ModelProvider` 抽象，包含 OpenAI、Anthropic、OpenAI-compatible 与（可选的）本地 Provider。第一阶段先用能拿到的最强模型建立 Agent benchmark，再进行任何省 token 的模型拆分。
+模型层使用简单的 `FamiliarModelProvider` 抽象，当前包含 OpenAI Chat、Anthropic Messages 与 Gemini adapter。下一阶段先建立确定性的 Agent benchmark，再进行模型拆分或本地模型工作。
 
 ## 文档处理链路
 

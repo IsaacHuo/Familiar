@@ -22,6 +22,7 @@
 - 模型切换时间线记录。
 - 流式富文本和滚动跟随。
 - 简体中文和英文资源。
+- 自定义抽屉内的 Projects / Recent 层级、项目列表/详情/编辑、归档与项目内新聊天；仍复用单个长生命周期 ChatController。
 
 ### Provider
 
@@ -37,15 +38,16 @@
 ### Agent 与 EventKit
 
 - 有限 Agent Loop 与统一 Runtime Event 流。
-- 类型化 Capability Registry、Tool Router 与 Execution Policy。
+- 类型化、启动时静态注册的 Capability Registry、Tool Router 与 Execution Policy。
 - 本机时间和 App 信息工具。
+- `web_search`、`web_fetch` 只读工具与回答来源记录。
 - 日历查询和创建。
 - 提醒事项查询和创建。
 - 时间线确认卡。
 - 确认协调 actor。
 - Run ID + Tool Call ID 范围内的重复写入拦截。
 - 可逆 EventKit 写入的单次 Undo。
-- Run / Step 终态与检查点持久化。
+- Run / Step 终态与摘要性检查点持久化；不能用于严格恢复或重放。
 
 ### 文件与媒体
 
@@ -55,6 +57,7 @@
 - PDFKit 文本层检查。
 - Vision OCR。
 - Quick Look 历史预览。
+- Project Resource 首版：独立受保护目录、SHA-256 文件/抽取文本 hash、版本 1 导入、Quick Look 和删除。
 - 相机和 PhotosPicker 图片草稿。
 - 图片发送 gate。
 - Apple Speech 转写。
@@ -87,14 +90,17 @@
 
 ## 2.1 与目标架构的差距
 
-项目按 iPhone-native Agent Runtime 方向演进。当前实现聚焦聊天与有限 EventKit 工具，尚未交付的架构部分：
+项目按原生、安全、可检查的个人 AI 工作台方向演进。当前实现是具备 Agent Runtime 骨架的 iOS 原生原型，尚未交付的架构部分：
 
 - System Entry：App 内入口、Share Extension、Deep Link、Run 终态本地通知、会话级 Spotlight 索引、Widget / Control、App Intents 与 App Shortcuts 已交付。
-- Capability Registry：System Tools 仅 Calendar/Reminders；Workspace 仅 File/PDF/Text；Contacts、Photos、Maps、Location、Weather、Web 等未接入。
-- Execution Policy：已覆盖能力可用性、权限请求、结构化写入确认和单次 Undo；App Intents 只负责显式启动 Run，不承担或绕过授权。
-- Run/Step 与 Task Timeline：已持久化运行终态和工具终态，并渲染运行、确认与工具记录；完整可恢复重放尚未实现。
+- Project / Workspace：Project、ProjectInstruction、Resource/Version、不可变 ContextSnapshot、Conversation/Run 可空项目归属和项目指令/资源注入已交付；Artifact、Binding、Memory、Resource 工具和可写 Workspace 未实现。
+- Capability Registry：静态注册 8 个工具；Web Search/Fetch 已接入，Contacts、Photos、Maps、Location、Weather 未接入；运行时发现、安装、版本治理和项目绑定未实现。
+- Execution Policy：已覆盖能力可用性、权限请求、结构化写入确认和进程内单次 Undo；生产路径没有 AuthorizationGrant，系统入口永不授予写权限。
+- Run/Step 与 Task Timeline：已持久化运行终态、审批/模型摘要检查点、工具终态和不可变输入 ContextSnapshot 元数据/资源 hash 引用；缺少完整调用载荷、Authorization snapshot 与 ResumeCursor，完整恢复和重放尚未实现。
 - Runtime Event：已由 Agent Loop 发出统一事件流；后台恢复事件尚未实现。
-- Memory 三层、Skills、Background（BGContinuedProcessingTask）与 MCP Client：未实现。
+- Memory、Skills、MCP Client 与后台执行：未实现；`BGContinuedProcessingTask` 仅适用于 iOS 26+。
+- 工程闭环：已新增 8 场景 fake-provider benchmark runner 与 arm64 Simulator iOS CI；本地基线通过，远程 GitHub Actions 首次结果待执行。
+- SwiftData：V1/V2 定义保持冻结；当前 `FamiliarSchemaV3` 通过正式 V2→V3 轻量迁移新增 Resource/Version 与 ContextSnapshot/ResourceReference，旧 Attachment 的 ResourceVersion 关系迁移为空。
 - 单 Agent First 已确立；多 Agent 明确不做。
 
 ## 3. 已执行验证
@@ -115,6 +121,7 @@ Default Xcode DerivedData clean iPhone build
 
 ```text
 Debug iOS Simulator arm64 build
+Debug iOS Simulator arm64 build-for-testing
 Release generic iOS arm64 unsigned build
 ```
 
@@ -156,8 +163,14 @@ Rust/FFI fixture 已通过：
 ### 3.5 自动化测试
 
 - 已建立 `FamiliarTests` 与 `FamiliarUITests` target。
-- `FamiliarTests/FamiliarBaselineTests` 已在 iOS 26.5 arm64 Simulator 通过 18 项，覆盖 Provider catalog、SSE framing、Markdown CSP、Deep Link、通知与 Spotlight 路由解析、受限 Spotlight 元数据、本地路由、App Intent 前台 handoff 与长度边界、Share Inbox 原子写入/文件副本/篡改路径拒绝及 AnyDoc 附件导入链路、附件路径边界、写入策略、Run/Step SwiftData 持久化、确认取消幂等与 V2 store 恢复删除范围。
-- EventKit policy / action proposal 与 Agent Runtime 的多轮、事件顺序、最大轮次、上下文上限测试已实现；当前完整单元测试为 23 项、3 个套件通过。
+- 既有记录显示 Baseline、EventKit policy/action proposal 与 Agent Runtime 测试曾在 arm64 Simulator 通过。
+- 2026-08-14，`main @ f4ab809` 工作树使用 iOS 26.5 arm64 Simulator 运行 `FamiliarTests`：31 项通过、0 失败；其中 `FamiliarBenchmarkTests` 的 1 个参数化测试覆盖 8 条产品场景。
+- 2026-08-14，WP2 focused migration tests 在 iOS 26.5 arm64 Simulator 通过 4 项、0 失败：旧直接 Schema 的完整 7 实体磁盘 store 通过 V1 migration plan 重开、关系与数据保持、测试内存容器版本化、可空关系轻量迁移演练、损坏 store 失败可观察且不自动删除。
+- 2026-08-14，WP3 focused tests 在 iOS 26.5 arm64 Simulator 通过 10 项、0 失败；完整 `FamiliarTests` 通过 43 项、0 失败。覆盖真实磁盘 V1→V2 迁移、全部旧数据保持且旧 Conversation/Run 项目归属为空、项目字段与指令归一化、8,000 字符项目指令进入 Runtime、归档/取消归档、空项目删除、普通/项目聊天归属、Run 启动时项目固化和项目会话 Deep Link。
+- 2026-08-14，WP4 focused tests 通过 21 项、0 失败；完整测试通过 51 项、0 失败。覆盖真实磁盘 V1/V2→V3、旧附件可空关系、资源路径/hash/symlink/删除、两条项目会话共享资源、消息删除不影响资源、确定性上下文/精确工具清单/预算拒绝、失败和取消 Run snapshot 保留、项目删除脱离历史会话/Run 并清理资源文件。
+- 8 条 Benchmark 全部通过：Calendar read、Reminder write、图片发送 gate、PDF 问答、PDF + Calendar、Weather capability gate、Web + Reminder、Tool failure recovery。
+- Benchmark 日志逐场景记录模型轮数、工具/审批序列、终态、耗时和 `usage=unavailable`；不需要真实 API Key 或真实网络。
+- 同一 test products 上运行 `FamiliarColdLaunchUITests.testColdLaunchShowsOnboardingOrChatShell`：1 项通过、0 失败。
 
 ## 4. SwiftData 启动问题
 
@@ -187,7 +200,7 @@ Application Support/Familiar/Persistence/FamiliarAgentV2.store
 
 流程：
 
-1. 创建版本化 store。
+1. 使用 `FamiliarSchemaV1`、`FamiliarSchemaMigrationPlan` 和原文件名创建或迁移 store。
 2. 成功打开 `ModelContainer`。
 3. 清理旧开发 store 和 sidecar。
 4. 清理旧 store 对应附件。
@@ -259,6 +272,18 @@ Provider fixture parser、Agent Runtime、EventKit policy 与附件路径已具�
 - 扫描 PDF。
 - 加密和损坏文档。
 - 附件删除和重新预览。
+- 项目资源从 iCloud Drive / On My iPhone 导入、Quick Look、OCR 标记和删除。
+- 同一资源在两条项目对话中使用，重启后版本/hash 保持。
+- 项目删除后历史聊天仍可打开且资源目录不可恢复；运行中 Run 时删除按钮禁用。
+
+### WP1–WP4 真机验收清单
+
+- WP1：抽屉、设置、Run timeline 与工具清单在中英文、VoiceOver 和极端 Dynamic Type 下可操作。
+- WP2：保留 V1/V2 真实旧 store 覆盖安装，确认自动迁移、重启读取和迁移失败恢复界面不静默删数据。
+- WP3：创建/编辑/归档项目，创建普通与项目聊天，确认项目指令只进入项目聊天；历史 Run 项目归属符合启动时快照。
+- WP4：导入文本 PDF、扫描 PDF 和至少一种 Office 文档，确认进度、OCR、Quick Look、文件保护、两条项目聊天共享资料及超预算提示。
+- WP4：删除单条消息不删除资源；删除资源后预览不可用；删除项目后聊天/历史 Run 保留并脱离，资源与指令删除；运行中 Run 阻止项目删除。
+- WP4：断网/取消/模型失败后 Run ContextSnapshot 元数据和资源 hash 引用仍可读取，且记录中没有完整资源抽取文本。
 
 ### 相机和图片
 
@@ -304,64 +329,70 @@ Provider fixture parser、Agent Runtime、EventKit policy 与附件路径已具�
 
 - 真实 Provider 端到端 smoke test 的可控测试入口。
 - 附件导入、OCR 与消息附件清理的文件系统集成测试。
+- 8 个产品场景的 fake-provider benchmark runner，记录工具序列、审批、耗时和成本。
+- Web URL policy、parser、Source persistence 与受控网络 smoke 的持续覆盖。
 
-### 8.2 SwiftData 恢复界面
+### 8.2 iOS CI
+
+已新增 `.github/workflows/ios.yml`，在 arm64 `macos-26` runner 上分别执行 Simulator build、`FamiliarTests`（含 Benchmark）和 UI cold-launch smoke。构建显式使用 `ARCHS=arm64`，与 AnyDoc XCFramework slice 一致。workflow YAML 已完成本地解析；远程 GitHub Actions 尚未触发，不能记录为已通过。
+
+### 8.3 SwiftData 恢复界面
 
 当前版本化 store 创建失败时会显示本地数据恢复界面，提供有限诊断信息。用户确认重建后，App 删除当前 V2 store、SQLite sidecar 和附件目录，保留 Keychain 中的 API Key，并提示用户重启。该删除范围已有临时目录单元测试覆盖。
 
 仍需在真机覆盖磁盘空间不足、文件权限异常和损坏 store 的实际启动行为。
 
-### 8.3 远程 Markdown 图片
+### 8.4 远程 Markdown 图片
 
 已确定隐私优先策略。WebKit CSP 的 `img-src` 仅允许 Bundle 同源资源和 `data:`；渲染器在把清理后的 HTML 插入页面前，将 HTTPS 图片替换为来源链接。App 不会自动请求远程图片，用户主动点击后才由系统外部打开。CSP 边界已有单元测试，App 设置和官网隐私政策均已披露。
 
-### 8.4 Share Extension
+### 8.5 Share Extension
 
 已建立独立扩展 target、App Group entitlement、严格类型/数量 activation rule 和共享收件箱。扩展接收文本、网页 URL 和最多 3 个文件，在临时目录完成复制与 manifest 写入后原子提交；主 App 校验 payload 后复用现有 AttachmentStore / AnyDoc 导入新草稿。草稿已有内容或请求运行中时不覆盖，继续排队等待安全时机。
 
 扩展与主 App 的 Debug arm64 Simulator 编译及嵌入校验已通过，共享收件箱临时目录往返测试已通过；签名 Simulator 构建也已确认主 App 能解析 `group.com.isaachuo.familiar` 的共享容器。仍需在真实宿主 App 与实际设备签名环境验证 Notes、Safari、Files 等来源的分享、文件协调和生产 Provisioning；本轮不做人工视觉验收。
 
-### 8.5 Deep Link 系统入口
+### 8.6 Deep Link 系统入口
 
 已注册 `familiar://`，支持预填新草稿、打开本地会话和打开包含指定 Run 的本地会话。解析器拒绝非 Familiar scheme、认证信息、端口、fragment、未知路径和无效 UUID，并限制预填文本长度。入口不会自动发送消息或执行工具；当前请求执行中时会延后导航。
 
 仍需在真机验证从 Notes、Safari、Shortcuts 等系统来源冷启动和回前台的行为。Run 入口当前定位到包含该 Run 的会话时间线，尚未提供精确滚动锚点。
 
-### 8.6 App Intents / Shortcuts
+### 8.7 App Intents / Shortcuts
 
 已实现 `Ask Familiar`、`Process with Familiar`、`Open Familiar` 与 3 项 App Shortcut。Ask 接收问题，Process 支持接收上一步 Shortcut 的文本输出，两者通过 `FamiliarAppIntentHandoff` 进入主 App 并调用现有 `FamiliarChatController.startSending`；Open 只打开 App。系统提取产物已确认包含 3 项 discoverable Intent、3 项 Shortcut，以及英语和简体中文 NLU phrase。iOS 18–25 使用 `openAppWhenRun`，iOS 26+ 使用 `supportedModes = .foreground`。
 
 App Intent handoff 与 20,000 字符边界已有单元测试。当前运行中请求会先完成；已有未发送草稿时保留草稿并拒绝本次入口。仍需在真机的 Siri、Shortcuts、Spotlight 与 Action Button 上完成冷启动、后台唤起、语音参数解析和实际 Provider 请求验收；本轮不做人工视觉检查。
 
-### 8.7 Run 终态本地通知
+### 8.8 Run 终态本地通知
 
 已实现设置内显式开关、按需权限请求、拒绝后的系统设置恢复入口，以及完成 / 失败两类本地通知。通知只在 App 非活跃时安排，正文使用固定通用文案，不包含问题、回答、附件名或工具结果；payload 只保存本地 Run / 会话 UUID。点击通知复用现有 `FamiliarAppIntentHandoff` 与 `FamiliarDeepLink` 返回对应上下文，前台到达时不重复展示横幅。关闭开关会移除 Familiar 的待处理与已投递通知。
 
-类型化通知路由及 `userInfo` 解析已有单元测试。仍需在真机验证权限弹窗、系统设置恢复、锁屏呈现、完成 / 失败投递、冷启动点击和目标已删除时的恢复行为。当前没有 `BGContinuedProcessingTask`，因此通知只报告当前进程实际到达的终态，不保证 App 被系统挂起后 Run 仍会完成；本轮不做人工视觉检查。
+类型化通知路由及 `userInfo` 解析已有单元测试。仍需在真机验证权限弹窗、系统设置恢复、锁屏呈现、完成 / 失败投递、冷启动点击和目标已删除时的恢复行为。当前没有后台 Run 承接；iOS 26+ 的 `BGContinuedProcessingTask` 也未接入。因此通知只报告当前进程实际到达的终态，不保证 App 被系统挂起后 Run 仍会完成；本轮不做人工视觉检查。
 
-### 8.8 Spotlight 会话索引
+### 8.9 Spotlight 会话索引
 
 已实现 Core Spotlight 自定义索引和系统结果回流。索引指定 `.complete` 文件保护等级，只纳入已有消息或 Run 的会话；每项只含最多 80 字符标题、更新时间、Familiar 关键词和 `conversation:<UUID>`，不含消息正文、附件名、工具结果、Run 详情、密钥或 Provider 配置。聊天界面根据当前 SwiftData 集合触发整域刷新，索引 actor 串行合并连续更新；重命名和删除不会保留历史结果。用户点击系统结果后，`CSSearchableItemActionType` 复用现有 Deep Link 选择本地会话。
 
 Spotlight item 元数据边界、严格标识解析和 `NSUserActivity` 路由已有单元测试。仍需在真机验证系统索引延迟、中英文查询、设备锁定后的数据保护、冷启动点击、重命名和删除后的结果刷新；本轮不做人工视觉检查。
 
-### 8.9 Widgets / Controls
+### 8.10 Widgets / Controls
 
 已建立独立 `FamiliarWidgets` extension target，并嵌入主 App。Home/Lock Screen Widget 支持主屏幕小号、中号及锁屏圆形、矩形样式，通过现有 `familiar://new` 路由打开新草稿；控制中心 Control 使用 `OpenIntent` 打开 Familiar。两者均不携带 Provider 配置、授权或自动发送行为，英语和简体中文资源已提供。
 
 Widget target 与主 App 的 Debug arm64 Simulator 编译及嵌入校验已通过。仍需在真机验证 Widget Gallery 展示、主屏幕和锁屏启动、控制中心注册、冷启动与已有未发送草稿时的保护行为。
 
-### 8.10 孤儿附件
+### 8.11 孤儿附件
 
 聊天容器出现时会根据 SwiftData 引用清理 Drafts 与 Messages 目录中的孤儿附件。仍需要在真实文件系统和大附件集合上验证清理时机与性能。
 
-### 8.11 无障碍
+### 8.12 无障碍
 
 代码级语义已补齐：抽屉当前会话带选中 trait；首启页码、快门和发送禁用原因有本地化描述；确认卡组合标题、目标与字段；运行中和终态工具记录读出状态与详情；新确认出现时通过 `AccessibilityFocusState` 转移 VoiceOver 焦点。
 
 仍需真机完成 VoiceOver 全路径、焦点返回、极端 Dynamic Type、Increase Contrast 和 Bold Text 验收。
 
-### 8.12 幂等范围
+### 8.13 幂等范围
 
 EventKit commit 幂等状态只存在于当前进程。系统 save 完成后进程立即终止的边界需要专项验证。
 
@@ -380,6 +411,7 @@ EventKit commit 幂等状态只存在于当前进程。系统 save 完成后进�
 - 旧开发 store 切换通过。
 - 会话、附件和工具终态重启后可读取。
 - 删除会话后附件清理通过。
+- Project Schema 合入前从现有 V1 增加新 VersionedSchema 和 migration stage，并提供 Resource 文件迁移/回滚方案。
 
 ### Agent
 

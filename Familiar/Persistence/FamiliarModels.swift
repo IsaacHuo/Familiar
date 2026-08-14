@@ -1,6 +1,21 @@
 import Foundation
 import SwiftData
 
+enum FamiliarSchemaV1: VersionedSchema {
+    static let versionIdentifier = Schema.Version(1, 0, 0)
+
+    static var models: [any PersistentModel.Type] {
+        [
+            FamiliarConversation.self,
+            FamiliarMessage.self,
+            FamiliarSourceRecord.self,
+            FamiliarAttachment.self,
+            FamiliarModelSwitchRecord.self,
+            FamiliarAgentRun.self,
+            FamiliarAgentStep.self
+        ]
+    }
+
 @Model
 final class FamiliarConversation {
     @Attribute(.unique) var id: UUID
@@ -264,5 +279,73 @@ final class FamiliarAttachment {
 
     var kind: FamiliarAttachmentKind {
         FamiliarAttachmentKind(rawValue: kindRawValue) ?? .document
+    }
+}
+
+}
+
+typealias FamiliarConversation = FamiliarSchemaV3.FamiliarConversation
+typealias FamiliarMessage = FamiliarSchemaV3.FamiliarMessage
+typealias FamiliarSourceRecord = FamiliarSchemaV3.FamiliarSourceRecord
+typealias FamiliarAttachment = FamiliarSchemaV3.FamiliarAttachment
+typealias FamiliarAgentRun = FamiliarSchemaV3.FamiliarAgentRun
+typealias FamiliarAgentStep = FamiliarSchemaV3.FamiliarAgentStep
+typealias FamiliarProject = FamiliarSchemaV3.FamiliarProject
+typealias FamiliarProjectInstruction = FamiliarSchemaV3.FamiliarProjectInstruction
+typealias FamiliarResource = FamiliarSchemaV3.FamiliarResource
+typealias FamiliarResourceVersion = FamiliarSchemaV3.FamiliarResourceVersion
+typealias FamiliarContextSnapshotRecord = FamiliarSchemaV3.FamiliarContextSnapshotRecord
+typealias FamiliarContextResourceReference = FamiliarSchemaV3.FamiliarContextResourceReference
+
+enum FamiliarSchemaMigrationPlan: SchemaMigrationPlan {
+    static var schemas: [any VersionedSchema.Type] {
+        [FamiliarSchemaV1.self, FamiliarSchemaV2.self, FamiliarSchemaV3.self]
+    }
+
+    static var stages: [MigrationStage] {
+        [
+            .lightweight(
+                fromVersion: FamiliarSchemaV1.self,
+                toVersion: FamiliarSchemaV2.self
+            ),
+            .lightweight(
+                fromVersion: FamiliarSchemaV2.self,
+                toVersion: FamiliarSchemaV3.self
+            )
+        ]
+    }
+}
+
+enum FamiliarModelContainer {
+    static let storeName = "FamiliarAgentV2"
+    static let storeFilename = storeName + ".store"
+
+    static var currentSchema: Schema {
+        Schema(versionedSchema: FamiliarSchemaV3.self)
+    }
+
+    static func make(at storeURL: URL) throws -> ModelContainer {
+        let schema = currentSchema
+        let configuration = ModelConfiguration(
+            storeName,
+            schema: schema,
+            url: storeURL,
+            cloudKitDatabase: .none
+        )
+        return try ModelContainer(
+            for: schema,
+            migrationPlan: FamiliarSchemaMigrationPlan.self,
+            configurations: [configuration]
+        )
+    }
+
+    static func makeInMemory(name: String = "FamiliarTests") throws -> ModelContainer {
+        let schema = currentSchema
+        let configuration = ModelConfiguration(name, schema: schema, isStoredInMemoryOnly: true)
+        return try ModelContainer(
+            for: schema,
+            migrationPlan: FamiliarSchemaMigrationPlan.self,
+            configurations: [configuration]
+        )
     }
 }

@@ -31,7 +31,7 @@
 | 模型切换记录 | 用户操作 | SwiftData | 不单独发送 | 会话删除或路径重写 |
 | 工具终态 | Agent 与系统结果 | SwiftData | 可能进入后续模型上下文 | 会话删除或路径重写 |
 | Run/Step 记录 | Agent Runtime | SwiftData | 不单独发送 | 会话删除或路径重写 |
-| Long-term Memory | 明确事实写入 | SwiftData | 作为 Resources 进入上下文 | 用户删除或 memory.delete |
+| Long-term Memory（目标，未实现） | 明确事实写入 | 目标为 SwiftData | 作为 scoped Resource 进入上下文 | 用户删除或 memory.delete |
 | 待确认请求 | Agent | 内存 | 不发送到 Familiar 服务 | 决策、取消或进程结束 |
 | 流式 token | Provider | 内存 | 不作二次上传 | 回答终态或任务结束 |
 | 文档原文件 | 文件选择器 | App Support | 不上传 | 附件、消息或会话删除 |
@@ -40,8 +40,8 @@
 | 语音转写 | Apple Speech | 输入草稿 | 发送后进入 Provider | 用户编辑或清空草稿 |
 | 原始录音 | 麦克风输入 | 不落盘 | Speech framework 按系统能力处理 | audio buffer 生命周期 |
 | 日历/提醒数据 | EventKit | 查询结果进入内存和工具记录摘要 | 可能作为工具结果进入 Provider | 运行结束和历史记录生命周期 |
-| 网页搜索 | 用户问题经 Agent 生成的最小搜索词 | 搜索结果正文仅在运行内存；来源标题、HTTPS URL、站点和时间随助手消息保存 | 搜索词直接发送给 DuckDuckGo；结果可能作为工具内容进入所选 Provider | 临时结果随 Run 结束；来源随消息删除 |
-| 网页读取 | 用户提供或搜索返回的公开 HTTPS URL | 原始 HTML 与正文仅在运行内存；来源元数据随助手消息保存 | 请求直接发送给目标站点及允许的 HTTPS 重定向目标；抽取正文可能进入所选 Provider | 原始内容随 Run 结束；来源随消息删除 |
+| 网页搜索 | 用户问题经 Agent 生成的最小搜索词 | 结果正文主要在运行内存；来源标题、HTTPS URL、站点、时间和有限 snippet 随助手消息保存 | 搜索词直接发送给 DuckDuckGo；结果可能作为工具内容进入所选 Provider | 临时结果随 Run 结束；来源与 snippet 随消息删除 |
+| 网页读取 | 用户提供或搜索返回的公开 HTTPS URL | 原始 HTML 与完整正文仅在运行内存；来源元数据和最多 360 字符的有限正文 snippet 随助手消息保存 | 请求直接发送给目标站点及允许的 HTTPS 重定向目标；抽取正文可能进入所选 Provider | 原始内容随 Run 结束；来源与 snippet 随消息删除 |
 | Deep Link 输入 | 其他 App 或系统入口 | 草稿文本进入内存；会话 / Run UUID 仅用于本地查询 | 不因打开链接自动发送 | 链接处理或草稿生命周期 |
 | Share Extension 输入 | 用户从其他 App 明确共享 | App Group `ShareInbox`，导入后复制到 App 私有草稿附件目录 | 不因共享或导入自动发送 | 成功或终态失败处理后删除共享副本；草稿副本沿用附件生命周期 |
 | App Intent 文本 | 用户在 Siri / Shortcuts / Spotlight 明确提供 | 仅作为进程内 handoff 和新草稿短暂存在，发送后进入本地消息记录 | Ask / Process 通过当前选择的 BYOK Provider 发送；Open 不发送 | 未发送草稿被拒绝覆盖；成功提交后沿用会话生命周期 |
@@ -56,7 +56,6 @@
 erDiagram
     FamiliarConversation ||--o{ FamiliarMessage : messages
     FamiliarConversation ||--o{ FamiliarModelSwitchRecord : modelSwitchRecords
-    FamiliarConversation ||--o{ FamiliarToolRunRecord : toolRunRecords
     FamiliarConversation ||--o{ FamiliarAgentRun : runs
     FamiliarAgentRun ||--o{ FamiliarAgentStep : steps
     FamiliarMessage ||--o{ FamiliarAttachment : attachments
@@ -93,32 +92,40 @@ erDiagram
         Bool usedOCR
         Date createdAt
     }
-    FamiliarToolRunRecord {
+    FamiliarSourceRecord {
         UUID id
-        String runID
+        String sourceID
+        String kindRawValue
+        String title
+        String urlString
+        String siteName
+        String snippet
+        Int sequence
+        Date retrievedAt
+    }
+    FamiliarAgentRun {
+        UUID id
+        String runtimeID
+        String statusRawValue
+        Date startedAt
+        Date finishedAt
+        String finishReason
+        UUID responseMessageID
+    }
+    FamiliarAgentStep {
+        UUID id
+        String typeRawValue
+        Int eventSequence
+        Int timelineSequence
         String toolCallID
         String toolName
         String summary
         String detail
         String confirmationRawValue
         String statusRawValue
-        Int sequence
         Date startedAt
         Date finishedAt
-    }
-    FamiliarAgentRun {
-        UUID id
-        String status
-        Date startedAt
-        Date finishedAt
-        String finishReason
-    }
-    FamiliarAgentStep {
-        UUID id
-        String kind
-        String content
-        Int sequence
-        Date createdAt
+        String artifactIdentifier
     }
 ```
 
@@ -147,13 +154,15 @@ Application Support/default.store
 
 清理动作发生在新容器成功创建后。该策略适用于项目当前无正式用户的开发阶段。
 
-公开版本后发生 Schema 变化时，需要满足以下条件之一：
+当前 7 实体 Schema 已固化为 `FamiliarSchemaV1`，版本号为 `1.0.0`。生产容器和测试内存容器均使用 `Schema(versionedSchema:)` 与 `FamiliarSchemaMigrationPlan`，store 文件名保持不变。迁移测试已验证由原直接 Schema 创建、包含全部 7 实体及关系的数据 store 可通过当前 migration plan 重新打开并保持数据一致。
 
-- 提供 `VersionedSchema` 和迁移计划。
-- 提供用户可见的数据恢复与重建流程。
-- 在版本发布前明确声明数据兼容范围。
+Project Schema 开发前仍需要满足：
 
-当前版本在容器创建失败时不再终止启动：恢复界面展示有限诊断信息，并在用户再次确认后删除当前 V2 store、SQLite sidecar 与附件目录。该操作保留 Keychain 中的 Provider API Key，完成后要求用户重启 App。
+- 新 Schema 必须作为后续 `VersionedSchema` 加入现有 migration plan，并提供对应 migration stage 与磁盘迁移测试。
+- 保留用户可见的数据恢复与重建流程作为异常恢复，而非正常升级方式。
+- 明确 Project Resource 文件移动、引用和失败回滚语义。
+
+当前版本在容器创建或迁移失败时不再终止启动：恢复界面展示有限诊断信息，并在用户再次确认后删除当前 V2 store、SQLite sidecar 与附件目录。打开失败本身不会触发重置；该操作保留 Keychain 中的 Provider API Key，完成后要求用户重启 App。
 
 ## 5. 持久化时点
 
@@ -184,15 +193,19 @@ Application Support/default.store
 
 ### 5.5 Run 与 Step
 
-一次 Agent Run 中的 ModelStep、ToolStep、ApprovalStep、ResultStep 在终态保存。等待确认状态和流式增量不保存。
+一次 Agent Run 创建时保存 Run；审批、工具终态和模型响应摘要作为检查点保存。流式增量不保存。现有字段不足以恢复或严格重放。
 
-## 5.6 Memory 三层
+## 5.6 Memory（目标，未实现）
 
-- Working Context：当前 Run，内存。
-- Session History：当前 Conversation，SwiftData。
-- Long-term Memory：跨 Session 的明确用户事实，SwiftData。
+- global：跨项目个人偏好。
+- project：项目事实和约定。
+- conversation：单个对话的局部信息。
 
-Long-term Memory 只写入用户明确告知或反复出现的稳定事实，保守执行，不做全量聊天向量化。
+每条结构化 Memory 记录 provenance、scope、confidence、createdBy、lastUsedAt 和可见性。自动写入默认关闭，不做全量聊天向量化。
+
+## 5.7 Project 数据模型（目标，未实现）
+
+目标关系为 `Project -> Conversations / Resources / Artifacts / Instructions / Bindings / Memory / Runs`。Resource 必须独立于 Message 文件目录，具备稳定 ID、版本、来源和 lineage；删除或编辑消息不能误删项目共享资料。每次 Run 保存不可变 Context/Capability/Authorization snapshot 和输出引用。
 
 ## 6. 文件系统
 
@@ -242,11 +255,12 @@ Messages/<message UUID>/
 - 编辑或重试删除后续消息。
 - 丢弃草稿。
 - 页面出现时清理未被当前草稿引用的 Drafts。
+- 页面出现时按全部 SwiftData 引用清理 Drafts 与 Messages 中的孤儿文件。
+- 创建附件目录时设置 `.completeUntilFirstUserAuthentication` 文件保护。
 
 当前缺口：
 
-- 尚无按全部 SwiftData 引用扫描 `Messages` 目录的全局孤儿文件清理。
-- 尚未显式设置文件保护等级。
+- 真实大附件集合的清理时机与性能尚未完成验收。
 
 ## 7. Keychain
 
@@ -350,14 +364,15 @@ CSP 主要限制：
 
 ## 12. 权限表
 
-权限由代码控制，不靠 Prompt。系统权限按功能触发；写操作按意图感知授权执行：
+权限由代码控制，不靠 Prompt。系统权限按功能触发；当前生产写入逐次确认：
 
 | 操作 | 默认行为 |
 |---|---|
 | Read + 低风险 | 自动执行 |
-| 明确的可逆写入 | 执行 + Undo |
-| 推断出的写入 | 确认 |
-| 敏感读取 | Permission / policy |
+| 可逆写入 | 结构化确认，成功后当前进程内一次性 Undo |
+| 推断出的写入 | 结构化确认 |
+| Web 敏感读取 | 当前自动执行受限公网请求；不授予后续工具权限 |
+| EventKit 可申请读取 | 结构化确认后请求系统权限 |
 | 破坏性操作 | 确认 |
 | 财务 / 外部重大影响 | 强确认 |
 
@@ -383,6 +398,10 @@ CSP 主要限制：
 | 大文件耗尽上下文 | 25 MiB 文件限制和模型字符上限 |
 | 图片意外上传 | UI gate 和 adapter gate |
 | Web 内容执行网络脚本 | Bundle 资源、CSP、non-persistent store |
+| Web SSRF、DNS rebinding 与危险重定向 | 仅公共 HTTPS、DNS 公网校验、固定解析结果、逐跳重验和端口限制 |
+| Web 响应炸弹或恶意类型 | 响应字节、内容类型、超时和重定向次数上限 |
+| 远程 prompt injection | Web 内容标记为不可信，不授予工具权限；来源单独保存 |
+| 未来 MCP server annotation 伪造风险 | annotation 不作为授权依据，凭据按 server identity 隔离并继续通过 Familiar Policy |
 | 流式 token 触发广泛持久化 | 内存状态和终态保存分离 |
 | 旧 Schema 启动崩溃 | 版本化开发 store |
 
@@ -411,7 +430,7 @@ App 容器中的 SwiftData、UserDefaults 和附件文件由系统删除。`kSec
 
 ## 14.5 后台与可恢复运行
 
-Agent Run 设计为可恢复，不是常驻 daemon。用户退出 App 后，必要时通过 `BGContinuedProcessingTask` 承接用户启动的长任务继续完成。Run/Step 终态已持久化，重新打开 App 后可恢复执行轨迹。后台运行不改变数据目的地：模型请求仍然直接发往用户选择的 Provider。
+Agent Run 的目标是可恢复，不是常驻 daemon。当前 Run/Step 只允许重新查看摘要终态，不能继续中断任务。iOS 26+ 才能条件使用 `BGContinuedProcessingTask` 承接用户启动的长任务；iOS 18–25 的 `BGProcessingTask` 由系统择机执行，不能承诺精确时间。后台运行不改变数据目的地：模型请求仍直接发往用户选择的 Provider。
 
 当前版本尚未实现 `BGContinuedProcessingTask`。本地通知只会报告当前进程实际到达的完成或失败终态，不能让已被系统挂起的 Run 继续执行，也不应被描述为后台任务保证。
 
@@ -448,3 +467,4 @@ Agent Run 设计为可恢复，不是常驻 daemon。用户退出 App 后，必�
 - 验证 Markdown CSP 不允许 HTTP/HTTPS 图片，且远程图片只呈现为用户主动打开的来源链接。
 - 验证通知只在用户明确开启后安排，锁屏文案不包含会话内容，关闭后清理待处理与已投递通知。
 - 验证 Spotlight 项不含聊天正文或附件信息，点击能回到本地会话，重命名与删除后结果同步更新。
+- 验证 Web 私网与保留地址被拒绝、重定向逐跳重验、大小和类型上限生效、正文不持久化且恶意网页指令不能授权工具。

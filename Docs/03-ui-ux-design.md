@@ -7,7 +7,7 @@ Familiar 使用 ChatGPT 移动端的信息结构和交互密度作为参考，�
 界面目标：
 
 - 单手操作优先。
-- 主任务集中在聊天、会话管理、模型选择和输入器。
+- 主任务集中在项目、聊天、资料、模型选择和输入器。
 - 蓝色用于主要动作和选中状态。
 - 淡紫用于首启、空态和低强度品牌背景。
 - 玻璃材质限于导航、输入器和浮层。
@@ -20,7 +20,13 @@ Familiar 使用 ChatGPT 移动端的信息结构和交互密度作为参考，�
 flowchart TD
     Root[Root] --> Onboarding[三步首启]
     Root --> Chat[聊天主界面]
-    Chat --> Drawer[会话抽屉]
+    Chat --> Drawer[全局侧栏]
+    Drawer --> Projects[项目]
+    Drawer --> Recent[最近对话]
+    Projects --> ProjectHome[项目主页]
+    ProjectHome --> ProjectChat[项目对话]
+    ProjectHome --> Resources[资料]
+    ProjectHome --> Artifacts[生成结果]
     Chat --> TopBar[顶栏]
     Chat --> Timeline[消息时间线]
     Chat --> Composer[输入器]
@@ -86,22 +92,17 @@ flowchart TD
 
 ## 2.6 Runtime Event 驱动的 Agent 执行界面
 
-工具不自己造 UI。一次执行产生统一事件，界面只渲染这些事件：
+工具不自己造 UI。当前界面渲染 `FamiliarRuntimeEventPayload`：
 
 ```text
-AgentRunStarted
-ModelThinking
-ToolRequested
-ToolAwaitingApproval
-ToolStarted
-ToolProgress
-ToolSucceeded
-ToolFailed
-ArtifactProduced
-AgentRunCompleted
+runStarted / state / textDelta
+toolRequested / toolProgress
+approvalRequested / approvalResolved
+toolFinished / responseCompleted
+runCompleted / runCancelled / runFailed
 ```
 
-时间线即执行轨迹：模型思考、工具进度、审批、成功和失败都作为同一组事件渲染。运行中工具展示进度和活动说明，写操作在 `ToolAwaitingApproval` 时进入确认卡，终态渲染成功 / 取消 / 失败。这套事件同时支撑 Task Timeline、Debug、History 和 Background resume。
+时间线展示运行摘要：模型状态、工具进度、审批、成功和失败都作为同一组事件渲染。运行中工具展示进度和活动说明，写操作在 approval request 时进入确认卡，终态渲染成功 / 取消 / 失败。当前只支持终态轨迹查看，不支持后台恢复或严格回放。
 
 ## 3. 首启流程
 
@@ -144,7 +145,7 @@ AgentRunCompleted
 
 路径：`Familiar/Presentation/FamiliarChatView.swift`
 
-### 4.1 抽屉
+### 4.1 全局侧栏
 
 - 宽度约为屏幕的 82%。
 - 支持左边缘拖动打开。
@@ -152,12 +153,11 @@ AgentRunCompleted
 - 主界面在抽屉打开时横移、裁切圆角和添加阴影，不做纵向缩放。
 - Reduce Motion 开启时取消动效。
 
-抽屉内容：
+Project v1 上线后的侧栏内容：
 
-- 固定的 Familiar 标题与圆形搜索按钮。
-- 点击搜索按钮后在固定头部展开会话搜索。
-- 会话历史在固定头部下方连续滚动；标题下方使用由实到透明的渐变，iOS 26 搜索按钮使用玻璃材质直接透出下方内容。
-- 最近会话。
+- 新聊天与统一搜索。
+- 置顶项目与全部项目入口。
+- 最近普通对话和项目对话。
 - 会话选择。
 - 会话标题使用正文级字号和宽松行高，不使用偏小的辅助字号。
 - 重命名。
@@ -167,8 +167,17 @@ AgentRunCompleted
 
 范围约束：
 
-- 不展示账户、订阅、项目、工作区和团队入口。
-- 搜索当前匹配会话标题。
+- 不展示账户、订阅和团队入口。
+- UI 使用用户可理解的“项目”，不暴露 Workspace、ContextSnapshot 等实现术语。
+- 搜索统一匹配项目和对话，并允许按项目筛选。
+- 运行与计划只有在能力真实可用后出现；Skills、MCP 和 Memory 预览移入 Labs 或隐藏。
+
+### 4.1.1 Project v1
+
+- 项目列表、空状态、创建、重命名、归档和删除。
+- 项目主页展示说明、指令、最近资料、最近对话、生成结果与运行记录。
+- 支持项目内添加文件和新聊天；普通聊天可以不属于项目。
+- Project UI 只能在持久化模型、文件生命周期和 ContextSnapshot 路径可用后开放。
 
 ### 4.2 顶栏
 
@@ -497,4 +506,4 @@ Provider 特定字段：
 | 辅助技术 | VoiceOver |
 | 附件 | 文件导入、图片草稿、相机、相册、预览 |
 | 系统入口 | App 冷启动、Share Extension 承接、Deep Link 定位、Widgets/Controls、Spotlight |
-| Runtime 事件 | 模型思考、工具进度、审批、成功/失败终态、执行轨迹回放 |
+| Runtime 事件 | 模型思考、工具进度、审批、成功/失败终态、摘要轨迹查看；严格回放为目标能力 |

@@ -29,8 +29,6 @@ enum FamiliarSlashCommand: String, CaseIterable, Identifiable {
     case newConversation = "new"
     case settings
     case soul
-    case memory
-    case mcp
     case runHistory = "runs"
 
     var id: String { rawValue }
@@ -40,8 +38,6 @@ enum FamiliarSlashCommand: String, CaseIterable, Identifiable {
         case .newConversation: String(localized: "conversation.new")
         case .settings: String(localized: "drawer.settings")
         case .soul: String(localized: "settings.hub.soul", defaultValue: "Soul")
-        case .memory: String(localized: "settings.hub.memory", defaultValue: "Long-term Memory")
-        case .mcp: String(localized: "settings.hub.mcp", defaultValue: "MCP Connections")
         case .runHistory: String(localized: "settings.hub.run_history", defaultValue: "Run History")
         }
     }
@@ -51,8 +47,6 @@ enum FamiliarSlashCommand: String, CaseIterable, Identifiable {
         case .newConversation: String(localized: "slash.new.detail", defaultValue: "Start a new local conversation")
         case .settings: String(localized: "slash.settings.detail", defaultValue: "Open Familiar settings")
         case .soul: String(localized: "slash.soul.detail", defaultValue: "Edit personality and response style")
-        case .memory: String(localized: "slash.memory.detail", defaultValue: "Open the long-term memory preview")
-        case .mcp: String(localized: "slash.mcp.detail", defaultValue: "Open the MCP connections preview")
         case .runHistory: String(localized: "slash.runs.detail", defaultValue: "Review local Agent runs")
         }
     }
@@ -62,8 +56,6 @@ enum FamiliarSlashCommand: String, CaseIterable, Identifiable {
         case .newConversation: "square.and.pencil"
         case .settings: "gearshape"
         case .soul: "sparkles"
-        case .memory: "brain.head.profile"
-        case .mcp: "point.3.connected.trianglepath.dotted"
         case .runHistory: "clock.arrow.circlepath"
         }
     }

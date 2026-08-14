@@ -26,11 +26,13 @@ final class FamiliarChatController {
 
     private let dependencies: FamiliarAppDependencies
     private let confirmationCoordinator: FamiliarToolConfirmationCoordinator
+    private let runRecorder: FamiliarRunPersistenceRecorder
     private var runningTask: Task<Void, Never>?
 
     init(dependencies: FamiliarAppDependencies) {
         self.dependencies = dependencies
         confirmationCoordinator = dependencies.confirmationCoordinator
+        runRecorder = FamiliarRunPersistenceRecorder()
     }
 
     func select(_ id: UUID?, in context: ModelContext) {
@@ -83,12 +85,13 @@ final class FamiliarChatController {
     }
 
     @discardableResult
-    func createConversation(in context: ModelContext) -> FamiliarConversation? {
+    func createConversation(project: FamiliarProject? = nil, in context: ModelContext) -> FamiliarConversation? {
         discardDraftAttachments()
         draft = ""
         let conversation = FamiliarConversation(
             currentProviderID: settings.providerID,
-            currentModelID: settings.modelID
+            currentModelID: settings.modelID,
+            project: project
         )
         context.insert(conversation)
         do {
@@ -160,7 +163,9 @@ final class FamiliarChatController {
             errorMessage = String(localized: "error.provider.invalid_custom_configuration")
             return
         }
-        guard draftAttachments.isEmpty || requestSettings.selectedModel.capabilities.supportsDocuments else {
+        let selectedProject = selectedConversation(in: context)?.project
+        let hasProjectResources = selectedProject?.resources.isEmpty == false
+        guard (draftAttachments.isEmpty && !hasProjectResources) || requestSettings.selectedModel.capabilities.supportsDocuments else {
             errorMessage = String(localized: "attachment.error.model_unsupported")
             return
         }
@@ -260,6 +265,7 @@ final class FamiliarChatController {
         draftImages = []
         reloadMessages(in: context)
         let requestMessages = messages
+        let contextSeed = makeContextSeed(conversation: conversation)
         let responseID = UUID()
         isSending = true
         availableUndoKeys = []
@@ -274,6 +280,7 @@ final class FamiliarChatController {
                 apiKey: apiKey,
                 descriptor: descriptor,
                 settings: requestSettings,
+                contextSeed: contextSeed,
                 responseID: responseID,
                 context: context
             )
@@ -589,6 +596,7 @@ final class FamiliarChatController {
         apiKey: String,
         descriptor: FamiliarProviderDescriptor,
         settings: FamiliarSettings,
+        contextSeed: FamiliarProjectContextSeed,
         responseID: UUID,
         context: ModelContext
     ) async {
@@ -599,19 +607,26 @@ final class FamiliarChatController {
 
         var activeRunID: UUID?
         do {
+            let manifests = settings.selectedModel.capabilities.supportsTools
+                ? await dependencies.registry.manifests()
+                : []
+            let contextSnapshot = try FamiliarProjectContextAssembler.assemble(
+                seed: contextSeed,
+                settings: settings,
+                messages: requestMessages,
+                toolManifests: manifests
+            )
             let agentLoop = dependencies.makeRuntime(for: descriptor)
             var completedResponse: FamiliarCompletedResponse?
             for try await event in agentLoop.stream(
-                messages: requestMessages,
-                settings: settings,
+                contextSnapshot: contextSnapshot,
                 apiKey: apiKey
             ) {
-                try Task.checkCancellation()
                 switch event.payload {
                 case .runStarted:
                     activeRunID = UUID(uuidString: event.runID)
                     activeRunStartedAt = event.timestamp
-                    ensureRun(runtimeID: event.runID, conversationID: conversationID, startedAt: event.timestamp, context: context)
+                    runRecorder.ensureRun(runtimeID: event.runID, snapshot: contextSnapshot, startedAt: event.timestamp, context: context)
                 case .state(let status):
                     agentStatus = status
                 case .textDelta(let delta):
@@ -626,7 +641,7 @@ final class FamiliarChatController {
                     }
                 case .approvalResolved(let requestID, _):
                     if let request = pendingConfirmations.first(where: { $0.id == requestID }) {
-                        persistCheckpoint(type: .approval, runtimeID: event.runID, eventSequence: event.sequence, summary: request.title, detail: "审批已完成", context: context)
+                        runRecorder.recordCheckpoint(type: .approval, runtimeID: event.runID, eventSequence: event.sequence, summary: request.title, detail: "审批已完成", context: context)
                     }
                     pendingConfirmations.removeAll { $0.id == requestID }
                 case .toolFinished(let record):
@@ -636,13 +651,13 @@ final class FamiliarChatController {
                     }
                 case .responseCompleted(let response):
                     completedResponse = response
-                    persistCheckpoint(type: .model, runtimeID: event.runID, eventSequence: event.sequence, summary: "模型回复", detail: String(response.text.prefix(2_000)), context: context)
+                    runRecorder.recordCheckpoint(type: .model, runtimeID: event.runID, eventSequence: event.sequence, summary: "模型回复", detail: String(response.text.prefix(2_000)), context: context)
                 case .runCompleted:
-                    finishRun(runtimeID: event.runID, status: .completed, reason: "completed", eventSequence: event.sequence, at: event.timestamp, context: context)
+                    runRecorder.finishRun(runtimeID: event.runID, status: .completed, reason: "completed", eventSequence: event.sequence, at: event.timestamp, context: context)
                 case .runCancelled:
-                    finishRun(runtimeID: event.runID, status: .cancelled, reason: "cancelled", eventSequence: event.sequence, at: event.timestamp, context: context)
+                    runRecorder.finishRun(runtimeID: event.runID, status: .cancelled, reason: "cancelled", eventSequence: event.sequence, at: event.timestamp, context: context)
                 case .runFailed(let message):
-                    finishRun(runtimeID: event.runID, status: .failed, reason: message, eventSequence: event.sequence, at: event.timestamp, context: context)
+                    runRecorder.finishRun(runtimeID: event.runID, status: .failed, reason: message, eventSequence: event.sequence, at: event.timestamp, context: context)
                     errorMessage = message
                 }
             }
@@ -691,11 +706,11 @@ final class FamiliarChatController {
                 runID: activeRunID
             )
         } catch is CancellationError {
-            finishActiveRuns(conversationID: conversationID, status: .cancelled, reason: "cancelled", context: context)
+            runRecorder.finishActiveRuns(conversationID: conversationID, status: .cancelled, reason: "cancelled", context: context)
             resetTransientRunState()
         } catch {
             context.rollback()
-            finishActiveRuns(conversationID: conversationID, status: .failed, reason: error.localizedDescription, context: context)
+            runRecorder.finishActiveRuns(conversationID: conversationID, status: .failed, reason: error.localizedDescription, context: context)
             resetTransientRunState()
             errorMessage = error.localizedDescription
             reloadMessages(in: context)
@@ -752,74 +767,13 @@ final class FamiliarChatController {
         conversationID: UUID?,
         context: ModelContext
     ) {
-        guard let conversationID,
-              let conversation = fetchConversation(id: conversationID, in: context),
-              let run = conversation.agentRuns.first(where: { $0.runtimeID == event.runID }),
-              !run.steps.contains(where: {
-                  $0.toolCallID == event.toolCallID
-              })
-        else { return }
-        let sequence = nextTimelineSequence(in: conversation)
-        let record = FamiliarAgentStep(
-            type: .tool,
-            eventSequence: eventSequence,
-            timelineSequence: sequence,
-            toolCallID: event.toolCallID,
-            toolName: event.toolName,
-            summary: event.summary,
-            detail: event.detail,
-            confirmation: event.confirmation,
-            status: event.status,
-            startedAt: event.startedAt,
-            finishedAt: event.finishedAt,
-            artifactIdentifier: event.artifactIdentifier,
-            run: run
-        )
-        context.insert(record)
-        conversation.updatedAt = event.finishedAt
         do {
-            try context.save()
-            reloadMessages(in: context)
+            if try runRecorder.recordTool(event, eventSequence: eventSequence, conversationID: conversationID, context: context) {
+                reloadMessages(in: context)
+            }
         } catch {
-            context.rollback()
             errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
         }
-    }
-
-    private func ensureRun(runtimeID: String, conversationID: UUID, startedAt: Date, context: ModelContext) {
-        guard let conversation = fetchConversation(id: conversationID, in: context),
-              !conversation.agentRuns.contains(where: { $0.runtimeID == runtimeID }) else { return }
-        context.insert(FamiliarAgentRun(runtimeID: runtimeID, startedAt: startedAt, conversation: conversation))
-        try? context.save()
-    }
-
-    private func finishRun(runtimeID: String, status: FamiliarAgentRunStatus, reason: String, eventSequence: Int, at date: Date, context: ModelContext) {
-        let descriptor = FetchDescriptor<FamiliarAgentRun>(predicate: #Predicate { $0.runtimeID == runtimeID })
-        guard let run = try? context.fetch(descriptor).first else { return }
-        run.status = status
-        run.finishReason = reason
-        run.finishedAt = date
-        if !run.steps.contains(where: { $0.type == .result }) {
-            context.insert(FamiliarAgentStep(type: .result, eventSequence: eventSequence, timelineSequence: nextTimelineSequence(in: run.conversation), toolCallID: "", toolName: "", summary: "运行结束", detail: reason, confirmation: .notRequired, status: status == .completed ? .succeeded : (status == .cancelled ? .cancelled : .failed), startedAt: run.startedAt, finishedAt: date, run: run))
-        }
-        try? context.save()
-    }
-
-    private func persistCheckpoint(type: FamiliarAgentStepType, runtimeID: String, eventSequence: Int, summary: String, detail: String, context: ModelContext) {
-        let descriptor = FetchDescriptor<FamiliarAgentRun>(predicate: #Predicate { $0.runtimeID == runtimeID })
-        guard let run = try? context.fetch(descriptor).first else { return }
-        context.insert(FamiliarAgentStep(type: type, eventSequence: eventSequence, timelineSequence: nextTimelineSequence(in: run.conversation), toolCallID: "", toolName: "", summary: summary, detail: detail, confirmation: .notRequired, status: .succeeded, startedAt: Date(), finishedAt: Date(), run: run))
-        try? context.save()
-    }
-
-    private func finishActiveRuns(conversationID: UUID, status: FamiliarAgentRunStatus, reason: String, context: ModelContext) {
-        guard let conversation = fetchConversation(id: conversationID, in: context) else { return }
-        for run in conversation.agentRuns where run.status == .running {
-            run.status = status
-            run.finishReason = reason
-            run.finishedAt = Date()
-        }
-        try? context.save()
     }
 
     private func nextTimelineSequence(in conversation: FamiliarConversation?) -> Int {
@@ -870,6 +824,33 @@ final class FamiliarChatController {
     private func selectedConversation(in context: ModelContext) -> FamiliarConversation? {
         guard let selectedConversationID else { return nil }
         return fetchConversation(id: selectedConversationID, in: context)
+    }
+
+    private func makeContextSeed(conversation: FamiliarConversation) -> FamiliarProjectContextSeed {
+        let project = conversation.project
+        let resources = (project?.resources ?? []).compactMap { resource -> FamiliarContextResource? in
+            guard let version = resource.versions.max(by: {
+                $0.version == $1.version ? $0.createdAt < $1.createdAt : $0.version < $1.version
+            }) else { return nil }
+            return FamiliarContextResource(
+                resourceID: resource.id,
+                resourceVersionID: version.id,
+                version: version.version,
+                displayName: resource.displayName,
+                filename: version.filename,
+                mimeType: version.mimeType,
+                contentHash: version.contentHash,
+                extractedText: version.extractedText,
+                extractedTextHash: version.extractedTextHash
+            )
+        }
+        return FamiliarProjectContextSeed(
+            projectID: project?.id,
+            projectName: project?.name,
+            conversationID: conversation.id,
+            projectInstruction: project?.instruction?.text,
+            resources: resources
+        )
     }
 
     private func fetchConversation(id: UUID, in context: ModelContext) -> FamiliarConversation? {
