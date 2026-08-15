@@ -31,6 +31,11 @@ nonisolated struct FamiliarArtifactDescriptor: Sendable, Equatable {
     let createdByRunID: String?
 }
 
+nonisolated struct FamiliarStagedArtifactDirectory: Sendable {
+    let originalURL: URL
+    let stagedURL: URL
+}
+
 nonisolated struct FamiliarArtifactStore: @unchecked Sendable {
     let rootURL: URL
     private let fileManager: FileManager
@@ -75,6 +80,27 @@ nonisolated struct FamiliarArtifactStore: @unchecked Sendable {
     func remove(projectID: UUID, artifactID: UUID) throws {
         let url = try validate("Projects/\(projectID.uuidString)/Artifacts/\(artifactID.uuidString)")
         if fileManager.fileExists(atPath: url.path) { try fileManager.removeItem(at: url) }
+    }
+
+    func stageProjectDirectory(projectID: UUID) throws -> FamiliarStagedArtifactDirectory? {
+        let originalURL = try validate("Projects/\(projectID.uuidString)")
+        guard fileManager.fileExists(atPath: originalURL.path) else { return nil }
+        let trash = rootURL.appendingPathComponent("Trash", isDirectory: true)
+        try fileManager.createDirectory(at: trash, withIntermediateDirectories: true)
+        let stagedURL = trash.appendingPathComponent("\(projectID.uuidString)-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.moveItem(at: originalURL, to: stagedURL)
+        return FamiliarStagedArtifactDirectory(originalURL: originalURL, stagedURL: stagedURL)
+    }
+
+    func restore(_ staged: FamiliarStagedArtifactDirectory) throws {
+        try fileManager.createDirectory(at: staged.originalURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try fileManager.moveItem(at: staged.stagedURL, to: staged.originalURL)
+    }
+
+    func discard(_ staged: FamiliarStagedArtifactDirectory) throws {
+        if fileManager.fileExists(atPath: staged.stagedURL.path) {
+            try fileManager.removeItem(at: staged.stagedURL)
+        }
     }
 
     func rename(relativePath: String, projectID: UUID, artifactID: UUID, filename: String) throws -> String {
@@ -123,6 +149,22 @@ struct FamiliarArtifactService {
         context.delete(artifact)
         do { try context.save(); try store.remove(projectID: artifact.projectID, artifactID: artifact.id) }
         catch { context.rollback(); throw error }
+    }
+
+    func removeProjectArtifacts(projectID: UUID, in context: ModelContext) throws {
+        let artifacts = try context.fetch(FetchDescriptor<FamiliarArtifact>(
+            predicate: #Predicate { $0.projectID == projectID }
+        ))
+        for artifact in artifacts {
+            try store.remove(projectID: projectID, artifactID: artifact.id)
+            context.delete(artifact)
+        }
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            throw error
+        }
     }
 
     func read(_ artifact: FamiliarArtifact) throws -> Data {

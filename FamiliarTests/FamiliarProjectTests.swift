@@ -152,6 +152,39 @@ struct FamiliarProjectTests {
         #expect(controller.selectedConversationID == conversation.id)
     }
 
+    @Test("Deleting a project removes its artifact metadata and file")
+    @MainActor
+    func projectDeletionRemovesArtifacts() throws {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory.appendingPathComponent("FamiliarArtifactDelete-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: root) }
+
+        let container = try FamiliarTestStore.make()
+        let context = container.mainContext
+        let project = try FamiliarProjectService().create(name: "Artifact owner", in: context)
+        let store = FamiliarArtifactStore(rootURL: root)
+        let artifactID = UUID()
+        let stored = try store.write(Data("result".utf8), projectID: project.id, artifactID: artifactID, filename: "result.md")
+        context.insert(FamiliarArtifact(
+            id: artifactID,
+            projectID: project.id,
+            identifier: "artifact_fixture",
+            title: "Result",
+            relativePath: stored.path,
+            byteSize: 6,
+            contentHash: stored.hash,
+            createdByRunID: nil
+        ))
+        try context.save()
+
+        let resourceStore = FamiliarProjectResourceStore(rootURL: root.appendingPathComponent("Resources", isDirectory: true))
+        try FamiliarProjectService(resourceStore: resourceStore, artifactStore: store).permanentlyDelete(project, in: context)
+
+        #expect(try context.fetch(FetchDescriptor<FamiliarArtifact>()).isEmpty)
+        #expect(!fileManager.fileExists(atPath: root.appendingPathComponent(stored.path).path))
+    }
+
     @Test("Project instruction reaches the runtime without the personal prompt limit")
     func projectInstructionRuntimeInput() async throws {
         let capture = FamiliarProjectRequestCapture()

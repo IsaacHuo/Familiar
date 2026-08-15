@@ -135,7 +135,9 @@ private struct FamiliarProjectDetailView: View {
     @State private var showsResourceImporter = false
     @State private var isImportingResource = false
     @State private var previewURL: URL?
+    @State private var artifactPreviewURL: URL?
     @State private var resourceToDelete: FamiliarResource?
+    @State private var artifactToDelete: FamiliarArtifact?
     @State private var confirmsProjectDeletion = false
 
     var body: some View {
@@ -204,6 +206,37 @@ private struct FamiliarProjectDetailView: View {
                 Text(String(localized: "resource.section"))
             } footer: {
                 Text(String(localized: "resource.footer"))
+            }
+
+            Section(String(localized: "artifact.section", defaultValue: "生成结果")) {
+                if projectArtifacts.isEmpty {
+                    Text(String(localized: "artifact.empty", defaultValue: "还没有生成结果"))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(projectArtifacts.sorted { $0.updatedAt > $1.updatedAt }) { artifact in
+                        HStack(spacing: 12) {
+                            Button {
+                                artifactPreviewURL = FamiliarArtifactService().exportURL(for: artifact)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: artifact.format == .markdown ? "doc.richtext" : "doc.text")
+                                        .foregroundStyle(FamiliarTheme.accent)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(artifact.title).foregroundStyle(.primary)
+                                        Text(ByteCountFormatter.string(fromByteCount: artifact.byteSize, countStyle: .file))
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            Button(role: .destructive) { artifactToDelete = artifact } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
+                }
             }
 
             Section(String(localized: "project.conversations")) {
@@ -275,6 +308,12 @@ private struct FamiliarProjectDetailView: View {
         )) {
             if let previewURL { FamiliarAttachmentQuickLookView(url: previewURL) }
         }
+        .sheet(isPresented: Binding(
+            get: { artifactPreviewURL != nil },
+            set: { if !$0 { artifactPreviewURL = nil } }
+        )) {
+            if let artifactPreviewURL { FamiliarAttachmentQuickLookView(url: artifactPreviewURL) }
+        }
         .confirmationDialog(
             String(localized: "resource.delete.title"),
             isPresented: Binding(
@@ -290,6 +329,20 @@ private struct FamiliarProjectDetailView: View {
             }
         } message: {
             Text(String(localized: "resource.delete.detail"))
+        }
+        .confirmationDialog(
+            String(localized: "artifact.delete.title", defaultValue: "删除生成结果"),
+            isPresented: Binding(
+                get: { artifactToDelete != nil },
+                set: { if !$0 { artifactToDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "common.delete"), role: .destructive) {
+                guard let artifactToDelete else { return }
+                perform { try FamiliarArtifactService().delete(artifactToDelete, in: modelContext) }
+                self.artifactToDelete = nil
+            }
         }
         .confirmationDialog(
             String(localized: "project.delete.confirm.title"),
@@ -316,6 +369,13 @@ private struct FamiliarProjectDetailView: View {
         resource.versions.max {
             $0.version == $1.version ? $0.createdAt < $1.createdAt : $0.version < $1.version
         }
+    }
+
+    private var projectArtifacts: [FamiliarArtifact] {
+        let projectID = project.id
+        return (try? modelContext.fetch(FetchDescriptor<FamiliarArtifact>(
+            predicate: #Predicate { $0.projectID == projectID }
+        ))) ?? []
     }
 
     private func resourceDetail(_ version: FamiliarResourceVersion) -> String {

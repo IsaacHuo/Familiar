@@ -91,7 +91,7 @@ nonisolated struct FamiliarProjectResourceStore {
     func removeVersion(relativePath: String) throws {
         let fileURL = try validatedURL(for: relativePath)
         let versionDirectory = fileURL.deletingLastPathComponent()
-        guard versionDirectory.pathComponents.count >= rootURL.standardizedFileURL.pathComponents.count + 6 else {
+        guard versionDirectory.standardizedFileURL.path.hasPrefix(rootURL.standardizedFileURL.path + "/") else {
             throw FamiliarProjectResourceStoreError.invalidRelativePath
         }
         if fileManager.fileExists(atPath: versionDirectory.path) {
@@ -200,8 +200,11 @@ nonisolated struct FamiliarProjectResourceStore {
         let rootComponents = root.standardizedFileURL.pathComponents
         let targetComponents = target.standardizedFileURL.pathComponents
         guard targetComponents.starts(with: rootComponents) else { return true }
-        var current = URL(fileURLWithPath: "/", isDirectory: true)
-        for component in targetComponents.dropFirst() {
+        var current = root.standardizedFileURL
+        if (try? current.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
+            return true
+        }
+        for component in targetComponents.dropFirst(rootComponents.count) {
             current.appendPathComponent(component)
             guard fileManager.fileExists(atPath: current.path) else { continue }
             if (try? current.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {

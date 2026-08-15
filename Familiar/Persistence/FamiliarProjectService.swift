@@ -19,9 +19,14 @@ struct FamiliarProjectService {
     static let maximumSummaryLength = 500
     nonisolated static let maximumInstructionLength = 8_000
     let resourceStore: FamiliarProjectResourceStore
+    let artifactStore: FamiliarArtifactStore
 
-    init(resourceStore: FamiliarProjectResourceStore = FamiliarProjectResourceStore()) {
+    init(
+        resourceStore: FamiliarProjectResourceStore = FamiliarProjectResourceStore(),
+        artifactStore: FamiliarArtifactStore = FamiliarArtifactStore()
+    ) {
         self.resourceStore = resourceStore
+        self.artifactStore = artifactStore
     }
 
     @discardableResult
@@ -74,15 +79,23 @@ struct FamiliarProjectService {
             throw FamiliarProjectServiceError.projectHasRunningRun
         }
         let staged = try resourceStore.stageProjectDirectory(projectID: project.id)
+        let stagedArtifacts = try artifactStore.stageProjectDirectory(projectID: project.id)
+        let projectID = project.id
         project.conversations.forEach { $0.project = nil }
         project.agentRuns.forEach { $0.project = nil }
-        context.delete(project)
         do {
+            let artifacts = try context.fetch(FetchDescriptor<FamiliarArtifact>(
+                predicate: #Predicate { $0.projectID == projectID }
+            ))
+            artifacts.forEach { context.delete($0) }
+            context.delete(project)
             try context.save()
             if let staged { try resourceStore.discard(staged) }
+            if let stagedArtifacts { try artifactStore.discard(stagedArtifacts) }
         } catch {
             context.rollback()
             if let staged { try? resourceStore.restore(staged) }
+            if let stagedArtifacts { try? artifactStore.restore(stagedArtifacts) }
             throw error
         }
     }
