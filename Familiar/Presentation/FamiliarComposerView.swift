@@ -211,7 +211,7 @@ struct FamiliarComposer: View {
 
     private var hasText: Bool { !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var canSend: Bool {
-        isSending || (images.isEmpty && importingFileCount == 0 && (hasText || !documents.isEmpty))
+        isSending || (importingFileCount == 0 && (hasText || !documents.isEmpty || !images.isEmpty))
     }
     private var hasDraftContent: Bool { !images.isEmpty || !documents.isEmpty || importingFileCount > 0 }
     private var effectiveTextHeight: CGFloat { max(measuredTextHeight, CGFloat(max(draft.components(separatedBy: "\n").count, 1)) * Self.lineHeight) }
@@ -423,9 +423,8 @@ struct FamiliarComposer: View {
     private var sendButton: some View {
         Button {
             if isSending { onSend() }
-            else if !images.isEmpty { notice = .imageBlocked }
             else if importingFileCount > 0 { return }
-            else if hasText || !documents.isEmpty { onSend() }
+            else if hasText || !documents.isEmpty || !images.isEmpty { onSend() }
         } label: {
             Image(systemName: isSending ? "stop.fill" : "arrow.up")
                 .font(.system(size: 14, weight: .bold)).foregroundStyle(.white).frame(width: 36, height: 36)
@@ -440,9 +439,8 @@ struct FamiliarComposer: View {
 
     private var sendDisabledReason: String? {
         if isSending { return nil }
-        if !images.isEmpty { return String(localized: "attachment.image_send_blocked_detail") }
         if importingFileCount > 0 { return String(localized: "composer.disabled.importing") }
-        if !hasText && documents.isEmpty { return String(localized: "composer.disabled.empty") }
+        if !hasText && documents.isEmpty && images.isEmpty { return String(localized: "composer.disabled.empty") }
         return nil
     }
 
@@ -622,22 +620,19 @@ struct FamiliarComposer: View {
 }
 
 private struct FamiliarComposerNotice: Identifiable {
-    enum Kind { case imageBlocked, fileImportFailed(String) }
+    enum Kind { case fileImportFailed(String) }
     let id = UUID()
     let kind: Kind
     var title: String {
         switch kind {
-        case .imageBlocked: return String(localized: "attachment.image_send_blocked_title")
         case .fileImportFailed: return String(localized: "attachment.file_import_failed_title")
         }
     }
     var message: String {
         switch kind {
-        case .imageBlocked: return String(localized: "attachment.image_send_blocked_detail")
         case .fileImportFailed(let detail): return detail
         }
     }
-    static let imageBlocked = FamiliarComposerNotice(kind: .imageBlocked)
     static func fileImportFailed(_ detail: String) -> FamiliarComposerNotice {
         FamiliarComposerNotice(kind: .fileImportFailed(detail))
     }

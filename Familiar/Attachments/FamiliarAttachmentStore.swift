@@ -13,6 +13,7 @@ nonisolated enum FamiliarAttachmentStoreError: LocalizedError, Sendable {
     case emptyDocument
     case invalidRelativePath
     case copyFailed
+    case imageEncodingFailed
 
     var errorDescription: String? {
         switch self {
@@ -32,6 +33,8 @@ nonisolated enum FamiliarAttachmentStoreError: LocalizedError, Sendable {
             return String(localized: "attachment.error.invalid_path", defaultValue: "The attachment path is invalid.")
         case .copyFailed:
             return String(localized: "attachment.error.copy_failed", defaultValue: "The attachment could not be copied.")
+        case .imageEncodingFailed:
+            return String(localized: "attachment.error.image_encoding_failed", defaultValue: "The photo could not be prepared for sending.")
         }
     }
 }
@@ -112,13 +115,45 @@ nonisolated enum FamiliarAttachmentStore {
         }
     }
 
+    static func importImage(_ image: UIImage, filename: String = "photo.jpg") throws -> FamiliarAttachmentDraft {
+        guard let data = image.jpegData(compressionQuality: 0.85) else {
+            throw FamiliarAttachmentStoreError.imageEncodingFailed
+        }
+        guard Int64(data.count) <= maximumSourceBytes else {
+            throw FamiliarAttachmentStoreError.fileTooLarge
+        }
+        let safeName = sanitizedFilename(filename)
+        let draftURL = try makeDraftURL(filename: safeName)
+        do {
+            try data.write(to: draftURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        } catch {
+            try? fileManager.removeItem(at: draftURL)
+            throw FamiliarAttachmentStoreError.copyFailed
+        }
+        return FamiliarAttachmentDraft(
+            id: UUID(),
+            kind: .image,
+            filename: safeName,
+            mimeType: "image/jpeg",
+            relativePath: relativePath(for: draftURL),
+            extractedText: "",
+            byteSize: Int64(data.count),
+            extractionEngine: "photos",
+            extractionVersion: "1",
+            detectedFormat: "jpeg",
+            usedOCR: false
+        )
+    }
+
     static func stageCopy(of attachment: FamiliarAttachmentSnapshot) throws -> FamiliarAttachmentDraft {
         let sourceURL = try validatedStoreURL(for: attachment.relativePath)
         guard fileManager.fileExists(atPath: sourceURL.path) else { throw FamiliarAttachmentStoreError.sourceUnavailable }
         let size = try fileSize(of: sourceURL)
         guard size <= maximumSourceBytes else { throw FamiliarAttachmentStoreError.fileTooLarge }
         let filename = sanitizedFilename(attachment.filename)
-        guard isSupported(filename) else { throw FamiliarAttachmentStoreError.unsupportedFile }
+        if attachment.kind != .image {
+            guard isSupported(filename) else { throw FamiliarAttachmentStoreError.unsupportedFile }
+        }
         let destinationURL = try makeDraftURL(filename: filename)
         do {
             try fileManager.copyItem(at: sourceURL, to: destinationURL)
@@ -132,7 +167,7 @@ nonisolated enum FamiliarAttachmentStore {
         }
         return FamiliarAttachmentDraft(
             id: UUID(),
-            kind: .document,
+            kind: attachment.kind,
             filename: filename,
             mimeType: attachment.mimeType,
             relativePath: relativePath(for: destinationURL),

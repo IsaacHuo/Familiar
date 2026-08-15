@@ -12,9 +12,6 @@ nonisolated struct AnthropicMessagesClient: FamiliarModelProvider, Sendable {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    guard !modelRequest.messages.contains(where: \.containsImagePlaceholder) else {
-                        throw FamiliarProviderRequestError.unsupportedImages(provider: descriptor.displayName)
-                    }
                     let endpoint = try FamiliarProviderHTTP.authorizedURL(
                         descriptor: descriptor,
                         path: descriptor.chatPath,
@@ -149,11 +146,19 @@ private nonisolated extension AnthropicMessagesClient {
             for source in messages {
                 let role = source.role == .assistant ? "assistant" : "user"
                 var blocks: [ContentBlock] = []
-                if let text = source.networkText, !text.isEmpty {
-                    if source.role == .tool, let toolCallID = source.toolCallID {
-                        blocks.append(.toolResult(toolUseID: toolCallID, content: text))
-                    } else {
-                        blocks.append(.text(text))
+                for part in source.contentParts {
+                    switch part {
+                    case .text(let text):
+                        guard !text.isEmpty else { continue }
+                        if source.role == .tool, let toolCallID = source.toolCallID {
+                            blocks.append(.toolResult(toolUseID: toolCallID, content: text))
+                        } else {
+                            blocks.append(.text(text))
+                        }
+                    case .document(let text, let filename):
+                        blocks.append(.text("[Document: \(filename)]\n\(text)"))
+                    case .image(let data, let mimeType):
+                        blocks.append(.image(mediaType: mimeType, data: data.base64EncodedString()))
                     }
                 }
                 if source.role == .assistant {
@@ -190,10 +195,16 @@ private nonisolated extension AnthropicMessagesClient {
         case text(String)
         case toolUse(id: String, name: String, input: FamiliarJSONValue)
         case toolResult(toolUseID: String, content: String)
+        case image(mediaType: String, data: String)
 
         enum CodingKeys: String, CodingKey {
-            case type, text, id, name, input, content
+            case type, text, id, name, input, content, source
             case toolUseID = "tool_use_id"
+        }
+        enum SourceKeys: String, CodingKey {
+            case type
+            case mediaType = "media_type"
+            case data
         }
 
         func encode(to encoder: Encoder) throws {
@@ -211,6 +222,12 @@ private nonisolated extension AnthropicMessagesClient {
                 try container.encode("tool_result", forKey: .type)
                 try container.encode(toolUseID, forKey: .toolUseID)
                 try container.encode(content, forKey: .content)
+            case .image(let mediaType, let data):
+                try container.encode("image", forKey: .type)
+                var source = container.nestedContainer(keyedBy: SourceKeys.self, forKey: .source)
+                try source.encode("base64", forKey: .type)
+                try source.encode(mediaType, forKey: .mediaType)
+                try source.encode(data, forKey: .data)
             }
         }
     }
@@ -274,9 +291,6 @@ nonisolated struct GeminiGenerateContentClient: FamiliarModelProvider, Sendable 
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    guard !modelRequest.messages.contains(where: \.containsImagePlaceholder) else {
-                        throw FamiliarProviderRequestError.unsupportedImages(provider: descriptor.displayName)
-                    }
                     let endpoint = try FamiliarProviderHTTP.authorizedURL(
                         descriptor: descriptor,
                         path: descriptor.chatPath,
@@ -389,14 +403,22 @@ private nonisolated extension GeminiGenerateContentClient {
             for source in messages {
                 let role = source.role == .assistant ? "model" : "user"
                 var parts: [RequestPart] = []
-                if let text = source.networkText, !text.isEmpty {
-                    if source.role == .tool {
-                        parts.append(.functionResponse(
-                            name: source.name ?? "tool",
-                            response: FamiliarJSONValue.responseObject(from: text)
-                        ))
-                    } else {
-                        parts.append(.text(text))
+                for part in source.contentParts {
+                    switch part {
+                    case .text(let text):
+                        guard !text.isEmpty else { continue }
+                        if source.role == .tool {
+                            parts.append(.functionResponse(
+                                name: source.name ?? "tool",
+                                response: FamiliarJSONValue.responseObject(from: text)
+                            ))
+                        } else {
+                            parts.append(.text(text))
+                        }
+                    case .document(let text, let filename):
+                        parts.append(.text("[Document: \(filename)]\n\(text)"))
+                    case .image(let data, let mimeType):
+                        parts.append(.inlineData(mimeType: mimeType, data: data.base64EncodedString()))
                     }
                 }
                 if source.role == .assistant {
@@ -428,11 +450,13 @@ private nonisolated extension GeminiGenerateContentClient {
         case text(String)
         case functionCall(name: String, args: FamiliarJSONValue)
         case functionResponse(name: String, response: FamiliarJSONValue)
+        case inlineData(mimeType: String, data: String)
 
         enum CodingKeys: String, CodingKey {
-            case text, functionCall, functionResponse
+            case text, functionCall, functionResponse, inlineData
         }
         enum FunctionKeys: String, CodingKey { case name, args, response }
+        enum InlineDataKeys: String, CodingKey { case mimeType, data }
 
         func encode(to encoder: Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
@@ -447,6 +471,10 @@ private nonisolated extension GeminiGenerateContentClient {
                 var nested = container.nestedContainer(keyedBy: FunctionKeys.self, forKey: .functionResponse)
                 try nested.encode(name, forKey: .name)
                 try nested.encode(response, forKey: .response)
+            case .inlineData(let mimeType, let data):
+                var nested = container.nestedContainer(keyedBy: InlineDataKeys.self, forKey: .inlineData)
+                try nested.encode(mimeType, forKey: .mimeType)
+                try nested.encode(data, forKey: .data)
             }
         }
     }

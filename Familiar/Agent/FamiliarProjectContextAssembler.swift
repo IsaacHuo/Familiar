@@ -73,7 +73,14 @@ nonisolated enum FamiliarProjectContextAssembler {
         providerMessages += messages.map { snapshot in
             if snapshot.role == .assistant { return .assistant(snapshot.content) }
             var parts: [FamiliarProviderContent] = snapshot.content.isEmpty ? [] : [.text(snapshot.content)]
-            parts += snapshot.attachments.map { .document(text: $0.extractedText, filename: $0.filename) }
+            parts += snapshot.attachments.map { attachment in
+                if attachment.kind == .image,
+                   let url = FamiliarAttachmentStore.url(for: attachment.relativePath),
+                   let data = try? Data(contentsOf: url) {
+                    return FamiliarProviderContent.image(data: data, mimeType: attachment.mimeType)
+                }
+                return FamiliarProviderContent.document(text: attachment.extractedText, filename: attachment.filename)
+            }
             return .user(parts: parts)
         }
 

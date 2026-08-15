@@ -520,18 +520,18 @@ struct FamiliarBenchmarkTests {
         let container = try FamiliarTestStore.make()
         let controller = FamiliarChatController(dependencies: FamiliarAppDependencies())
         controller.draft = "把海报加到日历"
-        controller.draftImages = [FamiliarDraftImage(image: UIImage())]
+        controller.draftImages = [FamiliarDraftImage(image: Self.testImage())]
         controller.startSending(in: container.mainContext)
 
         var failures: [String] = []
-        if controller.errorMessage != String(localized: "attachment.image_send_blocked_detail") {
-            failures.append("image gate did not show the expected error")
+        if controller.errorMessage != String(localized: "attachment.error.model_images_unsupported") {
+            failures.append("image capability gate did not show the expected error")
         }
-        if controller.isSending { failures.append("image gate started a run") }
-        if !controller.messages.isEmpty { failures.append("image gate created a message") }
-        if controller.draftImages.isEmpty { failures.append("image gate discarded the draft image") }
+        if controller.isSending { failures.append("image capability gate started a run") }
+        if !controller.messages.isEmpty { failures.append("image capability gate created a message") }
+        if controller.draftImages.isEmpty { failures.append("image capability gate discarded the draft image") }
         let conversations = try container.mainContext.fetch(FetchDescriptor<FamiliarConversation>())
-        if !conversations.isEmpty { failures.append("image gate created a conversation") }
+        if !conversations.isEmpty { failures.append("image capability gate created a conversation") }
 
         return FamiliarBenchmarkResult(
             scenario: .posterImageGate,
@@ -542,6 +542,14 @@ struct FamiliarBenchmarkTests {
             durationMilliseconds: Int(Date().timeIntervalSince(startedAt) * 1_000),
             failures: failures
         )
+    }
+
+    private static func testImage() -> UIImage {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8))
+        return renderer.image { context in
+            UIColor.systemRed.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        }
     }
 
     private func messages(for scenario: FamiliarBenchmarkScenario) -> [FamiliarMessageSnapshot] {

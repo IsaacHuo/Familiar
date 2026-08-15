@@ -4,7 +4,6 @@ nonisolated enum FamiliarProviderRequestError: LocalizedError, Sendable {
     case invalidResponse(provider: String)
     case server(provider: String, statusCode: Int, message: String)
     case emptyResponse(provider: String)
-    case unsupportedImages(provider: String)
     case invalidConfiguration(provider: String)
 
     var errorDescription: String? {
@@ -15,8 +14,6 @@ nonisolated enum FamiliarProviderRequestError: LocalizedError, Sendable {
             String(format: String(localized: "error.provider.server"), provider, statusCode, message)
         case .emptyResponse(let provider):
             String(format: String(localized: "error.provider.empty_response"), provider)
-        case .unsupportedImages(let provider):
-            String(format: String(localized: "error.provider.images_unsupported"), provider)
         case .invalidConfiguration(let provider):
             String(format: String(localized: "error.provider.invalid_configuration"), provider)
         }
@@ -35,9 +32,6 @@ nonisolated struct OpenAICompatibleClient: FamiliarModelProvider, Sendable {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    guard !modelRequest.messages.contains(where: \.containsImagePlaceholder) else {
-                        throw FamiliarProviderRequestError.unsupportedImages(provider: descriptor.displayName)
-                    }
                     let endpoint = try FamiliarProviderHTTP.authorizedURL(
                         descriptor: descriptor,
                         path: descriptor.chatPath,
@@ -155,14 +149,18 @@ private nonisolated extension OpenAICompatibleClient {
 
     struct RequestMessage: Encodable {
         let role: String
-        let content: String?
+        let content: RequestContent?
         let toolCalls: [RequestToolCall]?
         let toolCallID: String?
         let name: String?
 
         init(_ message: FamiliarProviderMessage) {
             role = message.role.rawValue
-            content = message.networkText
+            if message.hasImages {
+                content = .parts(message.contentParts.map(RequestContentPart.init))
+            } else {
+                content = message.networkText.map(RequestContent.text)
+            }
             toolCalls = message.toolCalls.isEmpty ? nil : message.toolCalls.map(RequestToolCall.init)
             toolCallID = message.toolCallID
             name = message.name
@@ -172,6 +170,51 @@ private nonisolated extension OpenAICompatibleClient {
             case role, content, name
             case toolCalls = "tool_calls"
             case toolCallID = "tool_call_id"
+        }
+    }
+
+    enum RequestContent: Encodable {
+        case text(String)
+        case parts([RequestContentPart])
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            switch self {
+            case .text(let text): try container.encode(text)
+            case .parts(let parts): try container.encode(parts)
+            }
+        }
+    }
+
+    struct RequestContentPart: Encodable {
+        let type: String
+        let text: String?
+        let imageURL: ImageURL?
+
+        init(_ part: FamiliarProviderContent) {
+            switch part {
+            case .text(let text):
+                type = "text"
+                self.text = text
+                imageURL = nil
+            case .document(let text, let filename):
+                type = "text"
+                self.text = "[Document: \(filename)]\n\(text)"
+                imageURL = nil
+            case .image(let data, let mimeType):
+                type = "image_url"
+                text = nil
+                imageURL = ImageURL(url: "data:\(mimeType);base64,\(data.base64EncodedString())")
+            }
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case type, text
+            case imageURL = "image_url"
+        }
+
+        struct ImageURL: Encodable {
+            let url: String
         }
     }
 

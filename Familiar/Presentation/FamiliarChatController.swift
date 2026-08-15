@@ -152,15 +152,32 @@ final class FamiliarChatController {
 
     func startSending(in context: ModelContext) {
         guard !isSending else { return }
-        guard draftImages.isEmpty else {
-            errorMessage = String(localized: "attachment.image_send_blocked_detail")
+        let prompt = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        var importedImageDrafts: [FamiliarAttachmentDraft] = []
+        defer {
+            if !importedImageDrafts.isEmpty {
+                FamiliarAttachmentStore.remove(relativePaths: importedImageDrafts.map(\.relativePath))
+            }
+        }
+        do {
+            importedImageDrafts = try draftImages.enumerated().map { index, draftImage in
+                try FamiliarAttachmentStore.importImage(draftImage.image, filename: "photo-\(index + 1).jpg")
+            }
+        } catch {
+            errorMessage = error.localizedDescription
             return
         }
-        let prompt = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !prompt.isEmpty || !draftAttachments.isEmpty else { return }
+        let combinedAttachments = draftAttachments + importedImageDrafts
+
+        guard !prompt.isEmpty || !combinedAttachments.isEmpty else { return }
         let requestSettings = settings
         guard let descriptor = requestSettings.resolvedProvider else {
             errorMessage = String(localized: "error.provider.invalid_custom_configuration")
+            return
+        }
+        guard draftImages.isEmpty || requestSettings.selectedModel.capabilities.supportsImages else {
+            errorMessage = String(localized: "attachment.error.model_images_unsupported")
             return
         }
         let selectedProject = selectedConversation(in: context)?.project
@@ -175,7 +192,7 @@ final class FamiliarChatController {
         }
         let requestCharacterCount = priorCharacterCount
             + prompt.count
-            + draftAttachments.reduce(0) { $0 + $1.extractedText.count }
+            + combinedAttachments.reduce(0) { $0 + $1.extractedText.count }
         guard requestCharacterCount <= requestSettings.selectedModel.capabilities.maximumInputCharacters else {
             errorMessage = String(localized: "error.message.context_too_large")
             return
@@ -210,7 +227,7 @@ final class FamiliarChatController {
         let messageID = UUID()
         var committedPaths: [String] = []
         do {
-            committedPaths = try committedAttachmentPaths(for: draftAttachments, messageID: messageID)
+            committedPaths = try committedAttachmentPaths(for: combinedAttachments, messageID: messageID)
         } catch {
             context.rollback()
             if createdConversation { selectedConversationID = nil }
@@ -226,7 +243,7 @@ final class FamiliarChatController {
             conversation: conversation
         )
         context.insert(userMessage)
-        for (draftAttachment, relativePath) in zip(draftAttachments, committedPaths) {
+        for (draftAttachment, relativePath) in zip(combinedAttachments, committedPaths) {
             let attachment = FamiliarAttachment(
                 id: draftAttachment.id,
                 kind: draftAttachment.kind,
@@ -245,7 +262,7 @@ final class FamiliarChatController {
         }
         conversation.updatedAt = Date()
         if conversation.messages.count == 1 {
-            let titleSource = prompt.isEmpty ? (draftAttachments.first?.filename ?? String(localized: "conversation.new")) : prompt
+            let titleSource = prompt.isEmpty ? (combinedAttachments.first?.filename ?? String(localized: "conversation.new")) : prompt
             conversation.title = String(titleSource.prefix(28))
         }
 
@@ -259,7 +276,7 @@ final class FamiliarChatController {
             return
         }
 
-        FamiliarAttachmentStore.remove(relativePaths: draftAttachments.map(\.relativePath))
+        FamiliarAttachmentStore.remove(relativePaths: combinedAttachments.map(\.relativePath))
         draft = ""
         draftAttachments = []
         draftImages = []

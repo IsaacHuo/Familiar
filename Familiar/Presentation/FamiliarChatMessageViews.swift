@@ -301,35 +301,45 @@ private struct FamiliarMessageRow: View {
             Spacer(minLength: 48)
             VStack(alignment: .leading, spacing: 9) {
                 ForEach(message.attachments) { attachment in
-                    Button {
-                        previewAttachment = attachment
-                    } label: {
-                        HStack(spacing: 9) {
-                            Image(systemName: attachment.mimeType == "application/pdf" ? "doc.richtext" : "doc.text")
-                                .font(.title3)
-                                .foregroundStyle(FamiliarTheme.accent)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(attachment.filename)
-                                    .font(.subheadline.weight(.medium))
-                                    .lineLimit(2)
-                                Text(
-                                    "\(attachment.extractionEngine)\(attachment.usedOCR ? " + Vision OCR" : "") · "
-                                    + "\(attachment.detectedFormat.uppercased()) · "
-                                    + ByteCountFormatter.string(fromByteCount: attachment.byteSize, countStyle: .file)
-                                )
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                            }
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.tertiary)
+                    if attachment.kind == .image {
+                        Button {
+                            previewAttachment = attachment
+                        } label: {
+                            FamiliarImageAttachmentView(relativePath: attachment.relativePath)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                        .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(String(format: String(localized: "attachment.preview"), attachment.filename))
+                    } else {
+                        Button {
+                            previewAttachment = attachment
+                        } label: {
+                            HStack(spacing: 9) {
+                                Image(systemName: attachment.mimeType == "application/pdf" ? "doc.richtext" : "doc.text")
+                                    .font(.title3)
+                                    .foregroundStyle(FamiliarTheme.accent)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(attachment.filename)
+                                        .font(.subheadline.weight(.medium))
+                                        .lineLimit(2)
+                                    Text(
+                                        "\(attachment.extractionEngine)\(attachment.usedOCR ? " + Vision OCR" : "") · "
+                                        + "\(attachment.detectedFormat.uppercased()) · "
+                                        + ByteCountFormatter.string(fromByteCount: attachment.byteSize, countStyle: .file)
+                                    )
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                }
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(10)
+                            .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(String(format: String(localized: "attachment.preview"), attachment.filename))
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(String(format: String(localized: "attachment.preview"), attachment.filename))
                 }
                 if !message.content.isEmpty {
                     Text(message.content)
@@ -415,6 +425,33 @@ private struct FamiliarMessageRow: View {
         let providerName = provider?.displayName ?? providerID
         let modelName = provider?.model(for: modelID).displayName ?? modelID
         return "\(providerName) · \(modelName)"
+    }
+}
+
+private struct FamiliarImageAttachmentView: View {
+    let relativePath: String
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 240, maxHeight: 240)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            } else {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(FamiliarTheme.elevatedFill)
+                    .frame(width: 200, height: 140)
+                    .overlay { ProgressView() }
+            }
+        }
+        .task(id: relativePath) {
+            if let url = FamiliarAttachmentStore.url(for: relativePath) {
+                image = UIImage(contentsOfFile: url.path)
+            }
+        }
     }
 }
 

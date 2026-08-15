@@ -10,7 +10,7 @@ nonisolated enum FamiliarProviderMessageRole: String, Sendable {
 nonisolated enum FamiliarProviderContent: Equatable, Sendable {
     case text(String)
     case document(text: String, filename: String)
-    case imagePlaceholder(localIdentifier: String?)
+    case image(data: Data, mimeType: String)
 }
 
 nonisolated struct FamiliarProviderToolCall: Equatable, Sendable {
@@ -76,16 +76,16 @@ nonisolated struct FamiliarProviderMessage: Sendable {
                 text
             case .document(let text, let filename):
                 "[Document: \(filename)]\n\(text)"
-            case .imagePlaceholder:
+            case .image:
                 nil
             }
         }
         return values.isEmpty ? nil : values.joined(separator: "\n\n")
     }
 
-    var containsImagePlaceholder: Bool {
+    var hasImages: Bool {
         contentParts.contains { part in
-            if case .imagePlaceholder = part { return true }
+            if case .image = part { return true }
             return false
         }
     }
