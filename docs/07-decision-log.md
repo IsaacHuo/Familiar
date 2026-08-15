@@ -173,8 +173,8 @@
 
 ## D-016 图片保留输入能力，关闭发送链路
 
-- 状态：生效
-- 决策：相机和相册可以创建图片草稿，当前版本阻止图片请求。
+- 状态：生效；图片发送路径正在扩展（工作树未提交改动，见 `../state/CURRENT.md`）
+- 决策：相机和相册可以创建图片草稿。图片发送只对支持图片的模型开放，且图片字节只发往用户所选 Provider；能力不支持时阻止请求并保留草稿。
 - 依据：输入器结构需要完整，模型图片编码和隐私验收尚未进入首发交付。
 - 影响：
   - 拦截时保留文字和图片草稿。
@@ -205,7 +205,7 @@
 
 ## D-019 开发 Schema 使用版本化 store
 
-- 状态：已由 D-039 补充，真机损坏 store 场景待验证
+- 状态：生效（修复已落地）；真机损坏 store 场景待验证
 - 决策：当前 Schema 使用 `FamiliarAgentV2.store`。首次成功创建后清理旧开发 store；当前 store 无法创建时显示恢复界面，由用户确认重建。
 - 依据：旧开发 store 缺少必填字段，SwiftData 自动迁移返回 134110；项目当前无正式用户，计划允许直接替换开发 Schema。
 - 影响：
@@ -217,7 +217,7 @@
 
 ## D-039 当前 7 实体冻结为 SwiftData V1
 
-- 状态：生效
+- 状态：生效（V1 仍为冻结基线；Project/Resource/Artifact/Context/Capability/Resume 契约以 V2–V6 轻量迁移链追加）
 - 决策：当前 7 实体冻结为 `FamiliarSchemaV1` 1.0.0，所有生产和测试容器通过 `FamiliarSchemaMigrationPlan` 打开，文件名继续使用 `FamiliarAgentV2.store`。顶层模型名由 typealias 指向 V1 模型，现有调用点不变。
 - 依据：Project/Resource 引入前需要稳定的迁移起点；磁盘测试已证明旧直接 Schema store 可通过 migration plan 重开并保持全部实体数据和关系。
 - 影响：后续持久化字段变更必须新增 VersionedSchema 和 migration stage。打开或迁移失败保持可观察，只有用户在恢复界面再次确认后才删除 store 与附件。
@@ -324,7 +324,7 @@
 
 ## D-028 意图感知授权
 
-- 状态：目标设计，生产路径未实现
+- 状态：数据契约已建（V5/V6），生产路径未启用免确认
 - 决策：目标授权模型允许精确匹配可审计 `AuthorizationGrant` 的单次可逆写入免除重复确认。当前按 D-011 对所有 EventKit 写入逐次结构化确认，成功后提供进程内一次性 Undo。
 - 依据：权限由代码控制，不靠 Prompt；个人 Agent 需要比简单 Read/Write 更细的风险模型。
 - 影响：
@@ -404,7 +404,7 @@
 
 ## D-036 Project 是第一层工作单元
 
-- 状态：生效，未实现
+- 状态：生效（Project/Resource/Artifact/ContextSnapshot 主链路已实现）
 - 决策：Familiar 的产品定位是原生、安全、可检查的个人 AI 工作台。Project 是长期、有边界、可恢复的工作上下文；Conversation 可以属于 Project，也可以作为普通聊天独立存在。
 - 依据：聊天、资料、项目指令、能力和执行记录需要稳定共同作用域，附件注入无法支撑长期 Workspace。
 - 影响：
@@ -415,8 +415,8 @@
 
 ## D-037 当前不具备严格恢复与重放
 
-- 状态：生效
-- 决策：现有 Run/Step 只表示摘要执行轨迹。只有保存 ContextSnapshot、CapabilitySnapshot、AuthorizationSnapshot、稳定输入输出引用、持久化幂等状态和 ResumeCursor 后，才能声明恢复或重放。
+- 状态：恢复数据契约已建（V6），运行时重放/恢复未实现
+- 决策：现有 Run/Step 只表示摘要执行轨迹。只有保存 ContextSnapshot、CapabilitySnapshot、AuthorizationSnapshot、稳定输入输出引用、持久化幂等状态和 ResumeCursor 后，才能声明恢复或重放。V6 已持久化 RunResumeCursor 与 ToolInvocation 幂等记录（数据契约），但运行时尚未接通恢复执行。
 - 依据：当前持久化不包含完整模型请求、工具参数/结果、授权证据和恢复游标。
 - 影响：后台 API 接入不能先于恢复数据契约；产品文案不得把终态查看描述为恢复或重放。
 - 复审条件：上述数据契约完成并通过中断恢复测试。

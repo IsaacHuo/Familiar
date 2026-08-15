@@ -1,5 +1,7 @@
 # Familiar 产品定义
 
+> 本文描述**产品设计与目标**。当前实现状态见 `state/CURRENT.md`。
+
 ## 1. 产品标识
 
 - 产品名称：Familiar
@@ -45,8 +47,6 @@ Capability Registry
 
 Project、ContextSnapshot 与这四块共同构成目标架构。在 Capability Manifest、Resolver 和 BindingStore 完成后，新的 Apple Framework、远程 MCP Server 或模型主要通过 Adapter 接入。
 
-当前代码仍以 `Conversation` 为根对象。Project、Resource、Artifact、ProjectInstruction、Binding、Memory 和 ResumeCursor 均为目标能力，不是当前交付事实。
-
 ## 3. 产品目标
 
 Familiar 为用户提供统一的移动问答与 Agent 执行入口。产品首发聚焦以下任务：
@@ -60,7 +60,7 @@ Familiar 为用户提供统一的移动问答与 Agent 执行入口。产品首�
 7. 通过 Share Extension、Deep Link、Siri 与 Shortcuts 安全进入同一套草稿和 Agent Runtime。
 8. 使用只读 Web Search/Fetch 获取公开 HTTPS 内容，并在回答中保存和展示来源。
 
-下一阶段的核心目标是建立 Project、Resource、Artifact、ProjectInstruction 和不可变 ContextSnapshot，使多条对话、长期资料与执行记录属于同一个有边界的工作上下文。
+核心目标：使多条对话、长期资料与执行记录属于同一个有边界的工作上下文（Project）。
 
 ## 4. 核心用户任务
 
@@ -78,11 +78,11 @@ Familiar 为用户提供统一的移动问答与 Agent 执行入口。产品首�
 
 ### 4.4 创建日程或提醒
 
-模型生成结构化写入请求。当前生产路径对 EventKit 写入逐次展示目标日历或列表、标题、时间、备注、优先级等字段，用户确认后执行，并在当前进程内提供一次性 Undo。取消结果返回 Agent Loop，用于生成后续回答。未来只有精确匹配可审计 `AuthorizationGrant` 的单次可逆写入才可免除重复确认。
+模型生成结构化写入请求。生产路径对 EventKit 写入逐次展示目标日历或列表、标题、时间、备注、优先级等字段，用户确认后执行，并在当前进程内提供一次性 Undo。取消结果返回 Agent Loop，用于生成后续回答。目标授权模型：只有精确匹配可审计 `AuthorizationGrant` 的单次可逆写入才可免除重复确认（见 `02-system-architecture.md` 2.4）。
 
-### 4.5 使用本机文档
+### 4.5 使用本机文档与项目资料
 
-用户从系统文件选择器添加文档。App 将文件复制到私有目录，通过 AnyDoc 转换为 Markdown。PDF 页面缺少文本层时使用 Vision OCR。发送给 Provider 的内容为抽取文本和文件名上下文。当前实现是 Conversation Attachment pipeline，不具备 Project Resource ID、lineage、共享引用或可写 Artifact，因此还不是长期 Workspace。
+用户从系统文件选择器添加文档。App 将文件复制到私有目录，通过 AnyDoc 转换为 Markdown；PDF 页面缺少文本层时使用 Vision OCR。发送给 Provider 的内容为抽取文本和文件名上下文。目标：项目内文档成为带版本、lineage 和共享引用的 Project Resource，支撑跨对话的长期上下文。
 
 ### 4.6 使用语音输入
 
@@ -112,7 +112,7 @@ Familiar v1 只有一个主 Agent。Subagent、Manager Agent、Graph orchestrati
 
 ### 5.6 Capability 可用性过滤
 
-当前 Registry 在启动时静态注册 8 个工具，并根据 EventKit 权限可用性过滤暴露给模型的定义。运行时发现、安装、启停、版本治理与项目绑定尚未实现。
+当前设备、地区、系统版本、用户授权不可用的 Tool 不暴露给模型。目标 Registry 具备运行时发现、安装、启停、版本治理与项目绑定。
 
 ### 5.7 所有执行必须可观察
 
@@ -136,53 +136,29 @@ MCP、Skills、Core ML、Background、Memory、Subagent 都是能力，不是 MV
 | **第二优先级** | ④ Widgets / Controls · ⑤ Spotlight 等轻量系统入口 |
 | **兼容能力** | ⑥ App Intents · ⑦ Shortcuts |
 
-当前已交付第一版 Deep Link 外壳：
+设计约束（交互细节见 `03-ui-ux-design.md`）：
 
-- `familiar://new?text=...` 只打开新会话并预填草稿，不自动发送。
-- `familiar://conversation/<UUID>` 打开本地会话。
-- `familiar://run/<UUID>` 打开包含该 Run 的本地会话和现有时间线。
-- Deep Link 不接受 API Key、Provider 配置或工具授权，也不能绕过 Agent Runtime 与 Execution Policy。
-
-当前 Share Extension 第一版通过 App Group 共享收件箱承接外部文本、网页 URL 和最多 3 个文件。扩展只复制输入并结束系统分享流程；主 App 下次进入前台且当前没有未发送草稿或运行中请求时，将最早一项导入为新草稿。共享内容不自动发送，扩展不读取 Keychain、不访问 Provider，也不运行工具。
-
-当前系统通知第一版只覆盖用户主动启动的 Run 终态。用户在设置中明确开启后，Run 在 App 非活跃期间完成或失败时可安排一条本地通知；通知只显示通用状态，不包含问题、回答、文件名或工具结果。点击通知复用类型化 Deep Link 回到对应 Run，无法取得 Run ID 时回到对应会话。该能力不使用远程推送、不引入 Familiar 后端，也不代表 Run 已具备独立后台执行能力。
-
-当前 Spotlight 第一版只索引已有消息或 Run 的本地会话。受保护的设备内索引仅保存最多 80 字符的会话标题、更新时间和本地会话 UUID，不索引聊天正文、附件名、工具结果、API Key 或 Provider 配置。点击结果复用会话 Deep Link；本地重命名或删除后，索引随当前会话集合重建。该能力不使用公开 Web 索引，也不把内容同步到 Familiar 服务。
-
-App Intents 不进入 Agent Core，位于外层：
-
-```text
-Siri / Shortcuts / Spotlight / Action Button / Widgets
-                    │
-                App Intents
-                    │
-            AgentRuntime.run()
-```
-
-第一批 App Intents 只需要：
-
-- Ask Familiar
-- Process with Familiar
-- Open Familiar
-
-绝不做 `CalendarCreateIntent`、`WeatherSearchIntent`、`PDFExtractIntent` 之类把整个 Capability Registry 复制到 App Intents。
+- Deep Link 只接受有长度上限的草稿文本或本地会话 / Run UUID；不自动发送、不承载 API Key，也不授予工具写权限。
+- Share Extension 只把用户明确共享的文本、URL 和文件复制到 App Group 收件箱；扩展不读取 Keychain、Provider 配置或 EventKit 数据。
+- Run 终态通知是用户可选的本地通知，不使用远程推送，只包含通用状态与本地 Run / 会话标识。
+- Spotlight 使用受保护的设备内索引，只保存会话标题、更新时间和本地 UUID。
+- Widget / Control 只暴露轻量动作，不复制完整聊天界面。
+- App Intents 只暴露 `Ask Familiar`、`Process with Familiar`、`Open Familiar`，不复制 Capability Registry，不能授权工具写入。
+- 所有入口最终汇入同一个 Agent Runtime。
 
 ## 7. 首发范围
 
 ### 7.1 包含
 
 - 文本聊天与本地会话管理。
-- 12 个内置 Provider。
-- 自定义 OpenAI-compatible Provider。
+- 12 个内置 Provider + 自定义 OpenAI-compatible Provider。
 - OpenAI Chat、Anthropic Messages、Gemini Generate Content 三类协议适配。
-- 日历事件查询与创建。
-- 提醒事项查询与创建。
+- 日历事件与提醒事项的查询与创建（结构化确认 + 进程内一次性 Undo）。
 - 只读 `web_search`、`web_fetch` 与回答来源记录。
-- PDF、Office、OpenDocument、RTF、EPUB、CSV、TXT、Markdown 等文档导入。
-- AnyDoc 本地 Markdown 转换。
-- PDFKit 文本层检查与 Vision OCR。
-- 图片选择、拍照、预览、移除和发送拦截。
+- PDF、Office、OpenDocument、RTF、EPUB、CSV、TXT、Markdown 等文档导入；AnyDoc 本地转换、PDFKit 文本层检查与 Vision OCR。
+- 图片选择、拍照、预览与发送链路（发送边界随模型能力逐步开放）。
 - Apple Speech 转写。
+- Project / Resource / Artifact / ContextSnapshot 主链路。
 - 简体中文和英文界面。
 
 ### 7.2 当前排除
@@ -198,7 +174,6 @@ Siri / Shortcuts / Spotlight / Action Button / Widgets
 - iPhone 上的 MCP Server（后期可能增加 MCP Client）。
 - Core ML LLM、Apple Intelligence 依赖。
 - 实时语音对话。
-- 图片模型请求。
 - 修改或删除现有日历事件和提醒事项。
 - 读取学术系统或其他 App 的私有数据。
 - 通用外部操作自动化。
@@ -206,7 +181,7 @@ Siri / Shortcuts / Spotlight / Action Button / Widgets
 
 ## 8. MVP Benchmark
 
-架构是否成功不看 Tool 数量，看这些任务能否端到端完成。以下目前是目标场景，尚未形成可自动执行的 benchmark runner：
+架构是否成功不看 Tool 数量，看这些任务能否端到端完成。以下为产品目标场景，由 `FamiliarBenchmarkTests` 的 fake-provider runner 以确定性方式运行：
 
 | Benchmark | 检验能力 |
 | --- | --- |
@@ -219,20 +194,11 @@ Siri / Shortcuts / Spotlight / Action Button / Widgets
 | URL → 找活动 → 创建提醒 | Web + System |
 | Tool 失败 → 自动修正/询问 | Recovery |
 
-每一次提交影响 Agent 行为，都应该通过 fake Provider runner 记录成功率、工具序列、审批结果、耗时和成本。runner 实现前不得把表格描述为自动化回归测试。
+每一次影响 Agent 行为的提交，都应通过 fake-provider runner 记录成功率、工具序列、审批结果、耗时和成本。真实 Provider 验收见 `11-verification-and-release-checklist.md`。
 
-## 9. 开发顺序
+## 9. 长期路线图
 
-系统入口已基本完成，只读 Web v1 已接入；下一阶段冻结新 Provider、新 Widget、新系统入口和未接 Runtime 的预览页。一个阶段没有跑通端到端，就不进入下一个：
-
-```text
-Phase 0   Fake-provider Benchmark → iOS CI → 正式 SwiftData Migration Plan
-Phase 1   Project → Conversation 归属 → ProjectInstruction → ContextSnapshot
-Phase 2   Resource → Artifact → 项目文件/URL → 引用与 lineage
-Phase 3   只读 Web 项目绑定 → instruction-only Skills
-Phase 4   Capability Manifest v2 → AuthorizationGrant → Remote MCP
-Phase 5   ResumeCursor → 可恢复 Run → 分系统版本的后台承接
-```
+路线图见 `10-next-phase-execution-plan.md`。核心顺序：先补可验证内核与迁移基础，再 Project/Context/Workspace 主链路，然后只读 Web 与能力契约，最后 Skills / Remote MCP / Memory / 后台承接。
 
 ## 10. 发布门槛
 
@@ -240,7 +206,7 @@ Phase 5   ResumeCursor → 可恢复 Run → 分系统版本的后台承接
 2. iOS 18 arm64 Simulator 构建通过。
 3. 写操作在未确认状态下零执行；可逆写入具备 Undo 路径。
 4. Provider 错误、工具错误和文件错误不显示虚假成功。
-5. 图片草稿被拦截时不创建消息、不上传图片、不清空草稿。
+5. 图片发送在能力不支持时明确拒绝并保留草稿。
 6. API Key 只进入 Keychain 和对应 Provider 请求。
 7. 隐私用途说明与实际调用一致。
 8. 内置模型 ID 失效时允许用户输入有效模型 ID，界面保持可恢复。
@@ -256,7 +222,7 @@ Phase 5   ResumeCursor → 可恢复 Run → 分系统版本的后台承接
 - 文档转换结果可进入模型上下文并保留原文件预览。
 - 日历与提醒事项查询结果来源于 EventKit。
 - 每次写入均具备确认记录和系统保存结果；Undo 路径可验证。
-- 一次 Agent Run 可以查看摘要执行轨迹；严格重放与恢复需要 Context/Capability/Authorization snapshot 和 ResumeCursor，当前未实现。
+- 一次 Agent Run 可以查看摘要执行轨迹；严格重放与恢复依赖 Context/Capability/Authorization snapshot 与 ResumeCursor。
 - 关闭并重新打开 App 后，可查看已完成消息和工具终态。
 - 系统拒绝权限时，App 提供明确状态和恢复入口。
 - 入口调整后：Share Extension 能承接文本，Deep Link / 通知能回到对应任务上下文。

@@ -10,11 +10,11 @@
 
 | 仓库 | 来源 | 本地副本 | 许可证 | 核心参考点 |
 |---|---|---|---|---|
-| swift-sdk（MCP Swift SDK） | [modelcontextprotocol/swift-sdk](https://github.com/modelcontextprotocol/swift-sdk) | `../familiar-reference/achieve/swift-sdk-main` | MIT → Apache-2.0 过渡 | MCP client 协议、Tools/Resources/Prompts 建模 |
-| OpenMinis | [OpenMinis/OpenMinis](https://github.com/OpenMinis/OpenMinis) | `../familiar-reference/achieve/OpenMinis-main` | GPL-3.0 | Linux/Shell 广度、Native Offload、Skills/Memory/Workspace 对照 |
-| Swarm | [christopherkarani/Swarm](https://github.com/christopherkarani/Swarm) | `../familiar-reference/achieve/Swarm-main` | MIT | Swift 原生 Agent/Workflow 循环的工程组织 |
+| swift-sdk（MCP Swift SDK） | [modelcontextprotocol/swift-sdk](https://github.com/modelcontextprotocol/swift-sdk) | `achieve/swift-sdk-main` | MIT → Apache-2.0 过渡 | MCP client 协议、Tools/Resources/Prompts 建模 |
+| OpenMinis | [OpenMinis/OpenMinis](https://github.com/OpenMinis/OpenMinis) | 未纳入仓库（回上游对照） | GPL-3.0 | Linux/Shell 广度、Native Offload、Skills/Memory/Workspace 对照 |
+| Swarm | [christopherkarani/Swarm](https://github.com/christopherkarani/Swarm) | `achieve/Swarm-main`（当前为空目录，未拉取内容） | MIT | Swift 原生 Agent/Workflow 循环的工程组织 |
 
-本地副本位于 Familiar 仓库外，不随仓库 clone 提供。
+本地副本位于仓库内 `achieve/` 目录（不参与 App 构建，仅作参考）。该目录当前未完整维护，主要参考仍以各上游仓库为准。
 
 ## 3. 参考点
 

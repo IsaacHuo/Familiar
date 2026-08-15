@@ -32,7 +32,7 @@
 
 > **Familiar is a native, safe and inspectable personal AI workspace.** Projects are the long-lived work unit, chat is the primary entry, and native tools plus read-only Web form the current execution surface. The single-Agent Runtime is the execution kernel.
 
-Familiar turns the iPhone's native capabilities into a composable runtime without adopting a Linux execution environment, Apple Intelligence dependency or multi-agent orchestration. Project and versioned document resources are implemented; artifacts, writable workspace capabilities, and resumable execution remain the next product layer.
+Familiar turns the iPhone's native capabilities into a composable runtime without adopting a Linux execution environment, Apple Intelligence dependency or multi-agent orchestration. Project, versioned document resources, and Markdown/text artifacts are implemented; writable workspace capabilities beyond artifacts and runtime resumable execution remain the next product layer.
 
 The app is BYOK-only: users bring their own model API Key, model requests go directly from the device to the selected Provider, and conversations, attachments and tool records stay on the device. When web tools are used, search queries go directly to DuckDuckGo and page requests go directly to the selected public HTTPS site.
 
@@ -43,7 +43,7 @@ The app is BYOK-only: users bring their own model API Key, model requests go dir
 - **iPhone-native Agent Runtime** — a single primary Agent that plans with tools and executes through native iOS frameworks; no Linux environment, no Apple Intelligence dependency.
 - **Tools as the core abstraction** — Calendar, Vision, PDF, Maps and more are just Tools registered in a Capability Registry; each tool is small, orthogonal and composable.
 - **Native First** — reuse EventKit, Vision, MapKit, PDFKit, Photos and Foundation instead of reimplementing calendar, OCR, maps or document rendering.
-- **Project workspace v1** — projects share an instruction and versioned local document resources across chats; resources use independent protected storage and immutable Run context references. Artifact and writable workspace capabilities remain planned.
+- **Project workspace v1** — projects share an instruction and versioned local document resources across chats; resources use independent protected storage and immutable Run context references. Markdown/text artifacts are stored per project under structured confirmation. Writable workspace capabilities beyond artifacts remain planned.
 - **Code-enforced authorization** — low-risk reads run automatically; current EventKit writes require structured per-action confirmation and provide an in-process, one-shot Undo after success.
 - **Runtime-event-driven UI** — the timeline renders Agent events (model thinking, tool progress, approval, success and failure) instead of each tool owning its own UI.
 - **Local-first and BYOK** — API Keys are stored per Provider in the iOS Keychain; requests never pass through Familiar servers.
@@ -106,7 +106,7 @@ Familiar is evolving toward six layers. The diagram includes planned capabilitie
   Artifacts / Trace / History
 ```
 
-Current implementation: ordinary conversations remain available alongside Project-owned chats. The runtime has a bounded sequential tool loop, eight statically registered tools, structured EventKit approval, read-only Web search/fetch, Project instructions/resources, immutable input context records, and summary Run/Step persistence. Artifact, durable Memory, Skills, MCP, and resumable runs are not yet implemented.
+Current implementation: ordinary conversations remain available alongside Project-owned chats. The runtime has a bounded sequential tool loop, nine statically registered tools (including project artifact writes), structured EventKit approval, read-only Web search/fetch, Project instructions/resources, immutable input context records, artifact storage, and summary Run/Step persistence. Durable Memory, Skills, MCP, and runtime resumable runs are not yet implemented.
 
 ```mermaid
 flowchart TD
@@ -186,7 +186,7 @@ FamiliarToolManifest
 Internally Familiar separates, following the spirit of MCP but in native Swift:
 
 - **Current resources** — conversation history and extracted message attachments (application-controlled)
-- **Current tools** — two device-information, two read-only Web and four EventKit tools (model-controlled)
+- **Current tools** — two device-information, two read-only Web, one project-artifact and four EventKit tools (model-controlled)
 - **Target resources** — Project files, URLs, Artifacts and scoped Memory
 - **Target instructions** — base policy, Project instructions and Skills (user-controlled)
 
@@ -209,7 +209,7 @@ The target Registry is a core asset organized into two capability families:
 | Notifications | Document |
 | Clipboard | Web |
 
-The current Registry is a startup-supplied dictionary of eight tools with EventKit availability filtering. Native Workspace in the table is a target built from Project + Resource + Artifact; runtime discovery, installation, versioning and project binding are not implemented.
+The current Registry is a startup-supplied dictionary of nine tools with EventKit availability filtering. Native Workspace in the table is a target built from Project + Resource + Artifact; runtime discovery, installation, versioning and project binding are not implemented.
 
 ## Permission model
 
@@ -300,28 +300,34 @@ Familiar/
 ├── Agent/          Agent runtime, tool loop and confirmation events
 ├── AnyDoc/         Swift interface to the embedded AnyDoc engine
 ├── App/            App entry point and model container
+├── Artifacts/      Project artifact store and artifact tool
 ├── Attachments/    Private storage, conversion and OCR pipeline
 ├── Data/           Provider adapters, Keychain and model catalog services
 ├── Domain/         Provider, message and capability models
 ├── EventKit/       Calendar and reminder services/tools
-├── Persistence/    SwiftData schema
+├── Persistence/    SwiftData schema and migration chain
 ├── Presentation/   SwiftUI screens, composer and message rendering
 ├── Resources/      Localizations, assets and bundled renderer resources
 ├── Speech/         Native voice transcription
-└── Support/        Theme and platform compatibility helpers
+├── Support/        Theme and platform compatibility helpers
+├── SystemEntry/    Deep links, intents, notifications and Spotlight
+└── Web/            Read-only web search/fetch with restricted HTTP client
 
 FamiliarWidgets/    Home/Lock Screen launcher Widget and Control Center control
 
+Shared/             App-group inbox and control intent (app + extensions)
 Vendor/
 ├── AnyDocBridge.xcframework/
 └── AnyDocBridgeRust/
 
-Docs/               Product, architecture, UI, privacy and validation records
+docs/               Design and planning (what we intend to build)
+state/              Current implementation truth (code-verified)
+logs/               Reusable debugging and investigation knowledge
 website/            Vue/Vite website, privacy policy and support pages
 Scripts/            Reproducible AnyDoc XCFramework build script
 ```
 
-Detailed product and engineering records are maintained in [`Docs/`](Docs/README.md).
+Documentation is organized by intent and split across three directories (see [`docs/README.md`](docs/README.md) for the model): `docs/` holds design and planning, `state/` holds the code-verified current implementation (`state/CURRENT.md` first, then `state/ARCHITECTURE.md`), and `logs/` holds reusable investigation knowledge.
 
 ## Requirements
 
@@ -378,7 +384,7 @@ Familiar does not currently include:
 
 - iPad support
 - Account systems
-- Artifact, writable workspace, and resumable Run systems (planned, not currently implemented)
+- Writable workspace beyond project artifacts, and runtime resumable Run execution (data contracts exist; not wired into execution yet)
 - Familiar-hosted model proxying
 - Subscription or entitlement flows
 - Linux / iSH execution environment

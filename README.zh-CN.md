@@ -32,7 +32,7 @@
 
 > **Familiar 是一个原生、安全、可检查的个人 AI 工作台。** Project 是长期工作单元，聊天是主要入口，原生工具与只读 Web 是当前执行面，单 Agent Runtime 是执行内核。
 
-Familiar 把 iPhone 的原生能力转成一个可组合的 Runtime，不引入 Linux 执行环境、Apple Intelligence 依赖或复杂多 Agent。Project 与共享文档资源已进入当前实现，Artifact、可写 Workspace 和可恢复执行仍是下一阶段能力。
+Familiar 把 iPhone 的原生能力转成一个可组合的 Runtime，不引入 Linux 执行环境、Apple Intelligence 依赖或复杂多 Agent。Project、版本化文档资源和 Markdown/纯文本 Artifact 已进入当前实现；Artifact 之外的可写 Workspace 和运行时可恢复执行仍是下一阶段能力。
 
 App 采用 BYOK 模式：用户使用自己的模型 API Key，模型请求从设备直接发送到所选 Provider；会话、附件和工具记录保存在本机。使用网页工具时，搜索词会直接发送给 DuckDuckGo，网页请求会直接发送给所选公开 HTTPS 站点。
 
@@ -43,7 +43,7 @@ App 采用 BYOK 模式：用户使用自己的模型 API Key，模型请求从�
 - **iPhone 原生 Agent Runtime** — 单一主 Agent 通过 Tool 规划，并由 iOS 原生 Framework 执行；无 Linux 环境，无 Apple Intelligence 依赖。
 - **Tool 是最核心的抽象** — Calendar、Vision、PDF、Maps 都只是注册在 Capability Registry 中的 Tool；每个 Tool 小而正交、可组合。
 - **Native First** — 复用 EventKit、Vision、MapKit、PDFKit、Photos 与 Foundation，而不是重新实现日历、OCR、地图或文档渲染。
-- **Project Workspace v1** — 项目指令和版本化本地文档资源可跨项目对话共享；资源使用独立受保护目录，并在 Run 中保存不可变上下文引用。Artifact 和可写 Workspace 仍属后续架构。
+- **Project Workspace v1** — 项目指令和版本化本地文档资源可跨项目对话共享；资源使用独立受保护目录，并在 Run 中保存不可变上下文引用。Markdown/纯文本 Artifact 在结构化确认下按项目保存。Artifact 之外的可写 Workspace 仍属后续架构。
 - **代码强制授权** — 低风险读取自动执行；当前 EventKit 写入逐次结构化确认，成功后提供当前进程内的一次性 Undo。
 - **Runtime Event 驱动的 UI** — 时间线渲染 Agent 事件（模型思考、工具进度、审批、成功与失败），而不是每个工具自造一套 UI。
 - **本地优先与 BYOK** — API Key 按 Provider 分别保存在 iOS Keychain；请求不经过 Familiar 服务器。
@@ -106,7 +106,7 @@ Familiar 正在向六层架构演进。下图包含规划能力，不是当前�
   Artifacts / Trace / History
 ```
 
-当前实现同时支持普通 Conversation 与 Project 对话，包含有限串行 Tool Loop、8 个静态注册工具、EventKit 结构化确认、只读 Web Search/Fetch、Project 指令/资源、不可变输入上下文记录和摘要性 Run/Step 持久化。Artifact、长期 Memory、Skills、MCP 与可恢复 Run 尚未实现。
+当前实现同时支持普通 Conversation 与 Project 对话，包含有限串行 Tool Loop、9 个静态注册工具（含项目 Artifact 写入）、EventKit 结构化确认、只读 Web Search/Fetch、Project 指令/资源、不可变输入上下文记录、Artifact 存储和摘要性 Run/Step 持久化。长期 Memory、Skills、MCP 与运行时可恢复 Run 尚未实现。
 
 ```mermaid
 flowchart TD
@@ -186,7 +186,7 @@ FamiliarToolManifest
 Familiar 内部借鉴 MCP 的思想但不把它当作内核，用原生 Swift 实现三种资源分离：
 
 - **当前 Resources** — 会话历史和消息附件抽取文本（application-controlled）
-- **当前 Tools** — 2 个本机信息、2 个只读 Web 和 4 个 EventKit 工具（model-controlled）
+- **当前 Tools** — 2 个本机信息、2 个只读 Web、1 个项目 Artifact 和 4 个 EventKit 工具（model-controlled）
 - **目标 Resources** — Project 文件、URL、Artifact 和 scoped Memory
 - **目标 Instructions** — Base Policy、ProjectInstruction 和 Skills（user-controlled）
 
@@ -209,7 +209,7 @@ Familiar 内部借鉴 MCP 的思想但不把它当作内核，用原生 Swift �
 | Notifications | Document |
 | Clipboard | Web |
 
-当前 Registry 是启动时提供的 8 工具字典，并按 EventKit availability 过滤。表中的 Native Workspace 是由 Project + Resource + Artifact 构成的目标；运行时发现、安装、版本治理和项目绑定尚未实现。
+当前 Registry 是启动时提供的 9 工具字典，并按 EventKit availability 过滤。表中的 Native Workspace 是由 Project + Resource + Artifact 构成的目标；运行时发现、安装、版本治理和项目绑定尚未实现。
 
 ## 权限模型
 
@@ -298,28 +298,34 @@ Familiar/
 ├── Agent/          Agent Runtime、工具循环与确认事件
 ├── AnyDoc/         内置 AnyDoc 引擎的 Swift 接口
 ├── App/            App 入口与模型容器
+├── Artifacts/      项目 Artifact 存储与 Artifact 工具
 ├── Attachments/    私有存储、转换与 OCR 链路
 ├── Data/           Provider 适配器、Keychain 与模型目录服务
 ├── Domain/         Provider、消息与能力模型
 ├── EventKit/       日历与提醒事项服务/工具
-├── Persistence/    SwiftData Schema
+├── Persistence/    SwiftData Schema 与迁移链
 ├── Presentation/   SwiftUI 页面、输入器与消息渲染
 ├── Resources/      本地化、资产与内置渲染资源
 ├── Speech/         原生语音转写
-└── Support/        主题与平台兼容辅助代码
+├── Support/        主题与平台兼容辅助代码
+├── SystemEntry/    Deep Link、App Intents、通知与 Spotlight
+└── Web/            只读 Web 搜索/抓取与受限 HTTP 客户端
 
 FamiliarWidgets/    主屏幕/锁屏启动 Widget 与控制中心 Control
 
+Shared/             App Group 收件箱与控制 Intent（App 与扩展共享）
 Vendor/
 ├── AnyDocBridge.xcframework/
 └── AnyDocBridgeRust/
 
-Docs/               产品、架构、UI、隐私和验证记录
+docs/               设计与规划（我们打算构建什么）
+state/              当前实现真实状态（以代码验证）
+logs/               可复用的调试与调查经验
 website/            Vue/Vite 网站、隐私政策和支持页面
 Scripts/            可复现的 AnyDoc XCFramework 构建脚本
 ```
 
-详尽的产品与工程记录位于 [`Docs/`](Docs/README.md)。
+文档按职责拆分为三个目录（模型见 [`docs/README.md`](docs/README.md)）：`docs/` 承载设计与规划，`state/` 承载以代码验证的当前实现（先读 `state/CURRENT.md`，再读 `state/ARCHITECTURE.md`），`logs/` 承载可复用的调查经验。
 
 ## 环境要求
 

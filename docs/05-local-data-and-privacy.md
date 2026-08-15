@@ -1,5 +1,7 @@
 # Familiar 本地数据与隐私
 
+> 本文描述**数据与隐私设计约束**（产品承诺与安全边界）。当前 SwiftData schema、store 地址与存储布局见 `state/ARCHITECTURE.md`。
+
 ## 1. 数据处理原则
 
 - API Key 保存到设备 Keychain。
@@ -9,7 +11,7 @@
 - 文档原文件复制到 App 私有目录。
 - 文档转换和 PDF OCR 在设备内执行。
 - 流式 token 和待确认请求只存在于内存。
-- 图片草稿不进入 Provider 请求。
+- 图片数据只进入用户所选 Provider 的请求，不写入 SwiftData。
 - App 不创建原始录音文件。
 - App 不读取学术系统或其他 App 的私有数据。
 - App 不使用 Familiar 账户、业务后端或云端数据库。
@@ -31,12 +33,12 @@
 | 模型切换记录 | 用户操作 | SwiftData | 不单独发送 | 会话删除或路径重写 |
 | 工具终态 | Agent 与系统结果 | SwiftData | 可能进入后续模型上下文 | 会话删除或路径重写 |
 | Run/Step 记录 | Agent Runtime | SwiftData | 不单独发送 | 会话删除或路径重写 |
-| Long-term Memory（目标，未实现） | 明确事实写入 | 目标为 SwiftData | 作为 scoped Resource 进入上下文 | 用户删除或 memory.delete |
+| Project / Resource / Artifact | 用户导入或 Agent 生成 | SwiftData + 独立受保护目录 | 抽取文本进入上下文 | 项目删除或用户删除 |
 | 待确认请求 | Agent | 内存 | 不发送到 Familiar 服务 | 决策、取消或进程结束 |
 | 流式 token | Provider | 内存 | 不作二次上传 | 回答终态或任务结束 |
 | 文档原文件 | 文件选择器 | App Support | 不上传 | 附件、消息或会话删除 |
 | 文档抽取文本 | AnyDoc/OCR | SwiftData | 对应 Provider | 附件、消息或会话删除 |
-| 图片草稿 | 相机或相册 | 内存 | 当前版本不上传 | 移除、切换会话或进程结束 |
+| 图片数据 | 相机或相册 | 内存草稿；发送后进入请求 | 用户所选 Provider | 移除、切换会话或进程结束 |
 | 语音转写 | Apple Speech | 输入草稿 | 发送后进入 Provider | 用户编辑或清空草稿 |
 | 原始录音 | 麦克风输入 | 不落盘 | Speech framework 按系统能力处理 | audio buffer 生命周期 |
 | 日历/提醒数据 | EventKit | 查询结果进入内存和工具记录摘要 | 可能作为工具结果进入 Provider | 运行结束和历史记录生命周期 |
@@ -48,166 +50,39 @@
 | 本地通知状态 | Agent Run 终态 | iOS 通知中心保存通用文案和本地 Run / 会话 UUID；开关保存在 UserDefaults | 无 Familiar 服务或远程推送目的地 | 用户关闭功能时清理 Familiar 待处理与已投递通知；系统也可按自身策略清理 |
 | Spotlight 会话索引 | 本地 SwiftData 会话 | Core Spotlight `.complete` 保护索引；最多 80 字符标题、更新时间和会话 UUID | 无 Familiar 服务或公开 Web 索引目的地 | 随当前会话集合重建；重命名更新，删除会话后清理对应结果 |
 
-## 3. SwiftData Schema
+## 3. SwiftData 与 store 策略
 
-路径：`Familiar/Persistence/FamiliarModels.swift`、`Familiar/Domain/FamiliarConversationMetadata.swift`
+当前实体模型、迁移链与 store 地址见 `state/ARCHITECTURE.md` 第 5 节。数据模型设计约束：
 
-```mermaid
-erDiagram
-    FamiliarConversation ||--o{ FamiliarMessage : messages
-    FamiliarConversation ||--o{ FamiliarModelSwitchRecord : modelSwitchRecords
-    FamiliarConversation ||--o{ FamiliarAgentRun : runs
-    FamiliarAgentRun ||--o{ FamiliarAgentStep : steps
-    FamiliarMessage ||--o{ FamiliarAttachment : attachments
-    FamiliarMessage ||--o{ FamiliarSourceRecord : sources
+- 关系删除规则使用 cascade；附件 / 项目资源 / Artifact 文件由控制器显式清理。
+- Project Resource 必须独立于 Message 文件目录，具备稳定 ID、版本、来源和 lineage；删除或编辑消息不能误删项目共享资料。
+- 每次 Run 保存不可变 ContextSnapshot 及其资源引用，不保存完整资源抽取文本进快照记录。
+- store 版本策略：新 Schema 必须作为后续 `VersionedSchema` 加入现有 migration plan，并提供对应 migration stage 与磁盘迁移测试；用户确认后的全量重建只作为异常恢复，不作为正常升级方式。
+- 容器打开或迁移失败不自动重置数据；恢复界面保留 Keychain API Key。（历史启动崩溃的根因与修复见 `logs/swiftdata-store-migration-134110.md`。）
 
-    FamiliarConversation {
-        UUID id
-        String title
-        Date createdAt
-        Date updatedAt
-        String currentProviderID
-        String currentModelID
-    }
-    FamiliarMessage {
-        UUID id
-        String roleRawValue
-        String content
-        Date createdAt
-        Int sequence
-        String providerID
-        String modelID
-    }
-    FamiliarAttachment {
-        UUID id
-        String kindRawValue
-        String filename
-        String mimeType
-        String relativePath
-        String extractedText
-        Int64 byteSize
-        String extractionEngine
-        String extractionVersion
-        String detectedFormat
-        Bool usedOCR
-        Date createdAt
-    }
-    FamiliarSourceRecord {
-        UUID id
-        String sourceID
-        String kindRawValue
-        String title
-        String urlString
-        String siteName
-        String snippet
-        Int sequence
-        Date retrievedAt
-    }
-    FamiliarAgentRun {
-        UUID id
-        String runtimeID
-        String statusRawValue
-        Date startedAt
-        Date finishedAt
-        String finishReason
-        UUID responseMessageID
-    }
-    FamiliarAgentStep {
-        UUID id
-        String typeRawValue
-        Int eventSequence
-        Int timelineSequence
-        String toolCallID
-        String toolName
-        String summary
-        String detail
-        String confirmationRawValue
-        String statusRawValue
-        Date startedAt
-        Date finishedAt
-        String artifactIdentifier
-    }
-```
+## 4. 持久化时点
 
-关系删除规则使用 cascade。文件系统附件由控制器执行显式清理。
-
-## 4. store 版本策略
-
-当前开发 Schema 的 store 地址：
-
-```text
-Application Support/Familiar/Persistence/FamiliarAgentV2.store
-```
-
-历史开发版本使用 SwiftData 默认地址：
-
-```text
-Application Support/default.store
-```
-
-旧 store 缺少 `FamiliarConversation.currentModelID` 等必填字段时，SwiftData 轻量迁移会返回 `NSCocoaErrorDomain 134110`。当前引导流程执行：
-
-1. 创建 `FamiliarAgentV2.store` 的目录和配置。
-2. 成功打开当前 `ModelContainer`。
-3. 当前 store 首次创建时检查旧 `default.store`。
-4. 清理旧 store、`-shm`、`-wal` 和旧附件目录。
-
-清理动作发生在新容器成功创建后。该策略适用于项目当前无正式用户的开发阶段。
-
-当前 7 实体 Schema 已固化为 `FamiliarSchemaV1`，版本号为 `1.0.0`。生产容器和测试内存容器均使用 `Schema(versionedSchema:)` 与 `FamiliarSchemaMigrationPlan`，store 文件名保持不变。迁移测试已验证由原直接 Schema 创建、包含全部 7 实体及关系的数据 store 可通过当前 migration plan 重新打开并保持数据一致。
-
-Project Schema 开发前仍需要满足：
-
-- 新 Schema 必须作为后续 `VersionedSchema` 加入现有 migration plan，并提供对应 migration stage 与磁盘迁移测试。
-- 保留用户可见的数据恢复与重建流程作为异常恢复，而非正常升级方式。
-- 明确 Project Resource 文件移动、引用和失败回滚语义。
-
-当前版本在容器创建或迁移失败时不再终止启动：恢复界面展示有限诊断信息，并在用户再次确认后删除当前 V2 store、SQLite sidecar 与附件目录。打开失败本身不会触发重置；该操作保留 Keychain 中的 Provider API Key，完成后要求用户重启 App。
-
-## 5. 持久化时点
-
-### 5.1 用户消息
+### 4.1 用户消息
 
 用户消息和已提交附件在网络请求前保存。请求失败后，用户输入仍保留在会话中。
 
-### 5.2 助手消息
+### 4.2 助手消息
 
-流式期间更新 `streamingText`。Provider 和 Agent Loop 进入终态后创建助手消息并保存。
+流式期间更新内存中的 `streamingText`。Provider 和 Agent Loop 进入终态后创建助手消息并保存。
 
-### 5.3 工具记录
+### 4.3 工具记录
 
-工具成功、取消或失败后保存：
+工具成功、取消或失败后保存：工具名、用户可见摘要、详情、确认结果、终态、开始和结束时间。等待确认状态不保存。
 
-- 工具名。
-- 用户可见摘要。
-- 详情。
-- 确认结果。
-- 终态。
-- 开始和结束时间。
-
-等待确认状态不保存。
-
-### 5.4 模型切换
+### 4.4 模型切换
 
 会话内切换 Provider 或模型时保存切换记录，并更新会话当前选择。
 
-### 5.5 Run 与 Step
+### 4.5 Run 与 Step
 
-一次 Agent Run 创建时保存 Run；审批、工具终态和模型响应摘要作为检查点保存。流式增量不保存。现有字段不足以恢复或严格重放。
+一次 Agent Run 创建时保存 Run；审批、工具终态和模型响应摘要作为检查点保存。流式增量不保存。目标：补充完整调用载荷、Authorization snapshot 与 ResumeCursor，支持严格恢复（见 `02-system-architecture.md` 3.1）。
 
-## 5.6 Memory（目标，未实现）
-
-- global：跨项目个人偏好。
-- project：项目事实和约定。
-- conversation：单个对话的局部信息。
-
-每条结构化 Memory 记录 provenance、scope、confidence、createdBy、lastUsedAt 和可见性。自动写入默认关闭，不做全量聊天向量化。
-
-## 5.7 Project 数据模型（目标，未实现）
-
-目标关系为 `Project -> Conversations / Resources / Artifacts / Instructions / Bindings / Memory / Runs`。Resource 必须独立于 Message 文件目录，具备稳定 ID、版本、来源和 lineage；删除或编辑消息不能误删项目共享资料。每次 Run 保存不可变 Context/Capability/Authorization snapshot 和输出引用。
-
-## 6. 文件系统
+## 5. 文件系统
 
 附件根目录：
 
@@ -222,51 +97,27 @@ Drafts/
 Messages/<message UUID>/
 ```
 
-### 6.1 路径安全
+Project 资源、Artifact 使用独立的受保护目录（具体路径见 `state/ARCHITECTURE.md`）。
+
+### 5.1 路径安全
 
 `FamiliarAttachmentStore` 执行：
 
 - 文件名清洗。
-- 拒绝绝对路径。
-- 拒绝空路径段。
-- 拒绝 `..`。
+- 拒绝绝对路径、空路径段和 `..`。
 - 规范化 URL 必须位于附件根目录内。
 - 源文件和复制文件大小校验。
 - 单文件上限 25 MiB。
 
-### 6.2 安全作用域
+### 5.2 安全作用域
 
-文件导入期间调用：
+文件导入期间调用 `startAccessingSecurityScopedResource()` / `stopAccessingSecurityScopedResource()`。安全作用域只覆盖复制过程；后续预览使用 App 私有副本。
 
-- `startAccessingSecurityScopedResource()`
-- `stopAccessingSecurityScopedResource()`
+### 5.3 清理
 
-安全作用域只覆盖复制过程。后续预览使用 App 私有副本。
+设计要求：导入失败、转换失败、导入取消、多附件提交中途失败、删除会话、编辑或重试删除后续消息、丢弃草稿时均清理对应文件；页面出现时清理未被引用的 Drafts 与 Messages 孤儿文件；附件目录创建时设置 `.completeUntilFirstUserAuthentication` 文件保护。
 
-### 6.3 清理
-
-已实现清理场景：
-
-- 导入失败。
-- 转换失败。
-- 导入取消。
-- 多附件提交中途失败。
-- 删除会话。
-- 编辑或重试删除后续消息。
-- 丢弃草稿。
-- 页面出现时清理未被当前草稿引用的 Drafts。
-- 页面出现时按全部 SwiftData 引用清理 Drafts 与 Messages 中的孤儿文件。
-- 创建附件目录时设置 `.completeUntilFirstUserAuthentication` 文件保护。
-
-当前缺口：
-
-- 真实大附件集合的清理时机与性能尚未完成验收。
-
-## 7. Keychain
-
-路径：`Familiar/Data/FamiliarKeychainStore.swift`
-
-属性：
+## 6. Keychain
 
 ```text
 kSecClassGenericPassword
@@ -284,7 +135,7 @@ kSecAttrAccessible = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
 
 API Key 不进入 SwiftData、UserDefaults、日志文案和工具记录。
 
-## 8. Provider 网络数据
+## 7. Provider 网络数据
 
 发送内容可能包括：
 
@@ -295,11 +146,9 @@ API Key 不进入 SwiftData、UserDefaults、日志文案和工具记录。
 - 工具查询结果。
 - 用户确认后的工具执行结果。
 
-网络目的地由 Provider descriptor 和用户配置决定。
+网络目的地由 Provider descriptor 和用户配置决定。用户配置自定义 Base URL 时，数据会发送到该 URL 所属服务；设置界面和隐私文档需要提示该影响。
 
-用户配置自定义 Base URL 时，数据会发送到该 URL 所属服务。设置界面和隐私文档需要提示该影响。
-
-## 9. WebKit 数据
+## 8. WebKit 数据
 
 `FamiliarMarkdownWebView` 使用 `.nonPersistent()` website data store。脚本和样式来自 App Bundle。
 
@@ -311,67 +160,61 @@ CSP 主要限制：
 - `frame-src 'none'`
 - `form-action 'none'`
 
-`img-src` 仅允许 Bundle 同源资源与 `data:`，不允许 HTTP 或 HTTPS 图片。渲染器先在 inert template 中清理 Markdown HTML，把 HTTPS 图片替换为带有替代文本和主机名的来源链接，再插入 WebView 文档。因此渲染过程不会向图片主机暴露 IP、User-Agent 或访问时间。只有用户主动点击来源链接后，系统才会在外部打开该地址，此后的网络请求受目标网站隐私政策约束。
+`img-src` 仅允许 Bundle 同源资源与 `data:`，不允许 HTTP 或 HTTPS 图片。渲染器先在 inert template 中清理 Markdown HTML，把 HTTPS 图片替换为带有替代文本和主机名的来源链接，再插入 WebView 文档。渲染过程不会向图片主机暴露 IP、User-Agent 或访问时间。只有用户主动点击来源链接后，系统才会在外部打开该地址。
 
-## 10. EventKit 数据
+## 9. EventKit 数据
 
-### 10.1 读取
+### 9.1 读取
 
 查询参数限定时间范围、文字条件和结果上限。工具结果可能进入 Provider 上下文，用于生成回答。
 
-### 10.2 写入
+### 9.2 写入
 
 创建操作包含两个阶段：
 
 1. 生成待确认计划。
 2. 用户确认后调用 EventKit save。
 
-工具确认卡展示目标容器和字段。取消结果进入 Agent Loop。取消路径不调用 save。
+工具确认卡展示目标容器和字段。取消结果进入 Agent Loop。取消路径不调用 save。写入幂等状态当前只存在于当前进程。
 
-### 10.3 权限
+### 9.3 权限
 
 使用 EventKit full access API（iOS 17 引入）：
 
 - `requestFullAccessToEvents()`
 - `requestFullAccessToReminders()`
 
-用途说明：
+用途说明：`NSCalendarsFullAccessUsageDescription`、`NSRemindersFullAccessUsageDescription`。
 
-- `NSCalendarsFullAccessUsageDescription`
-- `NSRemindersFullAccessUsageDescription`
-
-## 11. 相机、照片和语音
+## 10. 相机、照片和语音
 
 ### 相机
 
 - 用户进入相机界面时请求权限。
 - 照片进入内存草稿。
-- 当前发送 gate 阻止图片网络请求。
 
 ### 照片
 
-- 使用 `PhotosPicker`。
-- 不请求完整照片库权限。
-- 用户选定的图片进入内存草稿。
+- 使用 `PhotosPicker`，不请求完整照片库权限。
+- 用户选定的图片进入内存草稿；发送时图片字节只进入用户所选 Provider。
 
 ### 语音
 
 - 请求麦克风和 Speech 权限。
 - 可用时优先设备端识别。
-- 转写结果进入文本输入框。
-- 不保留音频文件。
+- 转写结果进入文本输入框；不保留音频文件。
 - 系统不支持设备端识别时，Speech framework 的处理路径由 Apple 系统能力决定。
 
-## 12. 权限表
+## 11. 权限表
 
-权限由代码控制，不靠 Prompt。系统权限按功能触发；当前生产写入逐次确认：
+权限由代码控制，不靠 Prompt。系统权限按功能触发；生产写入逐次确认：
 
 | 操作 | 默认行为 |
 |---|---|
 | Read + 低风险 | 自动执行 |
 | 可逆写入 | 结构化确认，成功后当前进程内一次性 Undo |
 | 推断出的写入 | 结构化确认 |
-| Web 敏感读取 | 当前自动执行受限公网请求；不授予后续工具权限 |
+| Web 敏感读取 | 受限公网请求自动执行；不授予后续工具权限 |
 | EventKit 可申请读取 | 结构化确认后请求系统权限 |
 | 破坏性操作 | 确认 |
 | 财务 / 外部重大影响 | 强确认 |
@@ -386,7 +229,7 @@ CSP 主要限制：
 | PhotosPicker | 相册 | 读取用户选定图片 |
 | Security-scoped file URL | 文件 | 复制用户选定文档 |
 
-## 13. 威胁与控制
+## 12. 威胁与控制
 
 | 风险 | 控制 |
 |---|---|
@@ -396,67 +239,61 @@ CSP 主要限制：
 | 重复工具调用 | run 内重复检测、确认幂等、进程内 commit 幂等 |
 | 路径穿越 | 相对路径校验和根目录约束 |
 | 大文件耗尽上下文 | 25 MiB 文件限制和模型字符上限 |
-| 图片意外上传 | UI gate 和 adapter gate |
+| 图片意外上传 | 模型能力 gate 和 adapter gate |
 | Web 内容执行网络脚本 | Bundle 资源、CSP、non-persistent store |
 | Web SSRF、DNS rebinding 与危险重定向 | 仅公共 HTTPS、DNS 公网校验、固定解析结果、逐跳重验和端口限制 |
 | Web 响应炸弹或恶意类型 | 响应字节、内容类型、超时和重定向次数上限 |
 | 远程 prompt injection | Web 内容标记为不可信，不授予工具权限；来源单独保存 |
 | 未来 MCP server annotation 伪造风险 | annotation 不作为授权依据，凭据按 server identity 隔离并继续通过 Familiar Policy |
 | 流式 token 触发广泛持久化 | 内存状态和终态保存分离 |
-| 旧 Schema 启动崩溃 | 版本化开发 store |
+| 旧 Schema 启动崩溃 | 版本化开发 store（见 `logs/swiftdata-store-migration-134110.md`） |
 
-## 14. 删除语义
+## 13. 删除语义
 
 ### 删除消息路径
 
-编辑和重试会删除目标之后的：
-
-- 消息。
-- 模型切换记录。
-- 工具记录。
-- 对应附件文件。
+编辑和重试会删除目标之后的：消息、模型切换记录、工具记录、对应附件文件。删除消息不删除项目共享 Resource。
 
 ### 删除会话
 
-删除会话时：
+删除会话时：清理消息附件文件、删除会话实体、cascade 删除关联实体。
 
-- 清理消息附件文件。
-- 删除会话实体。
-- cascade 删除关联实体。
+### 删除项目
+
+删除项目时：清理 Project Resource 与 Artifact 文件、删除项目实体、历史会话与 Run 脱离项目归属；运行中 Run 时禁止删除。
 
 ### 卸载 App
 
 App 容器中的 SwiftData、UserDefaults 和附件文件由系统删除。`kSecAttrAccessibleWhenUnlockedThisDeviceOnly` Keychain 项目的卸载行为由系统管理；产品需要提供设置内清除 Key 的操作。
 
-## 14.5 后台与可恢复运行
+## 14. 后台与通知
 
-Agent Run 的目标是可恢复，不是常驻 daemon。当前 Run/Step 只允许重新查看摘要终态，不能继续中断任务。iOS 26+ 才能条件使用 `BGContinuedProcessingTask` 承接用户启动的长任务；iOS 18–25 的 `BGProcessingTask` 由系统择机执行，不能承诺精确时间。后台运行不改变数据目的地：模型请求仍直接发往用户选择的 Provider。
+### 后台
 
-当前版本尚未实现 `BGContinuedProcessingTask`。本地通知只会报告当前进程实际到达的完成或失败终态，不能让已被系统挂起的 Run 继续执行，也不应被描述为后台任务保证。
+后台执行不改变数据目的地：模型请求仍直接发往用户选择的 Provider。当前没有后台 Run 保证；本地通知只报告当前进程实际到达的完成或失败终态，不应被描述为后台任务保证（版本约束见 `logs/bgcontinuedprocessingtask-is-ios26.md`）。
 
-## 14.6 本地通知
+### 本地通知
 
-- 权限只在用户于设置中开启“Run 结束时通知我”时请求。
+- 权限只在用户于设置中开启"Run 结束时通知我"时请求。
 - 系统拒绝权限后，本地偏好保持关闭，并提供前往 iOS 设置的恢复入口。
 - 通知内容使用固定的双语完成或失败文案，不从会话、消息、附件或工具记录生成预览。
-- payload 只携带 `run:<UUID>` 或 `conversation:<UUID>`，点击后在本地解析；它不携带 API Key、Provider 配置或工具授权。
+- payload 只携带 `run:<UUID>` 或 `conversation:<UUID>`，点击后在本地解析；不携带 API Key、Provider 配置或工具授权。
 - Familiar 不注册远程通知、不上传 device token，也不通过自有服务器发送通知。
 - 用户关闭功能时清理 Familiar 的待处理与已投递通知。
 
-## 14.7 Spotlight 会话索引
+### Spotlight 会话索引
 
 - 只索引已经产生消息或 Run 的会话，空白会话不进入系统搜索。
 - 每项只包含最多 80 字符的会话标题、更新时间、Familiar 标识和本地会话 UUID。
-- 索引使用独立的 Core Spotlight 自定义索引，并指定 `.complete` 文件保护等级；设备锁定时受系统数据保护约束。
+- 索引使用独立的 Core Spotlight 自定义索引，并指定 `.complete` 文件保护等级。
 - 不写入消息正文、文档抽取文本、附件名、工具结果、Run 详情、API Key 或 Provider 配置。
-- Core Spotlight 索引保留在设备上；Familiar 不启用公开索引、不上传索引内容，也不运营搜索服务器。
-- 点击结果只把 UUID 交给现有本地 Deep Link 路由。SwiftData 会话不存在时不恢复或重新创建内容。
-- 当前会话集合变化时整域刷新，确保重命名和删除反映到系统结果；索引失败不影响本地会话操作。
+- 点击结果只把 UUID 交给现有本地 Deep Link 路由；SwiftData 会话不存在时不恢复或重新创建内容。
+- 当前会话集合变化时整域刷新；索引失败不影响本地会话操作。
 
 ## 15. 隐私验收
 
 - 抓包确认 Provider 请求目的地。
-- 检查请求体不含图片 bytes 和原文件 bytes。
+- 检查请求体不含原文件 bytes 与未授权数据。
 - 检查日志不含 API Key。
 - 检查流式 token 未写入 SwiftData。
 - 检查等待确认状态未写入 SwiftData。
