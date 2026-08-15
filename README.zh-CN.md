@@ -54,6 +54,18 @@ App 采用 BYOK 模式：用户使用自己的模型 API Key，模型请求从�
 - **语音转写** — 使用 Apple Speech 与 `AVAudioEngine` 生成可编辑文字草稿，不保存原始录音。
 - **双语界面** — 完整简体中文与英文资源，支持深浅色、Dynamic Type、VoiceOver、Reduce Motion 和 Reduce Transparency。
 
+## 截图
+
+<p align="center">
+  <img src="screenshots/chat.png" width="180" alt="聊天页">
+  <img src="screenshots/drawer.png" width="180" alt="抽屉页">
+  <img src="screenshots/settings.png" width="180" alt="设置页">
+  <img src="screenshots/permissions.png" width="180" alt="权限页">
+  <img src="screenshots/storage.png" width="180" alt="存储页">
+</p>
+
+*聊天页 · 抽屉页 · 设置页 · 权限页 · 存储页*
+
 ## 目标架构
 
 Familiar 正在向六层架构演进。下图包含规划能力，不是当前实现清单：

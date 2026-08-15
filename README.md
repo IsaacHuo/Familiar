@@ -54,6 +54,18 @@ The app is BYOK-only: users bring their own model API Key, model requests go dir
 - **Voice transcription** — Apple Speech and `AVAudioEngine` generate editable text drafts; original recordings are not stored.
 - **Bilingual UI** — complete Simplified Chinese and English resources, Light and Dark Mode, Dynamic Type, VoiceOver, Reduce Motion and Reduce Transparency.
 
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/chat.png" width="180" alt="Chat">
+  <img src="screenshots/drawer.png" width="180" alt="Drawer">
+  <img src="screenshots/settings.png" width="180" alt="Settings">
+  <img src="screenshots/permissions.png" width="180" alt="Permissions">
+  <img src="screenshots/storage.png" width="180" alt="Storage">
+</p>
+
+*Chat · Drawer · Settings · Permissions · Storage*
+
 ## Target architecture
 
 Familiar is evolving toward six layers. The diagram includes planned capabilities and is not a current implementation inventory:

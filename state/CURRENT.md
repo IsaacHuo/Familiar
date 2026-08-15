@@ -20,7 +20,10 @@ Project 主链路（长期工作单元）已完成数据与基础 UI 闭环：Pr
 - **WP4 Resource + ContextSnapshot**：`FamiliarSchemaV3` 增加 Resource/ResourceVersion/ContextSnapshotRecord/ContextResourceReference；项目资源独立受保护目录；`FamiliarProjectContextAssembler` 生成确定性不可变上下文，超出输入预算明确拒绝。
 - **WP5 Artifact + Web 项目闭环**：`FamiliarSchemaV4` 增加 Artifact；受控 `artifact_write` 工具（逐次确认）；`web_fetch` 正文可经 `importFetchedWebText` 落为 Project Resource（不二次 refetch，记录 URL/时间/hash/truncated/source lineage）。
 - **WP6 Capability 与授权契约**：Manifest v2（`FamiliarCapabilityContract.swift`）、确定性 `FamiliarCapabilitySnapshot`、`FamiliarAuthorizationGrant`（规范化 arguments hash + source/scope/expiry 校验）；`FamiliarSchemaV5` 持久化快照与 grant；旧 `FamiliarOneShotAuthorization` 来源式写授权停用。
-- **WP7 可恢复 Run 数据契约**：`FamiliarSchemaV6` 增加 `RunResumeCursorRecord`/`ToolInvocationRecord`；工具调用以 `run:toolCallID` 幂等键持久化状态，已 committed 拒绝重复提交。注意：**该契约尚未接入运行时执行**（仅数据层与测试）。
+- **WP7 可恢复 Run 数据契约**：`FamiliarSchemaV6` 增加 `RunResumeCursorRecord`/`ToolInvocationRecord`；工具调用以 `run:toolCallID` 幂等键持久化状态，已 committed 拒绝重复提交。当前 Controller 已在工具请求、审批、完成事件边界接入 invocation/cursor 记录；跨进程恢复入口仍未实现。
+- **Project 闭环补齐**：项目详情可浏览/预览/删除 Artifact；删除项目时 Resource 与 Artifact 目录先暂存、数据库提交成功后再清理，失败时恢复；运行启动时持久化 CapabilitySnapshot 与 RunResumeCursor。
+- **Resource 工具**：`resource.list/read/search` 已注册，读取运行开始时冻结的 Resource 版本快照。
+- **Share 目标选择**：共享收件箱内容进入 App 后可选择已有项目、新建项目或普通聊天草稿，取消时清理准备中的附件。
 - **系统入口**：Share Extension、类型化 Deep Link、App Intents/Shortcuts、Run 终态本地通知、Spotlight 会话索引、Widget/Control。
 - **本地渲染**：非持久化 WKWebView + 内置 Markdown/高亮/Mermaid/KaTeX/DOMPurify，CSP 禁远程图片自动加载。
 
@@ -41,8 +44,8 @@ Project 主链路（长期工作单元）已完成数据与基础 UI 闭环：Pr
 - 真实 Provider 认证/流式/错误/工具闭环：**全部 12 个内置 Provider 尚未用真实 Key 冒烟**（清单见 `docs/11`）。
 - 真机验收未完成：EventKit 权限、真实文档/OCR、相机、Speech、Share/Deep Link/通知/Spotlight/Intents/Widget/Control 均依赖真机。
 - iOS CI 远程首次结果**尚未确认**（本地解析通过，GitHub Actions 未触发或未记录）。
-- `FamiliarRunRecoveryService`、`FamiliarCapabilityResolver`、grant-aware `FamiliarExecutionPolicy` 已建数据契约但**未接入运行时**；运行时仍是逐次确认写入。
-- `resource.list/read/search` 工具、Artifact/Binding 项目级 UI、Share 导入后的项目选择分流**未实现**。
+- `FamiliarRunRecoveryService` 的 CapabilitySnapshot/Cursor 已接入 Run 启动、工具阶段与终态；`ToolInvocationRecord` 已在工具请求和终态接入，grant-aware policy 已修正有效 grant 的执行语义，但 grant 创建/消费与真正的中断恢复仍未完成。
+- 项目级 Capability Binding UI 尚未实现；Skills、Remote MCP、Memory 仍未实现。
 - 后台承接未实现：`BGContinuedProcessingTask` 仅适用于 iOS 26+；当前通知只报告进程内实际到达的终态。
 - EventKit 写入幂等与 Undo 状态仅限当前进程；系统 save 后进程立即终止的边界未验证。
 - SwiftData 真机恢复路径（磁盘不足、损坏 store、旧安装覆盖）未在真机验收。
@@ -50,7 +53,7 @@ Project 主链路（长期工作单元）已完成数据与基础 UI 闭环：Pr
 ## Next
 
 1. 完成图片输入路径并提交（含适配器 fixture、gate 测试、隐私确认：图片字节只发往用户所选 Provider）。
-2. 把授权/恢复契约接入运行时（错误分类、有限重试、预算；`resource.*` 工具；Share → 项目选择）。
+2. 完成授权/恢复契约的 Runtime 内聚（grant 创建/消费、错误分类、有限重试、预算；跨进程恢复；`resource.*` 工具；Share → 项目选择）。
 3. 按 `docs/11` 完成真实 Provider 冒烟与真机验收。
 4. 确认远程 CI 首轮结果。
 5. 之后才评估 Skills、Remote MCP、Memory、新原生能力与 iOS 26+ 后台承接。

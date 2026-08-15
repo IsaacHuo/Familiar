@@ -38,9 +38,9 @@
 | 文件 | 职责 |
 |---|---|
 | `FamiliarTool.swift` | `FamiliarTool` 协议（类型化 Input）、`FamiliarToolManifest`、effect/risk/requirement、`FamiliarActionProposal`（延迟写入 + execute/undo）、`actor FamiliarToolRegistry` |
-| `FamiliarAgentLoop.swift` | `struct FamiliarAgentLoop`（nonisolated）：最多 6 轮工具循环、幂等指纹、`FamiliarRuntimeEventPayload`/事件流、`actor FamiliarUndoStore`、结果长度上限（48k） |
+| `FamiliarAgentLoop.swift` | `struct FamiliarAgentLoop`（nonisolated）：最多 6 轮工具循环、幂等指纹、`FamiliarRuntimeEventPayload`/事件流（含规范化 invocation 请求）、`actor FamiliarUndoStore`、结果长度上限（48k） |
 | `FamiliarModelProvider.swift` | `FamiliarModelProvider` 协议（`stream(request:apiKey:)`）、消息/内容/工具调用/Manifest 值类型 |
-| `FamiliarExecutionPolicy.swift` | `FamiliarExecutionPolicy.decide(...)`：read 自动、destructive/high risk 确认、可申请读取确认；grant-aware 重载存在但未接入运行时 |
+| `FamiliarExecutionPolicy.swift` | `FamiliarExecutionPolicy.decide(...)`：read 自动、destructive/high risk 确认、可申请读取确认；grant-aware 重载对有效 grant 返回 execute，但生产 grant 创建/消费尚未接入 |
 | `FamiliarCapabilityContract.swift` | Manifest v2 字段、`FamiliarCapabilityCatalog/Resolver/Binding`、`FamiliarAuthorizationGrant`（规范化 arguments hash、single-use、expiry）——契约代码，运行时未接线 |
 | `FamiliarToolConfirmationCoordinator.swift` | `public actor`，`runID + toolCallID` 幂等确认，checked continuation 暂停 Agent Loop |
 | `FamiliarProjectContextAssembler.swift` | 从 Project seed + 消息快照 + 工具 manifest 组装不可变 `FamiliarContextSnapshot`；注入项目指令与资源；执行输入字符预算 |
@@ -82,7 +82,7 @@
 - `FamiliarSchemaV2..V6.swift` — 见 §4。
 - `FamiliarProjectService.swift` — `@MainActor`，项目 CRUD、指令（8k 上限）、归档、删除（运行中 Run 保护 + 资源目录 staged 删除/回滚）。
 - `FamiliarRunPersistenceRecorder.swift` — `@MainActor`，**已接线**：ensureRun + ContextSnapshot 持久化、recordTool、finishRun。
-- `FamiliarRunRecoveryService.swift` — `@MainActor`，capability/grant/cursor/tool-invocation 持久化，**未接入运行时（仅测试）**。
+- `FamiliarRunRecoveryService.swift` — `@MainActor`，capability/grant/cursor/tool-invocation 持久化；CapabilitySnapshot 与 RunResumeCursor 已在运行启动、工具阶段与终态接入，grant 创建/消费和恢复入口仍未接入。
 
 ### `Familiar/Presentation/` — SwiftUI
 - `FamiliarRootView.swift` — 首启 gate + Deep Link/Spotlight/App Intent handoff 路由。
@@ -91,7 +91,8 @@
 - `FamiliarChatMessageViews.swift` — 时间线渲染（消息、模型切换、工具记录、确认卡、Agent 活动、来源 disclosure）。
 - `FamiliarComposerView.swift` — compact/expanded/fullscreen 输入器、附件/相机/相册、slash 命令、语音。
 - `FamiliarSettingsHubView.swift` / `FamiliarSettingsView.swift` — 设置 hub 与模型服务设置。
-- `FamiliarProjectsView.swift` — 项目列表/详情/编辑、资源导入。
+- `FamiliarProjectsView.swift` — 项目列表/详情/编辑、资源导入、Artifact 浏览与删除。
+- `FamiliarSharedDestinationView.swift` — Share 收件箱目标选择（已有项目、新建项目、普通聊天草稿）。
 - `FamiliarOnboardingView.swift` — 三步首启。
 - `FamiliarMarkdownWebView.swift` — 非持久化 WKWebView 渲染 + 高度回传 + 首帧回退文本。
 - `FamiliarCameraView.swift`、`FamiliarAttachmentQuickLookView.swift`、`FamiliarMarkdownNormalizer.swift`。
@@ -99,6 +100,7 @@
 ### `Familiar/Resources/`
 - `FamiliarProjectResourceStore.swift` — 项目资源磁盘（`<Application Support>/Familiar/ProjectResources/Projects/<projectID>/Resources/<resourceID>/Versions/<version>-<versionID>/`，SHA-256 校验、symlink/回滚安全删除）。
 - `FamiliarProjectResourceService.swift` — 导入文档/Web capture 为 Resource + ResourceVersion 记录。
+- `FamiliarResourceTools.swift` — `resource.list/read/search`，只读取 Run 启动时冻结的 Resource 快照。
 
 ### `Familiar/Speech/`
 - `FamiliarSpeechTranscriber.swift` — `@MainActor`，`SFSpeechRecognizer` + `AVAudioEngine` 流式转写（工作树已改 async/await + sessionID 失效保护）。
@@ -153,8 +155,8 @@ store：`FamiliarAgentV2.store`，`FamiliarSchemaMigrationPlan` 5 个轻量 stag
 | Project, ProjectInstruction | V2 | 是 |
 | Resource, ResourceVersion, ContextSnapshotRecord, ContextResourceReference | V3 | 是（`FamiliarRunPersistenceRecorder` / `FamiliarProjectResourceService`） |
 | Artifact | V4 | 是（`FamiliarArtifactService`） |
-| CapabilitySnapshotRecord, AuthorizationGrantRecord | V5 | 否（仅 schema/测试） |
-| RunResumeCursorRecord, ToolInvocationRecord | V6 | 否（仅 schema/测试，`FamiliarRunRecoveryService` 未接线） |
+| CapabilitySnapshotRecord, AuthorizationGrantRecord | V5 | CapabilitySnapshot 是（Run 启动）；AuthorizationGrantRecord 否 |
+| RunResumeCursorRecord, ToolInvocationRecord | V6 | 是（工具请求/审批/完成与终态 cursor；跨进程恢复未实现） |
 
 关系删除规则使用 cascade；附件/资源文件由控制器显式清理。
 
@@ -170,11 +172,13 @@ Composer
       → FamiliarProjectContextAssembler.assemble（不可变 ContextSnapshot）
       → FamiliarAgentLoop.stream
           → provider.stream（SSE 增量 / 工具调用增量）
-          → registry.availability + policy.decide
+          → registry.availability + grant-aware policy.decide
+          → toolInvocationRequested → ToolInvocationRecord requested
           → 写入工具：confirmationCoordinator 等待确认
-              → 确认后执行 FamiliarActionProposal.execute + undoStore 注册
+              → approval/checkpoint → 确认后执行 FamiliarActionProposal.execute + undoStore 注册
   → 事件回流 Controller
       → runRecorder.ensureRun/recordTool/finishRun（Run/Step + ContextSnapshot 持久化）
+      → runRecovery（CapabilitySnapshot/Cursor/ToolInvocation 阶段记录）
       → toolFinished → 工具终态、Artifact 落盘、web capture → 项目资源
       → 终态 → 保存助手消息 + Sources + 可选本地通知
 ```
@@ -196,8 +200,7 @@ MainActor 容器：`FamiliarChatController`、`FamiliarRunPersistenceRecorder`�
 
 ## 8. 已知缺口（与运行时未接线的部分）
 
-- 授权/恢复数据契约已建模未接线：`FamiliarRunRecoveryService`、grant-aware policy、`FamiliarCapabilityResolver`。
-- `resource.list/read/search` 工具未实现；Artifact/Binding 项目级 UI 未实现。
-- Share 导入后的项目选择分流未实现。
+- `FamiliarRunRecoveryService` 的 grant 创建/消费和真正恢复仍未接线；ToolInvocation 与 cursor 已接入当前 Controller 事件边界。
+- Project Capability Binding UI 未实现；Skills、Remote MCP、Memory 未实现。
 - 后台承接（`BGContinuedProcessingTask`，iOS 26+）未实现；当前无后台 Run 保证。
 - 图片输入路径为工作树未提交改动（见 `state/CURRENT.md`）。
