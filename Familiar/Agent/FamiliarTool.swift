@@ -24,14 +24,26 @@ nonisolated enum FamiliarCapabilityAvailability: Equatable, Sendable {
 }
 
 nonisolated struct FamiliarToolContext: Sendable {
+    struct Resource: Sendable {
+        let id: UUID
+        let versionID: UUID
+        let version: Int
+        let displayName: String
+        let filename: String
+        let mimeType: String
+        let extractedText: String
+    }
+
     let runID: String
     let toolCallID: String
     let projectID: UUID?
+    let resources: [Resource]
 
-    init(runID: String = "standalone", toolCallID: String = UUID().uuidString, projectID: UUID? = nil) {
+    init(runID: String = "standalone", toolCallID: String = UUID().uuidString, projectID: UUID? = nil, resources: [Resource] = []) {
         self.runID = runID
         self.toolCallID = toolCallID
         self.projectID = projectID
+        self.resources = resources
     }
 
     var idempotencyKey: String { runID + ":" + toolCallID }

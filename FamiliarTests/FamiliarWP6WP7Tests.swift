@@ -17,6 +17,7 @@ struct FamiliarWP6WP7Tests {
         #expect(grant.isValid(for: manifest, arguments: "{}", projectID: projectID, now: now))
         #expect(!grant.isValid(for: manifest, arguments: "{\"changed\":true}", projectID: projectID, now: now))
         #expect(!grant.isValid(for: manifest, arguments: "{}", projectID: nil, now: now))
+        #expect(FamiliarExecutionPolicy().decide(manifest: manifest, availability: .available, grant: grant, arguments: "{}", projectID: projectID, now: now) == .execute)
     }
 
     @Test("Share, Intent, and Deep Link sources cannot issue write grants")

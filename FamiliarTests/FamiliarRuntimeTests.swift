@@ -48,6 +48,12 @@ struct FamiliarRuntimeTests {
         if case .runStarted = events.first?.payload {} else { Issue.record("Missing runStarted") }
         if case .runCompleted = events.last?.payload {} else { Issue.record("Missing runCompleted") }
         #expect(events.contains { if case .toolFinished = $0.payload { true } else { false } })
+        #expect(events.contains {
+            if case .toolInvocationRequested(let id, let name, let arguments) = $0.payload {
+                return id == "call" && name == "fake_read" && arguments == "{}"
+            }
+            return false
+        })
     }
 
     @Test("Runtime fails after the configured maximum rounds")

@@ -27,12 +27,14 @@ final class FamiliarChatController {
     private let dependencies: FamiliarAppDependencies
     private let confirmationCoordinator: FamiliarToolConfirmationCoordinator
     private let runRecorder: FamiliarRunPersistenceRecorder
+    private let runRecovery: FamiliarRunRecoveryService
     private var runningTask: Task<Void, Never>?
 
     init(dependencies: FamiliarAppDependencies) {
         self.dependencies = dependencies
         confirmationCoordinator = dependencies.confirmationCoordinator
         runRecorder = FamiliarRunPersistenceRecorder()
+        runRecovery = FamiliarRunRecoveryService()
     }
 
     func select(_ id: UUID?, in context: ModelContext) {
@@ -644,15 +646,47 @@ final class FamiliarChatController {
                     activeRunID = UUID(uuidString: event.runID)
                     activeRunStartedAt = event.timestamp
                     runRecorder.ensureRun(runtimeID: event.runID, snapshot: contextSnapshot, startedAt: event.timestamp, context: context)
+                    do {
+                        let capabilitySnapshot = FamiliarCapabilitySnapshot(
+                            id: UUID(),
+                            createdAt: contextSnapshot.createdAt,
+                            projectID: contextSnapshot.projectID,
+                            manifests: contextSnapshot.toolManifests
+                        )
+                        try runRecovery.persistCapabilitySnapshot(
+                            capabilitySnapshot,
+                            contextSnapshotID: contextSnapshot.id,
+                            conversationID: conversationID,
+                            in: context
+                        )
+                        _ = try runRecovery.beginCursor(
+                            runtimeID: event.runID,
+                            runID: activeRunID,
+                            contextSnapshotID: contextSnapshot.id,
+                            in: context
+                        )
+                    } catch {
+                        errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
+                    }
                 case .state(let status):
                     agentStatus = status
                 case .textDelta(let delta):
                     streamingText += delta
                 case .toolRequested:
                     break
+                case .toolInvocationRequested(let toolCallID, let toolName, let arguments):
+                    beginToolInvocation(
+                        runtimeID: event.runID,
+                        toolCallID: toolCallID,
+                        toolName: toolName,
+                        arguments: arguments,
+                        eventSequence: event.sequence,
+                        context: context
+                    )
                 case .toolProgress(let activity):
                     updateToolActivity(activity)
                 case .approvalRequested(let request):
+                    updateRunCursor(runtimeID: event.runID, phase: .awaitingApproval, eventSequence: event.sequence, context: context)
                     if !pendingConfirmations.contains(where: { $0.id == request.id }) {
                         pendingConfirmations.append(request)
                     }
@@ -660,8 +694,10 @@ final class FamiliarChatController {
                     if let request = pendingConfirmations.first(where: { $0.id == requestID }) {
                         runRecorder.recordCheckpoint(type: .approval, runtimeID: event.runID, eventSequence: event.sequence, summary: request.title, detail: "审批已完成", context: context)
                     }
+                    updateRunCursor(runtimeID: event.runID, phase: .committingTool, eventSequence: event.sequence, context: context)
                     pendingConfirmations.removeAll { $0.id == requestID }
                 case .toolFinished(let record):
+                    finishToolInvocation(record, eventSequence: event.sequence, context: context)
                     persistToolRecord(record, eventSequence: event.sequence, conversationID: conversationID, context: context)
                     persistToolOutputs(record, conversationID: conversationID, context: context)
                     if record.undoAvailable {
@@ -669,12 +705,16 @@ final class FamiliarChatController {
                     }
                 case .responseCompleted(let response):
                     completedResponse = response
+                    updateRunCursor(runtimeID: event.runID, phase: .model, eventSequence: event.sequence, context: context)
                     runRecorder.recordCheckpoint(type: .model, runtimeID: event.runID, eventSequence: event.sequence, summary: "模型回复", detail: String(response.text.prefix(2_000)), context: context)
                 case .runCompleted:
+                    updateRunCursor(runtimeID: event.runID, phase: .terminal, eventSequence: event.sequence, context: context)
                     runRecorder.finishRun(runtimeID: event.runID, status: .completed, reason: "completed", eventSequence: event.sequence, at: event.timestamp, context: context)
                 case .runCancelled:
+                    updateRunCursor(runtimeID: event.runID, phase: .terminal, eventSequence: event.sequence, context: context)
                     runRecorder.finishRun(runtimeID: event.runID, status: .cancelled, reason: "cancelled", eventSequence: event.sequence, at: event.timestamp, context: context)
                 case .runFailed(let message):
+                    updateRunCursor(runtimeID: event.runID, phase: .terminal, eventSequence: event.sequence, context: context)
                     runRecorder.finishRun(runtimeID: event.runID, status: .failed, reason: message, eventSequence: event.sequence, at: event.timestamp, context: context)
                     errorMessage = message
                 }
@@ -794,6 +834,59 @@ final class FamiliarChatController {
         }
     }
 
+    private func beginToolInvocation(
+        runtimeID: String,
+        toolCallID: String,
+        toolName: String,
+        arguments: String,
+        eventSequence: Int,
+        context: ModelContext
+    ) {
+        do {
+            _ = try runRecovery.beginInvocation(
+                idempotencyKey: runtimeID + ":" + toolCallID,
+                runtimeID: runtimeID,
+                toolName: toolName,
+                arguments: arguments,
+                in: context
+            )
+            updateRunCursor(runtimeID: runtimeID, phase: .committingTool, eventSequence: eventSequence, context: context)
+        } catch FamiliarRunRecoveryService.Error.invocationAlreadyCommitted {
+            errorMessage = String(localized: "error.tool.duplicate_call")
+        } catch {
+            errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
+        }
+    }
+
+    private func finishToolInvocation(
+        _ event: FamiliarToolRunTerminalEvent,
+        eventSequence: Int,
+        context: ModelContext
+    ) {
+        let idempotencyKey = event.runID + ":" + event.toolCallID
+        let descriptor = FetchDescriptor<FamiliarToolInvocationRecord>(
+            predicate: #Predicate { $0.idempotencyKey == idempotencyKey }
+        )
+        guard let invocation = try? context.fetch(descriptor).first else { return }
+        let state: FamiliarToolInvocationState
+        switch event.status {
+        case .succeeded: state = .committed
+        case .cancelled: state = .cancelled
+        case .failed: state = .failed
+        }
+        do {
+            try runRecovery.setInvocationState(
+                invocation,
+                state: state,
+                resultReference: event.artifactIdentifier,
+                in: context
+            )
+            updateRunCursor(runtimeID: event.runID, phase: .model, eventSequence: eventSequence, context: context)
+        } catch {
+            errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
+        }
+    }
+
     private func persistToolOutputs(_ event: FamiliarToolRunTerminalEvent, conversationID: UUID, context: ModelContext) {
         guard event.status == .succeeded else { return }
         do {
@@ -809,6 +902,23 @@ final class FamiliarChatController {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func updateRunCursor(
+        runtimeID: String,
+        phase: FamiliarRunRecoveryPhase,
+        eventSequence: Int,
+        context: ModelContext
+    ) {
+        let descriptor = FetchDescriptor<FamiliarRunResumeCursorRecord>(predicate: #Predicate { $0.runtimeID == runtimeID })
+        guard let cursor = try? context.fetch(descriptor).first else { return }
+        try? runRecovery.updateCursor(
+            cursor,
+            iteration: cursor.nextIteration,
+            phase: phase,
+            eventSequence: eventSequence,
+            in: context
+        )
     }
 
     private func nextTimelineSequence(in conversation: FamiliarConversation?) -> Int {

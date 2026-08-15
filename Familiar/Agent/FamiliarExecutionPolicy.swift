@@ -45,6 +45,6 @@ nonisolated struct FamiliarExecutionPolicy: Sendable {
         guard let grant, grant.isValid(for: manifest, arguments: arguments, projectID: projectID, now: now) else {
             return .requestApproval
         }
-        return .requestApproval
+        return .execute
     }
 }

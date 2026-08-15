@@ -65,6 +65,7 @@ nonisolated enum FamiliarRuntimeEventPayload: Sendable {
     case state(FamiliarRuntimeState)
     case textDelta(String)
     case toolRequested(id: String, name: String)
+    case toolInvocationRequested(id: String, name: String, arguments: String)
     case toolProgress(FamiliarToolProgress)
     case approvalRequested(FamiliarToolConfirmationRequest)
     case approvalResolved(requestID: UUID, decision: FamiliarToolConfirmationDecision)
@@ -251,11 +252,18 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                     continue
                 }
                 await emitter.emit(.state(.usingTool(manifest.title)))
+                await emitter.emit(.toolInvocationRequested(id: call.id, name: call.name, arguments: call.arguments))
                 await emitter.emit(.toolProgress(.init(id: call.id, toolName: call.name, title: manifest.title, detail: nil, state: .running)))
 
                 do {
                     let availability = await registry.availability(for: manifest)
-                    let decision = policy.decide(manifest: manifest, availability: availability, idempotencyKey: runID + ":" + call.id)
+                    let decision = policy.decide(
+                        manifest: manifest,
+                        availability: availability,
+                        grant: nil,
+                        arguments: call.arguments,
+                        projectID: contextSnapshot.projectID
+                    )
                     if case .deny(let reason) = decision { throw FamiliarToolRegistryError.capabilityUnavailable(reason) }
                     if manifest.effect == .read, decision == .requestApproval {
                         guard try await approve(runID: runID, call: call, effect: manifest.effect, title: manifest.title, fields: ["访问范围": manifest.description], target: nil, emitter: emitter) else {
@@ -268,7 +276,22 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                     if manifest.effect == .read {
                         try await registry.prepareCapabilities(for: manifest)
                     }
-                    let outcome = try await registry.execute(name: call.name, arguments: call.arguments, context: .init(runID: runID, toolCallID: call.id, projectID: contextSnapshot.projectID))
+                    let resourceContext = contextSnapshot.resources.map {
+                        FamiliarToolContext.Resource(
+                            id: $0.resourceID,
+                            versionID: $0.resourceVersionID,
+                            version: $0.version,
+                            displayName: $0.displayName,
+                            filename: $0.filename,
+                            mimeType: $0.mimeType,
+                            extractedText: $0.extractedText
+                        )
+                    }
+                    let outcome = try await registry.execute(
+                        name: call.name,
+                        arguments: call.arguments,
+                        context: .init(runID: runID, toolCallID: call.id, projectID: contextSnapshot.projectID, resources: resourceContext)
+                    )
                     let resolved: (FamiliarToolExecutionResult, FamiliarPersistedConfirmationResult)
                     switch outcome {
                     case .result(let result): resolved = (result, manifest.effect == .read && decision == .requestApproval ? .confirmed : .notRequired)

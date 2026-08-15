@@ -43,6 +43,48 @@ struct FamiliarWP4Tests {
         #expect(store.url(for: "Projects/link/source.txt") == nil)
     }
 
+    @Test("Resource store accepts a real ancestor symlink but still rejects an internal symlink")
+    func ancestorSymlinkIsAllowed() throws {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory.appendingPathComponent("FamiliarAncestorSymlink-\(UUID().uuidString)", isDirectory: true)
+        let realTarget = root.appendingPathComponent("real", isDirectory: true)
+        let linked = root.appendingPathComponent("linked", isDirectory: true)
+        try fileManager.createDirectory(at: realTarget, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: root) }
+        try fileManager.createSymbolicLink(at: linked, withDestinationURL: realTarget)
+
+        let store = FamiliarProjectResourceStore(rootURL: linked.appendingPathComponent("store", isDirectory: true))
+        let source = realTarget.appendingPathComponent("source.txt")
+        try Data("body".utf8).write(to: source)
+        let copied = try store.copyVersion(
+            from: source,
+            projectID: UUID(),
+            resourceID: UUID(),
+            version: 1,
+            versionID: UUID(),
+            filename: "source.txt"
+        )
+        #expect(store.url(for: copied.relativePath) != nil)
+
+        let internalLink = store.rootURL.appendingPathComponent("Projects/link", isDirectory: true)
+        try fileManager.createDirectory(at: internalLink.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try fileManager.createSymbolicLink(at: internalLink, withDestinationURL: realTarget)
+        #expect(store.url(for: "Projects/link/source.txt") == nil)
+    }
+
+    @Test("All registered tool names match the provider function name pattern")
+    func toolNamesMatchProviderPattern() async throws {
+        let registry = try FamiliarToolRegistry(tools: [
+            AnyFamiliarTool(FamiliarResourceListTool()),
+            AnyFamiliarTool(FamiliarResourceReadTool()),
+            AnyFamiliarTool(FamiliarResourceSearchTool())
+        ])
+        let pattern = /^[a-zA-Z0-9_-]+$/
+        for manifest in await registry.snapshot() {
+            #expect(manifest.name.wholeMatch(of: pattern) != nil, "工具名 \(manifest.name) 不符合 Provider 函数名约束")
+        }
+    }
+
     @Test("Context assembler separates ordinary and project data and freezes deterministic context")
     func contextAssembler() throws {
         let firstID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
