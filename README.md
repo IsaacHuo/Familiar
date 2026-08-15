@@ -28,6 +28,25 @@
 
 ---
 
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center"><img src="screenshots/chat.png" width="210" alt="Chat"></td>
+    <td align="center"><img src="screenshots/drawer.png" width="210" alt="Drawer"></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="screenshots/settings.png" width="210" alt="Settings"></td>
+    <td align="center"><img src="screenshots/permissions.png" width="210" alt="Permissions"></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="screenshots/storage.png" width="210" alt="Storage"></td>
+    <td></td>
+  </tr>
+</table>
+
+*Chat · Drawer · Settings · Permissions · Storage*
+
 ## Overview
 
 > **Familiar is a native, safe and inspectable personal AI workspace.** Projects are the long-lived work unit, chat is the primary entry, and native tools plus read-only Web form the current execution surface. The single-Agent Runtime is the execution kernel.
@@ -53,18 +72,6 @@ The app is BYOK-only: users bring their own model API Key, model requests go dir
 - **Rich answer rendering** — local Markdown, syntax highlighting, tables, block quotes, Mermaid, KaTeX, code copying and safe external links.
 - **Voice transcription** — Apple Speech and `AVAudioEngine` generate editable text drafts; original recordings are not stored.
 - **Bilingual UI** — complete Simplified Chinese and English resources, Light and Dark Mode, Dynamic Type, VoiceOver, Reduce Motion and Reduce Transparency.
-
-## Screenshots
-
-<p align="center">
-  <img src="screenshots/chat.png" width="180" alt="Chat">
-  <img src="screenshots/drawer.png" width="180" alt="Drawer">
-  <img src="screenshots/settings.png" width="180" alt="Settings">
-  <img src="screenshots/permissions.png" width="180" alt="Permissions">
-  <img src="screenshots/storage.png" width="180" alt="Storage">
-</p>
-
-*Chat · Drawer · Settings · Permissions · Storage*
 
 ## Target architecture
 
