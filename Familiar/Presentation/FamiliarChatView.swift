@@ -25,6 +25,8 @@ struct FamiliarChatView: View {
     @State private var speechBaseDraft = ""
     @State private var configuredProviderIDs: Set<String> = []
     @State private var isImportingSharedItem = false
+    @State private var pendingSharedDraft: FamiliarPreparedSharedDraft?
+    @State private var showsSharedDestination = false
     @State private var webDestination: FamiliarWebDestination?
     @FocusState private var isComposerFocused: Bool
     private let toolRegistry: FamiliarToolRegistry
@@ -65,7 +67,7 @@ struct FamiliarChatView: View {
                         selectedConversationID: controller.selectedConversationID,
                         safeAreaInsets: safeAreaInsets,
                         onSelect: { conversation in
-                            speechTranscriber.stop()
+                            Task { await speechTranscriber.stop() }
                             controller.select(conversation.id, in: modelContext)
                             closeDrawer()
                         },
@@ -154,12 +156,12 @@ struct FamiliarChatView: View {
                 FamiliarProjectsView(
                     initialProjectID: projectID,
                     onSelectConversation: { conversation in
-                        speechTranscriber.stop()
+                        Task { await speechTranscriber.stop() }
                         controller.select(conversation.id, in: modelContext)
                         isComposerFocused = false
                     },
                     onNewConversation: { project in
-                        speechTranscriber.stop()
+                        Task { await speechTranscriber.stop() }
                         _ = controller.createConversation(project: project, in: modelContext)
                         isComposerFocused = true
                     }
@@ -173,6 +175,11 @@ struct FamiliarChatView: View {
             .ignoresSafeArea()
             .presentationSizing(.page)
             .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showsSharedDestination, onDismiss: discardPendingSharedDraftIfNeeded) {
+            FamiliarSharedDestinationView { destination in
+                importSharedDraft(to: destination)
+            }
         }
         .alert(String(localized: "conversation.rename.title"), isPresented: Binding(
             get: { renameRequest != nil },
@@ -233,7 +240,7 @@ struct FamiliarChatView: View {
                 refreshConfiguredProviders()
                 handleSharedInbox()
             } else {
-                speechTranscriber.stop()
+                Task { await speechTranscriber.stop() }
             }
         }
         .onChange(of: pendingSystemEntry) { _, _ in
@@ -273,6 +280,16 @@ struct FamiliarChatView: View {
         }
     }
 
+    private var isInNewConversation: Bool {
+        controller.messages.isEmpty
+            && controller.toolRunRecords.isEmpty
+            && controller.agentRuns.isEmpty
+            && controller.pendingConfirmations.isEmpty
+            && controller.streamingText.isEmpty
+            && controller.agentStatus == nil
+            && controller.toolActivities.isEmpty
+    }
+
     private func updateSpotlightIndex(_ conversations: [FamiliarSpotlightConversation]) {
         Task {
             await FamiliarSpotlightIndexer.shared.replaceConversations(conversations)
@@ -294,7 +311,7 @@ struct FamiliarChatView: View {
         guard controller.openDeepLink(request.deepLink, conversations: conversations, in: modelContext) else { return }
 
         pendingSystemEntry = nil
-        speechTranscriber.stop()
+        Task { await speechTranscriber.stop() }
         presentedSheet = nil
         closeDrawer()
         switch request.deepLink {
@@ -332,26 +349,13 @@ struct FamiliarChatView: View {
                     return
                 }
 
-                FamiliarSharedDraftImportService.consume(prepared)
                 guard !prepared.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !prepared.attachments.isEmpty else {
                     controller.errorMessage = prepared.firstImportErrorDescription
                         ?? String(localized: "share.error.no_supported_content")
                     return
                 }
-
-                speechTranscriber.stop()
-                controller.select(nil, in: modelContext)
-                controller.draft = prepared.text
-                controller.draftAttachments = prepared.attachments
-                presentedSheet = nil
-                closeDrawer()
-                isComposerFocused = true
-                if let importErrorDescription = prepared.firstImportErrorDescription {
-                    controller.errorMessage = String(
-                        format: String(localized: "share.error.partial_import"),
-                        importErrorDescription
-                    )
-                }
+                pendingSharedDraft = prepared
+                showsSharedDestination = true
             } catch {
                 controller.errorMessage = String(
                     format: String(localized: "share.error.import_failed"),
@@ -359,6 +363,34 @@ struct FamiliarChatView: View {
                 )
             }
         }
+    }
+
+    private func importSharedDraft(to destination: FamiliarSharedDestination) {
+        guard let prepared = pendingSharedDraft else { return }
+        FamiliarSharedDraftImportService.consume(prepared)
+        pendingSharedDraft = nil
+        Task { await speechTranscriber.stop() }
+        switch destination {
+        case .project(let project):
+            _ = controller.createConversation(project: project, in: modelContext)
+        case .ordinary:
+            controller.select(nil, in: modelContext)
+        }
+        controller.draft = prepared.text
+        controller.draftAttachments = prepared.attachments
+        showsSharedDestination = false
+        presentedSheet = nil
+        closeDrawer()
+        isComposerFocused = true
+        if let importErrorDescription = prepared.firstImportErrorDescription {
+            controller.errorMessage = String(format: String(localized: "share.error.partial_import"), importErrorDescription)
+        }
+    }
+
+    private func discardPendingSharedDraftIfNeeded() {
+        guard let pendingSharedDraft else { return }
+        FamiliarSharedDraftImportService.discardPreparedAttachments(pendingSharedDraft)
+        self.pendingSharedDraft = nil
     }
 
     @ViewBuilder
@@ -377,7 +409,7 @@ struct FamiliarChatView: View {
                         onSpeech: toggleSpeech,
                         onSlashCommand: handleSlashCommand,
                         onSend: {
-                            speechTranscriber.stop()
+                            Task { await speechTranscriber.stop() }
                             isComposerFocused = false
                             if controller.isSending {
                                 controller.cancelSending(in: modelContext)
@@ -410,6 +442,7 @@ struct FamiliarChatView: View {
                     isComposerFocused = true
                 }
             )
+            .id(controller.selectedConversationID)
         } else {
             FamiliarMessageTimeline(
                 messages: controller.messages,
@@ -455,13 +488,15 @@ struct FamiliarChatView: View {
             model: controller.settings.selectedModel,
             providerOptions: providers,
             isSending: controller.isSending,
+            isNewConversation: isInNewConversation,
             onOpenDrawer: { setDrawerOpen(true) },
             onSelectModel: { providerID, modelID in
                 controller.selectModel(providerID: providerID, modelID: modelID, in: modelContext)
             },
             onConfigure: { presentedSheet = .settings(nil) },
             onNewConversation: {
-                speechTranscriber.stop()
+                guard !isInNewConversation else { return }
+                Task { await speechTranscriber.stop() }
                 let project = conversations.first { $0.id == controller.selectedConversationID }?.project
                 _ = controller.createConversation(project: project, in: modelContext)
                 isComposerFocused = true
@@ -528,10 +563,12 @@ struct FamiliarChatView: View {
         if !speechTranscriber.isListening {
             speechBaseDraft = controller.draft
         }
-        speechTranscriber.toggle { transcript in
-            let separator = speechBaseDraft.isEmpty || transcript.isEmpty ? "" : " "
-            controller.draft = speechBaseDraft + separator + transcript
-            isComposerFocused = true
+        Task {
+            await speechTranscriber.toggle { transcript in
+                let separator = speechBaseDraft.isEmpty || transcript.isEmpty ? "" : " "
+                controller.draft = speechBaseDraft + separator + transcript
+                isComposerFocused = true
+            }
         }
     }
 
@@ -540,6 +577,7 @@ struct FamiliarChatView: View {
         isComposerFocused = false
         switch command {
         case .newConversation:
+            guard !isInNewConversation else { return }
             _ = controller.createConversation(in: modelContext)
             isComposerFocused = true
         case .settings:
@@ -569,7 +607,10 @@ struct FamiliarChatView: View {
         switch operation {
         case .edit(let message):
             controller.prepareToEdit(message, in: modelContext)
-            isComposerFocused = true
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(120))
+                isComposerFocused = true
+            }
         case .retry(let message):
             controller.retry(message, in: modelContext)
         }
@@ -698,6 +739,7 @@ private struct FamiliarChatTopBar: View {
     let model: FamiliarModelDescriptor
     let providerOptions: [FamiliarProviderDescriptor]
     let isSending: Bool
+    let isNewConversation: Bool
     let onOpenDrawer: () -> Void
     let onSelectModel: (String, String) -> Void
     let onConfigure: () -> Void
@@ -717,9 +759,16 @@ private struct FamiliarChatTopBar: View {
     private var controls: some View {
         HStack(spacing: 12) {
             Button(action: onOpenDrawer) {
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 18, weight: .semibold))
-                    .frame(width: 46, height: 46)
+                VStack(alignment: .leading, spacing: 4) {
+                    RoundedRectangle(cornerRadius: 1)
+                        .frame(width: 18, height: 2)
+
+                    RoundedRectangle(cornerRadius: 1)
+                        .frame(width: 11, height: 2)
+                }
+                .frame(width: 18, height: 18, alignment: .leading)
+                .foregroundStyle(.black)
+                .frame(width: 46, height: 46)
             }
             .buttonStyle(.plain)
             .familiarGlassCircle(interactive: true)
@@ -769,7 +818,7 @@ private struct FamiliarChatTopBar: View {
             }
             .buttonStyle(.plain)
             .familiarGlassCircle(interactive: true)
-            .disabled(isSending)
+            .disabled(isSending || isNewConversation)
             .accessibilityLabel(String(localized: "conversation.new"))
             .accessibilityIdentifier("chat.new")
         }
@@ -814,6 +863,16 @@ private struct FamiliarEmptyConversationView: View {
     let onConfigure: () -> Void
     let onPrompt: (String) -> Void
 
+    private static let allPrompts: [String] = (1...10).map {
+        NSLocalizedString("empty.prompt.\($0)", comment: "")
+    }
+
+    @State private var suggestions: [String] = FamiliarEmptyConversationView.randomSuggestions()
+
+    private static func randomSuggestions() -> [String] {
+        Array(allPrompts.shuffled().prefix(3))
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 22) {
@@ -839,9 +898,9 @@ private struct FamiliarEmptyConversationView: View {
 
                 if isProviderConfigured {
                     VStack(spacing: 10) {
-                        PromptSuggestion(title: String(localized: "empty.prompt.explain"), onSelect: onPrompt)
-                        PromptSuggestion(title: String(localized: "empty.prompt.plan"), onSelect: onPrompt)
-                        PromptSuggestion(title: String(localized: "empty.prompt.write"), onSelect: onPrompt)
+                        ForEach(suggestions, id: \.self) { suggestion in
+                            PromptSuggestion(title: suggestion, onSelect: onPrompt)
+                        }
                     }
                     .frame(maxWidth: 420)
                 } else {
@@ -971,6 +1030,7 @@ private struct FamiliarConversationDrawer: View {
                 .padding(.top, drawerHeaderHeight + 8)
                 .padding(.bottom, 12)
             }
+            .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
 
             drawerHeader

@@ -263,9 +263,16 @@
 
 "empty.title" = "What can I help with?";
 "empty.subtitle" = "Ask a question, shape an idea, or work through something together.";
-"empty.prompt.explain" = "Explain a complex idea in simple terms";
-"empty.prompt.plan" = "Help me make a clear plan for today";
-"empty.prompt.write" = "Help me polish a piece of writing";
+"empty.prompt.1" = "Explain a complex idea in simple terms";
+"empty.prompt.2" = "Help me make a clear plan for today";
+"empty.prompt.3" = "Help me polish a piece of writing";
+"empty.prompt.4" = "Help me brainstorm a few creative ideas";
+"empty.prompt.5" = "Help me weigh the pros and cons of a decision";
+"empty.prompt.6" = "Summarize a long passage into key points";
+"empty.prompt.7" = "Explain an abstract topic with an analogy";
+"empty.prompt.8" = "Help me write a thoughtful email";
+"empty.prompt.9" = "Plan a step-by-step learning path for me";
+"empty.prompt.10" = "Pull the key facts out of this information";
 "empty.configure" = "Configure API Key";
 
 "capability.coming_soon.title" = "Unavailable";

@@ -263,9 +263,16 @@
 
 "empty.title" = "今天想聊些什么？";
 "empty.subtitle" = "提问、梳理想法，或一起完成一件事。";
-"empty.prompt.explain" = "用简单的话解释一个复杂概念";
-"empty.prompt.plan" = "帮我为今天制定一个清晰计划";
-"empty.prompt.write" = "帮我润色一段文字";
+"empty.prompt.1" = "用简单的话解释一个复杂概念";
+"empty.prompt.2" = "帮我为今天制定一个清晰的计划";
+"empty.prompt.3" = "帮我润色一段文字";
+"empty.prompt.4" = "帮我想几个有创意的点子";
+"empty.prompt.5" = "帮我分析一个决定的利弊";
+"empty.prompt.6" = "帮我把一段长内容总结成要点";
+"empty.prompt.7" = "用一个类比讲清楚一个抽象话题";
+"empty.prompt.8" = "帮我写一封得体的邮件";
+"empty.prompt.9" = "帮我规划一个循序渐进的学习路线";
+"empty.prompt.10" = "帮我在一段信息里找出关键事实";
 "empty.configure" = "配置 API Key";
 
 "capability.coming_soon.title" = "暂不可用";

@@ -13,107 +13,74 @@ public final class FamiliarSpeechTranscriber: ObservableObject {
 
     private let audioEngine = AVAudioEngine()
     private let audioSession = AVAudioSession.sharedInstance()
-    private var speechRecognizer: SFSpeechRecognizer?
-    private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
-    private var recognitionTask: SFSpeechRecognitionTask?
+    private var request: SFSpeechAudioBufferRecognitionRequest?
+    private var task: SFSpeechRecognitionTask?
     private var onTranscription: ((String) -> Void)?
-    private var activationID: UUID?
-    private var recognitionID: UUID?
-    private var hasInputTap = false
+    private var activeSessionID: UUID?
 
-    public func toggle(onTranscription: @escaping (String) -> Void) {
+    public func toggle(onTranscription: @escaping (String) -> Void) async {
         if isListening {
-            stop()
+            await stop()
         } else {
-            start(onTranscription: onTranscription)
+            await start(onTranscription: onTranscription)
         }
     }
 
-    public func stop() {
-        activationID = nil
-        guard isListening || recognitionTask != nil || recognitionRequest != nil else {
-            onTranscription = nil
-            return
-        }
-        finishListening()
+    public func stop() async {
+        await stopListening(resetState: true)
     }
 
-    isolated deinit {
-        audioEngine.stop()
-        if hasInputTap {
-            audioEngine.inputNode.removeTap(onBus: 0)
-        }
-    }
-
-    private func start(onTranscription: @escaping (String) -> Void) {
-        stop()
+    private func start(onTranscription: @escaping (String) -> Void) async {
+        await stopListening(resetState: false)
         self.onTranscription = onTranscription
         latestTranscript = ""
         errorMessage = nil
-        let activationID = UUID()
-        self.activationID = activationID
+        let sessionID = UUID()
+        activeSessionID = sessionID
 
-        SFSpeechRecognizer.requestAuthorization { [weak self] status in
-            Task { @MainActor [weak self] in
-                guard let self, self.activationID == activationID else { return }
-                guard status == .authorized else {
-                    self.fail(with: .permission)
-                    return
-                }
-
-                AVAudioApplication.requestRecordPermission { [weak self] granted in
-                    Task { @MainActor [weak self] in
-                        guard let self, self.activationID == activationID else { return }
-                        guard granted else {
-                            self.fail(with: .microphone)
-                            return
-                        }
-                        self.beginRecognition(activationID: activationID)
-                    }
-                }
-            }
-        }
-    }
-
-    private func beginRecognition(activationID: UUID) {
-        guard self.activationID == activationID else { return }
-        let locale = Locale.current
-        speechRecognizer = SFSpeechRecognizer(locale: locale)
-            ?? SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
-
-        guard let speechRecognizer, speechRecognizer.isAvailable else {
-            fail(with: .unavailable)
+        guard let recognizer = makeRecognizer() else {
+            await fail(with: .unavailable)
             return
         }
 
-        let request = SFSpeechAudioBufferRecognitionRequest()
-        request.shouldReportPartialResults = true
-        if speechRecognizer.supportsOnDeviceRecognition {
-            request.requiresOnDeviceRecognition = true
+        guard await requestSpeechAuthorization() == .authorized else {
+            await fail(with: .permission)
+            return
         }
-        recognitionRequest = request
+        guard await requestMicrophonePermission() else {
+            await fail(with: .microphone)
+            return
+        }
 
         do {
+            guard activeSessionID == sessionID else { return }
             try audioSession.setCategory(.record, mode: .measurement, options: [.duckOthers])
-            try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+            try audioSession.setActive(true)
+
+            let request = SFSpeechAudioBufferRecognitionRequest()
+            request.shouldReportPartialResults = true
+            request.requiresOnDeviceRecognition = true
+            self.request = request
 
             let inputNode = audioEngine.inputNode
-            let recordingFormat = inputNode.outputFormat(forBus: 0)
-            guard recordingFormat.sampleRate > 0, recordingFormat.channelCount > 0 else {
-                throw FamiliarSpeechError.start
-            }
-
-            inputNode.installTap(onBus: 0, bufferSize: 1_024, format: recordingFormat) { [weak request] buffer, _ in
+            let format = inputNode.outputFormat(forBus: 0)
+            inputNode.removeTap(onBus: 0)
+            inputNode.installTap(onBus: 0, bufferSize: 1_024, format: format) { [weak request] buffer, _ in
                 request?.append(buffer)
             }
-            hasInputTap = true
-            let recognitionID = UUID()
-            self.recognitionID = recognitionID
 
-            recognitionTask = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
-                guard self?.recognitionID == recognitionID else { return }
-                Task { @MainActor [weak self] in
+            audioEngine.prepare()
+            try audioEngine.start()
+
+            guard activeSessionID == sessionID else {
+                await stopListening(resetState: false)
+                return
+            }
+
+            task = recognizer.recognitionTask(with: request) { [weak self] result, error in
+                Task { @MainActor in
                     guard let self else { return }
+                    guard self.activeSessionID == sessionID else { return }
 
                     if let result {
                         let transcript = result.bestTranscription.formattedString
@@ -121,46 +88,66 @@ public final class FamiliarSpeechTranscriber: ObservableObject {
                         self.onTranscription?(transcript)
 
                         if result.isFinal {
-                            self.finishListening()
-                            return
+                            await self.stopListening(resetState: true)
                         }
-                    }
-
-                    if error != nil {
-                        self.fail(with: .start)
+                    } else if error != nil {
+                        await self.fail(with: .start)
                     }
                 }
             }
-
-            audioEngine.prepare()
-            try audioEngine.start()
             isListening = true
         } catch {
-            fail(with: .start)
+            await fail(with: .start)
         }
     }
 
-    private func finishListening() {
-        activationID = nil
-        recognitionID = nil
-        audioEngine.stop()
-        if hasInputTap {
-            audioEngine.inputNode.removeTap(onBus: 0)
-            hasInputTap = false
+    private func stopListening(resetState: Bool) async {
+        activeSessionID = nil
+        if audioEngine.isRunning { audioEngine.stop() }
+        audioEngine.inputNode.removeTap(onBus: 0)
+        request?.endAudio()
+        task?.cancel()
+        request = nil
+        task = nil
+        if resetState {
+            isListening = false
+            onTranscription = nil
         }
-        recognitionRequest?.endAudio()
-        recognitionTask?.cancel()
-        recognitionRequest = nil
-        recognitionTask = nil
-        isListening = false
-        onTranscription = nil
-
         try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
     }
 
-    private func fail(with error: FamiliarSpeechError) {
+    private func fail(with error: FamiliarSpeechError) async {
         errorMessage = error.localizedDescription
-        finishListening()
+        await stopListening(resetState: true)
+    }
+
+    private func makeRecognizer() -> SFSpeechRecognizer? {
+        let locales = [Locale.current, Locale(identifier: "zh-CN"), Locale(identifier: "en-US")]
+        for locale in locales {
+            if let recognizer = SFSpeechRecognizer(locale: locale),
+               recognizer.isAvailable,
+               recognizer.supportsOnDeviceRecognition {
+                return recognizer
+            }
+        }
+        return nil
+    }
+
+    private func requestSpeechAuthorization() async -> SFSpeechRecognizerAuthorizationStatus {
+        await withCheckedContinuation { continuation in
+            SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
+        }
+    }
+
+    private func requestMicrophonePermission() async -> Bool {
+        await withCheckedContinuation { continuation in
+            AVAudioApplication.requestRecordPermission { continuation.resume(returning: $0) }
+        }
+    }
+
+    isolated deinit {
+        if audioEngine.isRunning { audioEngine.stop() }
+        task?.cancel()
     }
 }
 

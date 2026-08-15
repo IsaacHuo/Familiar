@@ -21,6 +21,7 @@ struct FamiliarMarkdownWebView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var contentHeight: CGFloat = 1
+    @State private var hasReportedHeight = false
     @State private var didFailRendering = false
 
     init(markdown: String, sources: [FamiliarSource] = [], mode: Mode = .compact, isStreaming: Bool = false) {
@@ -41,24 +42,37 @@ struct FamiliarMarkdownWebView: View {
                         .padding(mode == .document ? AppSpacing.page : 0)
                 }
             } else {
-                FamiliarMarkdownPlatformWebView(
-                    markdown: markdown,
-                    sources: sources,
-                    height: $contentHeight,
-                    didFailRendering: $didFailRendering,
-                    isScrollEnabled: mode == .document,
-                    isStreaming: isStreaming,
-                    reduceMotion: reduceMotion,
-                    openURL: { openURL($0) }
-                )
-                .frame(height: mode == .document ? nil : max(1, contentHeight))
-                .transaction { transaction in
-                    transaction.animation = nil
-                    transaction.disablesAnimations = true
+                ZStack(alignment: .topLeading) {
+                    FamiliarMarkdownPlatformWebView(
+                        markdown: markdown,
+                        sources: sources,
+                        height: $contentHeight,
+                        didFailRendering: $didFailRendering,
+                        isScrollEnabled: mode == .document,
+                        isStreaming: isStreaming,
+                        reduceMotion: reduceMotion,
+                        openURL: { openURL($0) }
+                    )
+                    .frame(height: mode == .document ? nil : max(1, contentHeight))
+                    .transaction { transaction in
+                        transaction.animation = nil
+                        transaction.disablesAnimations = true
+                    }
+
+                    if mode == .compact, !hasReportedHeight {
+                        FamiliarMarkdownFallbackText(markdown: markdown)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .allowsHitTesting(false)
+                    }
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onChange(of: contentHeight) { _, newHeight in
+            if newHeight > 1 { hasReportedHeight = true }
+        }
     }
 }
 
