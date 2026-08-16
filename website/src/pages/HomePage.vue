@@ -159,6 +159,41 @@ const base = import.meta.env.BASE_URL;
       </div>
     </section>
 
+    <section class="section screenshots-section container" aria-labelledby="screenshots-title">
+      <div class="section-heading">
+        <p class="section-kicker">界面一览</p>
+        <h2 id="screenshots-title">从聊天到设置，处处清晰。</h2>
+        <p>聊天、侧栏、设置、权限与存储，每一屏都保持简单直接，只呈现你需要的信息。</p>
+      </div>
+
+      <div class="screenshot-grid">
+        <figure class="screenshot-card">
+          <img :src="`${base}assets/chat.png`" alt="聊天页" loading="lazy">
+          <figcaption>聊天页</figcaption>
+        </figure>
+        <figure class="screenshot-card">
+          <img :src="`${base}assets/drawer.png`" alt="抽屉页" loading="lazy">
+          <figcaption>抽屉页</figcaption>
+        </figure>
+        <figure class="screenshot-card">
+          <img :src="`${base}assets/settings.png`" alt="设置页" loading="lazy">
+          <figcaption>设置页</figcaption>
+        </figure>
+        <figure class="screenshot-card">
+          <img :src="`${base}assets/permissions.png`" alt="权限页" loading="lazy">
+          <figcaption>权限页</figcaption>
+        </figure>
+        <figure class="screenshot-card">
+          <img :src="`${base}assets/storage.png`" alt="存储页" loading="lazy">
+          <figcaption>存储页</figcaption>
+        </figure>
+        <figure class="screenshot-card">
+          <img :src="`${base}assets/tools.png`" alt="工具页" loading="lazy">
+          <figcaption>工具页</figcaption>
+        </figure>
+      </div>
+    </section>
+
     <section class="cta container">
       <div class="cta-panel">
         <img :src="`${base}assets/app-icon.png`" alt="Familiar App 图标" width="74" height="74">
