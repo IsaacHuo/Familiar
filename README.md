@@ -41,11 +41,11 @@
   </tr>
   <tr>
     <td align="center"><img src="screenshots/storage.png" width="210" alt="Storage"></td>
-    <td></td>
+    <td align="center"><img src="screenshots/tools.png" width="210" alt="Tools"></td>
   </tr>
 </table>
 
-*Chat · Drawer · Settings · Permissions · Storage*
+*Chat · Drawer · Settings · Permissions · Storage · Tools*
 
 ## Overview
 
