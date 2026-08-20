@@ -2,13 +2,15 @@
 
 Last verified: 2026-08-20
 
-> 代码基线：`main @ c5d1c03`，另有一批未提交的工作树改动（见 In Progress）。
+> 代码基线：`feat/familiar-product-convergence-v1`，基于 `main @ ed66605`。当前功能改动均已按 Work Package 提交。
 
 ## Current Focus
 
-Project Workspace 与 instruction-only Skills v1 已在现有执行体验基础上接线：项目主页、文件/网页/文本资料、Share 目标导入、响应式 Artifact、项目 Run 审计、Skill 项目绑定、工具范围收窄和 V9 Run Skill 快照均已进入代码。当前工作树的 arm64 Simulator Debug/Release 构建与 `build-for-testing` 已通过；按本轮“不启动模拟器”的边界，本地未实际执行全量测试和 8 场景 Benchmark。DeepSeek、EventKit、FastVLM 和系统入口的真实设备验收仍由所有者保留到最后。
+Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是主要交互与执行 Surface，Project 是长期 Context Workspace，单 Agent Runtime 是执行内核，原生 iPhone Capabilities 是执行能力。Project Home 现在优先继续工作，只保留 Continue / New Chat 两级动作；Resources 与 Artifacts 保留为主要上下文内容，Conversations / Skills / Runs 合并为次级 Project Context 导航。Project Conversation 继续复用普通 Chat Surface，并在顶栏显示唯一的 Project 归属入口。核心 Chat、Composer、Drawer、Project、Settings Hub 与 Agent Surface 已开始使用统一语义 UI tokens。
 
 ## Recently Completed
+
+- **Product Convergence v1**：删除 Project Home 独立 Ask 输入框和重复执行路径，把项目管理操作移入导航菜单；Project Conversation 顶栏增加可返回 Project Home 的单一归属标识，普通 Chat 保持无项目提示；Chat 顶栏删除重复设置按钮；Settings 移除未接入数据的 Token Usage 占位页。`FamiliarTheme` 现包含有限 spacing、Dynamic Type typography、radius、icon visual size、hit target 和基础 ButtonStyle tokens，核心高频 Surface 已迁移。
 
 - **Project Workspace 与 Skills v1**：项目页成为资料、对话、Artifact、Run 和 Skill 的工作台；支持项目内直接提问、公开 HTTPS 网页和粘贴文本导入，Share 选择项目后落为 Resource。全局可安装严格 instruction-only JSON Skill，项目逐项启用；Run 启动前冻结 Skill ID/版本/hash/allowedTools，以允许工具并集收窄当前可用 manifests，安全策略始终最后注入且 Skill 不能产生授权。V9 增加 `FamiliarRunSkillSnapshotRecord`，聊天轨迹和项目 Run 详情可检查实际 Resource、Skill、Provider/Model 与工具范围。
 - **导航与草稿安全**：抽屉改为项目/对话统一搜索，提供新聊天、项目、最近和设置入口；顶栏移除重复设置按钮。切换对话或新建聊天时不会静默丢弃草稿，删除对话具有明确确认。
@@ -35,7 +37,7 @@ Project Workspace 与 instruction-only Skills v1 已在现有执行体验基础�
 
 ## In Progress
 
-工作树仍有未提交改动。V9、Project Workspace、Skills Runtime、统一搜索与 Share Resource 导入已经完成本轮静态检查、arm64 Simulator Debug/Release 构建和 `build-for-testing`。本轮没有启动模拟器，因此全量测试与 8 场景 Benchmark 仍需由 CI 或所有者在允许的运行环境中执行，不能沿用旧的通过数字。
+Product Convergence v1 的代码与文档 Work Package 已完成静态 Swift 解析、strings plist 校验和 diff 检查。最终 arm64 iOS Simulator build 尚未执行；本轮不会启动 Simulator，也不会声明视觉验收通过。
 
 ## Known Problems
 
@@ -51,5 +53,6 @@ Project Workspace 与 instruction-only Skills v1 已在现有执行体验基础�
 
 ## Next
 
-1. 由 CI 或所有者在允许启动 Simulator 的环境执行全量测试与 8 场景 Benchmark。
-2. 由所有者验收 Project Workspace、Skills、DeepSeek、EventKit、FastVLM、Share 与无障碍真机路径。
+1. 完成 Product Convergence v1 最终 arm64 iOS Simulator build，修复编译阻塞后推送 integration branch。
+2. 由所有者在真机验收普通 Chat / Project 区分、Project 顶栏归属、Project Home 层级、极端 Dynamic Type、VoiceOver、Reduce Motion、Reduce Transparency 与中英文布局。
+3. 由所有者继续验收 Skills、DeepSeek、EventKit、FastVLM、Share 与系统入口真机路径。

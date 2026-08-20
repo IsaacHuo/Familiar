@@ -154,7 +154,7 @@
 
 - **描述**：Pixel-grid loader with shimmer and elapsed time. 像素网格加载器，带 shimmer 文字和经过时长。
 - **变体**：Drive / Dots / Orbit。本项目按需求以 Orbit（彗星巡边）为默认。Drive 与 Dots 为方形/圆形波前驱动。
-- **适配建议**：Familiar 用 SwiftUI 实现。核心可复用点：三态图案（PixelGrid/Orbit）与经过时长计时器（tabular 数字），配合淡入淡出文字。Orbit 的 ORBIT_ORDER 巡边序可直接翻译为 SwiftUI 动画。
+- **适配结论**：已由 `FamiliarChatMessageViews.swift` 的 `FamiliarOrbitLoadingView` 与 `FamiliarAgentStatusRow` 以 SwiftUI 落地。保留 Orbit、经过时长和 Reduce Motion 静止退化；不迁移 Web shimmer。
 
 ```tsx
 "use client";
@@ -254,7 +254,7 @@ export default function LoadingState({
 
 - **描述**：Expandable traces — steps, reasoning, search, coding. 可展开的 Agent 轨迹，四种变体。
 - **变体**：Steps（步骤列表，spinner→勾） / Reasoning（推理散文） / Search（网页搜索轨迹） / Coding（工具轨迹）。四变体全收录。
-- **适配建议**：Familiar 的 ModelThinking 事件可直接对应。SwiftUI 实现时建议：阶段推进用定时器序列（useSequence 的 STAGES），轨迹行展开用 DisclosureGroup 或自定义 Grid，四变体对应 Runtime Event 的类型分支。
+- **适配结论**：Familiar 使用 Runtime Event 驱动的 `FamiliarAgentStatusRow` 和终态 `FamiliarOperationTrace`。不展示模型私有推理散文，不复制演示用定时阶段；只呈现可检查的工具、上下文与执行摘要。
 
 ```tsx
 "use client";
@@ -739,7 +739,7 @@ export default function StreamingText() {
 
 - **描述**：Human-in-the-loop questions the agent asks before acting. Agent 行动前向用户提问。
 - **变体**：单选 + 自定义输入 + 多问题分页（前进/后退/指示点）。
-- **适配建议**：该组件适合结构化澄清，不直接承担 Familiar 写授权。写入确认必须展示具体 capability、目标、参数和后果，并使用现有确认流程；通用问卷不能替代授权证据。
+- **适配结论**：写操作继续由 `FamiliarToolActivityCard` 承担，展示 capability、目标、参数、授权期限和终态。通用问卷不能替代授权证据；结构化澄清仍是未来能力。
 
 ```tsx
 "use client";
@@ -2469,7 +2469,7 @@ export default function RecommendationCard() {
 
 - **描述**：Retrieved knowledge chunks with their sources. 检索到的知识块及其来源。
 - **变体**：统计头部（All chunks 32）、块标题 + 字符数 + 类型徽标 + 来源文件名。
-- **适配建议**：适用于 Project Resource、Web Sources 或未来 Memory 的检索展示。Familiar 已有只读 Web Search/Fetch 与 Sources，但没有 Project Resource、RAG 或 Memory 检索。
+- **适配结论**：Project Resource、Web Sources 和版本化 ContextSnapshot 已存在；Project Home 只展示最近 Resources，完整检索与 Run 冻结版本在次级页面检查。Memory Runtime 尚未开放，不为未来 Memory 增加占位卡片。
 
 ```tsx
 "use client";
@@ -3039,7 +3039,7 @@ export default function FilterTable() {
 
 - **描述**：Workspace navigation with quick search. 工作区导航 + 快速搜索。
 - **变体**：对象分组（Workspace/Objects）、计数徽标、搜索入口。
-- **适配建议**：Familiar 的目标侧栏包含项目、最近对话和统一搜索；可借鉴分组与计数徽标，但按用户任务组织，不复制实现类别导航。
+- **适配结论**：Familiar 侧栏按 New Chat、Projects、Recent Conversations、Settings 组织，并使用统一搜索。Project Conversation 的归属由 Chat 顶栏单一 Project 入口表达，不在侧栏复制第二套 Workspace 导航。
 
 ```tsx
 "use client";

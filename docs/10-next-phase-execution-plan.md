@@ -8,7 +8,7 @@
 
 > 使用 DeepSeek 完成文本对话和基础图片识读，查询日历与提醒，按用户授权创建动作，在同一回合检查多张动作卡，并在 App 重启后撤销已执行动作。
 
-Project 仍是长期工作单元，但不再作为唯一验收主线。普通聊天与 Project 都必须共享同一套 Runtime、视觉证据、授权和动作 Surface。
+Chat 是主要交互与执行 Surface，Project 是长期 Context Workspace。普通聊天与 Project Conversation 共享同一套 Chat Surface、Runtime、视觉证据、授权和动作 Surface；Project 不再以功能 Dashboard 形式扩张。
 
 ## 2. 执行原则
 

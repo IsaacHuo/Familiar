@@ -24,9 +24,13 @@ flowchart TD
     Drawer --> Projects[项目]
     Drawer --> Recent[最近对话]
     Projects --> ProjectHome[项目主页]
-    ProjectHome --> ProjectChat[项目对话]
+    ProjectHome --> ProjectChat[继续或新建项目对话]
     ProjectHome --> Resources[资料]
     ProjectHome --> Artifacts[生成结果]
+    ProjectHome --> Context[次级项目上下文]
+    Context --> Conversations[对话]
+    Context --> Skills[技能]
+    Context --> Runs[运行记录]
     Chat --> TopBar[顶栏]
     Chat --> Timeline[消息时间线]
     Chat --> Composer[输入器]
@@ -180,8 +184,11 @@ Project v1 上线后的侧栏内容：
 ### 4.1.1 Project v1
 
 - 项目列表、空状态、创建、重命名、归档和删除。
-- 项目主页展示说明、指令、最近资料、最近对话、生成结果与运行记录。
-- 支持项目内添加文件和新聊天；普通聊天可以不属于项目。
+- 项目主页优先展示说明、指令与 Continue / New Chat；独立 Ask 输入框不再与 Chat Composer 重复。
+- Resources 与 Artifacts 展示最近内容并提供完整列表；Conversations、Skills 与 Runs 合并为紧凑的 Project Context 导航。
+- 支持项目内添加文件和新聊天；普通聊天可以不属于项目。Project Conversation 与普通 Chat 共用同一个 Chat Surface、Composer、Runtime、授权和执行 Surface。
+- Project Conversation 顶栏显示唯一的 Project 名称入口，点击返回对应 Project Home；不叠加常驻 Banner 或第二个 Context Pill。
+- 项目编辑、归档和删除位于导航栏菜单，不与继续工作争夺主内容区。
 - Project UI 只能在持久化模型、文件生命周期和 ContextSnapshot 路径可用后开放。
 
 ### 4.2 顶栏
@@ -189,10 +196,10 @@ Project v1 上线后的侧栏内容：
 固定结构：
 
 - 左：会话抽屉按钮。
-- 中：Provider 与模型选择胶囊。
+- 中：Provider 与模型选择胶囊；Project Conversation 额外显示一个紧凑的 Project 名称入口。
 - 右：新对话按钮。
 
-模型选择胶囊紧邻左侧抽屉按钮，不在顶栏中居中。
+模型选择胶囊紧邻左侧抽屉按钮，不在顶栏中居中。设置只从抽屉进入，不在顶栏重复出现。
 
 发送期间禁用模型切换和新对话，避免当前请求上下文发生变化。
 
@@ -457,6 +464,20 @@ Provider 特定字段：
 ### 12.3 Reduce Transparency
 
 系统开启 Reduce Transparency 时，玻璃组件使用实色 elevated fill 和边框。
+
+### 12.4 语义令牌
+
+核心高频 Surface 使用 `FamiliarTheme.swift` 的有限语义令牌：
+
+| 类别 | 规则 |
+| --- | --- |
+| Spacing | `xSmall / small / medium / large / xLarge / section` 六档；特殊几何布局可保留明确的局部值 |
+| Typography | `largeTitle / screenTitle / sectionTitle / body / secondary / caption / button / metadata`，全部基于 Apple Dynamic Type Text Styles |
+| Radius | `compact / control / card / overlay` 四档 |
+| Icon | `compact / standard / prominent` 三档视觉尺寸 |
+| Control | `minimumHitTarget` 固定 44 pt；视觉内容使用 compact / standard / prominent 尺寸，不把所有按钮画成 44 pt 实心块 |
+
+Primary、Secondary、Icon、Circular、Toolbar、Pill、Destructive 与 Inline Action 使用同一强调规则。优先使用原生 `Button`、`Menu`、`NavigationLink` 和系统角色；Glass 只形成导航与交互层，不进入消息正文、Project 内容或普通 List row。
 
 ## 13. 本地化
 

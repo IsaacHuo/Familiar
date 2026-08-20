@@ -1,6 +1,6 @@
 # Architecture
 
-基于当前代码（`main @ c5d1c03` + 工作树改动）验证。目标是回答"现在代码实际上长什么样"；设计目标见 `docs/02-system-architecture.md`。
+基于当前代码（`feat/familiar-product-convergence-v1`，基于 `main @ ed66605`）验证。目标是回答"现在代码实际上长什么样"；设计目标见 `docs/02-system-architecture.md`。
 
 ## 1. 技术基线
 
@@ -88,13 +88,13 @@
 
 ### `Familiar/Presentation/` — SwiftUI
 - `FamiliarRootView.swift` — 首启 gate + Deep Link/Spotlight/App Intent handoff 路由。
-- `FamiliarChatView.swift` — 主界面：会话抽屉（含项目列表/最近）、聊天主体、顶栏、设置/项目 sheet、Web 浏览器入口。
+- `FamiliarChatView.swift` — 统一 Chat Surface：会话抽屉（含项目列表/最近）、聊天主体、顶栏、设置/项目 sheet、Web 浏览器入口；Project Conversation 在同一顶栏显示唯一 Project 归属入口。
 - `FamiliarChatController.swift` — `@MainActor @Observable` 中央状态容器（约 900 行）：`startSending`/`performSend` 编排整条 Agent Run。
 - `FamiliarChatMessageViews.swift` — 时间线渲染；读取活动仅更新 `FamiliarAgentStatusRow`，写动作由稳定 `FamiliarToolActivityCard` 呈现，并按 `assistantTurnID` 使用横向 pager。
 - `FamiliarSurfaceDescriptor.swift` — Surface Protocol：稳定 identity、effect、assistant turn group、已撤销 phase；reducer 忽略旧 sequence 防止终态被覆盖。
 - `FamiliarComposerView.swift` — compact/expanded/fullscreen 输入器、附件/相机/相册、slash 命令、语音。
 - `FamiliarSettingsHubView.swift` / `FamiliarSettingsView.swift` — 设置 hub 与模型服务设置。
-- `FamiliarProjectsView.swift` — Project Workspace：项目列表/主页/编辑、文件/网页/文本资料、对话、响应式 Artifact、Run 审计和 Skill 项目绑定。
+- `FamiliarProjectsView.swift` — Project Context Workspace：项目列表/主页/编辑、文件/网页/文本资料与 Artifact；主页主动作回到 Chat，Conversations/Skills/Runs 收敛为次级 Context 导航。
 - `FamiliarSharedDestinationView.swift` — Share 收件箱目标选择（已有项目、新建项目、普通聊天草稿）。
 - `FamiliarOnboardingView.swift` — 三步首启。
 - `FamiliarMarkdownWebView.swift` — 非持久化 WKWebView 渲染 + 高度回传 + 首帧回退文本。
@@ -118,7 +118,7 @@
 - `FamiliarSpeechTranscriber.swift` — `@MainActor`，`SFSpeechRecognizer` + `AVAudioEngine` 流式转写（工作树已改 async/await + sessionID 失效保护）。
 
 ### `Familiar/Support/`
-- `FamiliarTheme.swift` — 设计令牌、iOS 26 `glassEffect`/material 回退 modifier。
+- `FamiliarTheme.swift` — 语义 spacing / typography / radius / icon / control tokens、基础 ButtonStyle，以及 iOS 26 `glassEffect`/material 回退 modifier。
 - `FamiliarMotion.swift` — 集中 motion tokens（`micro/state/spatial/drawer`）与 `FamiliarHapticPolicy`（只标记 awaitingApproval/succeeded/failed 边界）。
 
 ### `Familiar/SystemEntry/`

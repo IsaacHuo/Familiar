@@ -477,6 +477,14 @@
 - 影响：需要持久化系统对象标识、原动作、撤销能力、状态和有效边界；多动作分别撤销，不声明跨 EventKit 对象的原子事务。
 - 复审条件：系统对象外部修改使可靠撤销不可实现，或持久化敏感度超过收益。
 
+## D-046 Chat 是主 Surface，Project 是长期 Context Workspace
+
+- 状态：生效
+- 决策：普通 Chat 与 Project Conversation 共用同一个 Chat Surface、Composer、Runtime、授权和执行 Surface。Project 负责指令、资料、对话、Skills、Artifacts、Runs 与后续 Memory 的长期边界，但不成为执行 Dashboard。Project Home 只突出 Continue / New Chat；Resources 与 Artifacts 为主要内容，Conversations / Skills / Runs 为次级 Context 导航。Project Conversation 顶栏使用一个 Project 名称入口表达归属。
+- 依据：用户完成任务应始终停留在 Chat；Project 的价值来自持续上下文，而不是同时展示全部已实现能力。独立 Ask 输入框、多个同权 Section 和重复设置入口增加了路径竞争，却没有增加执行能力。
+- 影响：删除 Project Home 独立 Ask 路径；Chat 顶栏不重复设置按钮；核心 Surface 使用统一 spacing、Dynamic Type typography、radius、icon visual size 与 hit-target tokens。Glass 保持在导航、Composer 和临时 Overlay。
+- 复审条件：真机可用性测试显示 Project 归属仍不清晰，或 Project Home 无法支持真实的长期工作回访。
+
 ## 决策维护
 
 新增决策时使用以下字段：

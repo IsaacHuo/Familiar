@@ -16,7 +16,7 @@
 
 ## 2. 产品定位
 
-> **Familiar 是一个原生、安全、可检查的个人 AI 工作台。项目是第一层工作单元，聊天是主要入口，原生工具、只读 Web 与后续远程 MCP 是执行面，单 Agent Runtime 是执行内核。**
+> **Familiar 是一个原生、安全、可检查的个人 AI 工作台。Chat 是主要交互和执行界面，Project 是长期 Context Workspace，单 Agent Runtime 是执行内核，原生工具与只读 Web 是执行能力。**
 
 Familiar 把 iPhone 的原生能力转成一个可组合、可治理的执行面：
 
@@ -27,7 +27,7 @@ Familiar 把 iPhone 的原生能力转成一个可组合、可治理的执行面
 
 North Star：
 
-> **让一个项目在 Familiar 中真正拥有长期上下文、资料、能力、执行记录和可恢复结果。**
+> **让用户始终在 Chat 中完成事情，同时让 Project 为长期工作持续提供清晰、有边界、可检查的上下文。**
 
 与 OpenMinis 的稳定区别：
 
@@ -45,7 +45,7 @@ Capability Registry
 + Native Workspace
 ```
 
-Project、ContextSnapshot 与这四块共同构成目标架构。在 Capability Manifest、Resolver 和 BindingStore 完成后，新的 Apple Framework、远程 MCP Server 或模型主要通过 Adapter 接入。
+Project、ContextSnapshot 与这四块共同构成目标架构。Project 不是装聊天的文件夹，也不是功能 Dashboard；它统一承载 Project Instructions、Resources、Conversations、Skills、Artifacts、Runs / Trace、后续 Memory 与可用 Capability Scope，但完成任务的核心 Surface 始终是 Chat。
 
 ## 3. 产品目标
 
