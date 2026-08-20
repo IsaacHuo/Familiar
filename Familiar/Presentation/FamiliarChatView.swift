@@ -22,6 +22,8 @@ struct FamiliarChatView: View {
     @State private var presentedSheet: FamiliarSheetDestination?
     @State private var renameRequest: FamiliarRenameRequest?
     @State private var pendingMessageOperation: FamiliarPendingMessageOperation?
+    @State private var pendingDraftNavigation: FamiliarPendingDraftNavigation?
+    @State private var conversationPendingDeletion: FamiliarConversation?
     @State private var speechBaseDraft = ""
     @State private var configuredProviderIDs: Set<String> = []
     @State private var isImportingSharedItem = false
@@ -52,7 +54,7 @@ struct FamiliarChatView: View {
             let bottomInset = keyboardHeight > 0 ? 0 : safeAreaInsets.bottom
 
             GeometryReader { geometry in
-                let drawerWidth = geometry.size.width * 2 / 3
+                let drawerWidth = geometry.size.width * (2.0 / 3.0)
                 let visibleDrawerWidth = drawerOffset(width: drawerWidth)
                 let drawerProgress = visibleDrawerWidth / max(drawerWidth, 1)
                 let cornerRadius = FamiliarTheme.displayCornerRadius * drawerProgress
@@ -67,9 +69,7 @@ struct FamiliarChatView: View {
                         selectedConversationID: controller.selectedConversationID,
                         safeAreaInsets: safeAreaInsets,
                         onSelect: { conversation in
-                            Task { await speechTranscriber.stop() }
-                            controller.select(conversation.id, in: modelContext)
-                            closeDrawer()
+                            requestConversationSelection(conversation)
                         },
                         onRename: { conversation in
                             renameRequest = FamiliarRenameRequest(
@@ -78,7 +78,11 @@ struct FamiliarChatView: View {
                             )
                         },
                         onDelete: { conversation in
-                            controller.delete([conversation], in: modelContext)
+                            conversationPendingDeletion = conversation
+                            closeDrawer()
+                        },
+                        onNewConversation: {
+                            requestNewConversation(project: nil)
                         },
                         onSelectProject: { project in
                             presentedSheet = .projects(project.id)
@@ -86,6 +90,10 @@ struct FamiliarChatView: View {
                         },
                         onAllProjects: {
                             presentedSheet = .projects(nil)
+                            closeDrawer()
+                        },
+                        onSettings: {
+                            presentedSheet = .settings(nil)
                             closeDrawer()
                         }
                     )
@@ -155,16 +163,8 @@ struct FamiliarChatView: View {
             case .projects(let projectID):
                 FamiliarProjectsView(
                     initialProjectID: projectID,
-                    onSelectConversation: { conversation in
-                        Task { await speechTranscriber.stop() }
-                        controller.select(conversation.id, in: modelContext)
-                        isComposerFocused = false
-                    },
-                    onNewConversation: { project in
-                        Task { await speechTranscriber.stop() }
-                        _ = controller.createConversation(project: project, in: modelContext)
-                        isComposerFocused = true
-                    }
+                    registry: toolRegistry,
+                    onConversationRequest: handleProjectConversationRequest
                 )
             }
         }
@@ -218,7 +218,40 @@ struct FamiliarChatView: View {
         } message: {
             Text(String(localized: "message.operation.detail"))
         }
+        .confirmationDialog(
+            String(localized: "draft.discard.title", defaultValue: "Discard this draft?"),
+            isPresented: Binding(
+                get: { pendingDraftNavigation != nil },
+                set: { if !$0 { pendingDraftNavigation = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "draft.discard.action", defaultValue: "Discard Draft"), role: .destructive) {
+                performPendingDraftNavigation()
+            }
+            Button(String(localized: "common.cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "draft.discard.detail", defaultValue: "Your unsent text and attachments will be removed before switching."))
+        }
+        .confirmationDialog(
+            String(localized: "conversation.delete.title", defaultValue: "Delete this chat?"),
+            isPresented: Binding(
+                get: { conversationPendingDeletion != nil },
+                set: { if !$0 { conversationPendingDeletion = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "common.delete"), role: .destructive) {
+                guard let conversationPendingDeletion else { return }
+                controller.delete([conversationPendingDeletion], in: modelContext)
+                self.conversationPendingDeletion = nil
+            }
+            Button(String(localized: "common.cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "conversation.delete.detail", defaultValue: "Messages, attachments, and saved run history in this chat will be deleted from this iPhone."))
+        }
         .onAppear {
+            controller.recoverInterruptedRuns(in: modelContext)
             if controller.selectedConversationID == nil,
                let first = conversations.first {
                 controller.select(first.id, in: modelContext)
@@ -286,8 +319,7 @@ struct FamiliarChatView: View {
             && controller.agentRuns.isEmpty
             && controller.pendingConfirmations.isEmpty
             && controller.streamingText.isEmpty
-            && controller.agentStatus == nil
-            && controller.toolActivities.isEmpty
+            && !controller.hasTransientActivity
     }
 
     private func updateSpotlightIndex(_ conversations: [FamiliarSpotlightConversation]) {
@@ -367,17 +399,62 @@ struct FamiliarChatView: View {
 
     private func importSharedDraft(to destination: FamiliarSharedDestination) {
         guard let prepared = pendingSharedDraft else { return }
-        FamiliarSharedDraftImportService.consume(prepared)
-        pendingSharedDraft = nil
         Task { await speechTranscriber.stop() }
         switch destination {
         case .project(let project):
-            _ = controller.createConversation(project: project, in: modelContext)
+            pendingSharedDraft = nil
+            showsSharedDestination = false
+            isImportingSharedItem = true
+            Task { @MainActor in
+                defer { isImportingSharedItem = false }
+                let service = FamiliarProjectResourceService()
+                var firstError = prepared.firstImportErrorDescription
+                var importedCount = 0
+
+                for attachment in prepared.attachments {
+                    guard let url = FamiliarAttachmentStore.url(for: attachment.relativePath) else {
+                        firstError = firstError ?? FamiliarAttachmentStoreError.sourceUnavailable.localizedDescription
+                        continue
+                    }
+                    do {
+                        try await service.importDocument(from: url, into: project, in: modelContext)
+                        importedCount += 1
+                    } catch {
+                        firstError = firstError ?? error.localizedDescription
+                    }
+                }
+
+                let sharedText = prepared.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !sharedText.isEmpty {
+                    do {
+                        if Self.isStandaloneHTTPSURL(sharedText) {
+                            try await service.importWebPage(from: sharedText, into: project, in: modelContext)
+                        } else {
+                            try service.importPastedText(sharedText, into: project, in: modelContext)
+                        }
+                        importedCount += 1
+                    } catch {
+                        firstError = firstError ?? error.localizedDescription
+                    }
+                }
+
+                FamiliarSharedDraftImportService.consume(prepared)
+                FamiliarSharedDraftImportService.discardPreparedAttachments(prepared)
+                presentedSheet = .projects(project.id)
+                if let firstError {
+                    controller.errorMessage = importedCount > 0
+                        ? String(format: String(localized: "share.error.partial_import"), firstError)
+                        : String(format: String(localized: "share.error.import_failed"), firstError)
+                }
+            }
+            return
         case .ordinary:
+            FamiliarSharedDraftImportService.consume(prepared)
+            pendingSharedDraft = nil
             controller.select(nil, in: modelContext)
+            controller.draft = prepared.text
+            controller.draftAttachments = prepared.attachments
         }
-        controller.draft = prepared.text
-        controller.draftAttachments = prepared.attachments
         showsSharedDestination = false
         presentedSheet = nil
         closeDrawer()
@@ -385,6 +462,15 @@ struct FamiliarChatView: View {
         if let importErrorDescription = prepared.firstImportErrorDescription {
             controller.errorMessage = String(format: String(localized: "share.error.partial_import"), importErrorDescription)
         }
+    }
+
+    private static func isStandaloneHTTPSURL(_ text: String) -> Bool {
+        guard !text.contains(where: \.isWhitespace),
+              let url = URL(string: text),
+              url.scheme?.lowercased() == "https",
+              url.host?.isEmpty == false
+        else { return false }
+        return url.absoluteString == text
     }
 
     private func discardPendingSharedDraftIfNeeded() {
@@ -432,8 +518,7 @@ struct FamiliarChatView: View {
            controller.toolRunRecords.isEmpty,
            controller.pendingConfirmations.isEmpty,
            controller.streamingText.isEmpty,
-           controller.agentStatus == nil,
-           controller.toolActivities.isEmpty {
+           !controller.hasTransientActivity {
             FamiliarEmptyConversationView(
                 isProviderConfigured: configuredProviderIDs.contains(controller.settings.providerID),
                 onConfigure: { presentedSheet = .settings(nil) },
@@ -449,17 +534,17 @@ struct FamiliarChatView: View {
                 modelSwitches: controller.modelSwitches,
                 toolRunRecords: controller.toolRunRecords,
                 agentRuns: controller.agentRuns,
-                pendingConfirmations: controller.pendingConfirmations,
+                surfaces: controller.surfaces.orderedSurfaces,
                 streamingMessageID: controller.streamingMessageID,
                 streamingText: controller.streamingText,
-                agentStatus: controller.agentStatus,
-                activeRunStartedAt: controller.activeRunStartedAt,
-                toolActivities: controller.toolActivities,
                 availableUndoKeys: controller.availableUndoKeys,
-                onResolveConfirmation: { request, decision in
-                    controller.resolveConfirmation(request, decision: decision)
+                completedUndoKeys: controller.completedUndoKeys,
+                onResolveConfirmation: { requestID, decision in
+                    controller.resolveConfirmation(requestID: requestID, decision: decision)
                 },
-                onUndo: { controller.undo($0, in: modelContext) },
+                onUndo: { runID, toolCallID in
+                    controller.undo(runID: runID, toolCallID: toolCallID, in: modelContext)
+                },
                 onEdit: { pendingMessageOperation = .edit($0) },
                 onRetry: { pendingMessageOperation = .retry($0) }
             )
@@ -496,10 +581,8 @@ struct FamiliarChatView: View {
             onConfigure: { presentedSheet = .settings(nil) },
             onNewConversation: {
                 guard !isInNewConversation else { return }
-                Task { await speechTranscriber.stop() }
                 let project = conversations.first { $0.id == controller.selectedConversationID }?.project
-                _ = controller.createConversation(project: project, in: modelContext)
-                isComposerFocused = true
+                requestNewConversation(project: project)
             }
         )
     }
@@ -509,6 +592,114 @@ struct FamiliarChatView: View {
             get: { renameRequest?.title ?? "" },
             set: { renameRequest?.title = $0 }
         )
+    }
+
+    private var hasUnsentDraft: Bool {
+        !controller.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !controller.draftAttachments.isEmpty
+            || !controller.draftImages.isEmpty
+    }
+
+    private func requestConversationSelection(_ conversation: FamiliarConversation) {
+        guard !controller.isSending else {
+            controller.errorMessage = String(localized: "error.deep_link.busy")
+            return
+        }
+        guard conversation.id != controller.selectedConversationID else {
+            closeDrawer()
+            return
+        }
+        let navigation = FamiliarPendingDraftNavigation.select(conversation)
+        if hasUnsentDraft {
+            pendingDraftNavigation = navigation
+            closeDrawer()
+        } else {
+            perform(navigation)
+        }
+    }
+
+    private func requestNewConversation(project: FamiliarProject?) {
+        guard !controller.isSending else {
+            controller.errorMessage = String(localized: "error.deep_link.busy")
+            return
+        }
+        let navigation = FamiliarPendingDraftNavigation.newConversation(project)
+        if hasUnsentDraft {
+            pendingDraftNavigation = navigation
+            closeDrawer()
+        } else {
+            perform(navigation)
+        }
+    }
+
+    private func handleProjectConversationRequest(_ request: FamiliarProjectConversationRequest) {
+        guard !controller.isSending else {
+            controller.errorMessage = String(localized: "error.deep_link.busy")
+            return
+        }
+        let navigation: FamiliarPendingDraftNavigation?
+        switch request {
+        case .open(let conversationID):
+            guard let conversation = conversations.first(where: { $0.id == conversationID }) else {
+                controller.errorMessage = String(localized: "error.deep_link.conversation_not_found")
+                return
+            }
+            navigation = .select(conversation)
+        case .create(let projectID):
+            guard let project = fetchProject(id: projectID) else {
+                controller.errorMessage = String(localized: "project.unavailable")
+                return
+            }
+            navigation = .newConversation(project)
+        case .createAndSend(let projectID, let prompt):
+            guard let project = fetchProject(id: projectID) else {
+                controller.errorMessage = String(localized: "project.unavailable")
+                return
+            }
+            navigation = .projectPrompt(project, prompt)
+        }
+        guard let navigation else { return }
+        if hasUnsentDraft {
+            pendingDraftNavigation = navigation
+        } else {
+            perform(navigation)
+        }
+    }
+
+    private func performPendingDraftNavigation() {
+        guard let pendingDraftNavigation else { return }
+        self.pendingDraftNavigation = nil
+        perform(pendingDraftNavigation)
+    }
+
+    private func perform(_ navigation: FamiliarPendingDraftNavigation) {
+        guard !controller.isSending else {
+            controller.errorMessage = String(localized: "error.deep_link.busy")
+            return
+        }
+        Task { await speechTranscriber.stop() }
+        switch navigation {
+        case .select(let conversation):
+            controller.select(conversation.id, in: modelContext)
+            isComposerFocused = false
+        case .newConversation(let project):
+            _ = controller.createConversation(project: project, in: modelContext)
+            isComposerFocused = true
+        case .projectPrompt(let project, let prompt):
+            guard controller.createConversation(project: project, in: modelContext) != nil else { return }
+            controller.draft = prompt
+            isComposerFocused = false
+            controller.startSending(in: modelContext)
+        }
+        closeDrawer()
+    }
+
+    private func fetchProject(id: UUID) -> FamiliarProject? {
+        var descriptor = FetchDescriptor<FamiliarProject>(
+            predicate: #Predicate { project in project.id == id }
+        )
+        descriptor.fetchLimit = 1
+        return try? modelContext.fetch(descriptor).first
     }
 
     private func drawerOffset(width: CGFloat) -> CGFloat {
@@ -537,7 +728,7 @@ struct FamiliarChatView: View {
                     drawerDrag = 0
                     isDrawerOpen = shouldOpen
                 } else {
-                    withAnimation(.interactiveSpring(response: 0.32, dampingFraction: 0.9)) {
+                    withAnimation(FamiliarMotion.drawer) {
                         drawerDrag = 0
                         isDrawerOpen = shouldOpen
                     }
@@ -553,7 +744,7 @@ struct FamiliarChatView: View {
         if reduceMotion {
             isDrawerOpen = isOpen
         } else {
-            withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+            withAnimation(FamiliarMotion.drawer) {
                 isDrawerOpen = isOpen
             }
         }
@@ -686,6 +877,20 @@ private struct FamiliarRenameRequest: Identifiable {
     }
 }
 
+private enum FamiliarPendingDraftNavigation: Identifiable {
+    case select(FamiliarConversation)
+    case newConversation(FamiliarProject?)
+    case projectPrompt(FamiliarProject, String)
+
+    var id: String {
+        switch self {
+        case .select(let conversation): "select-\(conversation.id.uuidString)"
+        case .newConversation(let project): "new-\(project?.id.uuidString ?? "ordinary")"
+        case .projectPrompt(let project, _): "project-prompt-\(project.id.uuidString)"
+        }
+    }
+}
+
 private enum FamiliarPendingMessageOperation: Identifiable {
     case edit(FamiliarMessageSnapshot)
     case retry(FamiliarMessageSnapshot)
@@ -767,21 +972,12 @@ private struct FamiliarChatTopBar: View {
                         .frame(width: 11, height: 2)
                 }
                 .frame(width: 18, height: 18, alignment: .leading)
-                .foregroundStyle(.black)
+                .foregroundStyle(Color.black)
                 .frame(width: 46, height: 46)
             }
             .buttonStyle(.plain)
             .familiarGlassCircle(interactive: true)
             .accessibilityLabel(String(localized: "drawer.open"))
-
-            Button(action: onConfigure) {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 18, weight: .semibold))
-                    .frame(width: 46, height: 46)
-            }
-            .buttonStyle(.plain)
-            .familiarGlassCircle(interactive: true)
-            .accessibilityLabel(String(localized: "drawer.settings"))
 
             Menu {
                 if providerOptions.isEmpty {
@@ -821,6 +1017,16 @@ private struct FamiliarChatTopBar: View {
             .disabled(isSending || isNewConversation)
             .accessibilityLabel(String(localized: "conversation.new"))
             .accessibilityIdentifier("chat.new")
+
+            Button(action: onConfigure) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 18, weight: .semibold))
+                    .frame(width: 46, height: 46)
+            }
+            .buttonStyle(.plain)
+            .familiarGlassCircle(interactive: true)
+            .accessibilityLabel(String(localized: "drawer.settings"))
+            .accessibilityIdentifier("chat.settings")
         }
     }
 
@@ -960,8 +1166,10 @@ private struct FamiliarConversationDrawer: View {
     let onSelect: (FamiliarConversation) -> Void
     let onRename: (FamiliarConversation) -> Void
     let onDelete: (FamiliarConversation) -> Void
+    let onNewConversation: () -> Void
     let onSelectProject: (FamiliarProject) -> Void
     let onAllProjects: () -> Void
+    let onSettings: () -> Void
 
     @State private var isSearchPresented = false
 
@@ -969,6 +1177,13 @@ private struct FamiliarConversationDrawer: View {
         ZStack(alignment: .top) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 3) {
+                    drawerAction(
+                        title: String(localized: "conversation.new"),
+                        symbol: "square.and.pencil",
+                        action: onNewConversation
+                    )
+                    .accessibilityIdentifier("drawer.newChat")
+
                     Text(String(localized: "project.projects"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
@@ -1026,6 +1241,17 @@ private struct FamiliarConversationDrawer: View {
                             conversationRow(conversation)
                         }
                     }
+
+                    Divider()
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 8)
+
+                    drawerAction(
+                        title: String(localized: "drawer.settings"),
+                        symbol: "person.crop.circle",
+                        action: onSettings
+                    )
+                    .accessibilityIdentifier("drawer.settings")
                 }
                 .padding(.top, drawerHeaderHeight + 8)
                 .padding(.bottom, 12)
@@ -1039,13 +1265,30 @@ private struct FamiliarConversationDrawer: View {
         .sheet(isPresented: $isSearchPresented) {
             FamiliarConversationSearchView(
                 conversations: conversations,
+                projects: projects,
                 selectedConversationID: selectedConversationID,
                 onSelect: { conversation in
                     isSearchPresented = false
                     onSelect(conversation)
+                },
+                onSelectProject: { project in
+                    isSearchPresented = false
+                    onSelectProject(project)
                 }
             )
         }
+    }
+
+    private func drawerAction(title: String, symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol)
+                .font(.body.weight(.medium))
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 10)
     }
 
     private func conversationRow(_ conversation: FamiliarConversation) -> some View {
@@ -1126,46 +1369,122 @@ private struct FamiliarConversationSearchView: View {
     @Environment(\.dismiss) private var dismiss
 
     let conversations: [FamiliarConversation]
+    let projects: [FamiliarProject]
     let selectedConversationID: UUID?
     let onSelect: (FamiliarConversation) -> Void
+    let onSelectProject: (FamiliarProject) -> Void
 
     @State private var searchText = ""
-    @FocusState private var isSearchFocused: Bool
+    @State private var scope = FamiliarSearchScope.all
 
     private var filteredConversations: [FamiliarConversation] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return conversations }
-        return conversations.filter { $0.title.localizedCaseInsensitiveContains(query) }
+        return conversations.filter { conversation in
+            let inScope: Bool = switch scope {
+            case .all: true
+            case .ordinary: conversation.project == nil
+            case .project(let projectID): conversation.project?.id == projectID
+            }
+            return inScope && (query.isEmpty || conversation.title.localizedCaseInsensitiveContains(query))
+        }
+    }
+
+    private var filteredProjects: [FamiliarProject] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return projects.filter { project in
+            let inScope: Bool = switch scope {
+            case .all: true
+            case .ordinary: false
+            case .project(let projectID): project.id == projectID
+            }
+            return inScope && (
+                query.isEmpty
+                    || project.name.localizedCaseInsensitiveContains(query)
+                    || project.summary.localizedCaseInsensitiveContains(query)
+            )
+        }
     }
 
     var body: some View {
         NavigationStack {
             List {
-                if filteredConversations.isEmpty {
+                Section {
+                    Picker(String(localized: "drawer.search.scope", defaultValue: "Scope"), selection: $scope) {
+                        Text(String(localized: "drawer.search.scope.all", defaultValue: "Everything"))
+                            .tag(FamiliarSearchScope.all)
+                        Text(String(localized: "drawer.search.scope.ordinary", defaultValue: "Chats outside projects"))
+                            .tag(FamiliarSearchScope.ordinary)
+                        ForEach(projects) { project in
+                            Text(project.name)
+                                .tag(FamiliarSearchScope.project(project.id))
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+
+                if !filteredProjects.isEmpty {
+                    Section(String(localized: "project.projects")) {
+                        ForEach(filteredProjects) { project in
+                            Button {
+                                onSelectProject(project)
+                            } label: {
+                                Label {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(project.name)
+                                            .foregroundStyle(.primary)
+                                        if !project.summary.isEmpty {
+                                            Text(project.summary)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(2)
+                                        }
+                                    }
+                                } icon: {
+                                    Image(systemName: "folder")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !filteredConversations.isEmpty {
+                    Section(String(localized: "project.conversations")) {
+                        ForEach(filteredConversations) { conversation in
+                            Button {
+                                onSelect(conversation)
+                            } label: {
+                                HStack(spacing: 10) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(conversation.title)
+                                            .font(.body)
+                                            .foregroundStyle(.primary)
+                                            .lineLimit(1)
+                                        if let project = conversation.project {
+                                            Text(project.name)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                        }
+                                    }
+                                    Spacer(minLength: 4)
+                                    if conversation.id == selectedConversationID {
+                                        Image(systemName: "checkmark")
+                                            .font(.footnote.weight(.semibold))
+                                            .foregroundStyle(FamiliarTheme.accent)
+                                    }
+                                }
+                            }
+                            .accessibilityAddTraits(conversation.id == selectedConversationID ? .isSelected : [])
+                        }
+                    }
+                }
+
+                if filteredProjects.isEmpty && filteredConversations.isEmpty {
                     Text(searchText.isEmpty
                          ? String(localized: "drawer.no_conversations")
                          : String(localized: "drawer.no_results"))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                } else {
-                    ForEach(filteredConversations) { conversation in
-                        Button {
-                            onSelect(conversation)
-                        } label: {
-                            HStack(spacing: 10) {
-                                Text(conversation.title)
-                                    .font(.body)
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                                Spacer(minLength: 4)
-                                if conversation.id == selectedConversationID {
-                                    Image(systemName: "checkmark")
-                                        .font(.footnote.weight(.semibold))
-                                        .foregroundStyle(FamiliarTheme.accent)
-                                }
-                            }
-                        }
-                    }
                 }
             }
             .listStyle(.plain)
@@ -1180,4 +1499,10 @@ private struct FamiliarConversationSearchView: View {
         }
         .tint(FamiliarTheme.accent)
     }
+}
+
+private enum FamiliarSearchScope: Hashable {
+    case all
+    case ordinary
+    case project(UUID)
 }

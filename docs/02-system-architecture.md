@@ -4,7 +4,7 @@
 
 ## 1. 系统边界
 
-Familiar 是一个 iPhone 原生、安全、可检查的个人 AI 工作台。Project 是长期工作单元，聊天是主要入口，单 Agent Runtime 是执行内核。网络请求从 App 直接发送到用户选择的 AI Provider；只读 Web 请求直接发送到 DuckDuckGo 或用户选择的公共 HTTPS 站点。项目没有 Familiar 业务后端。
+Familiar 是一个 iPhone 原生、安全、可检查的个人 AI 工作台。Project 是长期工作单元，聊天是主要入口，单 Agent Runtime 是执行内核。网络请求从 App 直接发送到用户选择的 AI Provider；只读 Web 请求直接发送到 DuckDuckGo 或用户选择的公共 HTTPS 站点。图片优先由当前 Provider 原生处理；纯文本模型使用设备端 Vision 或用户安装的本地视觉模型生成证据。项目没有 Familiar 业务后端。
 
 它不以 Linux 为执行环境，不依赖 Apple Intelligence，不把用户需求硬编码成 workflow，也不从复杂多 Agent 开始。
 
@@ -149,8 +149,9 @@ RunRequest
 位于 Registry 与 Native Layer 之间，承担：
 
 - 能力可用性检查。
-- 权限与授权决策。目标授权模型允许精确匹配可审计 `AuthorizationGrant` 的单次可逆写入免除重复确认；grant 记录 user action、source、capability、规范化 arguments hash、project scope、expiry、single-use 和 confirmation evidence。
-- 写操作审批（自然语言写入需要结构化确认，模型不能授权自己的动作）。
+- 权限与授权决策。首次授权由结构化动作卡产生；用户可选择仅这次、本次会话或始终允许，默认本次会话。grant 记录 user action、source、capability、规范化 arguments hash、project scope、target scope、expiry、lifetime 和 confirmation evidence。
+- 长期授权按 Project、工具和目标隔离；普通聊天使用独立作用域。有效 grant 范围内可免重复确认，但每次写入仍产生动作卡和审计记录。
+- 修改、删除、目标变化或参数越界重新进入审批；破坏性和财务敏感操作始终强确认。模型不能授权自己的动作。
 - 参数校验、超时与取消。
 - 破坏性与财务敏感操作的强确认。
 
@@ -219,11 +220,37 @@ Skill 只能收窄 Tool Scope，不能扩大用户授权。支持 Files/Share �
 - 工具 Schema 转换为 Familiar Manifest，继续经过 Familiar Policy；不信任 server annotations。
 - project/session binding，默认不开启全部工具。
 
-### 3.5 图片预处理
+### 3.5 图片能力路由与视觉证据
 
-图片预处理是 Tool，不是强制 pipeline：根据 Agent 判断的任务需要，图片才走 Vision OCR、Vision Barcode 或多模态模型，默认不 OCR。Core ML 只在出现 Embedding、专用分类、目标检测等明确任务时使用。
+图片输入在进入主模型前形成明确的处理计划：
 
-### 3.6 远程 Web 内容
+```text
+当前模型支持图片
+  -> 图片字节只发送给当前 Provider
+
+当前模型不支持图片
+  -> 文字/条码/基础识别：Apple Vision
+  -> 描述/比较/图表/开放问答：已安装且设备状态允许时使用 FastVLM
+  -> 高级模型失败或 60 秒超时：退回 Apple Vision，并明确能力受限
+  -> 所有结果作为只读 VisualEvidence 交给当前文本模型
+```
+
+- Apple Vision 是所有支持设备的默认本地能力，覆盖 OCR、条码和基础分类；不把分类推断写成确定事实。
+- 高级本地视觉是可替换后端。当前个人实验首选固定版本 `FastVLM-0.5B`，用户在设置中主动下载；模型文件不随 App 默认打包。
+- FastVLM 安装同时检查芯片、至少约 3.5 GB 可用空间和安装后基准。模型下载支持恢复、固定 URL/大小/SHA-256；校验失败删除损坏文件。
+- 视觉路由由 Familiar 根据用户问题和模型能力自动决定。基础结果不足且高级模型可用时自动升级；本地模型不可用时不阻塞 Apple Vision。
+- 视觉结果记录原图引用、处理方式、模型/系统版本和最终证据文本。证据按不可信只读输入处理，不授予工具权限，不伪装成用户或系统指令。
+- 未经用户明确选择，不把图片自动发送到另一个 Provider。已经配置多模态 Provider 时，只建议用户切换。
+- Provider adapter 只编码准备好的 Provider 内容，不承担 Vision、FastVLM、下载或 fallback 决策。
+
+### 3.6 本地模型管理
+
+- 本地模型目录独立于附件、Resource 和 Artifact，具备固定 manifest、版本、大小、SHA-256、许可证和安装状态。
+- 第一版只提供 FastVLM 0.5B。官方预转换包约 1.23 GB，要求 iOS 18.2+；当前许可证仅适用于本项目的个人非商业研究实验。
+- 下载由用户在设置中主动发起，支持进度、暂停/恢复、失败重试和删除。删除模型文件与运行缓存时保留历史视觉证据。
+- 推理运行前检查可用内存、存储和热状态；内存、超时或模型损坏失败时回退 Apple Vision。
+
+### 3.7 远程 Web 内容
 
 只读 Web 先于交互：`web_search` / `web_fetch` 已实现；`web.read`（selector/readerMode）、Project URL Resource、浏览器登录、表单提交、Cookie 会话与自动点击延后。Web/MCP 内容一律按不可信输入处理，不授予工具权限。
 
@@ -233,7 +260,8 @@ Skill 只能收窄 Tool Scope，不能扩大用户授权。支持 Files/Share �
 - Agent Runtime 不接触 Apple Framework，只认识 ToolDefinition/ToolCall/ToolResult。
 - UI 不直接调用 EventKit save。
 - 写工具的 `execute` 只产生待确认计划。
-- 文档原文件、图片 placeholder 不进入 Provider 请求。
+- 文档原文件不进入 Provider 请求；图片只进入当前多模态 Provider 请求或本地视觉处理，不进入其他网络目的地。
+- 本地视觉证据必须带 provenance，不能提升为系统指令或授权。
 - WebKit 不使用持久化网站数据存储。
 - SwiftData 的广泛 invalidation 不承载逐 token 更新。
 - App Intents 不复制 Capability Registry。

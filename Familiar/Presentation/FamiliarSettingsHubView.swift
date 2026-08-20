@@ -4,12 +4,16 @@ import Speech
 import SwiftData
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 enum FamiliarSettingsRoute: String, Hashable {
     case modelService
+    case localVision
     case tokenUsage
     case appearance
     case tools
+    case authorizations
+    case skills
     case soul
     case storage
     case permissions
@@ -64,6 +68,13 @@ struct FamiliarSettingsView: View {
                         symbol: "chart.xyaxis.line",
                         color: .indigo
                     )
+                    settingsLink(
+                        .localVision,
+                        title: String(localized: "settings.local_vision.title", defaultValue: "Local Vision"),
+                        subtitle: String(localized: "settings.local_vision.detail", defaultValue: "FastVLM 0.5B model and device benchmark"),
+                        symbol: "eye.fill",
+                        color: .teal
+                    )
                 }
 
                 Section(String(localized: "settings.hub.agent", defaultValue: "Agent")) {
@@ -73,6 +84,20 @@ struct FamiliarSettingsView: View {
                         subtitle: String(localized: "settings.hub.tools.detail", defaultValue: "Capabilities registered with the Agent Runtime"),
                         symbol: "puzzlepiece.extension.fill",
                         color: .blue
+                    )
+                    settingsLink(
+                        .authorizations,
+                        title: String(localized: "settings.hub.authorizations", defaultValue: "Authorizations"),
+                        subtitle: String(localized: "settings.hub.authorizations.detail", defaultValue: "Review remembered Agent actions"),
+                        symbol: "checkmark.shield.fill",
+                        color: .green
+                    )
+                    settingsLink(
+                        .skills,
+                        title: String(localized: "settings.skills.title", defaultValue: "Skills"),
+                        subtitle: String(localized: "settings.skills.detail", defaultValue: "Installed instruction-only project guidance"),
+                        symbol: "wand.and.stars",
+                        color: .purple
                     )
                     settingsLink(
                         .soul,
@@ -201,12 +226,18 @@ struct FamiliarSettingsView: View {
                 },
                 onRestartOnboarding: onRestartOnboarding
             )
+        case .localVision:
+            FamiliarLocalVisionSettingsView()
         case .tokenUsage:
             FamiliarTokenUsageView()
         case .appearance:
             FamiliarAppearanceSettingsView()
         case .tools:
             FamiliarToolsSettingsView(registry: registry)
+        case .authorizations:
+            FamiliarAuthorizationSettingsView()
+        case .skills:
+            FamiliarSkillsSettingsView(registry: registry)
         case .soul:
             FamiliarSoulSettingsView(systemPrompt: $settings.systemPrompt)
         case .storage:
@@ -226,6 +257,242 @@ struct FamiliarSettingsView: View {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
         return String(format: String(localized: "settings.about.version", defaultValue: "Version %@ (%@)"), version, build)
+    }
+}
+
+private struct FamiliarSkillsSettingsView: View {
+    @Environment(\.modelContext) private var modelContext
+    let registry: FamiliarToolRegistry
+    @Query(sort: \FamiliarSkill.installedAt, order: .reverse) private var skills: [FamiliarSkill]
+    @State private var importing = false
+    @State private var pending: FamiliarSkillDocument?
+    @State private var errorMessage: String?
+    @State private var knownToolNames: Set<String> = []
+
+    var body: some View {
+        List {
+            Section {
+                if skills.isEmpty {
+                    ContentUnavailableView(
+                        String(localized: "settings.skills.empty", defaultValue: "No installed skills"),
+                        systemImage: "wand.and.stars",
+                        description: Text(String(localized: "settings.skills.empty.detail", defaultValue: "Import an instruction-only JSON skill, then enable it for a project."))
+                    )
+                }
+                ForEach(skills) { skill in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(skill.name)
+                        Text("\(skill.stableID) · \(skill.version)").font(.caption).foregroundStyle(.secondary)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            do {
+                                try FamiliarSkillService().uninstall(skill, in: modelContext)
+                            } catch {
+                                errorMessage = error.localizedDescription
+                            }
+                        } label: {
+                            Label(String(localized: "settings.skills.delete", defaultValue: "Delete"), systemImage: "trash")
+                        }
+                    }
+                }
+            } footer: {
+                Text(String(localized: "settings.skills.footer", defaultValue: "Skills contain instruction-only guidance. They cannot grant permissions or authorize actions."))
+            }
+            Section {
+                Button { importing = true } label: { Label(String(localized: "settings.skills.import", defaultValue: "Import Skill JSON"), systemImage: "square.and.arrow.down") }
+                    .disabled(knownToolNames.isEmpty)
+            }
+        }
+        .navigationTitle(String(localized: "settings.skills.title", defaultValue: "Skills"))
+        .navigationBarTitleDisplayMode(.inline)
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
+            guard case .success(let url) = result else { return }
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+            do {
+                pending = try FamiliarSkillDocumentParser.parse(
+                    data: Data(contentsOf: url),
+                    toolIDs: knownToolNames
+                )
+            } catch { errorMessage = error.localizedDescription }
+        }
+        .sheet(item: $pending) { document in
+            NavigationStack {
+                List {
+                    Section {
+                        LabeledContent(String(localized: "settings.skills.name", defaultValue: "Name"), value: document.name)
+                        LabeledContent(String(localized: "settings.skills.version", defaultValue: "Version"), value: document.version)
+                        LabeledContent(String(localized: "settings.skills.identifier", defaultValue: "Identifier"), value: document.id)
+                    }
+                    if !document.description.isEmpty {
+                        Section(String(localized: "settings.skills.description", defaultValue: "Description")) {
+                            Text(document.description)
+                        }
+                    }
+                    Section(String(localized: "settings.skills.instructions", defaultValue: "Instructions")) {
+                        Text(document.instructions)
+                            .textSelection(.enabled)
+                    }
+                    Section(String(localized: "settings.skills.allowed_tools", defaultValue: "Allowed Tools")) {
+                        Text(document.allowedTools.isEmpty
+                             ? String(localized: "settings.skills.no_tools", defaultValue: "No tools")
+                             : document.allowedTools.joined(separator: ", "))
+                            .textSelection(.enabled)
+                    }
+                }
+                .navigationTitle(String(localized: "settings.skills.preview.title", defaultValue: "Preview Skill"))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(String(localized: "common.cancel")) { pending = nil }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(skills.contains(where: { $0.stableID == document.id })
+                               ? String(localized: "settings.skills.update", defaultValue: "Update")
+                               : String(localized: "settings.skills.install", defaultValue: "Install")) {
+                            do {
+                                _ = try FamiliarSkillService().install(document, in: modelContext)
+                                pending = nil
+                            } catch {
+                                errorMessage = error.localizedDescription
+                            }
+                        }
+                        .fontWeight(.semibold)
+                    }
+                }
+            }
+        }
+        .alert(String(localized: "settings.skills.title", defaultValue: "Skills"), isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button(String(localized: "common.ok")) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
+        .task {
+            knownToolNames = Set(await registry.snapshot().map(\.name))
+        }
+    }
+}
+
+private struct FamiliarLocalVisionSettingsView: View {
+    @State private var manager = FamiliarLocalVisionModelManager.shared
+
+    var body: some View {
+        List {
+            Section {
+                LabeledContent(String(localized: "settings.local_vision.model", defaultValue: "Model"), value: "FastVLM-0.5B")
+                LabeledContent(String(localized: "settings.local_vision.download", defaultValue: "Download"), value: ByteCountFormatter.string(fromByteCount: FamiliarLocalVisionModelManager.archiveSize, countStyle: .file))
+                LabeledContent(String(localized: "settings.local_vision.status", defaultValue: "Status"), value: statusText)
+                if manager.state == .downloading {
+                    ProgressView(value: manager.progress)
+                }
+                if let duration = manager.lastBenchmarkDuration {
+                    LabeledContent(String(localized: "settings.local_vision.benchmark", defaultValue: "Last benchmark"), value: duration.formatted(.number.precision(.fractionLength(1))) + " s")
+                }
+            } footer: {
+                Text(String(localized: "settings.local_vision.license", defaultValue: "Apple FastVLM model weights are licensed only for non-commercial research and academic development. The model runs on this device."))
+            }
+
+            Section {
+                switch manager.state {
+                case .notInstalled, .failed:
+                    Button(String(localized: "settings.local_vision.install", defaultValue: "Download and Install")) { manager.install() }
+                case .unavailable:
+                    Button(String(localized: "settings.local_vision.run_benchmark", defaultValue: "Run Device Benchmark")) {
+                        Task {
+                            manager.markInstalledForRetry()
+                            await manager.benchmark()
+                        }
+                    }
+                    Button(String(localized: "settings.local_vision.delete", defaultValue: "Delete Model"), role: .destructive) {
+                        Task { await manager.deleteModel() }
+                    }
+                case .downloading:
+                    Button(String(localized: "settings.local_vision.pause", defaultValue: "Pause Download")) { manager.cancelInstall() }
+                    Button(String(localized: "common.cancel"), role: .destructive) { manager.discardDownload() }
+                case .paused:
+                    Button(String(localized: "settings.local_vision.resume", defaultValue: "Resume Download")) { manager.install() }
+                    Button(String(localized: "common.cancel"), role: .destructive) { manager.discardDownload() }
+                case .installing:
+                    ProgressView()
+                case .installed:
+                    Button(String(localized: "settings.local_vision.run_benchmark", defaultValue: "Run Device Benchmark")) {
+                        Task { await manager.benchmark() }
+                    }
+                    Button(String(localized: "settings.local_vision.delete", defaultValue: "Delete Model"), role: .destructive) {
+                        Task { await manager.deleteModel() }
+                    }
+                }
+            }
+        }
+        .navigationTitle(String(localized: "settings.local_vision.title", defaultValue: "Local Vision"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var statusText: String {
+        switch manager.state {
+        case .notInstalled: String(localized: "settings.local_vision.not_installed", defaultValue: "Not installed")
+        case .downloading: String(localized: "settings.local_vision.downloading", defaultValue: "Downloading")
+        case .paused: String(localized: "settings.local_vision.paused", defaultValue: "Paused")
+        case .installing: String(localized: "settings.local_vision.installing", defaultValue: "Installing")
+        case .installed: String(localized: "settings.local_vision.installed", defaultValue: "Installed")
+        case .unavailable(let reason), .failed(let reason): reason
+        }
+    }
+}
+
+private struct FamiliarAuthorizationSettingsView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \FamiliarAuthorizationRuleRecord.createdAt, order: .reverse) private var records: [FamiliarAuthorizationRuleRecord]
+
+    private var activeRecords: [FamiliarAuthorizationRuleRecord] {
+        records.filter { $0.revokedAt == nil && $0.expiresAt > Date() && $0.duration != .once }
+    }
+
+    var body: some View {
+        List {
+            if activeRecords.isEmpty {
+                ContentUnavailableView(
+                    String(localized: "settings.authorizations.empty", defaultValue: "No remembered authorizations"),
+                    systemImage: "checkmark.shield"
+                )
+            } else {
+                Section {
+                    ForEach(activeRecords) { record in
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(record.capabilityID)
+                                .font(.body.weight(.medium))
+                            Text(record.targetKey)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(record.duration == .session
+                                 ? String(localized: "authorization.session", defaultValue: "This Session")
+                                 : String(localized: "authorization.always", defaultValue: "Always Allow"))
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                        .swipeActions {
+                            Button(String(localized: "settings.authorizations.revoke", defaultValue: "Revoke"), role: .destructive) {
+                                record.revokedAt = Date()
+                                try? modelContext.save()
+                            }
+                        }
+                    }
+                } footer: {
+                    Text(String(localized: "settings.authorizations.footer", defaultValue: "Authorizations are scoped to a project, tool, and target. Destructive actions still require confirmation."))
+                }
+
+                Section {
+                    Button(String(localized: "settings.authorizations.revoke_all", defaultValue: "Revoke All"), role: .destructive) {
+                        let now = Date()
+                        activeRecords.forEach { $0.revokedAt = now }
+                        try? modelContext.save()
+                    }
+                }
+            }
+        }
+        .navigationTitle(String(localized: "settings.hub.authorizations", defaultValue: "Authorizations"))
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

@@ -6,6 +6,29 @@ import Testing
 
 @Suite("Familiar baseline")
 struct FamiliarBaselineTests {
+    @Test("App dependencies register the current thirteen tools")
+    @MainActor
+    func registeredToolNames() async {
+        let dependencies = FamiliarAppDependencies()
+        let manifests = await dependencies.registry.snapshot()
+        let names = manifests.map(\.name)
+        #expect(names == [
+            "app_information",
+            "artifact_edit",
+            "artifact_write",
+            "calendar_events",
+            "create_calendar_event",
+            "create_reminder",
+            "current_date_time",
+            "reminders",
+            "resource_list",
+            "resource_read",
+            "resource_search",
+            "web_fetch",
+            "web_search"
+        ])
+    }
+
     @Test("Provider catalog has stable unique identifiers")
     func providerCatalogIdentifiersAreUnique() {
         let identifiers = FamiliarProviderCatalog.builtIn.map(\.id)

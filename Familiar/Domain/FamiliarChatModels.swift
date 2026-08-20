@@ -134,6 +134,48 @@ nonisolated struct FamiliarAgentRunSnapshot: Identifiable, Equatable, Sendable {
     let startedAt: Date
     let finishedAt: Date?
     let steps: [FamiliarAgentStepSnapshot]
+    let context: FamiliarRunContextSummary?
+
+    init(
+        id: String,
+        responseMessageID: UUID?,
+        status: FamiliarAgentRunStatus,
+        startedAt: Date,
+        finishedAt: Date?,
+        steps: [FamiliarAgentStepSnapshot],
+        context: FamiliarRunContextSummary? = nil
+    ) {
+        self.id = id
+        self.responseMessageID = responseMessageID
+        self.status = status
+        self.startedAt = startedAt
+        self.finishedAt = finishedAt
+        self.steps = steps
+        self.context = context
+    }
+}
+
+nonisolated struct FamiliarRunContextSummary: Equatable, Sendable {
+    let projectName: String?
+    let providerID: String
+    let modelID: String
+    let resources: [FamiliarRunResourceSummary]
+    let skills: [FamiliarRunSkillSummary]
+    let toolNames: [String]
+}
+
+nonisolated struct FamiliarRunResourceSummary: Identifiable, Equatable, Sendable {
+    var id: UUID { versionID }
+    let versionID: UUID
+    let filename: String
+    let version: Int
+}
+
+nonisolated struct FamiliarRunSkillSummary: Identifiable, Equatable, Sendable {
+    var id: String { stableID + "@" + version }
+    let stableID: String
+    let name: String
+    let version: String
 }
 
 nonisolated struct FamiliarAgentStepSnapshot: Identifiable, Equatable, Sendable {

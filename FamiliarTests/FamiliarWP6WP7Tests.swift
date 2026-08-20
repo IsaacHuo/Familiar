@@ -5,6 +5,17 @@ import Testing
 
 @Suite("Familiar WP6 and WP7")
 struct FamiliarWP6WP7Tests {
+    @Test("Canonical JSON keeps authorization and invocation hashes stable")
+    func canonicalArgumentsHash() {
+        let first = #"{"title":"A","details":{"enabled":true,"count":2}}"#
+        let reordered = #" { "details" : { "count" : 2, "enabled" : true }, "title" : "A" } "#
+        let changed = #"{"title":"B","details":{"enabled":true,"count":2}}"#
+
+        #expect(FamiliarCanonicalJSON.string(for: first) == FamiliarCanonicalJSON.string(for: reordered))
+        #expect(FamiliarAuthorizationGrant.argumentsHash(first) == FamiliarAuthorizationGrant.argumentsHash(reordered))
+        #expect(FamiliarAuthorizationGrant.argumentsHash(first) != FamiliarAuthorizationGrant.argumentsHash(changed))
+    }
+
     @Test("Manifest snapshots are deterministic and grants are bound to exact arguments")
     func capabilityContract() throws {
         let manifest = FamiliarToolManifest(name: "fixture", title: "Fixture", description: "Fixture", parameters: .init(type: .object), effect: .reversibleWrite, risk: .low)
@@ -46,5 +57,31 @@ struct FamiliarWP6WP7Tests {
         let current = try FamiliarModelContainer.make(at: url)
         #expect(try current.mainContext.fetch(FetchDescriptor<FamiliarAuthorizationGrantRecord>()).isEmpty)
         #expect(try current.mainContext.fetch(FetchDescriptor<FamiliarToolInvocationRecord>()).isEmpty)
+    }
+
+    @Test("Interrupted runs are finalized and in-flight invocations cancelled")
+    @MainActor
+    func recoverInterruptedRuns() throws {
+        let container = try FamiliarTestStore.make()
+        let context = container.mainContext
+        let conversation = FamiliarConversation()
+        let run = FamiliarAgentRun(runtimeID: "run", status: .running, conversation: conversation)
+        context.insert(conversation)
+        context.insert(run)
+        try context.save()
+
+        let service = FamiliarRunRecoveryService()
+        let invocation = try service.beginInvocation(idempotencyKey: "run:call", runtimeID: "run", toolName: "tool", arguments: "{}", in: context)
+        try service.setInvocationState(invocation, state: .approved, in: context)
+        let cursor = try service.beginCursor(runtimeID: "run", runID: run.id, contextSnapshotID: UUID(), in: context)
+
+        let count = try service.recoverInterruptedRuns(in: context)
+        #expect(count == 1)
+        #expect(run.status == .failed)
+        #expect(run.finishReason == "interrupted")
+
+        let restored = try context.fetch(FetchDescriptor<FamiliarToolInvocationRecord>(predicate: #Predicate { $0.idempotencyKey == "run:call" })).first
+        #expect(restored?.state == .cancelled)
+        #expect(cursor.phase == .terminal)
     }
 }

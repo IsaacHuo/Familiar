@@ -7,6 +7,7 @@ nonisolated enum FamiliarCapabilitySource: String, Codable, Sendable {
     case shareExtension
     case appIntent
     case deepLink
+    case mcp
 }
 
 nonisolated struct FamiliarCapabilityBinding: Codable, Equatable, Sendable {
@@ -64,15 +65,35 @@ nonisolated struct FamiliarAuthorizationGrant: Codable, Equatable, Sendable {
     var state: FamiliarAuthorizationGrantState
 
     func isValid(for manifest: FamiliarToolManifest, arguments: String, projectID: UUID?, now: Date = Date()) -> Bool {
-        source == .builtIn && state == .issued && expiresAt > now && self.projectID == projectID
+        (source == .builtIn || source == .mcp) && state == .issued && expiresAt > now && self.projectID == projectID
             && capabilityID == manifest.id && capabilityVersion == manifest.version
             && argumentsHash == Self.argumentsHash(arguments)
     }
 
     static func argumentsHash(_ arguments: String) -> String {
-        let normalized = arguments.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let data = normalized.data(using: .utf8) else { return "" }
+        let data = FamiliarCanonicalJSON.data(for: arguments)
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+nonisolated enum FamiliarCanonicalJSON {
+    static func data(for source: String) -> Data {
+        let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let input = trimmed.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: input),
+              JSONSerialization.isValidJSONObject(object),
+              let canonical = try? JSONSerialization.data(
+                  withJSONObject: object,
+                  options: [.sortedKeys, .withoutEscapingSlashes]
+              )
+        else {
+            return Data(trimmed.utf8)
+        }
+        return canonical
+    }
+
+    static func string(for source: String) -> String {
+        String(decoding: data(for: source), as: UTF8.self)
     }
 }
 

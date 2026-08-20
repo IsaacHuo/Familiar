@@ -2,8 +2,21 @@ import Foundation
 
 /// The decision delivered to an agent after a confirmation request finishes.
 nonisolated public enum FamiliarToolConfirmationDecision: Sendable, Equatable {
+    case confirmedOnce
     case confirmed
+    case confirmedAlways
     case cancelled
+
+    var authorizationDuration: FamiliarAuthorizationDuration? {
+        switch self {
+        case .confirmedOnce: .once
+        case .confirmed: .session
+        case .confirmedAlways: .always
+        case .cancelled: nil
+        }
+    }
+
+    var isConfirmed: Bool { authorizationDuration != nil }
 }
 
 /// The result of attempting to resolve a request from the UI.
@@ -135,7 +148,7 @@ public actor FamiliarToolConfirmationCoordinator {
         completedByKey[pending.key] = decision
         completedByRequestID[requestID] = decision
         pending.continuation.resume(returning: decision)
-        return decision == .confirmed ? .confirmed : .cancelled
+        return decision.isConfirmed ? .confirmed : .cancelled
     }
 
     /// Cancels every pending request belonging to a run. Cancellation is never confirmation.

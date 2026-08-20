@@ -8,7 +8,7 @@
 - 产品形态：iPhone 原生个人 AI 工作台
 - 最低系统：iOS 18
 - 支持设备：iPhone
-- 分发目标：公开 App Store
+- 分发目标：个人、非商业实验产品；当前不进入 App Store 或其他公开市场
 - 账户模式：无账户
 - 计费模式：无订阅、无 Familiar 托管额度
 - 模型接入：用户自备 API Key，设备直接请求 Provider
@@ -49,11 +49,11 @@ Project、ContextSnapshot 与这四块共同构成目标架构。在 Capability 
 
 ## 3. 产品目标
 
-Familiar 为用户提供统一的移动问答与 Agent 执行入口。产品首发聚焦以下任务：
+Familiar 为普通 iPhone 用户提供统一的移动问答与 Agent 执行入口。当前实验阶段聚焦以下任务：
 
 1. 使用用户选择的 AI Provider 完成文本问答。
 2. 读取本机日历和提醒事项，回答时间安排相关问题。
-3. 通过结构化确认创建日历事件或提醒事项，成功后提供当前进程内一次性 Undo。
+3. 创建日历事件或提醒事项；首次授权由用户明确产生，精确授权范围内可免重复确认，每次动作仍可检查，并以跨重启 Undo 为目标。
 4. 将本机文档转换为可发送的文本上下文。
 5. 将语音转换为可编辑的输入草稿。
 6. 在本机保存会话历史、Run/Step 执行记录和工具终态。
@@ -70,7 +70,7 @@ Familiar 为用户提供统一的移动问答与 Agent 执行入口。产品首�
 
 ### 4.2 连续对话
 
-用户创建会话、发送文本或文档上下文、查看流式回答，并执行复制、分享、重试、编辑后重发等操作。会话记录实际使用的 Provider 和模型。
+用户创建会话、发送文本、文档或图片上下文、查看流式回答，并执行复制、分享、重试、编辑后重发等操作。会话记录实际使用的 Provider 和模型。DeepSeek 是当前主要真实验收 Provider，`deepseek-chat` 是默认主模型；架构不应把运行时绑定到 DeepSeek 专用协议。
 
 ### 4.3 查询个人时间信息
 
@@ -78,13 +78,19 @@ Familiar 为用户提供统一的移动问答与 Agent 执行入口。产品首�
 
 ### 4.4 创建日程或提醒
 
-模型生成结构化写入请求。生产路径对 EventKit 写入逐次展示目标日历或列表、标题、时间、备注、优先级等字段，用户确认后执行，并在当前进程内提供一次性 Undo。取消结果返回 Agent Loop，用于生成后续回答。目标授权模型：只有精确匹配可审计 `AuthorizationGrant` 的单次可逆写入才可免除重复确认（见 `02-system-architecture.md` 2.4）。
+模型生成结构化写入请求。首次授权时，动作卡展示目标日历或列表、标题、时间、备注、优先级等字段；用户可以选择“仅这次 / 本次会话 / 始终允许”，默认“本次会话”。授权按 Project、工具和目标精确隔离，参数或作用域越界时重新确认。有效授权范围内可以直接执行，但每次动作仍展示同一张动作卡，并以跨重启 Undo 为目标。取消、失败、成功和撤销结果都返回 Agent Loop 并保留可检查终态（见 `02-system-architecture.md` 2.4）。
 
 ### 4.5 使用本机文档与项目资料
 
 用户从系统文件选择器添加文档。App 将文件复制到私有目录，通过 AnyDoc 转换为 Markdown；PDF 页面缺少文本层时使用 Vision OCR。发送给 Provider 的内容为抽取文本和文件名上下文。目标：项目内文档成为带版本、lineage 和共享引用的 Project Resource，支撑跨对话的长期上下文。
 
-### 4.6 使用语音输入
+### 4.6 使用图片
+
+模型原生支持图片时，图片字节只发往用户当前选择的 Provider。模型不支持图片时，Familiar 在设备上提供基础视觉 fallback：使用 Apple Vision 提取 OCR、条码和基础分类证据，再将带来源、方法和可信度说明的只读证据交给当前文本模型。基础结果不足时应明确能力边界，并建议用户切换到已经配置的多模态 Provider。
+
+设备满足芯片、存储和运行时基准时，用户可以在设置中主动安装固定版本的 `FastVLM-0.5B`，用于描述、比较、图表解释和开放式图片问答。该能力仅用于当前个人非商业实验；模型删除后保留历史视觉证据。
+
+### 4.7 使用语音输入
 
 用户启动语音识别，转写结果持续写入输入框。转写文本保持可编辑状态。App 不创建音频消息，不保留原始录音文件。
 
@@ -126,6 +132,10 @@ Familiar v1 只有一个主 Agent。Subagent、Manager Agent、Graph orchestrati
 
 MCP、Skills、Core ML、Background、Memory、Subagent 都是能力，不是 MVP 入场券。
 
+### 5.10 能力不足时补齐输入，不伪装模型能力
+
+Provider 原生能力、设备端预处理和可选本地模型是不同的数据处理路径。Familiar 可以为纯文本模型提供视觉证据，但必须标明证据来源，不能声称文本模型直接看见了图片，也不能未经用户选择把图片发送到另一个 Provider。
+
 ## 6. 系统入口
 
 系统入口按优先级划分：
@@ -146,17 +156,17 @@ MCP、Skills、Core ML、Background、Memory、Subagent 都是能力，不是 MV
 - App Intents 只暴露 `Ask Familiar`、`Process with Familiar`、`Open Familiar`，不复制 Capability Registry，不能授权工具写入。
 - 所有入口最终汇入同一个 Agent Runtime。
 
-## 7. 首发范围
+## 7. 当前实验范围
 
 ### 7.1 包含
 
 - 文本聊天与本地会话管理。
 - 12 个内置 Provider + 自定义 OpenAI-compatible Provider。
 - OpenAI Chat、Anthropic Messages、Gemini Generate Content 三类协议适配。
-- 日历事件与提醒事项的查询与创建（结构化确认 + 进程内一次性 Undo）。
+- 日历事件与提醒事项的查询与创建；目标为精确授权、动作卡审计和跨重启 Undo。
 - 只读 `web_search`、`web_fetch` 与回答来源记录。
 - PDF、Office、OpenDocument、RTF、EPUB、CSV、TXT、Markdown 等文档导入；AnyDoc 本地转换、PDFKit 文本层检查与 Vision OCR。
-- 图片选择、拍照、预览与发送链路（发送边界随模型能力逐步开放）。
+- 图片选择、拍照和预览；原生多模态发送、Apple Vision 基础视觉 fallback，以及用户主动安装的 FastVLM 高级本地视觉包。
 - Apple Speech 转写。
 - Project / Resource / Artifact / ContextSnapshot 主链路。
 - 简体中文和英文界面。
@@ -172,7 +182,7 @@ MCP、Skills、Core ML、Background、Memory、Subagent 都是能力，不是 MV
 - 多 Agent、Subagent、Agent Graph。
 - 复杂 RAG、向量数据库。
 - iPhone 上的 MCP Server（后期可能增加 MCP Client）。
-- Core ML LLM、Apple Intelligence 依赖。
+- Apple Intelligence 依赖；通用本地文本 LLM 不进入当前范围。
 - 实时语音对话。
 - 修改或删除现有日历事件和提醒事项。
 - 读取学术系统或其他 App 的私有数据。
@@ -200,18 +210,18 @@ MCP、Skills、Core ML、Background、Memory、Subagent 都是能力，不是 MV
 
 路线图见 `10-next-phase-execution-plan.md`。核心顺序：先补可验证内核与迁移基础，再 Project/Context/Workspace 主链路，然后只读 Web 与能力契约，最后 Skills / Remote MCP / Memory / 后台承接。
 
-## 10. 发布门槛
+## 10. 实验交付门槛
 
 1. Debug 和 Release 的 iPhone 构建通过。
 2. iOS 18 arm64 Simulator 构建通过。
 3. 写操作在未确认状态下零执行；可逆写入具备 Undo 路径。
 4. Provider 错误、工具错误和文件错误不显示虚假成功。
-5. 图片发送在能力不支持时明确拒绝并保留草稿。
+5. 图片按当前模型能力路由：原生多模态模型直收图片，纯文本模型使用本地视觉证据；所有路径失败时明确说明能力边界并保留可恢复输入。
 6. API Key 只进入 Keychain 和对应 Provider 请求。
 7. 隐私用途说明与实际调用一致。
 8. 内置模型 ID 失效时允许用户输入有效模型 ID，界面保持可恢复。
 9. SwiftData 启动路径能够处理当前开发 Schema 与旧开发 store 的切换。
-10. EventKit、相机、Speech 和安全作用域文件完成真机验收。
+10. EventKit、相机、Apple Vision、Speech 和安全作用域文件完成真机验收。
 11. 通知权限只在用户明确开启时请求；关闭后不再安排 Familiar 通知，并清理待处理与已投递通知。
 12. Spotlight 结果只暴露受保护的本地会话标题和 UUID，点击后能回到存在的本地会话；删除会话后对应结果被清理。
 
@@ -221,7 +231,7 @@ MCP、Skills、Core ML、Background、Memory、Subagent 都是能力，不是 MV
 - 会话中可稳定完成文本流式回答。
 - 文档转换结果可进入模型上下文并保留原文件预览。
 - 日历与提醒事项查询结果来源于 EventKit。
-- 每次写入均具备确认记录和系统保存结果；Undo 路径可验证。
+- 每次写入均具备授权依据和系统保存结果；跨重启 Undo 路径可验证。
 - 一次 Agent Run 可以查看摘要执行轨迹；严格重放与恢复依赖 Context/Capability/Authorization snapshot 与 ResumeCursor。
 - 关闭并重新打开 App 后，可查看已完成消息和工具终态。
 - 系统拒绝权限时，App 提供明确状态和恢复入口。

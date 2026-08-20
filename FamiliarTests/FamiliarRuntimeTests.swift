@@ -34,6 +34,53 @@ private struct FamiliarFakeTool: FamiliarTool {
     }
 }
 
+private actor FamiliarAttemptCounter {
+    private var value = 0
+    func next() -> Int { value += 1; return value }
+}
+
+private struct FamiliarFlakyProvider: FamiliarModelProvider {
+    let providerID = "fake"
+    let counter: FamiliarAttemptCounter
+
+    func stream(request: FamiliarModelRequest, apiKey: String) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                let attempt = await counter.next()
+                if attempt == 1 {
+                    continuation.finish(throwing: FamiliarProviderRequestError.server(provider: "fake", statusCode: 500, message: "transient"))
+                } else {
+                    continuation.yield(.textDelta("Recovered"))
+                    continuation.yield(.completed(.stop))
+                    continuation.finish()
+                }
+            }
+        }
+    }
+}
+
+private struct FamiliarCountingTool: FamiliarTool {
+    struct Input: Decodable, Sendable { let n: Int }
+    let manifest = FamiliarToolManifest(name: "fake_count", title: "Fake count", description: "Counts", parameters: .init(type: .object), effect: .read, risk: .low, requirements: [])
+    func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
+        .result(.init(modelContent: #"{"ok":true}"#, displayContent: "OK"))
+    }
+}
+
+private struct FamiliarBudgetProvider: FamiliarModelProvider {
+    let providerID = "fake"
+
+    func stream(request: FamiliarModelRequest, apiKey: String) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let toolCount = request.messages.filter { $0.role == .tool }.count
+            let arguments = #"{"n":\#(toolCount)}"#
+            continuation.yield(.toolCallDelta(index: 0, id: "call-\(toolCount)", name: "fake_count", arguments: arguments))
+            continuation.yield(.completed(.toolCalls))
+            continuation.finish()
+        }
+    }
+}
+
 @Suite("Familiar runtime")
 struct FamiliarRuntimeTests {
     @Test("Runtime events have one run ID and strictly increasing sequence")
@@ -49,7 +96,7 @@ struct FamiliarRuntimeTests {
         if case .runCompleted = events.last?.payload {} else { Issue.record("Missing runCompleted") }
         #expect(events.contains { if case .toolFinished = $0.payload { true } else { false } })
         #expect(events.contains {
-            if case .toolInvocationRequested(let id, let name, let arguments) = $0.payload {
+            if case .toolInvocationRequested(let id, let name, let arguments, _) = $0.payload {
                 return id == "call" && name == "fake_read" && arguments == "{}"
             }
             return false
@@ -94,5 +141,63 @@ struct FamiliarRuntimeTests {
         #expect(throws: FamiliarAgentError.self) {
             _ = try familiarTestContextSnapshot(messages: [message])
         }
+    }
+
+    @Test("Transient provider failures retry before any content is emitted")
+    func transientRetry() async throws {
+        let registry = try FamiliarToolRegistry(tools: [])
+        let loop = FamiliarAgentLoop(
+            provider: FamiliarFlakyProvider(counter: FamiliarAttemptCounter()),
+            registry: registry,
+            policy: .init(),
+            confirmationCoordinator: .init(),
+            undoStore: .init()
+        )
+        var text = ""
+        let snapshot = try familiarTestContextSnapshot()
+        for try await event in loop.stream(contextSnapshot: snapshot, apiKey: "key") {
+            if case .textDelta(let delta) = event.payload { text += delta }
+        }
+        #expect(text == "Recovered")
+    }
+
+    @Test("Provider failures classify into retryable and non-retryable kinds")
+    func failureClassification() {
+        let rateLimited = FamiliarRuntimeFailure.kind(for: FamiliarProviderRequestError.server(provider: "x", statusCode: 429, message: ""))
+        let server = FamiliarRuntimeFailure.kind(for: FamiliarProviderRequestError.server(provider: "x", statusCode: 500, message: ""))
+        let auth = FamiliarRuntimeFailure.kind(for: FamiliarProviderRequestError.server(provider: "x", statusCode: 401, message: ""))
+        #expect(rateLimited == .rateLimited)
+        #expect(server == .transientServer)
+        #expect(auth == .authentication)
+        #expect(rateLimited.isRetryable)
+        #expect(server.isRetryable)
+        #expect(!auth.isRetryable)
+        #expect(FamiliarRuntimeFailure.kind(for: FamiliarAgentError.contextTooLarge) == .contextTooLarge)
+        #expect(!FamiliarRuntimeFailure.kind(for: FamiliarAgentError.contextTooLarge).isRetryable)
+        #expect(FamiliarRuntimeFailure.kind(for: URLError(.timedOut)) == .network)
+        #expect(FamiliarRuntimeFailure.kind(for: CancellationError()) == .cancelled)
+    }
+
+    @Test("A run stops after the configured tool-call budget")
+    func toolCallBudget() async throws {
+        let registry = try FamiliarToolRegistry(tools: [AnyFamiliarTool(FamiliarCountingTool())])
+        let loop = FamiliarAgentLoop(
+            provider: FamiliarBudgetProvider(),
+            registry: registry,
+            policy: .init(),
+            confirmationCoordinator: .init(),
+            undoStore: .init(),
+            maximumToolCalls: 1
+        )
+        var failed = false
+        do {
+            let snapshot = try familiarTestContextSnapshot(manifests: await registry.manifests())
+            for try await event in loop.stream(contextSnapshot: snapshot, apiKey: "key") {
+                if case .runFailed = event.payload { failed = true }
+            }
+        } catch FamiliarAgentError.maxToolCallsExceeded {
+            failed = true
+        }
+        #expect(failed)
     }
 }

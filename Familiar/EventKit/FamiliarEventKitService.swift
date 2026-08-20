@@ -125,6 +125,13 @@ nonisolated protocol FamiliarEventKitServicing: FamiliarEventKitWriteExecutor, F
     func events(from startISO8601: String, to endISO8601: String, limit: Int) async throws -> [FamiliarCalendarEvent]
     func reminders(from startISO8601: String?, to endISO8601: String?, text: String?, limit: Int) async throws -> [FamiliarReminder]
     func undoCommit(idempotencyKey: String) async throws -> FamiliarToolExecutionResult
+    func undo(kind: FamiliarEventKitAccessKind, identifier: String) async throws -> FamiliarToolExecutionResult
+}
+
+nonisolated extension FamiliarEventKitServicing {
+    func undo(kind: FamiliarEventKitAccessKind, identifier: String) async throws -> FamiliarToolExecutionResult {
+        throw FamiliarEventKitError.undoUnavailable
+    }
 }
 
 public actor FamiliarEventKitService: FamiliarEventKitServicing {
@@ -285,6 +292,19 @@ public actor FamiliarEventKitService: FamiliarEventKitServicing {
             displayContent: "已撤销",
             artifactIdentifier: committed.identifier
         )
+    }
+
+    func undo(kind: FamiliarEventKitAccessKind, identifier: String) async throws -> FamiliarToolExecutionResult {
+        try Task.checkCancellation()
+        switch kind {
+        case .events:
+            guard let event = store.event(withIdentifier: identifier) else { throw FamiliarEventKitError.undoUnavailable }
+            try store.remove(event, span: .thisEvent, commit: true)
+        case .reminders:
+            guard let reminder = store.calendarItem(withIdentifier: identifier) as? EKReminder else { throw FamiliarEventKitError.undoUnavailable }
+            try store.remove(reminder, commit: true)
+        }
+        return FamiliarToolExecutionResult(modelContent: #"{"undone":true}"#, displayContent: String(localized: "tool.undone", defaultValue: "Undone"), artifactIdentifier: identifier)
     }
 
     private func fetchReminders(matching predicate: NSPredicate) async -> [FamiliarReminderCandidate] {

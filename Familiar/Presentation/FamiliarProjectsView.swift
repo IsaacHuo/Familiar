@@ -2,14 +2,22 @@ import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
+enum FamiliarProjectConversationRequest: Equatable, Sendable {
+    case open(conversationID: UUID)
+    case create(projectID: UUID)
+    case createAndSend(projectID: UUID, prompt: String)
+}
+
 struct FamiliarProjectsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \FamiliarProject.updatedAt, order: .reverse) private var projects: [FamiliarProject]
 
     let initialProjectID: UUID?
-    let onSelectConversation: (FamiliarConversation) -> Void
-    let onNewConversation: (FamiliarProject) -> Void
+    private let registry: FamiliarToolRegistry?
+    private let onConversationRequest: ((FamiliarProjectConversationRequest) -> Void)?
+    private let onSelectConversation: ((FamiliarConversation) -> Void)?
+    private let onNewConversation: ((FamiliarProject) -> Void)?
 
     @State private var path: [UUID]
     @State private var editor: FamiliarProjectEditorDestination?
@@ -17,10 +25,26 @@ struct FamiliarProjectsView: View {
 
     init(
         initialProjectID: UUID? = nil,
+        registry: FamiliarToolRegistry? = nil,
+        onConversationRequest: @escaping (FamiliarProjectConversationRequest) -> Void
+    ) {
+        self.initialProjectID = initialProjectID
+        self.registry = registry
+        self.onConversationRequest = onConversationRequest
+        onSelectConversation = nil
+        onNewConversation = nil
+        _path = State(initialValue: initialProjectID.map { [$0] } ?? [])
+    }
+
+    init(
+        initialProjectID: UUID? = nil,
+        registry: FamiliarToolRegistry? = nil,
         onSelectConversation: @escaping (FamiliarConversation) -> Void,
         onNewConversation: @escaping (FamiliarProject) -> Void
     ) {
         self.initialProjectID = initialProjectID
+        self.registry = registry
+        onConversationRequest = nil
         self.onSelectConversation = onSelectConversation
         self.onNewConversation = onNewConversation
         _path = State(initialValue: initialProjectID.map { [$0] } ?? [])
@@ -65,8 +89,8 @@ struct FamiliarProjectsView: View {
                 if let project = projects.first(where: { $0.id == projectID }) {
                     FamiliarProjectDetailView(
                         project: project,
-                        onSelectConversation: selectConversation,
-                        onNewConversation: newConversation,
+                        registry: registry,
+                        onConversationRequest: handleConversationRequest,
                         onEdit: { editor = .edit(project) },
                         onError: { errorMessage = $0 }
                     )
@@ -111,161 +135,214 @@ struct FamiliarProjectsView: View {
         }
     }
 
-    private func selectConversation(_ conversation: FamiliarConversation) {
+    private func handleConversationRequest(_ request: FamiliarProjectConversationRequest) {
         dismiss()
-        onSelectConversation(conversation)
-    }
-
-    private func newConversation(_ project: FamiliarProject) {
-        dismiss()
-        onNewConversation(project)
+        if let onConversationRequest {
+            onConversationRequest(request)
+            return
+        }
+        switch request {
+        case .open(let conversationID):
+            guard let conversation = projects.lazy.flatMap(\.conversations).first(where: { $0.id == conversationID }) else { return }
+            onSelectConversation?(conversation)
+        case .create(let projectID), .createAndSend(let projectID, _):
+            guard let project = projects.first(where: { $0.id == projectID }) else { return }
+            onNewConversation?(project)
+        }
     }
 }
 
 private struct FamiliarProjectDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Query(sort: \FamiliarArtifact.updatedAt, order: .reverse) private var allArtifacts: [FamiliarArtifact]
+    @Query(sort: \FamiliarSkill.name) private var allSkills: [FamiliarSkill]
+    @Query private var allSkillBindings: [FamiliarSkillBinding]
 
     let project: FamiliarProject
-    let onSelectConversation: (FamiliarConversation) -> Void
-    let onNewConversation: (FamiliarProject) -> Void
+    let registry: FamiliarToolRegistry?
+    let onConversationRequest: (FamiliarProjectConversationRequest) -> Void
     let onEdit: () -> Void
     let onError: (String) -> Void
 
+    @State private var prompt = ""
     @State private var showsResourceImporter = false
+    @State private var resourceEntry: FamiliarProjectResourceEntryDestination?
     @State private var isImportingResource = false
-    @State private var previewURL: URL?
-    @State private var artifactPreviewURL: URL?
+    @State private var previewDocument: FamiliarProjectPreviewDocument?
     @State private var resourceToDelete: FamiliarResource?
     @State private var artifactToDelete: FamiliarArtifact?
     @State private var confirmsProjectDeletion = false
+    @State private var availableToolNames: Set<String>?
 
     var body: some View {
         List {
             Section {
-                if !project.summary.isEmpty {
-                    Text(project.summary)
-                }
-            }
-
-            Section(String(localized: "project.instruction")) {
-                Text(project.instruction?.text ?? String(localized: "project.instruction.empty"))
-                    .foregroundStyle(project.instruction == nil ? .secondary : .primary)
+                FamiliarProjectHero(project: project)
+                projectActions
             }
 
             Section {
-                Button {
-                    showsResourceImporter = true
-                } label: {
-                    if isImportingResource {
-                        HStack {
-                            ProgressView()
-                            Text(String(localized: "resource.importing"))
-                        }
-                    } else {
-                        Label(String(localized: "resource.add"), systemImage: "doc.badge.plus")
+                HStack(alignment: .bottom, spacing: 10) {
+                    TextField(
+                        String(localized: "project.ask.placeholder", defaultValue: "Ask about this project"),
+                        text: $prompt,
+                        axis: .vertical
+                    )
+                    .lineLimit(1...5)
+                    .submitLabel(.send)
+                    .onSubmit(sendPrompt)
+
+                    Button(action: sendPrompt) {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.title2)
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(normalizedPrompt.isEmpty)
+                    .accessibilityLabel(String(localized: "project.ask.send", defaultValue: "Send"))
+                    .accessibilityIdentifier("project.ask.send")
+                }
+                .padding(.vertical, 4)
+            } header: {
+                Text(String(localized: "project.ask", defaultValue: "Ask Familiar"))
+            }
+
+            Section {
+                if recentResources.isEmpty {
+                    emptyRow(
+                        String(localized: "resource.empty", defaultValue: "No resources yet"),
+                        systemImage: "doc"
+                    )
+                } else {
+                    ForEach(recentResources) { resource in
+                        resourceRow(resource)
                     }
                 }
-                .disabled(isImportingResource)
-                .accessibilityIdentifier("project.addResource")
+            } header: {
+                FamiliarProjectSectionHeader(
+                    title: String(localized: "resource.section"),
+                    count: project.resources.count
+                ) {
+                    resourceImportMenu
+                } destination: {
+                    FamiliarProjectResourcesView(
+                        resources: sortedResources,
+                        onPreview: previewResource,
+                        onDelete: { resourceToDelete = $0 }
+                    )
+                }
+            } footer: {
+                if isImportingResource {
+                    Label(String(localized: "resource.importing"), systemImage: "arrow.down.doc")
+                } else {
+                    Text(String(localized: "resource.footer"))
+                }
+            }
 
-                ForEach(project.resources.sorted {
-                    $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
-                }) { resource in
-                    if let version = latestVersion(of: resource) {
-                        HStack(spacing: 12) {
-                            Button {
-                                previewURL = FamiliarProjectResourceService().quickLookURL(for: version)
-                            } label: {
-                                HStack(spacing: 12) {
-                                Image(systemName: "doc.text")
-                                    .foregroundStyle(FamiliarTheme.accent)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(resource.displayName)
-                                        .foregroundStyle(.primary)
-                                    Text(resourceDetail(version))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("resource.row.\(resource.id.uuidString)")
-                            Button(role: .destructive) {
-                                resourceToDelete = resource
-                            } label: {
-                                Image(systemName: "trash")
-                            }
-                            .buttonStyle(.borderless)
-                            .accessibilityIdentifier("resource.delete.\(resource.id.uuidString)")
+            Section {
+                if recentConversations.isEmpty {
+                    emptyRow(String(localized: "project.conversations.empty"), systemImage: "bubble.left")
+                } else {
+                    ForEach(recentConversations) { conversation in
+                        conversationRow(conversation)
+                    }
+                }
+            } header: {
+                FamiliarProjectSectionHeader(
+                    title: String(localized: "project.conversations"),
+                    count: project.conversations.count,
+                    trailingAction: {
+                        Button {
+                            onConversationRequest(.create(projectID: project.id))
+                        } label: {
+                            Image(systemName: "plus")
+                                .frame(minWidth: 44, minHeight: 44)
+                        }
+                        .accessibilityLabel(String(localized: "project.new_chat"))
+                    },
+                    destination: {
+                        FamiliarProjectConversationsView(
+                            conversations: sortedConversations,
+                            onSelect: { onConversationRequest(.open(conversationID: $0.id)) }
+                        )
+                    }
+                )
+            }
+
+            Section {
+                if recentArtifacts.isEmpty {
+                    emptyRow(
+                        String(localized: "artifact.empty", defaultValue: "No artifacts yet"),
+                        systemImage: "doc.badge.gearshape"
+                    )
+                } else {
+                    ForEach(recentArtifacts) { artifact in
+                        artifactRow(artifact)
+                    }
+                }
+            } header: {
+                FamiliarProjectSectionHeader(
+                    title: String(localized: "artifact.section", defaultValue: "Artifacts"),
+                    count: projectArtifacts.count,
+                    destination: {
+                        FamiliarProjectArtifactsView(
+                            artifacts: projectArtifacts,
+                            onPreview: previewArtifact,
+                            onDelete: { artifactToDelete = $0 }
+                        )
+                    }
+                )
+            }
+
+            Section {
+                NavigationLink {
+                    FamiliarProjectSkillsView(projectID: project.id, registry: registry, onError: onError)
+                } label: {
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack {
+                            Label(
+                                String(localized: "project.skills.enabled", defaultValue: "Enabled Skills"),
+                                systemImage: "wand.and.stars"
+                            )
+                            Spacer()
+                            Text("\(enabledSkills.count)")
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(skillToolScopeSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                    }
+                }
+            } header: {
+                Text(String(localized: "settings.skills", defaultValue: "Skills"))
+            }
+
+            Section {
+                if recentRuns.isEmpty {
+                    emptyRow(
+                        String(localized: "project.runs.empty", defaultValue: "No runs yet"),
+                        systemImage: "bolt"
+                    )
+                } else {
+                    ForEach(recentRuns) { run in
+                        NavigationLink {
+                            FamiliarProjectRunDetailView(run: run)
+                        } label: {
+                            FamiliarProjectRunRow(run: run)
                         }
                     }
                 }
             } header: {
-                Text(String(localized: "resource.section"))
-            } footer: {
-                Text(String(localized: "resource.footer"))
-            }
-
-            Section(String(localized: "artifact.section", defaultValue: "生成结果")) {
-                if projectArtifacts.isEmpty {
-                    Text(String(localized: "artifact.empty", defaultValue: "还没有生成结果"))
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(projectArtifacts.sorted { $0.updatedAt > $1.updatedAt }) { artifact in
-                        HStack(spacing: 12) {
-                            Button {
-                                artifactPreviewURL = FamiliarArtifactService().exportURL(for: artifact)
-                            } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: artifact.format == .markdown ? "doc.richtext" : "doc.text")
-                                        .foregroundStyle(FamiliarTheme.accent)
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(artifact.title).foregroundStyle(.primary)
-                                        Text(ByteCountFormatter.string(fromByteCount: artifact.byteSize, countStyle: .file))
-                                            .font(.caption).foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            Button(role: .destructive) { artifactToDelete = artifact } label: {
-                                Image(systemName: "trash")
-                            }
-                            .buttonStyle(.borderless)
-                        }
+                FamiliarProjectSectionHeader(
+                    title: String(localized: "project.runs", defaultValue: "Runs"),
+                    count: project.agentRuns.count,
+                    destination: {
+                        FamiliarProjectRunsView(runs: sortedRuns)
                     }
-                }
-            }
-
-            Section(String(localized: "project.conversations")) {
-                Button {
-                    onNewConversation(project)
-                } label: {
-                    Label(String(localized: "project.new_chat"), systemImage: "square.and.pencil")
-                }
-                .accessibilityIdentifier("project.newChat")
-
-                if project.conversations.isEmpty {
-                    Text(String(localized: "project.conversations.empty"))
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(project.conversations.sorted { $0.updatedAt > $1.updatedAt }) { conversation in
-                        Button {
-                            onSelectConversation(conversation)
-                        } label: {
-                            HStack {
-                                Text(conversation.title)
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
-                    }
-                }
+                )
             }
 
             Section {
@@ -291,6 +368,11 @@ private struct FamiliarProjectDetailView: View {
         }
         .navigationTitle(project.name)
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            if let registry {
+                availableToolNames = Set(await registry.manifests().map(\.name))
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button(String(localized: "common.edit"), action: onEdit)
@@ -302,17 +384,14 @@ private struct FamiliarProjectDetailView: View {
             allowsMultipleSelection: false,
             onCompletion: importResource
         )
-        .sheet(isPresented: Binding(
-            get: { previewURL != nil },
-            set: { if !$0 { previewURL = nil } }
-        )) {
-            if let previewURL { FamiliarAttachmentQuickLookView(url: previewURL) }
+        .sheet(item: $resourceEntry) { destination in
+            FamiliarProjectResourceEntryView(destination: destination) { title, value in
+                resourceEntry = nil
+                importEnteredResource(destination, title: title, value: value)
+            }
         }
-        .sheet(isPresented: Binding(
-            get: { artifactPreviewURL != nil },
-            set: { if !$0 { artifactPreviewURL = nil } }
-        )) {
-            if let artifactPreviewURL { FamiliarAttachmentQuickLookView(url: artifactPreviewURL) }
+        .sheet(item: $previewDocument) { document in
+            FamiliarAttachmentQuickLookView(url: document.url)
         }
         .confirmationDialog(
             String(localized: "resource.delete.title"),
@@ -331,7 +410,7 @@ private struct FamiliarProjectDetailView: View {
             Text(String(localized: "resource.delete.detail"))
         }
         .confirmationDialog(
-            String(localized: "artifact.delete.title", defaultValue: "删除生成结果"),
+            String(localized: "artifact.delete.title", defaultValue: "Delete this artifact?"),
             isPresented: Binding(
                 get: { artifactToDelete != nil },
                 set: { if !$0 { artifactToDelete = nil } }
@@ -360,28 +439,174 @@ private struct FamiliarProjectDetailView: View {
         }
     }
 
-    private static let allowedResourceTypes: [UTType] = FamiliarAnyDocService.supportedExtensions
-        .sorted()
-        .compactMap { UTType(filenameExtension: $0) }
-        .isEmpty ? [.data] : FamiliarAnyDocService.supportedExtensions.sorted().compactMap { UTType(filenameExtension: $0) }
-
-    private func latestVersion(of resource: FamiliarResource) -> FamiliarResourceVersion? {
-        resource.versions.max {
-            $0.version == $1.version ? $0.createdAt < $1.createdAt : $0.version < $1.version
+    private var projectActions: some View {
+        Group {
+            if sortedConversations.isEmpty {
+                primaryProjectAction
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) {
+                        primaryProjectAction
+                        newProjectChatAction
+                    }
+                    VStack(spacing: 10) {
+                        primaryProjectAction
+                        newProjectChatAction
+                    }
+                }
+            }
         }
     }
 
-    private var projectArtifacts: [FamiliarArtifact] {
-        let projectID = project.id
-        return (try? modelContext.fetch(FetchDescriptor<FamiliarArtifact>(
-            predicate: #Predicate { $0.projectID == projectID }
-        ))) ?? []
+    private var primaryProjectAction: some View {
+        Button {
+            if let conversation = sortedConversations.first {
+                onConversationRequest(.open(conversationID: conversation.id))
+            } else {
+                onConversationRequest(.create(projectID: project.id))
+            }
+        } label: {
+            Label(
+                sortedConversations.isEmpty
+                    ? String(localized: "project.new_chat")
+                    : String(localized: "project.continue_chat", defaultValue: "Continue Chat"),
+                systemImage: "bubble.left.and.bubble.right"
+            )
+            .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .buttonStyle(.borderedProminent)
+        .accessibilityIdentifier("project.continueChat")
     }
 
-    private func resourceDetail(_ version: FamiliarResourceVersion) -> String {
-        var values = [version.detectedFormat.uppercased(), ByteCountFormatter.string(fromByteCount: version.byteSize, countStyle: .file)]
-        if version.usedOCR { values.append(String(localized: "resource.ocr")) }
-        return values.joined(separator: " · ")
+    private var newProjectChatAction: some View {
+        Button {
+            onConversationRequest(.create(projectID: project.id))
+        } label: {
+            Label(String(localized: "project.new_chat"), systemImage: "square.and.pencil")
+                .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("project.newChat")
+    }
+
+    private var resourceImportMenu: some View {
+        Menu {
+            Button {
+                showsResourceImporter = true
+            } label: {
+                Label(String(localized: "resource.add"), systemImage: "doc.badge.plus")
+            }
+            Button {
+                resourceEntry = .webPage
+            } label: {
+                Label(String(localized: "resource.add_web", defaultValue: "Add Web Page"), systemImage: "link")
+            }
+            Button {
+                resourceEntry = .pastedText
+            } label: {
+                Label(String(localized: "resource.add_text", defaultValue: "Paste Text"), systemImage: "text.quote")
+            }
+        } label: {
+            if isImportingResource {
+                ProgressView()
+                    .frame(minWidth: 44, minHeight: 44)
+            } else {
+                Image(systemName: "plus")
+                    .frame(minWidth: 44, minHeight: 44)
+            }
+        }
+        .disabled(isImportingResource)
+        .accessibilityLabel(String(localized: "resource.add"))
+        .accessibilityIdentifier("project.addResource")
+    }
+
+    private var projectArtifacts: [FamiliarArtifact] {
+        allArtifacts.filter { $0.projectID == project.id }
+    }
+    private var enabledSkills: [FamiliarSkill] {
+        let enabledIDs = Set(allSkillBindings.filter { $0.projectID == project.id && $0.enabled }.map(\.skillID))
+        return allSkills.filter { enabledIDs.contains($0.id) }
+    }
+    private var skillToolScope: [String] {
+        let declared = Set(enabledSkills.flatMap(Self.allowedTools(for:)))
+        guard let availableToolNames else { return declared.sorted() }
+        return declared.intersection(availableToolNames).sorted()
+    }
+    private var skillToolScopeSummary: String {
+        guard !enabledSkills.isEmpty else {
+            return String(localized: "project.skills.unrestricted", defaultValue: "No Skill restriction; current device tools remain available.")
+        }
+        guard !skillToolScope.isEmpty else {
+            return String(localized: "project.skills.no_tools", defaultValue: "Final tool scope: no tools")
+        }
+        return String(
+            format: String(localized: "project.skills.final_tools", defaultValue: "Final tool scope: %@"),
+            skillToolScope.joined(separator: ", ")
+        )
+    }
+    private var sortedResources: [FamiliarResource] { project.resources.sorted { $0.updatedAt > $1.updatedAt } }
+    private var sortedConversations: [FamiliarConversation] { project.conversations.sorted { $0.updatedAt > $1.updatedAt } }
+    private var sortedRuns: [FamiliarAgentRun] { project.agentRuns.sorted { $0.startedAt > $1.startedAt } }
+    private var recentResources: [FamiliarResource] { Array(sortedResources.prefix(3)) }
+    private var recentConversations: [FamiliarConversation] { Array(sortedConversations.prefix(3)) }
+    private var recentArtifacts: [FamiliarArtifact] { Array(projectArtifacts.prefix(3)) }
+    private var recentRuns: [FamiliarAgentRun] { Array(sortedRuns.prefix(3)) }
+    private var normalizedPrompt: String { prompt.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    private func sendPrompt() {
+        let value = normalizedPrompt
+        guard !value.isEmpty else { return }
+        prompt = ""
+        onConversationRequest(.createAndSend(projectID: project.id, prompt: value))
+    }
+
+    private func conversationRow(_ conversation: FamiliarConversation) -> some View {
+        Button {
+            onConversationRequest(.open(conversationID: conversation.id))
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "bubble.left")
+                    .foregroundStyle(FamiliarTheme.accent)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(conversation.title).foregroundStyle(.primary)
+                    Text(conversation.updatedAt, format: .dateTime.month(.abbreviated).day().hour().minute())
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func resourceRow(_ resource: FamiliarResource) -> some View {
+        FamiliarProjectResourceRow(
+            resource: resource,
+            onPreview: { previewResource(resource) },
+            onDelete: { resourceToDelete = resource }
+        )
+    }
+
+    private func artifactRow(_ artifact: FamiliarArtifact) -> some View {
+        FamiliarProjectArtifactRow(
+            artifact: artifact,
+            exportURL: FamiliarArtifactService().exportURL(for: artifact),
+            onPreview: { previewArtifact(artifact) },
+            onDelete: { artifactToDelete = artifact }
+        )
+    }
+
+    private func previewResource(_ resource: FamiliarResource) {
+        guard let version = FamiliarProjectResourceService.latestVersion(of: resource),
+              let url = FamiliarProjectResourceService().quickLookURL(for: version)
+        else { return }
+        previewDocument = FamiliarProjectPreviewDocument(url: url)
+    }
+
+    private func previewArtifact(_ artifact: FamiliarArtifact) {
+        guard let url = FamiliarArtifactService().exportURL(for: artifact) else { return }
+        previewDocument = FamiliarProjectPreviewDocument(url: url)
     }
 
     private func importResource(_ result: Result<[URL], Error>) {
@@ -401,11 +626,625 @@ private struct FamiliarProjectDetailView: View {
         }
     }
 
+    private func importEnteredResource(
+        _ destination: FamiliarProjectResourceEntryDestination,
+        title: String,
+        value: String
+    ) {
+        isImportingResource = true
+        Task {
+            defer { isImportingResource = false }
+            do {
+                switch destination {
+                case .webPage:
+                    try await FamiliarProjectResourceService().importWebPage(
+                        from: value,
+                        into: project,
+                        in: modelContext
+                    )
+                case .pastedText:
+                    try FamiliarProjectResourceService().importPastedText(
+                        value,
+                        title: title,
+                        into: project,
+                        in: modelContext
+                    )
+                }
+            } catch {
+                onError(error.localizedDescription)
+            }
+        }
+    }
+
+    private func emptyRow(_ title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .foregroundStyle(.secondary)
+    }
+
+    private static let allowedResourceTypes: [UTType] = FamiliarAnyDocService.supportedExtensions
+        .sorted()
+        .compactMap { UTType(filenameExtension: $0) }
+        .isEmpty ? [.data] : FamiliarAnyDocService.supportedExtensions.sorted().compactMap { UTType(filenameExtension: $0) }
+
     private func perform(_ operation: () throws -> Void) {
         do {
             try operation()
         } catch {
             onError(error.localizedDescription)
+        }
+    }
+
+    private static func allowedTools(for skill: FamiliarSkill) -> [String] {
+        guard let data = skill.allowedToolsJSON.data(using: .utf8),
+              let tools = try? JSONDecoder().decode([String].self, from: data)
+        else { return [] }
+        return tools
+    }
+}
+
+private struct FamiliarProjectHero: View {
+    let project: FamiliarProject
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Image(systemName: "folder.fill")
+                    .font(.title2)
+                    .foregroundStyle(FamiliarTheme.accent)
+                Text(project.name)
+                    .font(.title2.weight(.semibold))
+                Spacer()
+                if project.status == .archived {
+                    Text(String(localized: "project.archived"))
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if !project.summary.isEmpty {
+                Text(project.summary)
+                    .foregroundStyle(.secondary)
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(String(localized: "project.instruction"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(project.instruction?.text ?? String(localized: "project.instruction.empty"))
+                    .font(.subheadline)
+                    .foregroundStyle(project.instruction == nil ? .secondary : .primary)
+                    .lineLimit(4)
+            }
+        }
+        .padding(.vertical, 6)
+    }
+}
+
+private struct FamiliarProjectSectionHeader<Trailing: View, Destination: View>: View {
+    let title: String
+    let count: Int
+    @ViewBuilder let trailingAction: Trailing
+    @ViewBuilder let destination: Destination
+
+    init(
+        title: String,
+        count: Int,
+        @ViewBuilder trailingAction: () -> Trailing,
+        @ViewBuilder destination: () -> Destination
+    ) {
+        self.title = title
+        self.count = count
+        self.trailingAction = trailingAction()
+        self.destination = destination()
+    }
+
+    init(
+        title: String,
+        count: Int,
+        @ViewBuilder destination: () -> Destination
+    ) where Trailing == EmptyView {
+        self.init(title: title, count: count, trailingAction: { EmptyView() }, destination: destination)
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(title)
+            Text("\(count)")
+                .monospacedDigit()
+                .foregroundStyle(.tertiary)
+            Spacer()
+            trailingAction
+            NavigationLink {
+                destination
+            } label: {
+                Text(String(localized: "common.view_all", defaultValue: "View All"))
+                    .font(.caption.weight(.medium))
+            }
+            .disabled(count == 0)
+        }
+    }
+}
+
+private struct FamiliarProjectResourcesView: View {
+    let resources: [FamiliarResource]
+    let onPreview: (FamiliarResource) -> Void
+    let onDelete: (FamiliarResource) -> Void
+
+    var body: some View {
+        List(resources) { resource in
+            FamiliarProjectResourceRow(
+                resource: resource,
+                onPreview: { onPreview(resource) },
+                onDelete: { onDelete(resource) }
+            )
+        }
+        .navigationTitle(String(localized: "resource.section"))
+    }
+}
+
+private struct FamiliarProjectResourceRow: View {
+    let resource: FamiliarResource
+    let onPreview: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: onPreview) {
+                HStack(spacing: 12) {
+                    Image(systemName: latestVersion?.source == .fetchedWeb ? "link" : "doc.text")
+                        .foregroundStyle(FamiliarTheme.accent)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(resource.displayName)
+                            .foregroundStyle(.primary)
+                            .lineLimit(2)
+                        if let latestVersion {
+                            Text(resourceDetail(latestVersion))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("resource.row.\(resource.id.uuidString)")
+            Button(role: .destructive, action: onDelete) {
+                Image(systemName: "trash")
+                    .frame(minWidth: 44, minHeight: 44)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityIdentifier("resource.delete.\(resource.id.uuidString)")
+        }
+    }
+
+    private var latestVersion: FamiliarResourceVersion? {
+        FamiliarProjectResourceService.latestVersion(of: resource)
+    }
+
+    private func resourceDetail(_ version: FamiliarResourceVersion) -> String {
+        var values = [
+            version.detectedFormat.uppercased(),
+            ByteCountFormatter.string(fromByteCount: version.byteSize, countStyle: .file),
+            "v\(version.version)"
+        ]
+        if version.usedOCR { values.append(String(localized: "resource.ocr")) }
+        return values.joined(separator: " · ")
+    }
+}
+
+private struct FamiliarProjectArtifactsView: View {
+    let artifacts: [FamiliarArtifact]
+    let onPreview: (FamiliarArtifact) -> Void
+    let onDelete: (FamiliarArtifact) -> Void
+
+    var body: some View {
+        List(artifacts) { artifact in
+            FamiliarProjectArtifactRow(
+                artifact: artifact,
+                exportURL: FamiliarArtifactService().exportURL(for: artifact),
+                onPreview: { onPreview(artifact) },
+                onDelete: { onDelete(artifact) }
+            )
+        }
+        .navigationTitle(String(localized: "artifact.section", defaultValue: "Artifacts"))
+    }
+}
+
+private struct FamiliarProjectArtifactRow: View {
+    let artifact: FamiliarArtifact
+    let exportURL: URL?
+    let onPreview: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: onPreview) {
+                HStack(spacing: 12) {
+                    Image(systemName: artifact.format == .markdown ? "doc.richtext" : "doc.text")
+                        .foregroundStyle(FamiliarTheme.accent)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(artifact.title).foregroundStyle(.primary)
+                        Text(ByteCountFormatter.string(fromByteCount: artifact.byteSize, countStyle: .file))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+            if let exportURL {
+                ShareLink(item: exportURL) {
+                    Image(systemName: "square.and.arrow.up")
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(String(localized: "common.share", defaultValue: "Share"))
+            }
+            Button(role: .destructive, action: onDelete) {
+                Image(systemName: "trash")
+                    .frame(minWidth: 44, minHeight: 44)
+            }
+            .buttonStyle(.borderless)
+        }
+    }
+}
+
+private struct FamiliarProjectConversationsView: View {
+    let conversations: [FamiliarConversation]
+    let onSelect: (FamiliarConversation) -> Void
+
+    var body: some View {
+        List(conversations) { conversation in
+            Button { onSelect(conversation) } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(conversation.title).foregroundStyle(.primary)
+                    Text(conversation.updatedAt, format: .dateTime.month(.abbreviated).day().hour().minute())
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .navigationTitle(String(localized: "project.conversations"))
+    }
+}
+
+private struct FamiliarProjectSkillsView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \FamiliarSkill.name) private var skills: [FamiliarSkill]
+    @Query private var bindings: [FamiliarSkillBinding]
+
+    let projectID: UUID
+    let registry: FamiliarToolRegistry?
+    let onError: (String) -> Void
+    @State private var availableToolNames: Set<String>?
+
+    var body: some View {
+        List {
+            Section {
+                if enabledSkills.isEmpty {
+                    Text(String(
+                        localized: "project.skills.unrestricted",
+                        defaultValue: "No Skill restriction; current device tools remain available."
+                    ))
+                    .foregroundStyle(.secondary)
+                } else if finalAllowedTools.isEmpty {
+                    Label(
+                        String(localized: "project.skills.no_tools", defaultValue: "Final tool scope: no tools"),
+                        systemImage: "nosign"
+                    )
+                    .foregroundStyle(.secondary)
+                } else {
+                    ForEach(finalAllowedTools, id: \.self) { toolName in
+                        Label(toolName, systemImage: "wrench.and.screwdriver")
+                    }
+                }
+            } header: {
+                Text(String(localized: "project.skills.final_scope", defaultValue: "Final Tool Scope"))
+            } footer: {
+                Text(String(
+                    localized: "project.skills.scope_footer",
+                    defaultValue: "Enabled Skills can only reduce the tools visible to a run. Their allowed tool lists are combined."
+                ))
+            }
+
+            Section(String(localized: "project.skills.installed", defaultValue: "Installed Skills")) {
+                if skills.isEmpty {
+                    Text(String(localized: "project.skills.none_installed", defaultValue: "No Skills are installed."))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(skills) { skill in
+                        Toggle(isOn: binding(for: skill)) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(skill.name)
+                                Text("\(skill.stableID) · v\(skill.version)")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                Text(allowedToolsSummary(for: skill))
+                                    .font(.caption).foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                            }
+                        }
+                        .accessibilityIdentifier("project.skill.\(skill.stableID)")
+                    }
+                }
+            }
+        }
+        .navigationTitle(String(localized: "settings.skills", defaultValue: "Skills"))
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            if let registry {
+                availableToolNames = Set(await registry.manifests().map(\.name))
+            }
+        }
+    }
+
+    private var enabledSkillIDs: Set<UUID> {
+        Set(bindings.filter { $0.projectID == projectID && $0.enabled }.map(\.skillID))
+    }
+    private var enabledSkills: [FamiliarSkill] {
+        skills.filter { enabledSkillIDs.contains($0.id) }
+    }
+    private var finalAllowedTools: [String] {
+        let declared = Set(enabledSkills.flatMap(allowedTools(for:)))
+        guard let availableToolNames else { return declared.sorted() }
+        return declared.intersection(availableToolNames).sorted()
+    }
+
+    private func binding(for skill: FamiliarSkill) -> Binding<Bool> {
+        Binding(
+            get: { enabledSkillIDs.contains(skill.id) },
+            set: { enabled in
+                do {
+                    try FamiliarSkillService().setBinding(
+                        skillID: skill.id,
+                        projectID: projectID,
+                        enabled: enabled,
+                        in: modelContext
+                    )
+                } catch {
+                    onError(error.localizedDescription)
+                }
+            }
+        )
+    }
+
+    private func allowedTools(for skill: FamiliarSkill) -> [String] {
+        guard let data = skill.allowedToolsJSON.data(using: .utf8),
+              let tools = try? JSONDecoder().decode([String].self, from: data)
+        else { return [] }
+        return tools
+    }
+
+    private func allowedToolsSummary(for skill: FamiliarSkill) -> String {
+        let tools = allowedTools(for: skill)
+        return tools.isEmpty
+            ? String(localized: "project.skills.no_tools", defaultValue: "No tools")
+            : tools.joined(separator: ", ")
+    }
+}
+
+private struct FamiliarProjectRunsView: View {
+    let runs: [FamiliarAgentRun]
+
+    var body: some View {
+        List(runs) { run in
+            NavigationLink {
+                FamiliarProjectRunDetailView(run: run)
+            } label: {
+                FamiliarProjectRunRow(run: run)
+            }
+        }
+        .navigationTitle(String(localized: "project.runs", defaultValue: "Runs"))
+    }
+}
+
+private struct FamiliarProjectRunRow: View {
+    let run: FamiliarAgentRun
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: statusIcon)
+                .foregroundStyle(statusColor)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(runTitle)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(run.startedAt, format: .dateTime.month(.abbreviated).day().hour().minute())
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var runTitle: String {
+        let snapshot = run.contextSnapshot
+        let providerID = snapshot?.providerID ?? ""
+        let modelID = snapshot?.modelID ?? ""
+        let providerName = FamiliarProviderCatalog.descriptor(for: providerID)?.displayName ?? providerID
+        let modelName = FamiliarProviderCatalog.descriptor(for: providerID)?.model(for: modelID).displayName ?? modelID
+        return [providerName, modelName].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    private var statusIcon: String {
+        switch run.status {
+        case .running: "bolt.fill"
+        case .completed: "checkmark.circle.fill"
+        case .cancelled: "xmark.circle"
+        case .failed: "exclamationmark.triangle.fill"
+        }
+    }
+
+    private var statusColor: Color {
+        switch run.status {
+        case .running: FamiliarTheme.accent
+        case .completed: .green
+        case .cancelled: .secondary
+        case .failed: .red
+        }
+    }
+}
+
+private struct FamiliarProjectRunDetailView: View {
+    @Query(sort: \FamiliarRunSkillSnapshotRecord.sequence) private var allSkillSnapshots: [FamiliarRunSkillSnapshotRecord]
+    let run: FamiliarAgentRun
+
+    var body: some View {
+        List {
+            Section(String(localized: "project.run.execution", defaultValue: "Execution")) {
+                LabeledContent(String(localized: "project.run.status", defaultValue: "Status"), value: statusText)
+                LabeledContent(String(localized: "settings.provider"), value: providerName)
+                LabeledContent(String(localized: "settings.model"), value: modelName)
+                LabeledContent(String(localized: "project.run.started", defaultValue: "Started")) {
+                    Text(run.startedAt, format: .dateTime.year().month().day().hour().minute().second())
+                }
+                if let finishedAt = run.finishedAt {
+                    LabeledContent(String(localized: "project.run.finished", defaultValue: "Finished")) {
+                        Text(finishedAt, format: .dateTime.year().month().day().hour().minute().second())
+                    }
+                }
+            }
+
+            Section(String(localized: "project.run.resources", defaultValue: "Resources Used")) {
+                if resourceReferences.isEmpty {
+                    Text(String(localized: "project.run.resources.empty", defaultValue: "No project resources were used."))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(resourceReferences, id: \.id) { reference in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(reference.filename)
+                            Text("v\(reference.version) · \(String(reference.contentHash.prefix(12)))")
+                                .font(.caption.monospaced()).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
+            Section(String(localized: "project.run.skills", defaultValue: "Skills Used")) {
+                if skillSnapshots.isEmpty {
+                    Text(String(localized: "project.run.skills.empty", defaultValue: "No project Skills were used."))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(skillSnapshots) { skill in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(skill.name)
+                            Text("\(skill.stableID) · v\(skill.version) · \(String(skill.contentHash.prefix(12)))")
+                                .font(.caption.monospaced()).foregroundStyle(.secondary)
+                            if !skill.allowedTools.isEmpty {
+                                Text(skill.allowedTools.joined(separator: ", "))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Section(String(localized: "project.run.tools", defaultValue: "Available Tools")) {
+                if toolNames.isEmpty {
+                    Text(String(localized: "project.run.tools.empty", defaultValue: "No tools were exposed."))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(toolNames, id: \.self) { toolName in
+                        Label(toolName, systemImage: "wrench.and.screwdriver")
+                    }
+                }
+            }
+        }
+        .navigationTitle(String(localized: "project.run", defaultValue: "Run"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var snapshot: FamiliarContextSnapshotRecord? { run.contextSnapshot }
+    private var providerName: String {
+        guard let snapshot else { return String(localized: "common.unknown", defaultValue: "Unknown") }
+        return FamiliarProviderCatalog.descriptor(for: snapshot.providerID)?.displayName ?? snapshot.providerID
+    }
+    private var modelName: String {
+        guard let snapshot else { return String(localized: "common.unknown", defaultValue: "Unknown") }
+        return FamiliarProviderCatalog.descriptor(for: snapshot.providerID)?.model(for: snapshot.modelID).displayName ?? snapshot.modelID
+    }
+    private var resourceReferences: [FamiliarContextResourceReference] {
+        snapshot?.resourceReferences.sorted {
+            $0.filename == $1.filename ? $0.version < $1.version : $0.filename.localizedStandardCompare($1.filename) == .orderedAscending
+        } ?? []
+    }
+    private var toolNames: [String] {
+        guard let data = snapshot?.exposedToolNamesJSON.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode([String].self, from: data)
+        else { return [] }
+        return decoded.sorted()
+    }
+    private var skillSnapshots: [FamiliarRunSkillSnapshotRecord] {
+        allSkillSnapshots.filter { $0.runID == run.id }.sorted { $0.sequence < $1.sequence }
+    }
+    private var statusText: String {
+        switch run.status {
+        case .running: String(localized: "project.run.status.running", defaultValue: "Running")
+        case .completed: String(localized: "project.run.status.completed", defaultValue: "Completed")
+        case .cancelled: String(localized: "project.run.status.cancelled", defaultValue: "Cancelled")
+        case .failed: String(localized: "project.run.status.failed", defaultValue: "Failed")
+        }
+    }
+}
+
+private enum FamiliarProjectResourceEntryDestination: String, Identifiable {
+    case webPage
+    case pastedText
+    var id: String { rawValue }
+}
+
+private struct FamiliarProjectResourceEntryView: View {
+    @Environment(\.dismiss) private var dismiss
+    let destination: FamiliarProjectResourceEntryDestination
+    let onImport: (String, String) -> Void
+
+    @State private var title = ""
+    @State private var value = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if destination == .pastedText {
+                    TextField(String(localized: "resource.text_title", defaultValue: "Title (optional)"), text: $title)
+                }
+                Section {
+                    if destination == .webPage {
+                        TextField("https://example.com", text: $value)
+                            .keyboardType(.URL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    } else {
+                        TextEditor(text: $value)
+                            .frame(minHeight: 220)
+                    }
+                } footer: {
+                    if destination == .webPage {
+                        Text(String(localized: "resource.web.footer", defaultValue: "Only public HTTPS pages supported by Familiar's safe web fetcher can be imported."))
+                    }
+                }
+            }
+            .navigationTitle(destination == .webPage
+                             ? String(localized: "resource.add_web", defaultValue: "Add Web Page")
+                             : String(localized: "resource.add_text", defaultValue: "Paste Text"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(String(localized: "common.cancel")) { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(String(localized: "resource.import", defaultValue: "Import")) {
+                        onImport(title, value)
+                        dismiss()
+                    }
+                    .disabled(value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+}
+
+private struct FamiliarProjectPreviewDocument: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+private extension FamiliarProjectResourceService {
+    static func latestVersion(of resource: FamiliarResource) -> FamiliarResourceVersion? {
+        resource.versions.max {
+            $0.version == $1.version ? $0.createdAt < $1.createdAt : $0.version < $1.version
         }
     }
 }

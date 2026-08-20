@@ -423,7 +423,7 @@ struct FamiliarBenchmarkTests {
         let requests = await recorder.snapshot()
         let commitCount = await eventKit.commitCount()
         let toolSequence = events.compactMap { event in
-            if case .toolRequested(_, let name) = event.payload { return name }
+            if case .toolRequested(_, let name, _) = event.payload { return name }
             return nil
         }
         let approvalSequence = events.compactMap { event in

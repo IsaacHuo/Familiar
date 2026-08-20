@@ -47,6 +47,36 @@ final class FamiliarRunPersistenceRecorder {
                 snapshot: record
             ))
         }
+        for (sequence, skill) in snapshot.skills.enumerated() {
+            let allowedToolsData = try? JSONEncoder().encode(skill.allowedTools)
+            context.insert(FamiliarRunSkillSnapshotRecord(
+                runID: run.id,
+                runtimeID: run.runtimeID,
+                contextSnapshotID: snapshot.id,
+                projectID: snapshot.projectID,
+                sequence: sequence,
+                stableID: skill.stableID,
+                version: skill.version,
+                name: skill.name,
+                contentHash: skill.contentHash,
+                allowedToolsJSON: allowedToolsData.map { String(decoding: $0, as: UTF8.self) } ?? "[]",
+                createdAt: snapshot.createdAt
+            ))
+        }
+        for evidence in snapshot.visualEvidence {
+            context.insert(FamiliarVisualEvidenceRecord(
+                id: evidence.id,
+                attachmentID: evidence.attachmentID,
+                messageID: snapshot.visualEvidenceMessageID,
+                contextSnapshotID: snapshot.id,
+                filename: evidence.filename,
+                sourceRelativePath: evidence.sourceRelativePath,
+                renderedText: evidence.renderedText,
+                processingMethod: evidence.processingMethod,
+                engineVersion: evidence.engineVersion,
+                createdAt: evidence.createdAt
+            ))
+        }
         do {
             try context.save()
         } catch {

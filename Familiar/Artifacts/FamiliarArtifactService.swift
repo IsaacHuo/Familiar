@@ -82,6 +82,18 @@ nonisolated struct FamiliarArtifactStore: @unchecked Sendable {
         if fileManager.fileExists(atPath: url.path) { try fileManager.removeItem(at: url) }
     }
 
+    func editableArtifact(projectID: UUID, identifier: String) throws -> (id: UUID, filename: String, relativePath: String, data: Data) {
+        guard identifier.hasPrefix("artifact_"),
+              let artifactID = UUID(uuidString: String(identifier.dropFirst("artifact_".count)))
+        else { throw FamiliarArtifactError.invalidIdentifier }
+        let directory = try validate("Projects/\(projectID.uuidString)/Artifacts/\(artifactID.uuidString)")
+        guard let names = try? fileManager.contentsOfDirectory(atPath: directory.path),
+              let filename = names.first(where: { isRegular(directory.appendingPathComponent($0)) })
+        else { throw FamiliarArtifactError.missingArtifact }
+        let relativePath = "Projects/\(projectID.uuidString)/Artifacts/\(artifactID.uuidString)/\(filename)"
+        return (artifactID, filename, relativePath, try read(relativePath: relativePath))
+    }
+
     func stageProjectDirectory(projectID: UUID) throws -> FamiliarStagedArtifactDirectory? {
         let originalURL = try validate("Projects/\(projectID.uuidString)")
         guard fileManager.fileExists(atPath: originalURL.path) else { return nil }
@@ -135,6 +147,18 @@ struct FamiliarArtifactService {
     init(store: FamiliarArtifactStore = FamiliarArtifactStore()) { self.store = store }
 
     func persist(_ descriptor: FamiliarArtifactDescriptor, in context: ModelContext) throws {
+        let descriptorID = descriptor.id
+        let existing = try context.fetch(FetchDescriptor<FamiliarArtifact>(predicate: #Predicate { $0.id == descriptorID })).first
+        if let existing {
+            existing.title = descriptor.title
+            existing.formatRawValue = descriptor.format.rawValue
+            existing.relativePath = descriptor.relativePath
+            existing.byteSize = descriptor.byteSize
+            existing.contentHash = descriptor.contentHash
+            existing.updatedAt = Date()
+            try context.save()
+            return
+        }
         let artifact = FamiliarArtifact(id: descriptor.id, projectID: descriptor.projectID, identifier: descriptor.identifier,
             title: descriptor.title, format: descriptor.format, relativePath: descriptor.relativePath,
             byteSize: descriptor.byteSize, contentHash: descriptor.contentHash, source: descriptor.source,

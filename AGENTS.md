@@ -4,7 +4,7 @@ Familiar is a native, safe, inspectable personal AI workspace for iPhone. Projec
 
 - Core stack: SwiftUI, SwiftData, URLSession, WebKit, Keychain.
 - Minimum deployment target: iOS 18.
-- The currently implemented product scope is one main Agent, BYOK model access, local conversation history, Project/ProjectInstruction, versioned project document Resources, immutable input ContextSnapshot records, Markdown/text Artifacts, capability/authorization and resumable-run data contracts, read-only Web search/fetch, native EventKit tools, local document processing, image drafts, and editable speech transcription. Durable Memory, Skills, MCP, runtime resumable execution, and background execution are target capabilities, not current behavior.
+- The currently implemented product scope is one main Agent, BYOK model access, local conversation history, Project/ProjectInstruction, versioned project Resources, immutable input ContextSnapshot records, Markdown/text Artifacts, instruction-only JSON Skills with explicit Project binding and tool-scope narrowing, capability/authorization and resumable-run data contracts, read-only Web search/fetch, native EventKit tools, local document processing, image drafts, and editable speech transcription. Durable Memory Runtime behavior, MCP, runtime resumable execution, and background execution are target capabilities, not current behavior.
 - The app has no account system, login, backend database, Supabase dependency, managed quota, subscription, entitlement flow, cloud sync, arbitrary code execution, or multi-Agent orchestration.
 - Familiar never reads academic-system or other app data.
 - Every Provider is BYOK-only. Keys remain in the device Keychain and requests go directly from iOS to the selected Provider.

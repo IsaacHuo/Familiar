@@ -36,6 +36,41 @@ struct FamiliarWP5Tests {
         #expect(result.artifact != nil)
     }
 
+    @Test("Artifact edit preserves the original file for same-session undo")
+    func artifactEditAndUndo() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("FamiliarArtifactEdit-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = FamiliarArtifactStore(rootURL: root)
+        let tool = FamiliarArtifactEditTool(store: store)
+        let projectID = UUID()
+        let artifactID = UUID()
+        let identifier = "artifact_\(artifactID.uuidString)"
+        let original = try store.write(Data("original body".utf8), projectID: projectID, artifactID: artifactID, filename: "original.md")
+
+        let outcome = try await tool.execute(
+            .init(identifier: identifier, content: "edited body", title: "renamed"),
+            context: .init(runID: "run-edit", toolCallID: "call-edit", projectID: projectID)
+        )
+        guard case .action(let proposal) = outcome else {
+            Issue.record("expected approval action")
+            return
+        }
+
+        let edited = try await proposal.execute()
+        let editedArtifact = try #require(edited.artifact)
+        #expect(edited.artifactIdentifier == identifier)
+        #expect(editedArtifact.title == "renamed")
+        #expect(try store.read(relativePath: editedArtifact.relativePath) == Data("edited body".utf8))
+        #expect(store.url(relativePath: original.path) == nil)
+
+        let undo = try #require(proposal.undo)
+        let restored = try await undo()
+        let restoredArtifact = try #require(restored.artifact)
+        #expect(restored.artifactIdentifier == identifier)
+        #expect(restoredArtifact.title == "original")
+        #expect(try store.read(relativePath: restoredArtifact.relativePath) == Data("original body".utf8))
+    }
+
     @Test("Fetched web text imports from the capture without a second fetch")
     @MainActor
     func fetchedWebLineage() throws {

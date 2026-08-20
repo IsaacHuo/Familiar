@@ -87,7 +87,27 @@ struct FamiliarProjectService {
             let artifacts = try context.fetch(FetchDescriptor<FamiliarArtifact>(
                 predicate: #Predicate { $0.projectID == projectID }
             ))
+            let skillBindings = try context.fetch(FetchDescriptor<FamiliarSkillBinding>(
+                predicate: #Predicate { $0.projectID == projectID }
+            ))
+            let mcpBindings = try context.fetch(FetchDescriptor<FamiliarMCPBindingRecord>(
+                predicate: #Predicate { $0.projectID == projectID }
+            ))
+            let memoryItems = try context.fetch(FetchDescriptor<FamiliarMemoryItem>(
+                predicate: #Predicate { $0.projectID == projectID }
+            ))
+            let authorizationGrants = try context.fetch(FetchDescriptor<FamiliarAuthorizationGrantRecord>(
+                predicate: #Predicate { $0.projectID == projectID }
+            ))
+            let authorizationRules = try context.fetch(FetchDescriptor<FamiliarAuthorizationRuleRecord>(
+                predicate: #Predicate { $0.projectID == projectID }
+            ))
             artifacts.forEach { context.delete($0) }
+            skillBindings.forEach { context.delete($0) }
+            mcpBindings.forEach { context.delete($0) }
+            memoryItems.forEach { context.delete($0) }
+            authorizationGrants.forEach { context.delete($0) }
+            authorizationRules.forEach { context.delete($0) }
             context.delete(project)
             try context.save()
             if let staged { try resourceStore.discard(staged) }

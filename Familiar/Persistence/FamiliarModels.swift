@@ -301,10 +301,19 @@ typealias FamiliarCapabilitySnapshotRecord = FamiliarSchemaV5.FamiliarCapability
 typealias FamiliarAuthorizationGrantRecord = FamiliarSchemaV5.FamiliarAuthorizationGrantRecord
 typealias FamiliarRunResumeCursorRecord = FamiliarSchemaV6.FamiliarRunResumeCursorRecord
 typealias FamiliarToolInvocationRecord = FamiliarSchemaV6.FamiliarToolInvocationRecord
+typealias FamiliarAuthorizationRuleRecord = FamiliarSchemaV7.FamiliarAuthorizationRuleRecord
+typealias FamiliarEventKitUndoRecord = FamiliarSchemaV7.FamiliarEventKitUndoRecord
+typealias FamiliarVisualEvidenceRecord = FamiliarSchemaV7.FamiliarVisualEvidenceRecord
+typealias FamiliarSkill = FamiliarSchemaV8.FamiliarSkill
+typealias FamiliarSkillBinding = FamiliarSchemaV8.FamiliarSkillBinding
+typealias FamiliarMemoryItem = FamiliarSchemaV8.FamiliarMemoryItem
+typealias FamiliarMCPServerRecord = FamiliarSchemaV8.FamiliarMCPServerRecord
+typealias FamiliarMCPBindingRecord = FamiliarSchemaV8.FamiliarMCPBindingRecord
+typealias FamiliarRunSkillSnapshotRecord = FamiliarSchemaV9.FamiliarRunSkillSnapshotRecord
 
 enum FamiliarSchemaMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [FamiliarSchemaV1.self, FamiliarSchemaV2.self, FamiliarSchemaV3.self, FamiliarSchemaV4.self, FamiliarSchemaV5.self, FamiliarSchemaV6.self]
+        [FamiliarSchemaV1.self, FamiliarSchemaV2.self, FamiliarSchemaV3.self, FamiliarSchemaV4.self, FamiliarSchemaV5.self, FamiliarSchemaV6.self, FamiliarSchemaV7.self, FamiliarSchemaV8.self, FamiliarSchemaV9.self]
     }
 
     static var stages: [MigrationStage] {
@@ -328,6 +337,18 @@ enum FamiliarSchemaMigrationPlan: SchemaMigrationPlan {
             .lightweight(
                 fromVersion: FamiliarSchemaV5.self,
                 toVersion: FamiliarSchemaV6.self
+            ),
+            .lightweight(
+                fromVersion: FamiliarSchemaV6.self,
+                toVersion: FamiliarSchemaV7.self
+            ),
+            .lightweight(
+                fromVersion: FamiliarSchemaV7.self,
+                toVersion: FamiliarSchemaV8.self
+            ),
+            .lightweight(
+                fromVersion: FamiliarSchemaV8.self,
+                toVersion: FamiliarSchemaV9.self
             )
         ]
     }
@@ -338,7 +359,7 @@ enum FamiliarModelContainer {
     static let storeFilename = storeName + ".store"
 
     static var currentSchema: Schema {
-        Schema(versionedSchema: FamiliarSchemaV6.self)
+        Schema(versionedSchema: FamiliarSchemaV9.self)
     }
 
     static func make(at storeURL: URL) throws -> ModelContainer {

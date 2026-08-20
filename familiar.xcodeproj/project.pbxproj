@@ -13,6 +13,7 @@
 		D10000000000000000000002 /* FamiliarWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = D10000000000000000000001 /* FamiliarWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		D10000000000000000000006 /* FamiliarControlIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000005 /* FamiliarControlIntent.swift */; };
 		E10000000000000000000001 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = E10000000000000000000002 /* SwiftSoup */; };
+		E20000000000000000000001 /* FastVLMRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = E20000000000000000000002 /* FastVLMRuntime */; };
 		F20000000000000000000001 /* AnyDocBridge.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = F20000000000000000000002 /* AnyDocBridge.xcframework */; };
 /* End PBXBuildFile section */
 
@@ -167,6 +168,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E20000000000000000000001 /* FastVLMRuntime in Frameworks */,
 				E10000000000000000000001 /* SwiftSoup in Frameworks */,
 				F20000000000000000000001 /* AnyDocBridge.xcframework in Frameworks */,
 			);
@@ -331,6 +333,7 @@
 			);
 			name = Familiar;
 			packageProductDependencies = (
+				E20000000000000000000002 /* FastVLMRuntime */,
 				E10000000000000000000002 /* SwiftSoup */,
 			);
 			productName = Familiar;
@@ -377,6 +380,7 @@
 			mainGroup = F10000000000000000000004;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				E20000000000000000000003 /* XCLocalSwiftPackageReference "Vendor/ml-fastvlm" */,
 				E10000000000000000000003 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -837,6 +841,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		E20000000000000000000003 /* XCLocalSwiftPackageReference "Vendor/ml-fastvlm" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "Vendor/ml-fastvlm";
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		E10000000000000000000003 /* XCRemoteSwiftPackageReference "SwiftSoup" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -853,6 +864,10 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E10000000000000000000003 /* XCRemoteSwiftPackageReference "SwiftSoup" */;
 			productName = SwiftSoup;
+		};
+		E20000000000000000000002 /* FastVLMRuntime */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = FastVLMRuntime;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

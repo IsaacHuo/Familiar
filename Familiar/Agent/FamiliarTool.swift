@@ -71,9 +71,20 @@ nonisolated struct FamiliarActionProposal: Sendable {
     let title: String
     let fields: [String: String]
     let target: String?
+    let targetKey: String
     let idempotencyKey: String
     let execute: @Sendable () async throws -> FamiliarToolExecutionResult
     let undo: (@Sendable () async throws -> FamiliarToolExecutionResult)?
+
+    init(title: String, fields: [String: String], target: String?, targetKey: String? = nil, idempotencyKey: String, execute: @escaping @Sendable () async throws -> FamiliarToolExecutionResult, undo: (@Sendable () async throws -> FamiliarToolExecutionResult)?) {
+        self.title = title
+        self.fields = fields
+        self.target = target
+        self.targetKey = targetKey ?? target ?? "default"
+        self.idempotencyKey = idempotencyKey
+        self.execute = execute
+        self.undo = undo
+    }
 }
 
 nonisolated enum FamiliarToolOutcome: Sendable {

@@ -5,7 +5,7 @@ import Testing
 
 @Suite("Familiar schema migration")
 struct FamiliarSchemaMigrationTests {
-    @Test("A populated disk-backed V1 store migrates to V4 without data loss")
+    @Test("A populated disk-backed V1 store migrates to the current schema without data loss")
     @MainActor
     func populatedV1StoreReopensThroughMigrationPlan() throws {
         let fileManager = FileManager.default
@@ -165,7 +165,9 @@ struct FamiliarSchemaMigrationTests {
     func inMemoryHelperUsesVersionedSchema() throws {
         let container = try FamiliarTestStore.make()
 
-        #expect(container.schema.version == FamiliarSchemaV6.versionIdentifier)
+        #expect(container.schema.version == FamiliarSchemaV9.versionIdentifier)
+        #expect(FamiliarSchemaMigrationPlan.schemas.count == 9)
+        #expect(FamiliarSchemaMigrationPlan.stages.count == 8)
         #expect(container.migrationPlan != nil)
         #expect(Set(container.schema.entities.map(\.name)) == [
             "FamiliarConversation",
@@ -180,13 +182,116 @@ struct FamiliarSchemaMigrationTests {
             "FamiliarResource",
             "FamiliarResourceVersion",
             "FamiliarContextSnapshotRecord",
-            "FamiliarContextResourceReference"
-             ,"FamiliarArtifact",
-             "FamiliarCapabilitySnapshotRecord",
-             "FamiliarAuthorizationGrantRecord",
-             "FamiliarRunResumeCursorRecord",
-             "FamiliarToolInvocationRecord"
+            "FamiliarContextResourceReference",
+            "FamiliarArtifact",
+            "FamiliarCapabilitySnapshotRecord",
+            "FamiliarAuthorizationGrantRecord",
+            "FamiliarRunResumeCursorRecord",
+            "FamiliarToolInvocationRecord",
+            "FamiliarAuthorizationRuleRecord",
+            "FamiliarEventKitUndoRecord",
+            "FamiliarVisualEvidenceRecord",
+            "FamiliarSkill",
+            "FamiliarSkillBinding",
+            "FamiliarMemoryItem",
+            "FamiliarMCPServerRecord",
+            "FamiliarMCPBindingRecord",
+            "FamiliarRunSkillSnapshotRecord"
         ])
+    }
+
+    @Test("A populated disk-backed V7 store migrates to V8 without losing authorization, undo, or visual records")
+    @MainActor
+    func populatedV7StoreMigratesToV8() throws {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory
+            .appendingPathComponent("FamiliarV7ToV8MigrationTests-\(UUID().uuidString)", isDirectory: true)
+        let storeURL = root.appendingPathComponent(FamiliarModelContainer.storeFilename)
+        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: root) }
+
+        let authorizationID = UUID()
+        let visualEvidenceID = UUID()
+        let attachmentID = UUID()
+        let contextSnapshotID = UUID()
+        let timestamp = Date(timeIntervalSince1970: 1_700_000_100)
+
+        try autoreleasepool {
+            let schema = Schema(versionedSchema: FamiliarSchemaV7.self)
+            let configuration = ModelConfiguration(
+                FamiliarModelContainer.storeName,
+                schema: schema,
+                url: storeURL,
+                cloudKitDatabase: .none
+            )
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            let authorization = FamiliarSchemaV7.FamiliarAuthorizationRuleRecord(
+                id: authorizationID,
+                projectID: nil,
+                capabilityID: "create_reminder",
+                capabilityVersion: "1",
+                targetKey: "reminders:default",
+                argumentsHash: String(repeating: "a", count: 64),
+                duration: .session,
+                sessionID: "fixture-session",
+                createdAt: timestamp,
+                expiresAt: timestamp.addingTimeInterval(86_400),
+                evidence: "Fixture confirmation"
+            )
+            let undo = FamiliarSchemaV7.FamiliarEventKitUndoRecord(
+                idempotencyKey: "run:tool-call",
+                runtimeID: "run-fixture",
+                toolCallID: "tool-call",
+                toolName: "create_reminder",
+                kind: .reminders,
+                calendarItemIdentifier: "eventkit-fixture",
+                state: .available,
+                createdAt: timestamp
+            )
+            let evidence = FamiliarSchemaV7.FamiliarVisualEvidenceRecord(
+                id: visualEvidenceID,
+                attachmentID: attachmentID,
+                messageID: nil,
+                contextSnapshotID: contextSnapshotID,
+                filename: "fixture.png",
+                sourceRelativePath: "Messages/fixture/fixture.png",
+                renderedText: "<visual_evidence source=\"apple_vision\">Fixture</visual_evidence>",
+                processingMethod: "apple_vision",
+                engineVersion: "fixture",
+                createdAt: timestamp
+            )
+
+            container.mainContext.insert(authorization)
+            container.mainContext.insert(undo)
+            container.mainContext.insert(evidence)
+            try container.mainContext.save()
+        }
+
+        #expect(fileManager.fileExists(atPath: storeURL.path))
+
+        let container = try FamiliarModelContainer.make(at: storeURL)
+        let authorization = try #require(container.mainContext.fetch(
+            FetchDescriptor<FamiliarAuthorizationRuleRecord>(predicate: #Predicate { $0.id == authorizationID })
+        ).first)
+        let undo = try #require(container.mainContext.fetch(
+            FetchDescriptor<FamiliarEventKitUndoRecord>(predicate: #Predicate { $0.idempotencyKey == "run:tool-call" })
+        ).first)
+        let evidence = try #require(container.mainContext.fetch(
+            FetchDescriptor<FamiliarVisualEvidenceRecord>(predicate: #Predicate { $0.id == visualEvidenceID })
+        ).first)
+
+        #expect(authorization.capabilityID == "create_reminder")
+        #expect(authorization.sessionID == "fixture-session")
+        #expect(undo.idempotencyKey == "run:tool-call")
+        #expect(undo.state == .available)
+        #expect(evidence.attachmentID == attachmentID)
+        #expect(evidence.contextSnapshotID == contextSnapshotID)
+        #expect(try container.mainContext.fetch(FetchDescriptor<FamiliarSkill>()).isEmpty)
+        #expect(try container.mainContext.fetch(FetchDescriptor<FamiliarSkillBinding>()).isEmpty)
+        #expect(try container.mainContext.fetch(FetchDescriptor<FamiliarMemoryItem>()).isEmpty)
+        #expect(try container.mainContext.fetch(FetchDescriptor<FamiliarMCPServerRecord>()).isEmpty)
+        #expect(try container.mainContext.fetch(FetchDescriptor<FamiliarMCPBindingRecord>()).isEmpty)
+        #expect(try container.mainContext.fetch(FetchDescriptor<FamiliarRunSkillSnapshotRecord>()).isEmpty)
     }
 
     @Test("A populated disk-backed V2 store migrates to V3 and preserves optional relationships")

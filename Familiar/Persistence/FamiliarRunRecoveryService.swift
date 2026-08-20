@@ -61,4 +61,35 @@ final class FamiliarRunRecoveryService {
         if state == .committed { invocation.committedAt = Date() }
         try context.save()
     }
+
+    @discardableResult
+    func recoverInterruptedRuns(in context: ModelContext, reason: String = "interrupted") throws -> Int {
+        let runningRaw = FamiliarAgentRunStatus.running.rawValue
+        let runs = try context.fetch(FetchDescriptor<FamiliarAgentRun>(predicate: #Predicate { $0.statusRawValue == runningRaw }))
+        let runtimeIDs = runs.map(\.runtimeID)
+        let now = Date()
+        for run in runs {
+            run.status = .failed
+            run.finishReason = reason
+            run.finishedAt = now
+        }
+        for runtimeID in runtimeIDs {
+            let invocations = try context.fetch(FetchDescriptor<FamiliarToolInvocationRecord>(predicate: #Predicate { $0.runtimeID == runtimeID }))
+            for invocation in invocations {
+                switch invocation.state {
+                case .requested, .approved, .committing:
+                    invocation.state = .cancelled
+                case .committed, .failed, .cancelled:
+                    break
+                }
+            }
+            let cursors = try context.fetch(FetchDescriptor<FamiliarRunResumeCursorRecord>(predicate: #Predicate { $0.runtimeID == runtimeID }))
+            for cursor in cursors {
+                cursor.phase = .terminal
+                cursor.updatedAt = now
+            }
+        }
+        if !runs.isEmpty { try context.save() }
+        return runs.count
+    }
 }

@@ -16,10 +16,9 @@ final class FamiliarChatController {
     var draftAttachments: [FamiliarAttachmentDraft] = []
     var streamingText = ""
     var streamingMessageID: UUID?
-    var agentStatus: FamiliarRuntimeState?
-    var activeRunStartedAt: Date?
-    var toolActivities: [FamiliarToolProgress] = []
+    var surfaces = FamiliarSurfaceStore()
     var availableUndoKeys: Set<String> = []
+    var completedUndoKeys: Set<String> = []
     var isSending = false
     var errorMessage: String?
     var settings = FamiliarSettingsStore.load()
@@ -119,6 +118,7 @@ final class FamiliarChatController {
         let attachmentPaths = conversations.flatMap { conversation in
             conversation.messages.flatMap { $0.attachments.map(\.relativePath) }
         }
+        deleteSkillSnapshots(for: conversations.flatMap(\.agentRuns), in: context)
         conversations.forEach(context.delete)
         do {
             try context.save()
@@ -153,18 +153,31 @@ final class FamiliarChatController {
     }
 
     func startSending(in context: ModelContext) {
+        startSending(in: context, preparedImageDrafts: nil, visualEvidence: nil)
+    }
+
+    private func startSending(
+        in context: ModelContext,
+        preparedImageDrafts: [FamiliarAttachmentDraft]?,
+        visualEvidence: [FamiliarVisualEvidence]?
+    ) {
         guard !isSending else { return }
         let prompt = draft.trimmingCharacters(in: .whitespacesAndNewlines)
 
         var importedImageDrafts: [FamiliarAttachmentDraft] = []
+        var shouldRemoveImportedDrafts = true
         defer {
-            if !importedImageDrafts.isEmpty {
+            if shouldRemoveImportedDrafts, !importedImageDrafts.isEmpty {
                 FamiliarAttachmentStore.remove(relativePaths: importedImageDrafts.map(\.relativePath))
             }
         }
         do {
-            importedImageDrafts = try draftImages.enumerated().map { index, draftImage in
-                try FamiliarAttachmentStore.importImage(draftImage.image, filename: "photo-\(index + 1).jpg")
+            importedImageDrafts = if let preparedImageDrafts {
+                preparedImageDrafts
+            } else {
+                try draftImages.enumerated().map { index, draftImage in
+                    try FamiliarAttachmentStore.importImage(draftImage.image, filename: "photo-\(index + 1).jpg")
+                }
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -178,13 +191,72 @@ final class FamiliarChatController {
             errorMessage = String(localized: "error.provider.invalid_custom_configuration")
             return
         }
-        guard draftImages.isEmpty || requestSettings.selectedModel.capabilities.supportsImages else {
-            errorMessage = String(localized: "attachment.error.model_images_unsupported")
+        let imageAttachments = combinedAttachments.filter { $0.kind == .image }
+        if !imageAttachments.isEmpty,
+           !requestSettings.selectedModel.capabilities.supportsImages,
+           visualEvidence == nil {
+            shouldRemoveImportedDrafts = false
+            let imageDraftsForTask = importedImageDrafts
+            isSending = true
+            resetTransientRunState()
+            let preflightRunID = "vision-preflight-" + UUID().uuidString
+            surfaces.apply(.init(runID: preflightRunID, sequence: 0, timestamp: Date(), assistantTurnID: nil, payload: .runStarted))
+            surfaces.apply(.init(runID: preflightRunID, sequence: 1, timestamp: Date(), assistantTurnID: nil, payload: .state(.usingTool(String(localized: "vision.status.recognizing", defaultValue: "Recognizing image")))))
+            runningTask = Task { [weak self] in
+                guard let self else { return }
+                do {
+                    var evidence = try await dependencies.visionProcessor.process(imageAttachments)
+                    if dependencies.localVision.isInstalled,
+                       FamiliarVisionRouting.shouldUseFastVLM(prompt: prompt) {
+                        for index in evidence.indices {
+                            guard let image = imageAttachments.first(where: { $0.id == evidence[index].attachmentID }),
+                                  let imageURL = FamiliarAttachmentStore.url(for: image.relativePath)
+                            else { continue }
+                            do {
+                                let answer = try await dependencies.localVision.answer(
+                                    imageURL: imageURL,
+                                    prompt: prompt.isEmpty ? "Describe this image briefly and factually." : prompt
+                                )
+                                evidence[index] = evidence[index].includingFastVLM(answer)
+                            } catch {
+                                // Apple Vision evidence remains available when advanced local inference fails.
+                            }
+                        }
+                    }
+                    isSending = false
+                    runningTask = nil
+                    resetTransientRunState()
+                    startSending(in: context, preparedImageDrafts: imageDraftsForTask, visualEvidence: evidence)
+                } catch is CancellationError {
+                    FamiliarAttachmentStore.remove(relativePaths: imageDraftsForTask.map(\.relativePath))
+                    isSending = false
+                    runningTask = nil
+                    resetTransientRunState()
+                } catch {
+                    FamiliarAttachmentStore.remove(relativePaths: imageDraftsForTask.map(\.relativePath))
+                    isSending = false
+                    runningTask = nil
+                    resetTransientRunState()
+                    errorMessage = error.localizedDescription
+                }
+            }
             return
         }
         let selectedProject = selectedConversation(in: context)?.project
+        let enabledSkills: [FamiliarSkillSnapshot]
+        do {
+            if let projectID = selectedProject?.id {
+                enabledSkills = try FamiliarSkillService().enabledSkills(projectID: projectID, in: context)
+            } else {
+                enabledSkills = []
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+            return
+        }
         let hasProjectResources = selectedProject?.resources.isEmpty == false
-        guard (draftAttachments.isEmpty && !hasProjectResources) || requestSettings.selectedModel.capabilities.supportsDocuments else {
+        let hasDocumentAttachments = combinedAttachments.contains { $0.kind == .document }
+        guard (!hasDocumentAttachments && !hasProjectResources) || requestSettings.selectedModel.capabilities.supportsDocuments else {
             errorMessage = String(localized: "attachment.error.model_unsupported")
             return
         }
@@ -195,6 +267,7 @@ final class FamiliarChatController {
         let requestCharacterCount = priorCharacterCount
             + prompt.count
             + combinedAttachments.reduce(0) { $0 + $1.extractedText.count }
+            + (visualEvidence ?? []).reduce(0) { $0 + $1.renderedText.count }
         guard requestCharacterCount <= requestSettings.selectedModel.capabilities.maximumInputCharacters else {
             errorMessage = String(localized: "error.message.context_too_large")
             return
@@ -284,7 +357,7 @@ final class FamiliarChatController {
         draftImages = []
         reloadMessages(in: context)
         let requestMessages = messages
-        let contextSeed = makeContextSeed(conversation: conversation)
+        let contextSeed = makeContextSeed(conversation: conversation, skills: enabledSkills)
         let responseID = UUID()
         isSending = true
         availableUndoKeys = []
@@ -300,6 +373,7 @@ final class FamiliarChatController {
                 descriptor: descriptor,
                 settings: requestSettings,
                 contextSeed: contextSeed,
+                visualEvidence: visualEvidence ?? [],
                 responseID: responseID,
                 context: context
             )
@@ -313,6 +387,8 @@ final class FamiliarChatController {
                     runID: request.runID,
                     toolCallID: request.toolCallID,
                     toolName: request.toolName,
+                    effect: request.effect,
+                    assistantTurnID: request.runID + ":cancelled",
                     summary: request.title,
                     detail: String(localized: "tool.cancelled_by_user"),
                     confirmation: .cancelled,
@@ -331,11 +407,11 @@ final class FamiliarChatController {
     }
 
     func resolveConfirmation(
-        _ request: FamiliarToolConfirmationRequest,
+        requestID: UUID,
         decision: FamiliarToolConfirmationDecision
     ) {
         Task {
-            _ = await confirmationCoordinator.resolve(requestID: request.id, decision: decision)
+            _ = await confirmationCoordinator.resolve(requestID: requestID, decision: decision)
         }
     }
 
@@ -371,9 +447,10 @@ final class FamiliarChatController {
         conversation.modelSwitchRecords
             .filter { $0.sequence >= message.sequence }
             .forEach(context.delete)
-        conversation.agentRuns
+        let runsToDelete = conversation.agentRuns
             .filter { run in run.steps.contains { $0.timelineSequence >= message.sequence } }
-            .forEach(context.delete)
+        deleteSkillSnapshots(for: runsToDelete, in: context)
+        runsToDelete.forEach(context.delete)
         conversation.updatedAt = Date()
         do {
             try context.save()
@@ -431,9 +508,10 @@ final class FamiliarChatController {
         conversation.modelSwitchRecords
             .filter { $0.sequence >= userMessage.sequence }
             .forEach(context.delete)
-        conversation.agentRuns
+        let runsToDelete = conversation.agentRuns
             .filter { run in run.steps.contains { $0.timelineSequence >= userMessage.sequence } }
-            .forEach(context.delete)
+        deleteSkillSnapshots(for: runsToDelete, in: context)
+        runsToDelete.forEach(context.delete)
         if let providerID = message.providerID, let modelID = message.modelID {
             settings.providerID = providerID
             settings.modelID = modelID
@@ -457,7 +535,18 @@ final class FamiliarChatController {
         }
     }
 
+    func recoverInterruptedRuns(in context: ModelContext) {
+        do {
+            if try runRecovery.recoverInterruptedRuns(in: context) > 0 {
+                reloadMessages(in: context)
+            }
+        } catch {
+            errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
+        }
+    }
+
     func reloadMessages(in context: ModelContext) {
+        reloadDurableUndo(in: context)
         guard let conversation = selectedConversation(in: context) else {
             messages = []
             modelSwitches = []
@@ -546,10 +635,50 @@ final class FamiliarChatController {
                     finishedAt: $0.finishedAt
                 )
             }
+        let conversationRuntimeIDs = Set(conversation.agentRuns.map(\.runtimeID))
+        let skillSnapshotsByRuntimeID = Dictionary(grouping: (
+            (try? context.fetch(FetchDescriptor<FamiliarRunSkillSnapshotRecord>())) ?? []
+        ).filter { conversationRuntimeIDs.contains($0.runtimeID) }, by: \.runtimeID)
         agentRuns = conversation.agentRuns
             .sorted { $0.startedAt < $1.startedAt }
             .map { run in
-                FamiliarAgentRunSnapshot(
+                let contextSummary: FamiliarRunContextSummary? = run.contextSnapshot.map { snapshot in
+                    let toolNames = ((try? JSONDecoder().decode(
+                        [String].self,
+                        from: Data(snapshot.exposedToolNamesJSON.utf8)
+                    )) ?? []).sorted()
+                    let resources = snapshot.resourceReferences
+                        .sorted {
+                            $0.filename == $1.filename
+                                ? $0.version < $1.version
+                                : $0.filename.localizedStandardCompare($1.filename) == .orderedAscending
+                        }
+                        .map {
+                            FamiliarRunResourceSummary(
+                                versionID: $0.resourceVersionID,
+                                filename: $0.filename,
+                                version: $0.version
+                            )
+                        }
+                    let skills = (skillSnapshotsByRuntimeID[run.runtimeID] ?? [])
+                        .sorted { $0.sequence < $1.sequence }
+                        .map {
+                            FamiliarRunSkillSummary(
+                                stableID: $0.stableID,
+                                name: $0.name,
+                                version: $0.version
+                            )
+                        }
+                    return FamiliarRunContextSummary(
+                        projectName: snapshot.projectName,
+                        providerID: snapshot.providerID,
+                        modelID: snapshot.modelID,
+                        resources: resources,
+                        skills: skills,
+                        toolNames: toolNames
+                    )
+                }
+                return FamiliarAgentRunSnapshot(
                     id: run.runtimeID,
                     responseMessageID: run.responseMessageID,
                     status: run.status,
@@ -570,7 +699,8 @@ final class FamiliarChatController {
                                 startedAt: $0.startedAt,
                                 finishedAt: $0.finishedAt
                             )
-                        }
+                        },
+                    context: contextSummary
                 )
             }
     }
@@ -616,6 +746,7 @@ final class FamiliarChatController {
         descriptor: FamiliarProviderDescriptor,
         settings: FamiliarSettings,
         contextSeed: FamiliarProjectContextSeed,
+        visualEvidence: [FamiliarVisualEvidence],
         responseID: UUID,
         context: ModelContext
     ) async {
@@ -633,18 +764,22 @@ final class FamiliarChatController {
                 seed: contextSeed,
                 settings: settings,
                 messages: requestMessages,
-                toolManifests: manifests
+                toolManifests: manifests,
+                visualEvidence: visualEvidence
             )
-            let agentLoop = dependencies.makeRuntime(for: descriptor)
+            let agentLoop = dependencies.makeRuntime(
+                for: descriptor,
+                authorizationRuntime: FamiliarAuthorizationRuntime(context: context, sessionID: dependencies.sessionID)
+            )
             var completedResponse: FamiliarCompletedResponse?
             for try await event in agentLoop.stream(
                 contextSnapshot: contextSnapshot,
                 apiKey: apiKey
             ) {
+                surfaces.apply(event)
                 switch event.payload {
                 case .runStarted:
                     activeRunID = UUID(uuidString: event.runID)
-                    activeRunStartedAt = event.timestamp
                     runRecorder.ensureRun(runtimeID: event.runID, snapshot: contextSnapshot, startedAt: event.timestamp, context: context)
                     do {
                         let capabilitySnapshot = FamiliarCapabilitySnapshot(
@@ -668,13 +803,13 @@ final class FamiliarChatController {
                     } catch {
                         errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
                     }
-                case .state(let status):
-                    agentStatus = status
+                case .state:
+                    break
                 case .textDelta(let delta):
                     streamingText += delta
                 case .toolRequested:
                     break
-                case .toolInvocationRequested(let toolCallID, let toolName, let arguments):
+                case .toolInvocationRequested(let toolCallID, let toolName, let arguments, _):
                     beginToolInvocation(
                         runtimeID: event.runID,
                         toolCallID: toolCallID,
@@ -683,16 +818,19 @@ final class FamiliarChatController {
                         eventSequence: event.sequence,
                         context: context
                     )
-                case .toolProgress(let activity):
-                    updateToolActivity(activity)
+                case .toolProgress:
+                    break
                 case .approvalRequested(let request):
                     updateRunCursor(runtimeID: event.runID, phase: .awaitingApproval, eventSequence: event.sequence, context: context)
                     if !pendingConfirmations.contains(where: { $0.id == request.id }) {
                         pendingConfirmations.append(request)
                     }
-                case .approvalResolved(let requestID, _):
+                case .approvalResolved(let requestID, let decision):
                     if let request = pendingConfirmations.first(where: { $0.id == requestID }) {
                         runRecorder.recordCheckpoint(type: .approval, runtimeID: event.runID, eventSequence: event.sequence, summary: request.title, detail: "审批已完成", context: context)
+                        if decision == .confirmed {
+                            markInvocationApproved(runID: request.runID, toolCallID: request.toolCallID, context: context)
+                        }
                     }
                     updateRunCursor(runtimeID: event.runID, phase: .committingTool, eventSequence: event.sequence, context: context)
                     pendingConfirmations.removeAll { $0.id == requestID }
@@ -700,7 +838,8 @@ final class FamiliarChatController {
                     finishToolInvocation(record, eventSequence: event.sequence, context: context)
                     persistToolRecord(record, eventSequence: event.sequence, conversationID: conversationID, context: context)
                     persistToolOutputs(record, conversationID: conversationID, context: context)
-                    if record.undoAvailable {
+            if record.undoAvailable {
+                        persistDurableUndo(record, context: context)
                         availableUndoKeys.insert(record.runID + ":" + record.toolCallID)
                     }
                 case .responseCompleted(let response):
@@ -779,44 +918,76 @@ final class FamiliarChatController {
         }
     }
 
-    private func updateToolActivity(_ activity: FamiliarToolProgress) {
-        if let index = toolActivities.firstIndex(where: { $0.id == activity.id }) {
-            toolActivities[index] = activity
-        } else {
-            toolActivities.append(activity)
-        }
-    }
-
-    func undo(_ record: FamiliarToolRunSnapshot, in context: ModelContext) {
-        let key = record.runID + ":" + record.toolCallID
-        let runtimeID = record.runID
-        let toolCallID = record.toolCallID
+    func undo(runID: String, toolCallID: String, in context: ModelContext) {
+        let key = runID + ":" + toolCallID
         guard availableUndoKeys.contains(key) else { return }
         Task {
             do {
-                let result = try await dependencies.undoStore.execute(key: key)
+                let descriptor = FetchDescriptor<FamiliarEventKitUndoRecord>(predicate: #Predicate { $0.idempotencyKey == key })
+                let result: FamiliarToolExecutionResult
+                if let record = try context.fetch(descriptor).first {
+                    guard record.state == .available else { throw FamiliarEventKitError.undoUnavailable }
+                    result = try await dependencies.eventKit.undo(kind: record.kind, identifier: record.calendarItemIdentifier)
+                    record.state = .undone
+                    record.undoneAt = Date()
+                    try context.save()
+                } else {
+                    result = try await dependencies.undoStore.execute(key: key)
+                }
                 availableUndoKeys.remove(key)
-                let descriptor = FetchDescriptor<FamiliarAgentRun>(predicate: #Predicate { $0.runtimeID == runtimeID })
-                if let run = try? context.fetch(descriptor).first,
-                   let step = run.steps.first(where: { $0.toolCallID == toolCallID }) {
+                completedUndoKeys.insert(key)
+                let runDescriptor = FetchDescriptor<FamiliarAgentRun>(predicate: #Predicate { $0.runtimeID == runID })
+                if let run = try? context.fetch(runDescriptor).first,
+                    let step = run.steps.first(where: { $0.toolCallID == toolCallID }) {
                     step.detail = result.displayContent
+                    if let artifact = result.artifact {
+                        try FamiliarArtifactService().persist(artifact, in: context)
+                    } else if step.toolName == "artifact_write",
+                              let identifier = step.artifactIdentifier {
+                        let artifactDescriptor = FetchDescriptor<FamiliarArtifact>(predicate: #Predicate { $0.identifier == identifier })
+                        if let artifact = try context.fetch(artifactDescriptor).first {
+                            context.delete(artifact)
+                        }
+                    }
                     try? context.save()
                     reloadMessages(in: context)
                 }
             } catch {
-                availableUndoKeys.remove(key)
                 errorMessage = error.localizedDescription
             }
         }
     }
 
+    private func persistDurableUndo(_ event: FamiliarToolRunTerminalEvent, context: ModelContext) {
+        guard let identifier = event.artifactIdentifier else { return }
+        let kind: FamiliarEventKitAccessKind
+        switch event.toolName {
+        case "create_calendar_event": kind = .events
+        case "create_reminder": kind = .reminders
+        default: return
+        }
+        let key = event.runID + ":" + event.toolCallID
+        let descriptor = FetchDescriptor<FamiliarEventKitUndoRecord>(predicate: #Predicate { $0.idempotencyKey == key })
+        guard (try? context.fetch(descriptor).first) == nil else { return }
+        context.insert(FamiliarEventKitUndoRecord(idempotencyKey: key, runtimeID: event.runID, toolCallID: event.toolCallID, toolName: event.toolName, kind: kind, calendarItemIdentifier: identifier))
+        try? context.save()
+    }
+
+    private func reloadDurableUndo(in context: ModelContext) {
+        let records = (try? context.fetch(FetchDescriptor<FamiliarEventKitUndoRecord>())) ?? []
+        availableUndoKeys = Set(records.filter { $0.state == .available }.map(\.idempotencyKey))
+        completedUndoKeys = Set(records.filter { $0.state == .undone }.map(\.idempotencyKey))
+    }
+
     private func resetTransientRunState() {
         streamingText = ""
         streamingMessageID = nil
-        agentStatus = nil
-        activeRunStartedAt = nil
-        toolActivities = []
+        surfaces = FamiliarSurfaceStore()
         pendingConfirmations = []
+    }
+
+    var hasTransientActivity: Bool {
+        !surfaces.orderedSurfaces.isEmpty
     }
 
     private func persistToolRecord(
@@ -885,6 +1056,16 @@ final class FamiliarChatController {
         } catch {
             errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
         }
+    }
+
+    private func markInvocationApproved(runID: String, toolCallID: String, context: ModelContext) {
+        let idempotencyKey = runID + ":" + toolCallID
+        let descriptor = FetchDescriptor<FamiliarToolInvocationRecord>(
+            predicate: #Predicate { $0.idempotencyKey == idempotencyKey }
+        )
+        guard let invocation = try? context.fetch(descriptor).first else { return }
+        guard invocation.state == .requested else { return }
+        try? runRecovery.setInvocationState(invocation, state: .approved, in: context)
     }
 
     private func persistToolOutputs(_ event: FamiliarToolRunTerminalEvent, conversationID: UUID, context: ModelContext) {
@@ -971,7 +1152,23 @@ final class FamiliarChatController {
         return fetchConversation(id: selectedConversationID, in: context)
     }
 
-    private func makeContextSeed(conversation: FamiliarConversation) -> FamiliarProjectContextSeed {
+    private func deleteSkillSnapshots(
+        for runs: [FamiliarAgentRun],
+        in context: ModelContext
+    ) {
+        let runtimeIDs = Set(runs.map(\.runtimeID))
+        guard !runtimeIDs.isEmpty,
+              let records = try? context.fetch(FetchDescriptor<FamiliarRunSkillSnapshotRecord>())
+        else { return }
+        records
+            .filter { runtimeIDs.contains($0.runtimeID) }
+            .forEach(context.delete)
+    }
+
+    private func makeContextSeed(
+        conversation: FamiliarConversation,
+        skills: [FamiliarSkillSnapshot]
+    ) -> FamiliarProjectContextSeed {
         let project = conversation.project
         let resources = (project?.resources ?? []).compactMap { resource -> FamiliarContextResource? in
             guard let version = resource.versions.max(by: {
@@ -994,7 +1191,8 @@ final class FamiliarChatController {
             projectName: project?.name,
             conversationID: conversation.id,
             projectInstruction: project?.instruction?.text,
-            resources: resources
+            resources: resources,
+            skills: skills
         )
     }
 
