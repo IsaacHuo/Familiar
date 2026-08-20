@@ -660,30 +660,19 @@ private struct FamiliarProjectContextRow: View {
     }
 }
 
-private struct FamiliarProjectSectionHeader<Trailing: View, Destination: View>: View {
+private struct FamiliarProjectSectionHeader<Destination: View>: View {
     let title: String
     let count: Int
-    @ViewBuilder let trailingAction: Trailing
     @ViewBuilder let destination: Destination
 
     init(
         title: String,
         count: Int,
-        @ViewBuilder trailingAction: () -> Trailing,
         @ViewBuilder destination: () -> Destination
     ) {
         self.title = title
         self.count = count
-        self.trailingAction = trailingAction()
         self.destination = destination()
-    }
-
-    init(
-        title: String,
-        count: Int,
-        @ViewBuilder destination: () -> Destination
-    ) where Trailing == EmptyView {
-        self.init(title: title, count: count, trailingAction: { EmptyView() }, destination: destination)
     }
 
     var body: some View {
@@ -694,7 +683,6 @@ private struct FamiliarProjectSectionHeader<Trailing: View, Destination: View>: 
                 .font(FamiliarTypography.metadata)
                 .foregroundStyle(.tertiary)
             Spacer()
-            trailingAction
             NavigationLink {
                 destination
             } label: {

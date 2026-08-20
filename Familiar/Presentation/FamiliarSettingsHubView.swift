@@ -9,7 +9,6 @@ import UniformTypeIdentifiers
 enum FamiliarSettingsRoute: String, Hashable {
     case modelService
     case localVision
-    case tokenUsage
     case appearance
     case tools
     case authorizations
@@ -60,13 +59,6 @@ struct FamiliarSettingsView: View {
                         subtitle: "\(settings.selectedProvider.displayName) · \(settings.selectedModel.displayName)",
                         symbol: "key.horizontal.fill",
                         color: FamiliarTheme.accent
-                    )
-                    settingsLink(
-                        .tokenUsage,
-                        title: String(localized: "settings.hub.usage", defaultValue: "Token Usage"),
-                        subtitle: String(localized: "settings.hub.usage.detail", defaultValue: "Provider reporting is not available yet"),
-                        symbol: "chart.xyaxis.line",
-                        color: .indigo
                     )
                     settingsLink(
                         .localVision,
@@ -235,8 +227,6 @@ struct FamiliarSettingsView: View {
             )
         case .localVision:
             FamiliarLocalVisionSettingsView()
-        case .tokenUsage:
-            FamiliarTokenUsageView()
         case .appearance:
             FamiliarAppearanceSettingsView()
         case .tools:
@@ -499,18 +489,6 @@ private struct FamiliarAuthorizationSettingsView: View {
             }
         }
         .navigationTitle(String(localized: "settings.hub.authorizations", defaultValue: "Authorizations"))
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-private struct FamiliarTokenUsageView: View {
-    var body: some View {
-        ContentUnavailableView {
-            Label(String(localized: "settings.usage.empty.title", defaultValue: "Usage unavailable"), systemImage: "chart.xyaxis.line")
-        } description: {
-            Text(String(localized: "settings.usage.empty.detail", defaultValue: "Familiar does not currently collect or estimate token usage. Provider-reported usage will appear here when it is supported."))
-        }
-        .navigationTitle(String(localized: "settings.hub.usage", defaultValue: "Token Usage"))
         .navigationBarTitleDisplayMode(.inline)
     }
 }

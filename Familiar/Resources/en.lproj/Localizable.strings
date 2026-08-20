@@ -75,8 +75,6 @@
 "common.done" = "Done";
 "settings.hub.models" = "Models";
 "settings.hub.model_service" = "Model Service";
-"settings.hub.usage" = "Token Usage";
-"settings.hub.usage.detail" = "Provider usage reporting is not connected yet";
 "settings.hub.agent" = "Agent";
 "settings.hub.tools" = "Tools";
 "settings.hub.tools.detail" = "Capabilities registered with the Agent Runtime";
@@ -100,8 +98,6 @@
 "settings.preview.accessibility" = "Preview, unavailable";
 "settings.preview.unavailable.title" = "Planned Feature";
 
-"settings.usage.empty.title" = "Usage unavailable";
-"settings.usage.empty.detail" = "Familiar does not currently collect or estimate token usage. Provider-reported usage will appear here when it is supported.";
 "settings.soul.editor" = "Personality prompt";
 "settings.soul.personality" = "Personality";
 "settings.soul.footer" = "This changes Familiar's tone and response style. Tool permissions and safety rules remain enforced by the app.";

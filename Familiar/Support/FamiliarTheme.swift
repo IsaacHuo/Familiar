@@ -60,7 +60,6 @@ nonisolated enum FamiliarTheme {
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
-    static let assistantFill = Color(uiColor: .secondarySystemBackground)
     static let userFill = Color(uiColor: .tertiarySystemFill)
     static let elevatedFill = Color(uiColor: .secondarySystemBackground)
     static let drawerFill = Color(uiColor: UIColor { traits in
