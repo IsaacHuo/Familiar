@@ -191,13 +191,12 @@ private struct FamiliarProjectDetailView: View {
                         resourceRow(resource)
                     }
                 }
+                resourceImportMenu
             } header: {
                 FamiliarProjectSectionHeader(
                     title: String(localized: "resource.section"),
                     count: project.resources.count
                 ) {
-                    resourceImportMenu
-                } destination: {
                     FamiliarProjectResourcesView(
                         resources: sortedResources,
                         onPreview: previewResource,
@@ -452,19 +451,22 @@ private struct FamiliarProjectDetailView: View {
             }
         } label: {
             if isImportingResource {
-                ProgressView()
-                    .frame(
-                        minWidth: FamiliarControlSize.minimumHitTarget,
-                        minHeight: FamiliarControlSize.minimumHitTarget
-                    )
+                Label {
+                    Text(String(localized: "resource.importing"))
+                } icon: {
+                    ProgressView()
+                }
             } else {
-                Image(systemName: "plus")
-                    .frame(
-                        minWidth: FamiliarControlSize.minimumHitTarget,
-                        minHeight: FamiliarControlSize.minimumHitTarget
-                    )
+                Label(String(localized: "resource.add"), systemImage: "plus")
             }
         }
+        .font(FamiliarTypography.button)
+        .foregroundStyle(FamiliarTheme.accent)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: FamiliarControlSize.minimumHitTarget,
+            alignment: .leading
+        )
         .disabled(isImportingResource)
         .accessibilityLabel(String(localized: "resource.add"))
         .accessibilityIdentifier("project.addResource")
