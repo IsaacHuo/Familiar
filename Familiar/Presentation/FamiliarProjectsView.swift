@@ -118,17 +118,17 @@ struct FamiliarProjectsView: View {
         Section(title) {
             ForEach(projects) { project in
                 NavigationLink(value: project.id) {
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                         Text(project.name)
-                            .font(.body.weight(.medium))
+                            .font(FamiliarTypography.body.weight(.medium))
                         if !project.summary.isEmpty {
                             Text(project.summary)
-                                .font(.caption)
+                                .font(FamiliarTypography.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(2)
                         }
                     }
-                    .padding(.vertical, 3)
+                    .padding(.vertical, FamiliarSpacing.xSmall)
                 }
             }
         }
@@ -389,11 +389,11 @@ private struct FamiliarProjectDetailView: View {
                 primaryProjectAction
             } else {
                 ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 12) {
+                    HStack(spacing: FamiliarSpacing.medium) {
                         primaryProjectAction
                         newProjectChatAction
                     }
-                    VStack(spacing: 10) {
+                    VStack(spacing: FamiliarSpacing.small) {
                         primaryProjectAction
                         newProjectChatAction
                     }
@@ -416,9 +416,9 @@ private struct FamiliarProjectDetailView: View {
                     : String(localized: "project.continue_chat", defaultValue: "Continue Chat"),
                 systemImage: "bubble.left.and.bubble.right"
             )
-            .frame(maxWidth: .infinity, minHeight: 44)
+            .frame(maxWidth: .infinity, minHeight: FamiliarControlSize.minimumHitTarget)
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(FamiliarPillButtonStyle(prominence: .primary))
         .accessibilityIdentifier("project.continueChat")
     }
 
@@ -427,9 +427,9 @@ private struct FamiliarProjectDetailView: View {
             onConversationRequest(.create(projectID: project.id))
         } label: {
             Label(String(localized: "project.new_chat"), systemImage: "square.and.pencil")
-                .frame(maxWidth: .infinity, minHeight: 44)
+                .frame(maxWidth: .infinity, minHeight: FamiliarControlSize.minimumHitTarget)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(FamiliarPillButtonStyle(prominence: .secondary))
         .accessibilityIdentifier("project.newChat")
     }
 
@@ -453,10 +453,16 @@ private struct FamiliarProjectDetailView: View {
         } label: {
             if isImportingResource {
                 ProgressView()
-                    .frame(minWidth: 44, minHeight: 44)
+                    .frame(
+                        minWidth: FamiliarControlSize.minimumHitTarget,
+                        minHeight: FamiliarControlSize.minimumHitTarget
+                    )
             } else {
                 Image(systemName: "plus")
-                    .frame(minWidth: 44, minHeight: 44)
+                    .frame(
+                        minWidth: FamiliarControlSize.minimumHitTarget,
+                        minHeight: FamiliarControlSize.minimumHitTarget
+                    )
             }
         }
         .disabled(isImportingResource)
@@ -681,10 +687,11 @@ private struct FamiliarProjectSectionHeader<Trailing: View, Destination: View>: 
     }
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: FamiliarSpacing.small) {
             Text(title)
+                .font(FamiliarTypography.sectionTitle)
             Text("\(count)")
-                .monospacedDigit()
+                .font(FamiliarTypography.metadata)
                 .foregroundStyle(.tertiary)
             Spacer()
             trailingAction
@@ -692,7 +699,7 @@ private struct FamiliarProjectSectionHeader<Trailing: View, Destination: View>: 
                 destination
             } label: {
                 Text(String(localized: "common.view_all", defaultValue: "View All"))
-                    .font(.caption.weight(.medium))
+                    .font(FamiliarTypography.caption.weight(.medium))
             }
             .disabled(count == 0)
         }
@@ -722,18 +729,18 @@ private struct FamiliarProjectResourceRow: View {
     let onDelete: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: FamiliarSpacing.medium) {
             Button(action: onPreview) {
-                HStack(spacing: 12) {
+                HStack(spacing: FamiliarSpacing.medium) {
                     Image(systemName: latestVersion?.source == .fetchedWeb ? "link" : "doc.text")
                         .foregroundStyle(FamiliarTheme.accent)
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                         Text(resource.displayName)
                             .foregroundStyle(.primary)
                             .lineLimit(2)
                         if let latestVersion {
                             Text(resourceDetail(latestVersion))
-                                .font(.caption)
+                                .font(FamiliarTypography.caption)
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -744,7 +751,10 @@ private struct FamiliarProjectResourceRow: View {
             .accessibilityIdentifier("resource.row.\(resource.id.uuidString)")
             Button(role: .destructive, action: onDelete) {
                 Image(systemName: "trash")
-                    .frame(minWidth: 44, minHeight: 44)
+                    .frame(
+                        minWidth: FamiliarControlSize.minimumHitTarget,
+                        minHeight: FamiliarControlSize.minimumHitTarget
+                    )
             }
             .buttonStyle(.borderless)
             .accessibilityIdentifier("resource.delete.\(resource.id.uuidString)")
@@ -791,12 +801,12 @@ private struct FamiliarProjectArtifactRow: View {
     let onDelete: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: FamiliarSpacing.medium) {
             Button(action: onPreview) {
-                HStack(spacing: 12) {
+                HStack(spacing: FamiliarSpacing.medium) {
                     Image(systemName: artifact.format == .markdown ? "doc.richtext" : "doc.text")
                         .foregroundStyle(FamiliarTheme.accent)
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                         Text(artifact.title).foregroundStyle(.primary)
                         Text(ByteCountFormatter.string(fromByteCount: artifact.byteSize, countStyle: .file))
                             .font(.caption).foregroundStyle(.secondary)
@@ -808,14 +818,20 @@ private struct FamiliarProjectArtifactRow: View {
             if let exportURL {
                 ShareLink(item: exportURL) {
                     Image(systemName: "square.and.arrow.up")
-                        .frame(minWidth: 44, minHeight: 44)
+                        .frame(
+                            minWidth: FamiliarControlSize.minimumHitTarget,
+                            minHeight: FamiliarControlSize.minimumHitTarget
+                        )
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel(String(localized: "common.share", defaultValue: "Share"))
             }
             Button(role: .destructive, action: onDelete) {
                 Image(systemName: "trash")
-                    .frame(minWidth: 44, minHeight: 44)
+                    .frame(
+                        minWidth: FamiliarControlSize.minimumHitTarget,
+                        minHeight: FamiliarControlSize.minimumHitTarget
+                    )
             }
             .buttonStyle(.borderless)
         }
@@ -829,7 +845,7 @@ private struct FamiliarProjectConversationsView: View {
     var body: some View {
         List(conversations) { conversation in
             Button { onSelect(conversation) } label: {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                     Text(conversation.title).foregroundStyle(.primary)
                     Text(conversation.updatedAt, format: .dateTime.month(.abbreviated).day().hour().minute())
                         .font(.caption).foregroundStyle(.secondary)
@@ -886,7 +902,7 @@ private struct FamiliarProjectSkillsView: View {
                 } else {
                     ForEach(skills) { skill in
                         Toggle(isOn: binding(for: skill)) {
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                                 Text(skill.name)
                                 Text("\(skill.stableID) · v\(skill.version)")
                                     .font(.caption).foregroundStyle(.secondary)
@@ -973,10 +989,10 @@ private struct FamiliarProjectRunRow: View {
     let run: FamiliarAgentRun
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: FamiliarSpacing.medium) {
             Image(systemName: statusIcon)
                 .foregroundStyle(statusColor)
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                 Text(runTitle)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
@@ -1040,7 +1056,7 @@ private struct FamiliarProjectRunDetailView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(resourceReferences, id: \.id) { reference in
-                        VStack(alignment: .leading, spacing: 3) {
+                        VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                             Text(reference.filename)
                             Text("v\(reference.version) · \(String(reference.contentHash.prefix(12)))")
                                 .font(.caption.monospaced()).foregroundStyle(.secondary)
@@ -1055,7 +1071,7 @@ private struct FamiliarProjectRunDetailView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(skillSnapshots) { skill in
-                        VStack(alignment: .leading, spacing: 3) {
+                        VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                             Text(skill.name)
                             Text("\(skill.stableID) · v\(skill.version) · \(String(skill.contentHash.prefix(12)))")
                                 .font(.caption.monospaced()).foregroundStyle(.secondary)

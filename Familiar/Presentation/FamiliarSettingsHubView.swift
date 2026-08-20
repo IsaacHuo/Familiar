@@ -184,32 +184,39 @@ struct FamiliarSettingsView: View {
         badge: String? = nil
     ) -> some View {
         NavigationLink(value: route) {
-            HStack(spacing: 13) {
+            HStack(spacing: FamiliarSpacing.medium) {
                 Image(systemName: symbol)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: FamiliarIconSize.standard, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 30, height: 30)
-                    .background(color.gradient, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .frame(
+                        width: FamiliarControlSize.compactVisual,
+                        height: FamiliarControlSize.compactVisual
+                    )
+                    .background(
+                        color.gradient,
+                        in: RoundedRectangle(cornerRadius: FamiliarRadius.compact, style: .continuous)
+                    )
 
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 7) {
+                VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
+                    HStack(spacing: FamiliarSpacing.small) {
                         Text(title)
+                            .font(FamiliarTypography.body)
                         if let badge {
                             Text(badge)
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(FamiliarTheme.accent)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
+                                .padding(.horizontal, FamiliarSpacing.small)
+                                .padding(.vertical, FamiliarSpacing.xSmall)
                                 .background(FamiliarTheme.accent.opacity(0.12), in: Capsule())
                         }
                     }
                     Text(subtitle)
-                        .font(.caption)
+                        .font(FamiliarTypography.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
             }
-            .padding(.vertical, 2)
+            .padding(.vertical, FamiliarSpacing.xSmall)
         }
         .accessibilityValue(badge ?? subtitle)
     }

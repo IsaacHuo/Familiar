@@ -916,14 +916,14 @@ private struct FamiliarTopBarInstaller<Bar: View>: ViewModifier {
         if #available(iOS 26.0, *) {
             root.safeAreaBar(edge: .top) {
                 content
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, FamiliarSpacing.large)
+                    .padding(.vertical, FamiliarSpacing.small)
             }
         } else {
             root.safeAreaInset(edge: .top, spacing: 0) {
                 content
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, FamiliarSpacing.large)
+                    .padding(.vertical, FamiliarSpacing.small)
                     .background(Color(uiColor: .systemBackground))
                     .overlay(alignment: .bottom) {
                         Rectangle()
@@ -991,7 +991,7 @@ private struct FamiliarChatTopBar: View {
                     }
                 }
             } label: {
-                HStack(spacing: 7) {
+                HStack(spacing: FamiliarSpacing.small) {
                     Text(model.displayName)
                         .font(FamiliarTypography.secondary.weight(.semibold))
                         .lineLimit(1)
@@ -1107,7 +1107,7 @@ private struct FamiliarEmptyConversationView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 22) {
+            VStack(spacing: FamiliarSpacing.section) {
                 Spacer(minLength: 94)
 
                 ZStack {
@@ -1121,15 +1121,15 @@ private struct FamiliarEmptyConversationView: View {
 
                 VStack(spacing: 8) {
                     Text(String(localized: "empty.title"))
-                        .font(.title2.bold())
+                        .font(FamiliarTypography.screenTitle)
                     Text(String(localized: "empty.subtitle"))
-                        .font(.body)
+                        .font(FamiliarTypography.body)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
 
                 if isProviderConfigured {
-                    VStack(spacing: 10) {
+                    VStack(spacing: FamiliarSpacing.small) {
                         ForEach(suggestions, id: \.self) { suggestion in
                             PromptSuggestion(title: suggestion, onSelect: onPrompt)
                         }
@@ -1140,18 +1140,14 @@ private struct FamiliarEmptyConversationView: View {
                         onConfigure()
                     } label: {
                         Text(String(localized: "empty.configure"))
-                            .font(.headline)
-                            .padding(.horizontal, 20)
-                            .frame(height: 48)
+                            .font(FamiliarTypography.button)
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.white)
-                    .background(FamiliarTheme.accent, in: Capsule())
+                    .buttonStyle(FamiliarPillButtonStyle(prominence: .primary))
                 }
 
                 Spacer(minLength: 40)
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, FamiliarSpacing.section)
             .frame(maxWidth: .infinity)
         }
         .scrollDismissesKeyboard(.interactively)
@@ -1168,19 +1164,22 @@ private struct PromptSuggestion: View {
         } label: {
             HStack {
                 Text(title)
-                    .font(.subheadline.weight(.medium))
+                    .font(FamiliarTypography.secondary.weight(.medium))
                     .multilineTextAlignment(.leading)
                 Spacer()
                 Image(systemName: "arrow.up.left")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
             }
-            .padding(.horizontal, 16)
-            .frame(minHeight: 52)
+            .padding(.horizontal, FamiliarSpacing.large)
+            .frame(minHeight: FamiliarControlSize.minimumHitTarget)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(
+            FamiliarTheme.elevatedFill,
+            in: RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous)
+        )
     }
 }
 
@@ -1202,7 +1201,7 @@ private struct FamiliarConversationDrawer: View {
     var body: some View {
         ZStack(alignment: .top) {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 3) {
+                LazyVStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                     drawerAction(
                         title: String(localized: "conversation.new"),
                         symbol: "square.and.pencil",
@@ -1213,9 +1212,8 @@ private struct FamiliarConversationDrawer: View {
                     Text(String(localized: "project.projects"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 20)
-                        .padding(.top, 4)
-                        .padding(.bottom, 4)
+                        .padding(.horizontal, FamiliarSpacing.xLarge)
+                        .padding(.vertical, FamiliarSpacing.xSmall)
 
                     ForEach(projects) { project in
                         Button {
@@ -1224,12 +1222,16 @@ private struct FamiliarConversationDrawer: View {
                             Label(project.name, systemImage: "folder")
                                 .font(.body)
                                 .lineLimit(1)
-                                .padding(.horizontal, 14)
-                                .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
+                                .padding(.horizontal, FamiliarSpacing.large)
+                                .frame(
+                                    maxWidth: .infinity,
+                                    minHeight: FamiliarControlSize.minimumHitTarget,
+                                    alignment: .leading
+                                )
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .padding(.horizontal, 10)
+                        .padding(.horizontal, FamiliarSpacing.small)
                     }
 
                     Button(action: onAllProjects) {
@@ -1241,27 +1243,27 @@ private struct FamiliarConversationDrawer: View {
                                 .foregroundStyle(.tertiary)
                         }
                         .font(.body)
-                        .padding(.horizontal, 14)
-                        .frame(height: 46)
+                        .padding(.horizontal, FamiliarSpacing.large)
+                        .frame(height: FamiliarControlSize.minimumHitTarget)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, FamiliarSpacing.small)
 
                     if conversations.isEmpty {
                         Text(String(localized: "drawer.no_conversations"))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                            .padding(.horizontal, 20)
-                            .padding(.top, 24)
+                            .padding(.horizontal, FamiliarSpacing.xLarge)
+                            .padding(.top, FamiliarSpacing.section)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
                         Text(String(localized: "drawer.recent"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
-                            .padding(.horizontal, 20)
-                            .padding(.top, 16)
-                            .padding(.bottom, 4)
+                            .padding(.horizontal, FamiliarSpacing.xLarge)
+                            .padding(.top, FamiliarSpacing.large)
+                            .padding(.bottom, FamiliarSpacing.xSmall)
 
                         ForEach(conversations) { conversation in
                             conversationRow(conversation)
@@ -1269,8 +1271,8 @@ private struct FamiliarConversationDrawer: View {
                     }
 
                     Divider()
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, FamiliarSpacing.xLarge)
+                        .padding(.vertical, FamiliarSpacing.small)
 
                     drawerAction(
                         title: String(localized: "drawer.settings"),
@@ -1279,8 +1281,8 @@ private struct FamiliarConversationDrawer: View {
                     )
                     .accessibilityIdentifier("drawer.settings")
                 }
-                .padding(.top, drawerHeaderHeight + 8)
-                .padding(.bottom, 12)
+                .padding(.top, drawerHeaderHeight + FamiliarSpacing.small)
+                .padding(.bottom, FamiliarSpacing.medium)
             }
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
@@ -1309,26 +1311,30 @@ private struct FamiliarConversationDrawer: View {
         Button(action: action) {
             Label(title, systemImage: symbol)
                 .font(.body.weight(.medium))
-                .padding(.horizontal, 14)
-                .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
+                .padding(.horizontal, FamiliarSpacing.large)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: FamiliarControlSize.minimumHitTarget,
+                    alignment: .leading
+                )
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 10)
+        .padding(.horizontal, FamiliarSpacing.small)
     }
 
     private func conversationRow(_ conversation: FamiliarConversation) -> some View {
         Button {
             onSelect(conversation)
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: FamiliarSpacing.small) {
                 Text(conversation.title)
                     .font(.body)
                     .lineLimit(1)
                 Spacer(minLength: 4)
             }
-            .padding(.horizontal, 14)
-            .frame(height: 46)
+            .padding(.horizontal, FamiliarSpacing.large)
+            .frame(height: FamiliarControlSize.minimumHitTarget)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1337,9 +1343,9 @@ private struct FamiliarConversationDrawer: View {
             conversation.id == selectedConversationID
                 ? Color.primary.opacity(0.075)
                 : .clear,
-            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            in: RoundedRectangle(cornerRadius: FamiliarRadius.control, style: .continuous)
         )
-        .padding(.horizontal, 10)
+        .padding(.horizontal, FamiliarSpacing.small)
         .contextMenu {
             Button {
                 onRename(conversation)
@@ -1363,16 +1369,19 @@ private struct FamiliarConversationDrawer: View {
                 isSearchPresented = true
             } label: {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 18, weight: .semibold))
-                    .frame(width: 44, height: 44)
+                    .font(.system(size: FamiliarIconSize.standard, weight: .semibold))
+                    .frame(
+                        width: FamiliarControlSize.minimumHitTarget,
+                        height: FamiliarControlSize.minimumHitTarget
+                    )
             }
             .buttonStyle(.plain)
             .familiarGlassCircle(interactive: true)
             .accessibilityLabel(String(localized: "drawer.search"))
         }
-        .padding(.horizontal, 20)
-        .padding(.top, safeAreaInsets.top + 10)
-        .padding(.bottom, 12)
+        .padding(.horizontal, FamiliarSpacing.xLarge)
+        .padding(.top, safeAreaInsets.top + FamiliarSpacing.small)
+        .padding(.bottom, FamiliarSpacing.medium)
         .background(alignment: .top) {
             LinearGradient(
                 stops: [

@@ -90,7 +90,7 @@ struct FamiliarMessageTimeline: View {
         GeometryReader { viewport in
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(spacing: 22) {
+                    VStack(spacing: FamiliarSpacing.section) {
                         ForEach(timelineItems) { item in
                             switch item {
                             case .message(let message):
@@ -127,9 +127,9 @@ struct FamiliarMessageTimeline: View {
                         .frame(height: 1)
                         .id("conversation-bottom")
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.top, 18)
-                    .padding(.bottom, 14)
+                    .padding(.horizontal, FamiliarSpacing.xLarge)
+                    .padding(.top, FamiliarSpacing.xLarge)
+                    .padding(.bottom, FamiliarSpacing.large)
                     .frame(maxWidth: 780)
                     .frame(maxWidth: .infinity)
                 }
@@ -169,13 +169,16 @@ struct FamiliarMessageTimeline: View {
                             }
                         } label: {
                             Image(systemName: "arrow.down")
-                                .font(.system(size: 14, weight: .bold))
-                                .frame(width: 40, height: 40)
+                                .font(.system(size: FamiliarIconSize.compact, weight: .bold))
+                                .frame(
+                                    width: FamiliarControlSize.minimumHitTarget,
+                                    height: FamiliarControlSize.minimumHitTarget
+                                )
                         }
                         .buttonStyle(.plain)
                         .familiarGlassCircle(interactive: true)
-                        .padding(.trailing, 16)
-                        .padding(.bottom, 10)
+                        .padding(.trailing, FamiliarSpacing.large)
+                        .padding(.bottom, FamiliarSpacing.medium)
                         .accessibilityLabel(String(localized: "conversation.scroll_latest"))
                     }
                 }
@@ -263,7 +266,7 @@ private struct FamiliarActionPager: View {
 
     var body: some View {
         ScrollView(.horizontal) {
-            LazyHStack(alignment: .top, spacing: 12) {
+            LazyHStack(alignment: .top, spacing: FamiliarSpacing.medium) {
                 ForEach(group.surfaces) { surface in
                     FamiliarToolActivityCard(
                         surface: surface,
@@ -271,7 +274,9 @@ private struct FamiliarActionPager: View {
                         onResolveApproval: onResolveApproval,
                         onUndo: { onUndo(surface.runID, surface.toolCallID ?? "") }
                     )
-                    .containerRelativeFrame(.horizontal) { length, _ in max(0, length - 24) }
+                    .containerRelativeFrame(.horizontal) { length, _ in
+                        max(0, length - FamiliarSpacing.section)
+                    }
                     .id(surface.id)
                 }
             }
@@ -395,7 +400,7 @@ private struct FamiliarMessageRow: View {
     private var userMessage: some View {
         HStack(alignment: .bottom) {
             Spacer(minLength: 48)
-            VStack(alignment: .leading, spacing: 9) {
+            VStack(alignment: .leading, spacing: FamiliarSpacing.small) {
                 ForEach(message.attachments) { attachment in
                     if attachment.kind == .image {
                         Button {
@@ -409,20 +414,20 @@ private struct FamiliarMessageRow: View {
                         Button {
                             previewAttachment = attachment
                         } label: {
-                            HStack(spacing: 9) {
+                            HStack(spacing: FamiliarSpacing.small) {
                                 Image(systemName: attachment.mimeType == "application/pdf" ? "doc.richtext" : "doc.text")
-                                    .font(.title3)
+                                    .font(.system(size: FamiliarIconSize.prominent))
                                     .foregroundStyle(FamiliarTheme.accent)
-                                VStack(alignment: .leading, spacing: 2) {
+                                VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                                     Text(attachment.filename)
-                                        .font(.subheadline.weight(.medium))
+                                        .font(FamiliarTypography.secondary.weight(.medium))
                                         .lineLimit(2)
                                     Text(
                                         "\(attachment.extractionEngine)\(attachment.usedOCR ? " + Vision OCR" : "") · "
                                         + "\(attachment.detectedFormat.uppercased()) · "
                                         + ByteCountFormatter.string(fromByteCount: attachment.byteSize, countStyle: .file)
                                     )
-                                    .font(.caption2)
+                                    .font(FamiliarTypography.caption)
                                     .foregroundStyle(.secondary)
                                 }
                                 Image(systemName: "chevron.right")
@@ -430,8 +435,11 @@ private struct FamiliarMessageRow: View {
                                     .foregroundStyle(.tertiary)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(10)
-                            .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                            .padding(FamiliarSpacing.medium)
+                            .background(
+                                FamiliarTheme.elevatedFill,
+                                in: RoundedRectangle(cornerRadius: FamiliarRadius.control, style: .continuous)
+                            )
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(String(format: String(localized: "attachment.preview"), attachment.filename))
@@ -439,13 +447,16 @@ private struct FamiliarMessageRow: View {
                 }
                 if !message.content.isEmpty {
                     Text(message.content)
-                        .font(.body)
+                        .font(FamiliarTypography.body)
                         .textSelection(.enabled)
                 }
             }
-            .padding(.horizontal, 15)
-            .padding(.vertical, 11)
-            .background(FamiliarTheme.userFill, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .padding(.horizontal, FamiliarSpacing.large)
+            .padding(.vertical, FamiliarSpacing.medium)
+            .background(
+                FamiliarTheme.userFill,
+                in: RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous)
+            )
             .contextMenu {
                 if !message.content.isEmpty {
                     Button {
@@ -466,7 +477,7 @@ private struct FamiliarMessageRow: View {
     }
 
     private var assistantMessage: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: FamiliarSpacing.medium) {
             if message.isStreaming {
                 FamiliarMarkdownFallbackText(markdown: message.content)
                     .textSelection(.enabled)
@@ -492,14 +503,17 @@ private struct FamiliarMessageRow: View {
                         .accessibilityLabel(String(format: String(localized: "message.generated_by"), sourceLabel))
                 }
 
-                HStack(spacing: 4) {
+                HStack(spacing: FamiliarSpacing.xSmall) {
                     MessageActionButton(symbol: "doc.on.doc", label: String(localized: "common.copy")) {
                         UIPasteboard.general.string = message.content
                     }
 
                     ShareLink(item: message.content) {
                         Image(systemName: "square.and.arrow.up")
-                            .frame(width: 36, height: 36)
+                            .frame(
+                                width: FamiliarControlSize.minimumHitTarget,
+                                height: FamiliarControlSize.minimumHitTarget
+                            )
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -535,9 +549,9 @@ private struct FamiliarImageAttachmentView: View {
                     .resizable()
                     .scaledToFit()
                     .frame(maxWidth: 240, maxHeight: 240)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous))
             } else {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous)
                     .fill(FamiliarTheme.elevatedFill)
                     .frame(width: 200, height: 140)
                     .overlay { ProgressView() }
@@ -555,7 +569,7 @@ private struct FamiliarModelSwitchRow: View {
     let marker: FamiliarModelSwitchSnapshot
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: FamiliarSpacing.small) {
             Rectangle()
                 .fill(FamiliarTheme.separator)
                 .frame(height: 0.5)
@@ -593,12 +607,18 @@ private struct FamiliarToolActivityCard: View {
                 statusContent
             }
         }
-        .padding(surface.phase == .awaitingApproval ? 16 : 14)
+        .padding(surface.phase == .awaitingApproval ? FamiliarSpacing.large : FamiliarSpacing.medium)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: surface.phase == .awaitingApproval ? 20 : 16, style: .continuous))
+        .background(
+            FamiliarTheme.elevatedFill,
+            in: RoundedRectangle(
+                cornerRadius: surface.phase == .awaitingApproval ? FamiliarRadius.card : FamiliarRadius.control,
+                style: .continuous
+            )
+        )
         .overlay {
             if surface.phase == .awaitingApproval {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous)
                     .stroke(FamiliarTheme.separator, lineWidth: 1)
             }
         }
@@ -609,17 +629,17 @@ private struct FamiliarToolActivityCard: View {
     }
 
     private var statusContent: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 10) {
+        VStack(alignment: .leading, spacing: FamiliarSpacing.medium) {
+            HStack(alignment: .top, spacing: FamiliarSpacing.medium) {
                 statusIcon
-                    .frame(width: 22, height: 22)
+                    .frame(width: FamiliarIconSize.prominent, height: FamiliarIconSize.prominent)
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                     Text(surface.title)
-                        .font(.subheadline.weight(.semibold))
+                        .font(FamiliarTypography.secondary.weight(.semibold))
                     if let detail = surface.detail, !detail.isEmpty {
                         Text(detail)
-                            .font(.caption)
+                            .font(FamiliarTypography.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(5)
                     }
@@ -648,16 +668,16 @@ private struct FamiliarToolActivityCard: View {
     }
 
     private var approvalContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: FamiliarSpacing.large) {
+            VStack(alignment: .leading, spacing: FamiliarSpacing.large) {
+                HStack(spacing: FamiliarSpacing.medium) {
                     Image(systemName: surface.symbol)
-                        .font(.title3)
+                        .font(.system(size: FamiliarIconSize.prominent))
                         .foregroundStyle(FamiliarTheme.accent)
                         .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                         Text(surface.title)
-                            .font(.headline)
+                            .font(FamiliarTypography.sectionTitle)
                         if let target = surface.target {
                             Text(String(format: String(localized: "eventkit.target"), target))
                                 .font(.caption)
@@ -666,9 +686,9 @@ private struct FamiliarToolActivityCard: View {
                     }
                 }
 
-                VStack(spacing: 8) {
+                VStack(spacing: FamiliarSpacing.small) {
                     ForEach(surface.fields) { field in
-                        HStack(alignment: .top, spacing: 12) {
+                        HStack(alignment: .top, spacing: FamiliarSpacing.medium) {
                             Text(field.label)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -685,7 +705,7 @@ private struct FamiliarToolActivityCard: View {
             .accessibilityLabel(surface.title)
             .accessibilityValue(approvalAccessibilityValue)
 
-            HStack(spacing: 10) {
+            HStack(spacing: FamiliarSpacing.medium) {
                 Button(String(localized: "common.cancel")) {
                     if let id = surface.approvalRequestID { onResolveApproval(id, .cancelled) }
                 }
@@ -764,17 +784,23 @@ private struct FamiliarArtifactCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: FamiliarSpacing.medium) {
             Button {
                 previewURL = fileURL
             } label: {
-                HStack(spacing: 12) {
+                HStack(spacing: FamiliarSpacing.medium) {
                     Image(systemName: artifact.format == .markdown ? "doc.richtext" : "doc.text")
                         .font(.title3)
                         .foregroundStyle(FamiliarTheme.accent)
-                        .frame(width: 40, height: 40)
-                        .background(FamiliarTheme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    VStack(alignment: .leading, spacing: 3) {
+                        .frame(
+                            width: FamiliarControlSize.standardVisual,
+                            height: FamiliarControlSize.standardVisual
+                        )
+                        .background(
+                            FamiliarTheme.accent.opacity(0.1),
+                            in: RoundedRectangle(cornerRadius: FamiliarRadius.compact, style: .continuous)
+                        )
+                    VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                         Text(artifact.title)
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.primary)
@@ -803,11 +829,14 @@ private struct FamiliarArtifactCard: View {
                 .controlSize(.small)
             }
         }
-        .padding(12)
+        .padding(FamiliarSpacing.medium)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(
+            FamiliarTheme.elevatedFill,
+            in: RoundedRectangle(cornerRadius: FamiliarRadius.control, style: .continuous)
+        )
         .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: FamiliarRadius.control, style: .continuous)
                 .stroke(FamiliarTheme.separator, lineWidth: 0.5)
         }
         .sheet(isPresented: Binding(
@@ -830,10 +859,13 @@ private struct MessageActionButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .frame(width: 36, height: 36)
+                .frame(
+                    width: FamiliarControlSize.minimumHitTarget,
+                    height: FamiliarControlSize.minimumHitTarget
+                )
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FamiliarIconButtonStyle())
         .accessibilityLabel(label)
     }
 }
@@ -844,17 +876,17 @@ private struct FamiliarAgentStatusRow: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HStack(spacing: 9) {
+        HStack(spacing: FamiliarSpacing.small) {
             if !surface.phase.isTerminal {
                 FamiliarOrbitLoadingView(reduceMotion: reduceMotion)
                     .accessibilityHidden(true)
             }
             Text(surface.title)
-                .font(.subheadline.weight(.semibold))
+                .font(FamiliarTypography.secondary.weight(.semibold))
             if !surface.phase.isTerminal, let startedAt = surface.startedAt {
                 TimelineView(.periodic(from: startedAt, by: 0.1)) { context in
                     Text(Self.elapsed(from: startedAt, to: context.date))
-                        .font(.caption.monospacedDigit())
+                        .font(FamiliarTypography.metadata)
                         .foregroundStyle(.tertiary)
                 }
                 .accessibilityHidden(true)
@@ -862,7 +894,7 @@ private struct FamiliarAgentStatusRow: View {
             Spacer(minLength: 0)
         }
         .foregroundStyle(.secondary)
-        .padding(.vertical, 4)
+        .padding(.vertical, FamiliarSpacing.xSmall)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(surface.title)
@@ -918,21 +950,21 @@ private struct FamiliarOperationTrace: View {
 
     var body: some View {
         DisclosureGroup(isExpanded: $expanded) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: FamiliarSpacing.small) {
                 if let context = run.context {
                     contextDetails(context)
                     if !run.steps.isEmpty {
                         Divider()
-                            .padding(.vertical, 2)
+                            .padding(.vertical, FamiliarSpacing.xSmall)
                     }
                 }
                 ForEach(run.steps) { step in
-                    HStack(alignment: .top, spacing: 8) {
+                    HStack(alignment: .top, spacing: FamiliarSpacing.small) {
                         Image(systemName: symbol(for: step))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(tone(for: step))
                             .frame(width: 16)
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                             Text(step.summary)
                                 .font(.caption.weight(.medium))
                             if step.type == .tool, !step.detail.isEmpty {
@@ -945,9 +977,9 @@ private struct FamiliarOperationTrace: View {
                     }
                 }
             }
-            .padding(.top, 7)
+            .padding(.top, FamiliarSpacing.small)
         } label: {
-            HStack(spacing: 7) {
+            HStack(spacing: FamiliarSpacing.small) {
                 Image(systemName: "sparkles")
                 Text(traceLabel)
                 Text(Self.duration(run))
@@ -1000,12 +1032,12 @@ private struct FamiliarOperationTrace: View {
     }
 
     private func traceDetailRow(symbol: String, title: String, detail: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: FamiliarSpacing.small) {
             Image(systemName: symbol)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .frame(width: 16)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                 Text(title)
                     .font(.caption.weight(.medium))
                 Text(detail)
@@ -1057,19 +1089,25 @@ private struct FamiliarSourcesDisclosure: View {
                     Button {
                         openURL(source.url)
                     } label: {
-                        VStack(alignment: .leading, spacing: 9) {
-                            HStack(alignment: .top, spacing: 10) {
+                        VStack(alignment: .leading, spacing: FamiliarSpacing.small) {
+                            HStack(alignment: .top, spacing: FamiliarSpacing.medium) {
                                 Image(systemName: source.kind.symbol)
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(FamiliarTheme.accent)
-                                    .frame(width: 28, height: 28)
-                                    .background(FamiliarTheme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                VStack(alignment: .leading, spacing: 3) {
+                                    .frame(
+                                        width: FamiliarControlSize.compactVisual,
+                                        height: FamiliarControlSize.compactVisual
+                                    )
+                                    .background(
+                                        FamiliarTheme.accent.opacity(0.1),
+                                        in: RoundedRectangle(cornerRadius: FamiliarRadius.compact, style: .continuous)
+                                    )
+                                VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                                     Text(source.title)
                                         .font(.subheadline.weight(.semibold))
                                         .foregroundStyle(.primary)
                                         .lineLimit(2)
-                                    HStack(spacing: 6) {
+                                    HStack(spacing: FamiliarSpacing.small) {
                                         Text(source.kind.label)
                                         Text("·")
                                         Text(source.siteName ?? source.url.host ?? source.url.absoluteString)
@@ -1090,18 +1128,21 @@ private struct FamiliarSourcesDisclosure: View {
                                     .lineLimit(3)
                             }
                         }
-                        .padding(12)
+                        .padding(FamiliarSpacing.medium)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .background(
+                            FamiliarTheme.elevatedFill,
+                            in: RoundedRectangle(cornerRadius: FamiliarRadius.control, style: .continuous)
+                        )
                         .overlay {
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            RoundedRectangle(cornerRadius: FamiliarRadius.control, style: .continuous)
                                 .stroke(FamiliarTheme.separator, lineWidth: 0.5)
                         }
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.top, 5)
+            .padding(.top, FamiliarSpacing.small)
         } label: {
             Label(
                 String(format: String(localized: "message.sources.count", defaultValue: "%lld 个来源"), sources.count),

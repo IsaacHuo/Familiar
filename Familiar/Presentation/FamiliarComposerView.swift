@@ -69,7 +69,7 @@ private struct FamiliarComposerTextHeightKey: PreferenceKey {
 private struct FamiliarComposerLayout: Layout {
     let mode: FamiliarComposerMode
     let editorHeight: CGFloat
-    private let control: CGFloat = 44
+    private let control = FamiliarControlSize.minimumHitTarget
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let fallback = CGSize(width: 320, height: desiredHeight)
@@ -129,7 +129,11 @@ private struct FamiliarInlinePhotoPickerSheet: View {
         .overlay(alignment: .bottom) {
             HStack {
                 Button { dismiss() } label: {
-                    Image(systemName: "chevron.left").frame(width: 44, height: 44)
+                    Image(systemName: "chevron.left")
+                        .frame(
+                            width: FamiliarControlSize.minimumHitTarget,
+                            height: FamiliarControlSize.minimumHitTarget
+                        )
                 }
                 .familiarGlassCircle(interactive: true)
                 .accessibilityLabel(String(localized: "attachment.close_photos"))
@@ -140,13 +144,13 @@ private struct FamiliarInlinePhotoPickerSheet: View {
                 } label: {
                     Text(pending.isEmpty ? String(localized: "attachment.all_photos") : String(format: String(localized: "attachment.add_photos_count"), pending.count))
                         .font(.subheadline.weight(.semibold))
-                        .padding(.horizontal, 18)
-                        .frame(height: 44)
+                        .padding(.horizontal, FamiliarSpacing.large)
+                        .frame(height: FamiliarControlSize.minimumHitTarget)
                 }
                 .familiarGlassSurface(interactive: true)
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 20)
+            .padding(.horizontal, FamiliarSpacing.xLarge)
+            .padding(.bottom, FamiliarSpacing.xLarge)
         }
     }
 }
@@ -224,7 +228,7 @@ struct FamiliarComposer: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: FamiliarSpacing.small) {
             slashCommandPalette
             draftPreview
             FamiliarComposerLayout(mode: mode, editorHeight: editorHeight) {
@@ -238,14 +242,14 @@ struct FamiliarComposer: View {
                 addButton
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.top, hasDraftContent ? 10 : 4)
-        .padding(.bottom, 4)
+        .padding(.horizontal, FamiliarSpacing.small)
+        .padding(.top, hasDraftContent ? FamiliarSpacing.medium : FamiliarSpacing.xSmall)
+        .padding(.bottom, FamiliarSpacing.xSmall)
         .frame(height: mode == .fullscreen ? fullscreenHeight : nil, alignment: .bottom)
-        .familiarGlassSurface(interactive: true, cornerRadius: 28)
-        .padding(.horizontal, 12)
-        .padding(.top, 6)
-        .padding(.bottom, 8)
+        .familiarGlassSurface(interactive: true, cornerRadius: FamiliarRadius.overlay)
+        .padding(.horizontal, FamiliarSpacing.medium)
+        .padding(.top, FamiliarSpacing.small)
+        .padding(.bottom, FamiliarSpacing.small)
         .photosPicker(isPresented: $showsFullPhotos, selection: $fullPhotoSelection, maxSelectionCount: max(4 - images.count, 1), matching: .images)
         .onChange(of: fullPhotoSelection) { _, items in
             guard !transitionToFullPhotos else { return }
@@ -281,11 +285,11 @@ struct FamiliarComposer: View {
                     Button {
                         onSlashCommand(command)
                     } label: {
-                        HStack(spacing: 12) {
+                        HStack(spacing: FamiliarSpacing.medium) {
                             Image(systemName: command.symbol)
                                 .frame(width: 24)
                                 .foregroundStyle(.secondary)
-                            VStack(alignment: .leading, spacing: 2) {
+                            VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                                 Text("/\(command.rawValue)")
                                     .font(.headline)
                                     .foregroundStyle(.primary)
@@ -296,20 +300,23 @@ struct FamiliarComposer: View {
                             }
                             Spacer()
                         }
-                        .padding(.horizontal, 14)
+                        .padding(.horizontal, FamiliarSpacing.large)
                         .frame(minHeight: 58)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("/\(command.rawValue), \(command.title)")
                     if command.id != filteredSlashCommands.last?.id {
-                        Divider().padding(.leading, 50)
+                        Divider().padding(.leading, FamiliarControlSize.minimumHitTarget + FamiliarSpacing.small)
                     }
                 }
             }
-            .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .background(
+                FamiliarTheme.elevatedFill,
+                in: RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous)
+            )
             .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous)
                     .stroke(FamiliarTheme.separator, lineWidth: 1)
             }
             .accessibilityElement(children: .contain)
@@ -377,8 +384,11 @@ struct FamiliarComposer: View {
             }
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 22))
-                .frame(width: 44, height: 44)
+                .font(.system(size: FamiliarIconSize.prominent))
+                .frame(
+                    width: FamiliarControlSize.minimumHitTarget,
+                    height: FamiliarControlSize.minimumHitTarget
+                )
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -388,7 +398,7 @@ struct FamiliarComposer: View {
                 addMenuButton(.photos, title: String(localized: "attachment.photos"), symbol: "photo")
                 addMenuButton(.files, title: String(localized: "attachment.files"), symbol: "paperclip")
             }
-            .padding(.vertical, 8)
+            .padding(.vertical, FamiliarSpacing.small)
             .frame(minWidth: 220)
             .presentationCompactAdaptation(.popover)
         }
@@ -402,7 +412,7 @@ struct FamiliarComposer: View {
         } label: {
             Label(title, systemImage: symbol)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, FamiliarSpacing.large)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -414,7 +424,10 @@ struct FamiliarComposer: View {
                 .font(.system(size: isListening ? 20 : 23, weight: isListening ? .semibold : .regular))
                 .foregroundStyle(isListening ? FamiliarTheme.accent : Color.primary)
                 .symbolEffect(.variableColor.iterative, isActive: isListening)
-                .frame(width: 44, height: 44)
+                .frame(
+                    width: FamiliarControlSize.minimumHitTarget,
+                    height: FamiliarControlSize.minimumHitTarget
+                )
         }
         .buttonStyle(.plain)
         .accessibilityLabel(String(localized: isListening ? "speech.stop" : "speech.start"))
@@ -427,9 +440,14 @@ struct FamiliarComposer: View {
             else if hasText || !documents.isEmpty || !images.isEmpty { onSend() }
         } label: {
             Image(systemName: isSending ? "stop.fill" : "arrow.up")
-                .font(.system(size: 14, weight: .bold)).foregroundStyle(.white).frame(width: 36, height: 36)
+                .font(.system(size: FamiliarIconSize.compact, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: FamiliarControlSize.standardVisual, height: FamiliarControlSize.standardVisual)
                 .background(canSend ? FamiliarTheme.accent : Color.secondary.opacity(0.28), in: Circle())
-                .frame(width: 44, height: 44)
+                .frame(
+                    width: FamiliarControlSize.minimumHitTarget,
+                    height: FamiliarControlSize.minimumHitTarget
+                )
         }
         .buttonStyle(.plain)
         .disabled(!canSend)
@@ -447,18 +465,23 @@ struct FamiliarComposer: View {
     @ViewBuilder private var draftPreview: some View {
         if hasDraftContent {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+                HStack(spacing: FamiliarSpacing.small) {
                     ForEach(images) { item in
                         ZStack(alignment: .topTrailing) {
-                            Image(uiImage: item.image).resizable().scaledToFill().frame(width: 92, height: 76).clipShape(RoundedRectangle(cornerRadius: 16)).clipped()
+                            Image(uiImage: item.image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 92, height: 76)
+                                .clipShape(RoundedRectangle(cornerRadius: FamiliarRadius.card))
+                                .clipped()
                             removeButton(label: String(localized: "attachment.remove_image")) { images.removeAll { $0.id == item.id } }
                         }
                     }
                     ForEach(documents) { file in
-                        HStack(spacing: 7) {
+                        HStack(spacing: FamiliarSpacing.small) {
                             Image(systemName: file.mimeType == "application/pdf" ? "doc.richtext" : "doc.text")
                                 .foregroundStyle(FamiliarTheme.accent)
-                            VStack(alignment: .leading, spacing: 1) {
+                            VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                                 Text(file.filename).font(.caption).lineLimit(1)
                                 Text(
                                     "\(file.detectedFormat.uppercased()) · "
@@ -472,15 +495,17 @@ struct FamiliarComposer: View {
                                 documents.removeAll { $0.id == file.id }
                             }
                         }
-                        .padding(.leading, 10).frame(height: 48).background(FamiliarTheme.elevatedFill, in: Capsule())
+                        .padding(.leading, FamiliarSpacing.medium)
+                        .frame(height: 48)
+                        .background(FamiliarTheme.elevatedFill, in: Capsule())
                     }
                     if importingFileCount > 0 {
-                        HStack(spacing: 8) {
+                        HStack(spacing: FamiliarSpacing.small) {
                             ProgressView().controlSize(.small)
                             Text(String(localized: "attachment.processing"))
                                 .font(.caption)
                         }
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, FamiliarSpacing.medium)
                         .frame(height: 48)
                         .background(FamiliarTheme.elevatedFill, in: Capsule())
                     }
@@ -491,7 +516,8 @@ struct FamiliarComposer: View {
 
     private func removeButton(label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) { Image(systemName: "xmark.circle.fill").symbolRenderingMode(.palette).foregroundStyle(.white, .black.opacity(0.7)) }
-            .frame(width: 36, height: 36).accessibilityLabel(label)
+            .frame(width: FamiliarControlSize.standardVisual, height: FamiliarControlSize.standardVisual)
+            .accessibilityLabel(label)
     }
 
     private func choose(_ destination: FamiliarComposerAddDestination) {
