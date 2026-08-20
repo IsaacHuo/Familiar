@@ -560,6 +560,7 @@ struct FamiliarChatView: View {
 
     private var topBar: some View {
         let selectedProvider = controller.settings.selectedProvider
+        let project = selectedProject
         var providers = FamiliarProviderCatalog.builtIn.filter { configuredProviderIDs.contains($0.id) }
         if configuredProviderIDs.contains(FamiliarProviderCatalog.customProviderID),
            let customProvider = FamiliarProviderCatalog.descriptor(
@@ -571,6 +572,7 @@ struct FamiliarChatView: View {
         return FamiliarChatTopBar(
             provider: selectedProvider,
             model: controller.settings.selectedModel,
+            project: project,
             providerOptions: providers,
             isSending: controller.isSending,
             isNewConversation: isInNewConversation,
@@ -579,12 +581,19 @@ struct FamiliarChatView: View {
                 controller.selectModel(providerID: providerID, modelID: modelID, in: modelContext)
             },
             onConfigure: { presentedSheet = .settings(nil) },
+            onOpenProject: {
+                guard let project else { return }
+                presentedSheet = .projects(project.id)
+            },
             onNewConversation: {
                 guard !isInNewConversation else { return }
-                let project = conversations.first { $0.id == controller.selectedConversationID }?.project
                 requestNewConversation(project: project)
             }
         )
+    }
+
+    private var selectedProject: FamiliarProject? {
+        conversations.first { $0.id == controller.selectedConversationID }?.project
     }
 
     private var renameTitleBinding: Binding<String> {
@@ -929,18 +938,20 @@ private struct FamiliarTopBarInstaller<Bar: View>: ViewModifier {
 private struct FamiliarChatTopBar: View {
     let provider: FamiliarProviderDescriptor
     let model: FamiliarModelDescriptor
+    let project: FamiliarProject?
     let providerOptions: [FamiliarProviderDescriptor]
     let isSending: Bool
     let isNewConversation: Bool
     let onOpenDrawer: () -> Void
     let onSelectModel: (String, String) -> Void
     let onConfigure: () -> Void
+    let onOpenProject: () -> Void
     let onNewConversation: () -> Void
 
     var body: some View {
         Group {
             if #available(iOS 26.0, *) {
-                GlassEffectContainer(spacing: 12) { controls }
+                GlassEffectContainer(spacing: FamiliarSpacing.medium) { controls }
             } else {
                 controls
             }
@@ -949,9 +960,9 @@ private struct FamiliarChatTopBar: View {
     }
 
     private var controls: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: FamiliarSpacing.medium) {
             Button(action: onOpenDrawer) {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                     RoundedRectangle(cornerRadius: 1)
                         .frame(width: 18, height: 2)
 
@@ -960,7 +971,10 @@ private struct FamiliarChatTopBar: View {
                 }
                 .frame(width: 18, height: 18, alignment: .leading)
                 .foregroundStyle(Color.black)
-                .frame(width: 46, height: 46)
+                .frame(
+                    width: FamiliarControlSize.minimumHitTarget,
+                    height: FamiliarControlSize.minimumHitTarget
+                )
             }
             .buttonStyle(.plain)
             .familiarGlassCircle(interactive: true)
@@ -979,41 +993,66 @@ private struct FamiliarChatTopBar: View {
             } label: {
                 HStack(spacing: 7) {
                     Text(model.displayName)
-                        .font(.subheadline.weight(.semibold))
+                        .font(FamiliarTypography.secondary.weight(.semibold))
                         .lineLimit(1)
                     Image(systemName: "chevron.down")
                         .font(.caption2.weight(.bold))
                 }
-                .padding(.horizontal, 17)
-                .frame(height: 44)
+                .padding(.horizontal, FamiliarSpacing.large)
+                .frame(height: FamiliarControlSize.minimumHitTarget)
             }
             .buttonStyle(.plain)
             .familiarGlassSurface(interactive: true)
             .disabled(isSending)
             .accessibilityLabel(String(format: String(localized: "model.current"), provider.displayName, model.displayName))
 
+            if let project {
+                Button(action: onOpenProject) {
+                    HStack(spacing: FamiliarSpacing.small) {
+                        Image(systemName: "folder")
+                            .font(.system(size: FamiliarIconSize.compact, weight: .semibold))
+                        Text(project.name)
+                            .font(FamiliarTypography.caption.weight(.semibold))
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, FamiliarSpacing.medium)
+                    .frame(height: FamiliarControlSize.minimumHitTarget)
+                    .frame(maxWidth: 116)
+                }
+                .buttonStyle(.plain)
+                .familiarGlassSurface(interactive: true, cornerRadius: FamiliarRadius.control)
+                .accessibilityLabel(
+                    String(
+                        format: String(
+                            localized: "conversation.project_context",
+                            defaultValue: "Project: %@"
+                        ),
+                        project.name
+                    )
+                )
+                .accessibilityHint(
+                    String(
+                        localized: "conversation.project_context.hint",
+                        defaultValue: "Opens this project's context"
+                    )
+                )
+            }
+
             Spacer(minLength: 0)
 
             Button(action: onNewConversation) {
                 Image(systemName: "plus")
-                    .font(.system(size: 20, weight: .semibold))
-                    .frame(width: 46, height: 46)
+                    .font(.system(size: FamiliarIconSize.prominent, weight: .semibold))
+                    .frame(
+                        width: FamiliarControlSize.minimumHitTarget,
+                        height: FamiliarControlSize.minimumHitTarget
+                    )
             }
             .buttonStyle(.plain)
             .familiarGlassCircle(interactive: true)
             .disabled(isSending || isNewConversation)
             .accessibilityLabel(String(localized: "conversation.new"))
             .accessibilityIdentifier("chat.new")
-
-            Button(action: onConfigure) {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 18, weight: .semibold))
-                    .frame(width: 46, height: 46)
-            }
-            .buttonStyle(.plain)
-            .familiarGlassCircle(interactive: true)
-            .accessibilityLabel(String(localized: "drawer.settings"))
-            .accessibilityIdentifier("chat.settings")
         }
     }
 

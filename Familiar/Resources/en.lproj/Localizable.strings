@@ -229,6 +229,8 @@
 "draft.discard.detail" = "Your unsent text, images, and files will be removed before switching.";
 "conversation.delete.title" = "Delete this chat?";
 "conversation.delete.detail" = "Messages, attachments, and saved run history in this chat will be deleted from this iPhone.";
+"conversation.project_context" = "Project: %@";
+"conversation.project_context.hint" = "Opens this project's context";
 "run.context.model" = "Model";
 "run.context.project" = "Project";
 "run.context.resource" = "Resource Used";

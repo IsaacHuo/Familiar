@@ -229,6 +229,8 @@
 "draft.discard.detail" = "切换前会移除尚未发送的文字、图片和文件。";
 "conversation.delete.title" = "要删除这个对话吗？";
 "conversation.delete.detail" = "这个对话中的消息、附件和运行记录会从此 iPhone 删除。";
+"conversation.project_context" = "项目：%@";
+"conversation.project_context.hint" = "打开这个项目的上下文";
 "run.context.model" = "模型";
 "run.context.project" = "项目";
 "run.context.resource" = "使用的资料";
