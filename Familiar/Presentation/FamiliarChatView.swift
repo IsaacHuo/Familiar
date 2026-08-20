@@ -651,12 +651,6 @@ struct FamiliarChatView: View {
                 return
             }
             navigation = .newConversation(project)
-        case .createAndSend(let projectID, let prompt):
-            guard let project = fetchProject(id: projectID) else {
-                controller.errorMessage = String(localized: "project.unavailable")
-                return
-            }
-            navigation = .projectPrompt(project, prompt)
         }
         guard let navigation else { return }
         if hasUnsentDraft {
@@ -685,11 +679,6 @@ struct FamiliarChatView: View {
         case .newConversation(let project):
             _ = controller.createConversation(project: project, in: modelContext)
             isComposerFocused = true
-        case .projectPrompt(let project, let prompt):
-            guard controller.createConversation(project: project, in: modelContext) != nil else { return }
-            controller.draft = prompt
-            isComposerFocused = false
-            controller.startSending(in: modelContext)
         }
         closeDrawer()
     }
@@ -880,13 +869,11 @@ private struct FamiliarRenameRequest: Identifiable {
 private enum FamiliarPendingDraftNavigation: Identifiable {
     case select(FamiliarConversation)
     case newConversation(FamiliarProject?)
-    case projectPrompt(FamiliarProject, String)
 
     var id: String {
         switch self {
         case .select(let conversation): "select-\(conversation.id.uuidString)"
         case .newConversation(let project): "new-\(project?.id.uuidString ?? "ordinary")"
-        case .projectPrompt(let project, _): "project-prompt-\(project.id.uuidString)"
         }
     }
 }

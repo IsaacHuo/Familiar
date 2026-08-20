@@ -5,7 +5,6 @@ import UniformTypeIdentifiers
 enum FamiliarProjectConversationRequest: Equatable, Sendable {
     case open(conversationID: UUID)
     case create(projectID: UUID)
-    case createAndSend(projectID: UUID, prompt: String)
 }
 
 struct FamiliarProjectsView: View {
@@ -145,7 +144,7 @@ struct FamiliarProjectsView: View {
         case .open(let conversationID):
             guard let conversation = projects.lazy.flatMap(\.conversations).first(where: { $0.id == conversationID }) else { return }
             onSelectConversation?(conversation)
-        case .create(let projectID), .createAndSend(let projectID, _):
+        case .create(let projectID):
             guard let project = projects.first(where: { $0.id == projectID }) else { return }
             onNewConversation?(project)
         }
@@ -165,7 +164,6 @@ private struct FamiliarProjectDetailView: View {
     let onEdit: () -> Void
     let onError: (String) -> Void
 
-    @State private var prompt = ""
     @State private var showsResourceImporter = false
     @State private var resourceEntry: FamiliarProjectResourceEntryDestination?
     @State private var isImportingResource = false
@@ -180,32 +178,6 @@ private struct FamiliarProjectDetailView: View {
             Section {
                 FamiliarProjectHero(project: project)
                 projectActions
-            }
-
-            Section {
-                HStack(alignment: .bottom, spacing: 10) {
-                    TextField(
-                        String(localized: "project.ask.placeholder", defaultValue: "Ask about this project"),
-                        text: $prompt,
-                        axis: .vertical
-                    )
-                    .lineLimit(1...5)
-                    .submitLabel(.send)
-                    .onSubmit(sendPrompt)
-
-                    Button(action: sendPrompt) {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.title2)
-                            .frame(minWidth: 44, minHeight: 44)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(normalizedPrompt.isEmpty)
-                    .accessibilityLabel(String(localized: "project.ask.send", defaultValue: "Send"))
-                    .accessibilityIdentifier("project.ask.send")
-                }
-                .padding(.vertical, 4)
-            } header: {
-                Text(String(localized: "project.ask", defaultValue: "Ask Familiar"))
             }
 
             Section {
@@ -241,36 +213,6 @@ private struct FamiliarProjectDetailView: View {
             }
 
             Section {
-                if recentConversations.isEmpty {
-                    emptyRow(String(localized: "project.conversations.empty"), systemImage: "bubble.left")
-                } else {
-                    ForEach(recentConversations) { conversation in
-                        conversationRow(conversation)
-                    }
-                }
-            } header: {
-                FamiliarProjectSectionHeader(
-                    title: String(localized: "project.conversations"),
-                    count: project.conversations.count,
-                    trailingAction: {
-                        Button {
-                            onConversationRequest(.create(projectID: project.id))
-                        } label: {
-                            Image(systemName: "plus")
-                                .frame(minWidth: 44, minHeight: 44)
-                        }
-                        .accessibilityLabel(String(localized: "project.new_chat"))
-                    },
-                    destination: {
-                        FamiliarProjectConversationsView(
-                            conversations: sortedConversations,
-                            onSelect: { onConversationRequest(.open(conversationID: $0.id)) }
-                        )
-                    }
-                )
-            }
-
-            Section {
                 if recentArtifacts.isEmpty {
                     emptyRow(
                         String(localized: "artifact.empty", defaultValue: "No artifacts yet"),
@@ -295,75 +237,48 @@ private struct FamiliarProjectDetailView: View {
                 )
             }
 
-            Section {
+            Section(String(localized: "project.context", defaultValue: "Project Context")) {
+                NavigationLink {
+                    FamiliarProjectConversationsView(
+                        conversations: sortedConversations,
+                        onSelect: { onConversationRequest(.open(conversationID: $0.id)) }
+                    )
+                } label: {
+                    FamiliarProjectContextRow(
+                        title: String(localized: "project.conversations"),
+                        detail: String(
+                            localized: "project.conversations.context_detail",
+                            defaultValue: "Chats that share this project context"
+                        ),
+                        symbol: "bubble.left.and.bubble.right",
+                        count: sortedConversations.count
+                    )
+                }
+
                 NavigationLink {
                     FamiliarProjectSkillsView(projectID: project.id, registry: registry, onError: onError)
                 } label: {
-                    VStack(alignment: .leading, spacing: 5) {
-                        HStack {
-                            Label(
-                                String(localized: "project.skills.enabled", defaultValue: "Enabled Skills"),
-                                systemImage: "wand.and.stars"
-                            )
-                            Spacer()
-                            Text("\(enabledSkills.count)")
-                                .monospacedDigit()
-                                .foregroundStyle(.secondary)
-                        }
-                        Text(skillToolScopeSummary)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(3)
-                    }
-                }
-            } header: {
-                Text(String(localized: "settings.skills", defaultValue: "Skills"))
-            }
-
-            Section {
-                if recentRuns.isEmpty {
-                    emptyRow(
-                        String(localized: "project.runs.empty", defaultValue: "No runs yet"),
-                        systemImage: "bolt"
+                    FamiliarProjectContextRow(
+                        title: String(localized: "project.skills.enabled", defaultValue: "Enabled Skills"),
+                        detail: skillToolScopeSummary,
+                        symbol: "wand.and.stars",
+                        count: enabledSkills.count
                     )
-                } else {
-                    ForEach(recentRuns) { run in
-                        NavigationLink {
-                            FamiliarProjectRunDetailView(run: run)
-                        } label: {
-                            FamiliarProjectRunRow(run: run)
-                        }
-                    }
-                }
-            } header: {
-                FamiliarProjectSectionHeader(
-                    title: String(localized: "project.runs", defaultValue: "Runs"),
-                    count: project.agentRuns.count,
-                    destination: {
-                        FamiliarProjectRunsView(runs: sortedRuns)
-                    }
-                )
-            }
-
-            Section {
-                Button(project.status == .active
-                       ? String(localized: "project.archive")
-                       : String(localized: "project.unarchive")) {
-                    perform {
-                        try FamiliarProjectService().setArchived(
-                            project.status == .active,
-                            for: project,
-                            in: modelContext
-                        )
-                    }
                 }
 
-                Button(String(localized: "project.delete"), role: .destructive) {
-                    confirmsProjectDeletion = true
+                NavigationLink {
+                    FamiliarProjectRunsView(runs: sortedRuns)
+                } label: {
+                    FamiliarProjectContextRow(
+                        title: String(localized: "project.runs", defaultValue: "Runs"),
+                        detail: String(
+                            localized: "project.runs.context_detail",
+                            defaultValue: "Execution history and frozen context"
+                        ),
+                        symbol: "bolt",
+                        count: sortedRuns.count
+                    )
                 }
-                .disabled(project.agentRuns.contains { $0.status == .running })
-            } footer: {
-                Text(String(localized: "project.delete.footer"))
             }
         }
         .navigationTitle(project.name)
@@ -375,7 +290,36 @@ private struct FamiliarProjectDetailView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button(String(localized: "common.edit"), action: onEdit)
+                Menu {
+                    Button(action: onEdit) {
+                        Label(String(localized: "common.edit"), systemImage: "pencil")
+                    }
+                    Button {
+                        perform {
+                            try FamiliarProjectService().setArchived(
+                                project.status == .active,
+                                for: project,
+                                in: modelContext
+                            )
+                        }
+                    } label: {
+                        Label(
+                            project.status == .active
+                                ? String(localized: "project.archive")
+                                : String(localized: "project.unarchive"),
+                            systemImage: project.status == .active ? "archivebox" : "arrow.uturn.backward"
+                        )
+                    }
+                    Button(role: .destructive) {
+                        confirmsProjectDeletion = true
+                    } label: {
+                        Label(String(localized: "project.delete"), systemImage: "trash")
+                    }
+                    .disabled(project.agentRuns.contains { $0.status == .running })
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .accessibilityLabel(String(localized: "project.actions", defaultValue: "Project Actions"))
             }
         }
         .fileImporter(
@@ -548,37 +492,7 @@ private struct FamiliarProjectDetailView: View {
     private var sortedConversations: [FamiliarConversation] { project.conversations.sorted { $0.updatedAt > $1.updatedAt } }
     private var sortedRuns: [FamiliarAgentRun] { project.agentRuns.sorted { $0.startedAt > $1.startedAt } }
     private var recentResources: [FamiliarResource] { Array(sortedResources.prefix(3)) }
-    private var recentConversations: [FamiliarConversation] { Array(sortedConversations.prefix(3)) }
     private var recentArtifacts: [FamiliarArtifact] { Array(projectArtifacts.prefix(3)) }
-    private var recentRuns: [FamiliarAgentRun] { Array(sortedRuns.prefix(3)) }
-    private var normalizedPrompt: String { prompt.trimmingCharacters(in: .whitespacesAndNewlines) }
-
-    private func sendPrompt() {
-        let value = normalizedPrompt
-        guard !value.isEmpty else { return }
-        prompt = ""
-        onConversationRequest(.createAndSend(projectID: project.id, prompt: value))
-    }
-
-    private func conversationRow(_ conversation: FamiliarConversation) -> some View {
-        Button {
-            onConversationRequest(.open(conversationID: conversation.id))
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "bubble.left")
-                    .foregroundStyle(FamiliarTheme.accent)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(conversation.title).foregroundStyle(.primary)
-                    Text(conversation.updatedAt, format: .dateTime.month(.abbreviated).day().hour().minute())
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-            }
-        }
-        .buttonStyle(.plain)
-    }
 
     private func resourceRow(_ resource: FamiliarResource) -> some View {
         FamiliarProjectResourceRow(
@@ -686,35 +600,57 @@ private struct FamiliarProjectHero: View {
     let project: FamiliarProject
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Image(systemName: "folder.fill")
-                    .font(.title2)
-                    .foregroundStyle(FamiliarTheme.accent)
-                Text(project.name)
-                    .font(.title2.weight(.semibold))
-                Spacer()
-                if project.status == .archived {
-                    Text(String(localized: "project.archived"))
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                }
-            }
+        VStack(alignment: .leading, spacing: FamiliarSpacing.medium) {
             if !project.summary.isEmpty {
                 Text(project.summary)
+                    .font(FamiliarTypography.body)
                     .foregroundStyle(.secondary)
             }
-            VStack(alignment: .leading, spacing: 3) {
-                Text(String(localized: "project.instruction"))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
+                Label(String(localized: "project.instruction"), systemImage: "text.quote")
+                    .font(FamiliarTypography.caption.weight(.semibold))
+                    .foregroundStyle(FamiliarTheme.accent)
                 Text(project.instruction?.text ?? String(localized: "project.instruction.empty"))
-                    .font(.subheadline)
+                    .font(FamiliarTypography.secondary)
                     .foregroundStyle(project.instruction == nil ? .secondary : .primary)
                     .lineLimit(4)
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, FamiliarSpacing.small)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct FamiliarProjectContextRow: View {
+    let title: String
+    let detail: String
+    let symbol: String
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: FamiliarSpacing.medium) {
+            Image(systemName: symbol)
+                .font(.system(size: FamiliarIconSize.standard, weight: .medium))
+                .foregroundStyle(FamiliarTheme.accent)
+                .frame(width: FamiliarControlSize.compactVisual)
+
+            VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
+                Text(title)
+                    .font(FamiliarTypography.body)
+                    .foregroundStyle(.primary)
+                Text(detail)
+                    .font(FamiliarTypography.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: FamiliarSpacing.small)
+
+            Text("\(count)")
+                .font(FamiliarTypography.metadata)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, FamiliarSpacing.xSmall)
     }
 }
 
