@@ -37,7 +37,7 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 
 ## In Progress
 
-Product Convergence v1 的代码与文档 Work Package 已完成静态 Swift 解析、strings plist 校验和 diff 检查。最终 arm64 iOS Simulator build 尚未执行；本轮不会启动 Simulator，也不会声明视觉验收通过。
+Product Convergence v1 的代码与文档 Work Package 已完成静态 Swift 解析、strings plist 校验和完整 diff 检查。最终 Debug arm64 generic iOS Simulator build 已通过，覆盖 Familiar App、Share Extension、Widgets 与现有 FastVLM/MLX 依赖。本轮没有启动 Simulator，也不声明视觉验收通过。
 
 ## Known Problems
 
@@ -53,6 +53,5 @@ Product Convergence v1 的代码与文档 Work Package 已完成静态 Swift 解
 
 ## Next
 
-1. 完成 Product Convergence v1 最终 arm64 iOS Simulator build，修复编译阻塞后推送 integration branch。
-2. 由所有者在真机验收普通 Chat / Project 区分、Project 顶栏归属、Project Home 层级、极端 Dynamic Type、VoiceOver、Reduce Motion、Reduce Transparency 与中英文布局。
-3. 由所有者继续验收 Skills、DeepSeek、EventKit、FastVLM、Share 与系统入口真机路径。
+1. 由所有者在真机验收普通 Chat / Project 区分、Project 顶栏归属、Project Home 层级、极端 Dynamic Type、VoiceOver、Reduce Motion、Reduce Transparency 与中英文布局。
+2. 由所有者继续验收 Skills、DeepSeek、EventKit、FastVLM、Share 与系统入口真机路径。
