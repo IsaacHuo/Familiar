@@ -4,55 +4,6 @@ import SwiftSoup
 nonisolated struct FamiliarWebContentService: Sendable {
     private let client = FamiliarRestrictedHTTPClient()
 
-    func search(query: String, maximumResults: Int) async throws -> (FamiliarWebSearchOutput, [FamiliarSource]) {
-        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedQuery.isEmpty, normalizedQuery.count <= 512 else { throw FamiliarWebError.invalidQuery }
-        let limit = min(max(maximumResults, 1), 10)
-        let endpoint = try FamiliarWebURLPolicy.normalize("https://html.duckduckgo.com/html/")
-        let response = try await client.postForm(endpoint, fields: ["q": normalizedQuery])
-        try validate(response)
-        guard let html = decode(response.body, contentType: response.headers["content-type"]) else {
-            throw FamiliarWebError.malformedResponse
-        }
-        let engine: String
-        let results: [FamiliarWebSearchResult]
-        do {
-            results = try Self.parseDuckDuckGoHTML(html, maximumResults: limit)
-            engine = "duckduckgo_html"
-        } catch FamiliarWebError.searchUnavailable {
-            let liteURL = try FamiliarWebURLPolicy.normalize("https://lite.duckduckgo.com/lite/?q=\(normalizedQuery.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")")
-            let liteResponse = try await client.get(liteURL, bodyLimit: 512_000, redirectLimit: 3)
-            try validate(liteResponse)
-            guard let liteHTML = decode(liteResponse.body, contentType: liteResponse.headers["content-type"]) else {
-                throw FamiliarWebError.malformedResponse
-            }
-            results = try Self.parseDuckDuckGoLiteHTML(liteHTML, maximumResults: limit)
-            engine = "duckduckgo_lite"
-        }
-        let sources = results.compactMap { result -> FamiliarSource? in
-            guard let url = URL(string: result.url) else { return nil }
-            return FamiliarSource(
-                id: result.sourceID,
-                kind: .searchResult,
-                title: result.title,
-                url: url,
-                siteName: url.host,
-                snippet: result.snippet,
-                retrievedAt: Date()
-            )
-        }
-        return (
-            FamiliarWebSearchOutput(
-                query: normalizedQuery,
-                engine: engine,
-                contentTrust: "untrusted_external_content",
-                results: results,
-                truncated: false
-            ),
-            sources
-        )
-    }
-
     func fetch(url value: String) async throws -> (FamiliarWebFetchOutput, FamiliarSource) {
         let url = try FamiliarWebURLPolicy.normalize(value)
         let response = try await client.get(url)

@@ -17,6 +17,7 @@ nonisolated enum FamiliarWebError: LocalizedError, Sendable {
     case malformedResponse
     case httpError(Int)
     case rateLimited
+    case missingSearchAPIKey(String)
     case searchUnavailable
     case noReadableContent
 
@@ -37,8 +38,20 @@ nonisolated enum FamiliarWebError: LocalizedError, Sendable {
         case .malformedResponse: "parse_failed"
         case .httpError: "http_error"
         case .rateLimited: "rate_limited"
+        case .missingSearchAPIKey: "missing_search_api_key"
         case .searchUnavailable: "search_unavailable"
         case .noReadableContent: "no_readable_content"
+        }
+    }
+
+    var isRetryable: Bool {
+        switch self {
+        case .dnsFailed, .timeout, .rateLimited, .searchUnavailable:
+            true
+        case .httpError(let status):
+            status == 429 || (500...599).contains(status)
+        default:
+            false
         }
     }
 
@@ -59,6 +72,8 @@ nonisolated enum FamiliarWebError: LocalizedError, Sendable {
         case .malformedResponse: "网站返回了无法解析的响应。"
         case .httpError(let status): "网站返回 HTTP \(status)。"
         case .rateLimited: "搜索服务暂时限制了请求。"
+        case .missingSearchAPIKey(let provider):
+            String(format: String(localized: "error.web.search_api_key_missing", defaultValue: "Add a %@ API key in Web Search settings first."), provider)
         case .searchUnavailable: "搜索服务当前不可用。"
         case .noReadableContent: "网页没有可读取的正文。"
         }

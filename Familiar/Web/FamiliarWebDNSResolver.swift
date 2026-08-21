@@ -30,12 +30,17 @@ nonisolated struct FamiliarWebDNSResolver: Sendable {
                 }
                 cursor = current.pointee.ai_next
             }
-            let unique = Array(Set(addresses)).sorted()
+            let unique = Self.stableUnique(addresses)
             guard !unique.isEmpty else { throw FamiliarWebError.dnsFailed }
             guard unique.allSatisfy(FamiliarWebURLPolicy.isPublicAddress) else {
                 throw FamiliarWebError.privateNetworkBlocked
             }
             return unique
         }.value
+    }
+
+    static func stableUnique(_ addresses: [String]) -> [String] {
+        var seen: Set<String> = []
+        return addresses.filter { seen.insert($0).inserted }
     }
 }
