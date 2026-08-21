@@ -208,7 +208,7 @@ struct FamiliarWP4Tests {
         )
         let recorder = FamiliarRunPersistenceRecorder()
         recorder.ensureRun(runtimeID: "failed-run", snapshot: snapshot, startedAt: Date(), context: context)
-        recorder.finishRun(runtimeID: "failed-run", status: .failed, reason: "fixture", eventSequence: 1, at: Date(), context: context)
+        recorder.finishRun(runtimeID: "failed-run", outcome: .init(status: .failed, failureKind: .unknown, message: "fixture"), eventSequence: 1, at: Date(), context: context)
         let cancelledSnapshot = try FamiliarProjectContextAssembler.assemble(
             seed: .init(projectID: UUID(), projectName: "P", conversationID: conversation.id, projectInstruction: "Instruction", resources: [contextResource]),
             settings: .defaultValue,
@@ -216,7 +216,7 @@ struct FamiliarWP4Tests {
             toolManifests: []
         )
         recorder.ensureRun(runtimeID: "cancelled-run", snapshot: cancelledSnapshot, startedAt: Date(), context: context)
-        recorder.finishRun(runtimeID: "cancelled-run", status: .cancelled, reason: "fixture", eventSequence: 1, at: Date(), context: context)
+        recorder.finishRun(runtimeID: "cancelled-run", outcome: .cancelled(message: "fixture"), eventSequence: 1, at: Date(), context: context)
         let record = try #require(context.fetch(FetchDescriptor<FamiliarContextSnapshotRecord>()).first { $0.id == snapshot.id })
         let reference = try #require(record.resourceReferences.first)
         #expect(record.run?.status == .failed)

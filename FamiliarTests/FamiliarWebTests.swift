@@ -28,6 +28,25 @@ struct FamiliarWebTests {
         #expect(FamiliarWebURLPolicy.isPublicAddress("2606:4700:4700::1111"))
     }
 
+    @Test("DNS addresses preserve resolver order while removing duplicates")
+    func dnsStableDeduplication() {
+        let addresses = ["2001:db8::1", "1.1.1.1", "2001:db8::1", "8.8.8.8", "1.1.1.1"]
+        #expect(FamiliarWebDNSResolver.stableUnique(addresses) == ["2001:db8::1", "1.1.1.1", "8.8.8.8"])
+    }
+
+    @Test("HTTP parser recognizes complete length and chunked bodies without socket close")
+    func httpResponseCompleteness() throws {
+        let partialLength = Data("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhell".utf8)
+        let completeLength = Data("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello".utf8)
+        #expect(try !FamiliarHTTPParser.isComplete(partialLength, bodyLimit: 100))
+        #expect(try FamiliarHTTPParser.isComplete(completeLength, bodyLimit: 100))
+
+        let partialChunked = Data("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nWiki\r\n0\r\n".utf8)
+        let completeChunked = Data("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nWiki\r\n0\r\n\r\n".utf8)
+        #expect(try !FamiliarHTTPParser.isComplete(partialChunked, bodyLimit: 100))
+        #expect(try FamiliarHTTPParser.isComplete(completeChunked, bodyLimit: 100))
+    }
+
     @Test("DuckDuckGo HTML parser unwraps and deduplicates result URLs")
     func duckDuckGoHTML() throws {
         let html = """

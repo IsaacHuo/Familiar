@@ -23,7 +23,7 @@ private struct FamiliarSnapshotTool: FamiliarTool {
     let manifest: FamiliarToolManifest
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
-        .result(.init(modelContent: "{}", displayContent: "OK"))
+        .result(.init(envelope: try .init(canonicalModelJSON: "{}", presentation: .scalar(.init(summary: "OK", value: "OK")))))
     }
 }
 
@@ -63,7 +63,7 @@ struct FamiliarWP1Tests {
         #expect(FamiliarToolPresentation.symbol(for: "future_tool") == "wrench.and.screwdriver")
     }
 
-    @Test("Run recorder preserves timeline ordering and terminal idempotence")
+    @Test("Run recorder preserves the activity projection and terminal idempotence")
     @MainActor
     func runRecorderLifecycle() throws {
         let container = try FamiliarTestStore.make()
@@ -92,40 +92,39 @@ struct FamiliarWP1Tests {
         )
         recorder.ensureRun(runtimeID: "run", snapshot: snapshot, startedAt: startedAt, context: context)
         recorder.ensureRun(runtimeID: "run", snapshot: snapshot, startedAt: .distantFuture, context: context)
-        recorder.recordCheckpoint(
-            type: .model,
-            runtimeID: "run",
-            eventSequence: 1,
-            summary: "Model",
-            detail: "Started",
-            context: context
-        )
-        let toolEvent = FamiliarToolRunTerminalEvent(
+        let envelope = try FamiliarToolResultEnvelope(canonicalModelJSON: #"{"value":"OK"}"#, presentation: .scalar(.init(summary: "Done", value: "OK")))
+        let completion = FamiliarRuntimeActivityCompletion(
             runID: "run",
             toolCallID: "call",
             toolName: "future_tool",
-            summary: "Tool",
+            effect: .read,
+            assistantTurnID: "run:turn:0",
             detail: "Done",
             confirmation: .notRequired,
             status: .succeeded,
             startedAt: startedAt,
-            finishedAt: finishedAt
+            finishedAt: finishedAt,
+            artifactIdentifier: nil,
+            undoAvailable: false,
+            automaticApprovalRequest: nil
         )
-        #expect(try recorder.recordTool(toolEvent, eventSequence: 2, conversationID: conversation.id, context: context))
-        #expect(try !recorder.recordTool(toolEvent, eventSequence: 2, conversationID: conversation.id, context: context))
-        recorder.finishRun(runtimeID: "run", status: .completed, reason: "completed", eventSequence: 3, at: finishedAt, context: context)
-        recorder.finishRun(runtimeID: "run", status: .completed, reason: "completed", eventSequence: 3, at: finishedAt, context: context)
+        let toolEvent = FamiliarToolResultProduced(runID: "run", toolCallID: "call", toolName: "future_tool", effect: .read, assistantTurnID: "run:turn:0", envelope: envelope, sources: [], webCaptures: [], artifact: nil, producedAt: finishedAt)
+        try recorder.recordActivityCompleted(completion, eventSequence: 1, conversationID: conversation.id, context: context)
+        #expect(try recorder.recordToolResult(toolEvent, eventSequence: 2, conversationID: conversation.id, context: context))
+        #expect(try !recorder.recordToolResult(toolEvent, eventSequence: 2, conversationID: conversation.id, context: context))
+        recorder.finishRun(runtimeID: "run", outcome: .succeeded, eventSequence: 3, at: finishedAt, context: context)
+        recorder.finishRun(runtimeID: "run", outcome: .succeeded, eventSequence: 3, at: finishedAt, context: context)
 
         let runs = try context.fetch(FetchDescriptor<FamiliarAgentRun>())
         let run = try #require(runs.first)
-        let orderedSteps = run.steps.sorted { $0.timelineSequence < $1.timelineSequence }
+        let activities = try context.fetch(FetchDescriptor<FamiliarActivityRecord>())
+        let results = try context.fetch(FetchDescriptor<FamiliarToolResultRecord>())
         #expect(runs.count == 1)
         #expect(run.startedAt == startedAt)
         #expect(run.status == .completed)
         #expect(run.finishedAt == finishedAt)
-        #expect(orderedSteps.map(\.type) == [.model, .tool, .result])
-        #expect(orderedSteps.map(\.timelineSequence) == [5, 6, 7])
-        #expect(run.steps.filter { $0.type == .result }.count == 1)
+        #expect(activities.filter { $0.kind == .tool }.count == 1)
+        #expect(results.count == 1)
         #expect(conversation.updatedAt == finishedAt)
     }
 }

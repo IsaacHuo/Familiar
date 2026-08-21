@@ -6,7 +6,7 @@ import Testing
 
 @Suite("Familiar baseline")
 struct FamiliarBaselineTests {
-    @Test("App dependencies register the current thirteen tools")
+    @Test("App dependencies register the current seventeen tools")
     @MainActor
     func registeredToolNames() async {
         let dependencies = FamiliarAppDependencies()
@@ -16,14 +16,18 @@ struct FamiliarBaselineTests {
             "app_information",
             "artifact_edit",
             "artifact_write",
+            "ask_user",
             "calendar_events",
             "create_calendar_event",
             "create_reminder",
             "current_date_time",
+            "present_insight",
+            "present_recommendation",
             "reminders",
             "resource_list",
             "resource_read",
             "resource_search",
+            "task_plan",
             "web_fetch",
             "web_search"
         ])
@@ -307,18 +311,19 @@ struct FamiliarBaselineTests {
         #expect(policy.decide(manifest: manifest, availability: .available, grant: grant, arguments: "{}", projectID: nil) == .execute)
     }
 
-    @Test("V2 Run and Step persist in the in-memory store") @MainActor
-    func runStepPersistence() throws {
+    @Test("Run and activity projection persist in the in-memory store") @MainActor
+    func runActivityPersistence() throws {
         let container = try FamiliarTestStore.make()
         let conversation = FamiliarConversation()
         let run = FamiliarAgentRun(runtimeID: "run", status: .completed, conversation: conversation)
         run.finishedAt = Date(timeIntervalSince1970: 10)
-        let step = FamiliarAgentStep(type: .tool, eventSequence: 3, timelineSequence: 1, toolCallID: "call", toolName: "tool", summary: "Tool", detail: "Done", confirmation: .confirmed, status: .succeeded, startedAt: .distantPast, finishedAt: .distantFuture, run: run)
+        let activity = FamiliarActivityRecord(activityID: "tool:run:call", runtimeID: "run", assistantTurnID: "turn", kind: .tool, effect: .read, phase: .succeeded, toolName: "tool", toolCallID: "call", summary: "Tool", detail: "Done", sequence: 1, startedAt: .distantPast, endedAt: .distantFuture)
         container.mainContext.insert(conversation)
         container.mainContext.insert(run)
-        container.mainContext.insert(step)
+        container.mainContext.insert(activity)
         try container.mainContext.save()
-        #expect(try container.mainContext.fetch(FetchDescriptor<FamiliarAgentRun>()).first?.steps.count == 1)
+        #expect(try container.mainContext.fetch(FetchDescriptor<FamiliarAgentRun>()).count == 1)
+        #expect(try container.mainContext.fetch(FetchDescriptor<FamiliarActivityRecord>()).first?.activityID == "tool:run:call")
     }
 
     @Test("Cancelling a run resolves a pending confirmation once")

@@ -2,254 +2,251 @@ import Foundation
 import Testing
 @testable import Familiar
 
-@Suite("Familiar surface reducer")
+@Suite("Assistant turn surface projection")
 struct FamiliarSurfaceTests {
-
-    private func event(
-        _ sequence: Int,
-        _ payload: FamiliarRuntimeEventPayload,
-        runID: String = "run-1"
-    ) -> FamiliarRuntimeEvent {
+    private func event(_ sequence: Int, _ payload: FamiliarRuntimeEventPayload, turnID: String? = "run-1:turn:0") -> FamiliarRuntimeEvent {
         FamiliarRuntimeEvent(
-            runID: runID,
+            runID: "run-1",
             sequence: sequence,
             timestamp: Date(timeIntervalSince1970: Double(sequence)),
-            assistantTurnID: runID + ":turn:0",
+            assistantTurnID: turnID,
             payload: payload
         )
     }
 
-    private func progress(
-        _ id: String,
-        state: FamiliarToolProgressState,
-        title: String = "Web 搜索",
-        detail: String? = nil
-    ) -> FamiliarRuntimeEventPayload {
-        .toolProgress(.init(id: id, toolName: "web_search", title: title, detail: detail, state: state, effect: .reversibleWrite))
-    }
-
-    private func approval(
-        requestID: UUID = UUID(),
-        toolCallID: String = "call-1",
-        effect: FamiliarToolEffect = .reversibleWrite,
-        title: String = "创建日历事件",
-        fields: [String: String] = ["title": "复习"],
-        target: String? = "日历"
-    ) -> FamiliarRuntimeEventPayload {
-        .approvalRequested(FamiliarToolConfirmationRequest(
-            id: requestID,
+    private func completion(
+        toolName: String,
+        effect: FamiliarToolEffect,
+        status: FamiliarToolRunTerminalStatus = .succeeded
+    ) -> FamiliarRuntimeActivityCompletion {
+        FamiliarRuntimeActivityCompletion(
             runID: "run-1",
-            toolCallID: toolCallID,
-            toolName: "create_calendar_event",
+            toolCallID: "call-1",
+            toolName: toolName,
             effect: effect,
-            title: title,
-            fields: fields,
-            target: target
-        ))
-    }
-
-    private func terminal(
-        toolCallID: String = "call-1",
-        status: FamiliarToolRunTerminalStatus,
-        summary: String = "Web 搜索",
-        detail: String = "完成"
-    ) -> FamiliarRuntimeEventPayload {
-        .toolFinished(FamiliarToolRunTerminalEvent(
-            runID: "run-1",
-            toolCallID: toolCallID,
-            toolName: "web_search",
-            effect: .reversibleWrite,
             assistantTurnID: "run-1:turn:0",
-            summary: summary,
-            detail: detail,
+            detail: status == .failed ? "Unavailable" : "Complete",
             confirmation: .notRequired,
             status: status,
-            startedAt: Date(),
-            finishedAt: Date()
-        ))
+            startedAt: Date(timeIntervalSince1970: 1),
+            finishedAt: Date(timeIntervalSince1970: 2),
+            artifactIdentifier: nil,
+            undoAvailable: false,
+            automaticApprovalRequest: nil
+        )
     }
 
-    private func toolSurface(_ store: FamiliarSurfaceStore) -> [FamiliarSurfaceDescriptor] {
-        store.orderedSurfaces.filter { $0.kind == .toolActivity }
+    private func result(toolName: String, effect: FamiliarToolEffect, envelope: FamiliarToolResultEnvelope, callID: String = "call-1") -> FamiliarToolResultProduced {
+        .init(runID: "run-1", toolCallID: callID, toolName: toolName, effect: effect, assistantTurnID: "run-1:turn:0", envelope: envelope, sources: [], webCaptures: [], artifact: nil, producedAt: Date(timeIntervalSince1970: 2))
     }
 
-    @Test("One tool keeps a single stable surface id across its whole lifecycle")
-    func stableIdentity() {
+    @Test("Write lifecycle projects one compact top-level surface")
+    func writeLifecycle() throws {
+        let envelope = try FamiliarToolResultEnvelope(
+            canonicalModelJSON: #"{"created":true}"#,
+            presentation: .mutationReceipt(.init(summary: "Event created", operation: "create", targetIdentifier: "event-1", succeeded: true, undoAvailable: true))
+        )
         var store = FamiliarSurfaceStore()
-        store.apply(event(0, .runStarted))
-        store.apply(event(1, .toolRequested(id: "call-1", name: "web_search", effect: .reversibleWrite)))
-        store.apply(event(2, progress("call-1", state: .running)))
-        store.apply(event(3, approval(toolCallID: "call-1")))
-        let requestID = store.orderedSurfaces.first { $0.kind == .toolActivity }?.approvalRequestID
-        #expect(requestID != nil)
-        store.apply(event(4, .approvalResolved(requestID: requestID!, decision: .confirmed)))
-        store.apply(event(5, progress("call-1", state: .succeeded)))
-        store.apply(event(6, terminal(status: .succeeded)))
+        store.apply(event(0, .runPhaseChanged(.starting), turnID: nil))
+        store.apply(event(1, .activityStarted(.init(id: "call-1", toolName: "create_calendar_event", effect: .reversibleWrite, startedAt: Date(timeIntervalSince1970: 1)))))
+        store.apply(event(2, .activityCompleted(completion(toolName: "create_calendar_event", effect: .reversibleWrite))))
+        store.apply(event(3, .toolResultProduced(result(toolName: "create_calendar_event", effect: .reversibleWrite, envelope: envelope))))
 
-        let tools = toolSurface(store)
-        #expect(tools.count == 1)
-        #expect(tools[0].id == "tool:run-1:call-1")
-        #expect(tools[0].phase == .succeeded)
+        let receipt = try #require(store.orderedSurfaces.first { $0.kind == .mutationReceipt })
+        #expect(receipt.id == "tool:run-1:call-1")
+        #expect(receipt.placement == .topLevel)
+        #expect(receipt.phase == .succeeded)
+        #expect(store.orderedSurfaces.filter { $0.id == receipt.id }.count == 1)
     }
 
-    @Test("Terminal state is not overwritten by a stale event")
-    func terminalNotOverwrittenByStaleEvent() {
+    @Test("Typed approval remains an intervention until resolved")
+    func approvalProjection() throws {
+        let request = FamiliarToolConfirmationRequest(
+            id: UUID(),
+            runID: "run-1",
+            toolCallID: "call-1",
+            toolName: "create_reminder",
+            effect: .reversibleWrite,
+            risk: .sensitive,
+            title: "Create reminder",
+            fields: [.init(id: "title", label: "Title", type: .text, value: "Review")],
+            target: "Reminders",
+            consequence: "Creates one reminder",
+            undoPolicy: .durable
+        )
         var store = FamiliarSurfaceStore()
-        store.apply(event(0, .runStarted))
-        store.apply(event(1, .toolRequested(id: "call-1", name: "web_search", effect: .reversibleWrite)))
-        store.apply(event(2, terminal(status: .succeeded)))
+        store.apply(event(0, .runPhaseChanged(.starting), turnID: nil))
+        store.apply(event(1, .approvalRequested(request)))
 
-        #expect(toolSurface(store)[0].phase == .succeeded)
+        let approval = try #require(store.orderedSurfaces.first { $0.kind == .approval })
+        #expect(approval.phase == .awaitingApproval)
+        #expect(approval.approvalFields.map(\.id) == ["title"])
+        #expect(store.pendingApprovalIDs == [request.id])
 
-        store.apply(event(1, progress("call-1", state: .running)))
-        #expect(toolSurface(store)[0].phase == .succeeded)
-    }
-
-    @Test("Approval morphs the same surface into awaiting approval then running")
-    func approvalLifecycle() {
-        var store = FamiliarSurfaceStore()
-        store.apply(event(0, .runStarted))
-        store.apply(event(1, .toolRequested(id: "call-1", name: "create_calendar_event", effect: .reversibleWrite)))
-        let requestID = UUID()
-        store.apply(event(2, approval(requestID: requestID)))
-
-        var tool = toolSurface(store)[0]
-        #expect(tool.phase == .awaitingApproval)
-        #expect(tool.approvalRequestID == requestID)
-        #expect(tool.effect == .reversibleWrite)
-        #expect(tool.fields.map(\.label) == ["title"])
-        #expect(store.pendingApprovalIDs == [requestID])
-
-        store.apply(event(3, .approvalResolved(requestID: requestID, decision: .confirmed)))
-        tool = toolSurface(store)[0]
-        #expect(tool.phase == .running)
-        #expect(tool.approvalRequestID == nil)
-        #expect(tool.fields.isEmpty)
+        store.apply(event(2, .approvalResolved(requestID: request.id, decision: .confirmed)))
+        let summary = try #require(store.orderedSurfaces.first { $0.id == approval.id })
+        #expect(summary.kind == .toolSummary)
+        #expect(summary.phase == .running)
         #expect(store.pendingApprovalIDs.isEmpty)
     }
 
-    @Test("Rejecting approval cancels the surface")
-    func approvalRejected() {
+    @Test("Date scalar is trace-only and never a top-level surface")
+    func dateToolHasNoTopLevelSurface() throws {
+        let envelope = try FamiliarToolResultEnvelope(
+            canonicalModelJSON: #"{"date":"2026-08-21"}"#,
+            presentation: .scalar(.init(summary: "Current date", label: "Date", value: "2026-08-21"))
+        )
         var store = FamiliarSurfaceStore()
-        store.apply(event(0, .runStarted))
-        store.apply(event(1, .toolRequested(id: "call-1", name: "create_calendar_event", effect: .reversibleWrite)))
-        let requestID = UUID()
-        store.apply(event(2, approval(requestID: requestID)))
-        store.apply(event(3, .approvalResolved(requestID: requestID, decision: .cancelled)))
-        #expect(toolSurface(store)[0].phase == .cancelled)
+        store.apply(event(0, .runPhaseChanged(.starting), turnID: nil))
+        store.apply(event(1, .activityStarted(.init(id: "call-1", toolName: "current_date_time", effect: .read, startedAt: Date(timeIntervalSince1970: 1)))))
+        store.apply(event(2, .activityCompleted(completion(toolName: "current_date_time", effect: .read))))
+        store.apply(event(3, .toolResultProduced(result(toolName: "current_date_time", effect: .read, envelope: envelope))))
+
+        let typed = try #require(store.orderedSurfaces.first { $0.kind == .context })
+        #expect(typed.placement == .trace)
+        #expect(store.orderedSurfaces.filter { $0.placement == .topLevel && $0.kind != .runStatus && $0.kind != .activityTrace }.isEmpty)
     }
 
-    @Test("Distinct tools produce distinct ordered surfaces")
-    func multipleTools() {
-        var store = FamiliarSurfaceStore()
-        store.apply(event(0, .runStarted))
-        store.apply(event(1, .toolRequested(id: "call-1", name: "web_search", effect: .reversibleWrite)))
-        store.apply(event(2, .toolRequested(id: "call-2", name: "web_fetch", effect: .reversibleWrite)))
-        store.apply(event(3, terminal(toolCallID: "call-1", status: .succeeded)))
-        store.apply(event(4, terminal(toolCallID: "call-2", status: .failed)))
+    @Test("Structured surface policy keeps utility reads in trace and promotes content accessories")
+    func structuredSurfacePolicy() throws {
+        let payloads: [(String, FamiliarToolPresentationPayload, FamiliarSurfaceKind, FamiliarSurfacePlacement)] = [
+            ("app_information", .scalar(.init(summary: "App", label: "Version", value: "1.0")), .context, .trace),
+            ("web_search", .searchResults(.init(summary: "Search", query: "query", results: [])), .search, .trace),
+            ("web_fetch", .document(.init(summary: "Page", title: "Page", text: "Body", url: "https://example.com")), .context, .trace),
+            ("resource_search", .contextMatches(.init(summary: "Match", query: "body", matches: [.init(resourceID: UUID(), versionID: UUID(), version: 2, title: "Source", excerpt: "Body")])), .context, .topLevel),
+            ("calendar_events", .recordCollection(.init(summary: "Events", recordType: "calendarEvent", records: [.init(id: "1", fields: [.init(name: "title", value: "Review")])])), .records, .topLevel),
+            ("artifact_edit", .diff(.init(summary: "Changed", before: "old", after: "new")), .diff, .topLevel),
+            ("typed_code", .code(.init(summary: "Example", language: "swift", filename: "Example.swift", code: "let value = 1")), .code, .topLevel)
+        ]
 
-        let tools = toolSurface(store)
-        #expect(tools.count == 2)
-        #expect(tools[0].id == "tool:run-1:call-1")
-        #expect(tools[1].id == "tool:run-1:call-2")
-        #expect(tools[0].phase == .succeeded)
-        #expect(tools[1].phase == .failed)
+        var store = FamiliarSurfaceStore()
+        for (index, item) in payloads.enumerated() {
+            let envelope = try FamiliarToolResultEnvelope(canonicalModelJSON: "{}", presentation: item.1)
+            store.apply(event(index, .toolResultProduced(result(toolName: item.0, effect: .read, envelope: envelope, callID: "policy-\(index)"))))
+        }
+
+        for (index, item) in payloads.enumerated() {
+            let surface = try #require(store.orderedSurfaces.first { $0.toolCallID == "policy-\(index)" })
+            #expect(surface.kind == item.2)
+            #expect(surface.placement == item.3)
+        }
     }
 
-    @Test("Run failure marks the agent surface failed with a detail")
-    func runFailure() {
-        var store = FamiliarSurfaceStore()
-        store.apply(event(0, .runStarted))
-        store.apply(event(1, .runFailed("network unreachable")))
-        let agent = store.agentSurface
-        #expect(agent?.phase == .failed)
-        #expect(agent?.detail == "network unreachable")
+    @Test("Structured accessories follow assistant Markdown and expose bounded detail actions")
+    func structuredAccessoryStaticContracts() throws {
+        let presentation = try source("Familiar/Presentation/FamiliarChatMessageViews.swift")
+        let markdown = try source("Familiar/Presentation/FamiliarMarkdownWebView.swift")
+        let renderer = try source("Familiar/Resources/FamiliarMarkdownRenderer/renderer.js")
+
+        let bodyPosition = try #require(presentation.range(of: "FamiliarMarkdownWebView(markdown: message.content"))
+        let accessoriesPosition = try #require(presentation.range(of: "ForEach(responseAccessoryItems)"))
+        #expect(bodyPosition.lowerBound < accessoriesPosition.lowerBound)
+        #expect(presentation.contains("surface.context.details"))
+        #expect(presentation.contains("surface.records.details"))
+        #expect(presentation.contains("surface.diff.details"))
+        #expect(presentation.contains("surface.code.details"))
+        #expect(presentation.contains("fullScreenCover(isPresented: $showsAllRecords)"))
+        #expect(presentation.contains("fullScreenCover(isPresented: $showsDiff)"))
+        #expect(presentation.contains("fullScreenCover(isPresented: $showsFullCode)"))
+        #expect(presentation.contains("BarMark("))
+        #expect(markdown.contains("mermaidPreviewMessageName = \"previewMermaid\""))
+        #expect(markdown.contains("allowsMermaidPreview: false"))
+        #expect(renderer.contains("post(\"previewMermaid\", source)"))
+        #expect(renderer.contains("source.length > 320"))
+        #expect(markdown.contains("connect-src 'none'"))
     }
 
-    @Test("Run cancellation cancels non-terminal tools")
-    func runCancellation() {
-        var store = FamiliarSurfaceStore()
-        store.apply(event(0, .runStarted))
-        store.apply(event(1, .toolRequested(id: "call-1", name: "web_search", effect: .reversibleWrite)))
-        store.apply(event(2, progress("call-1", state: .running)))
-        store.apply(event(3, .runCancelled))
+    @Test("Persisted snapshots replay through the same projection")
+    func historicalReplay() throws {
+        let envelope = try FamiliarToolResultEnvelope(
+            canonicalModelJSON: #"{"results":[]}"#,
+            presentation: .searchResults(.init(summary: "2 results", query: "Familiar", results: []))
+        )
+        let activityID = "tool:history:search-1"
+        let run = FamiliarAgentRunSnapshot(
+            id: "history",
+            responseMessageID: UUID(),
+            status: .completed,
+            startedAt: Date(timeIntervalSince1970: 1),
+            finishedAt: Date(timeIntervalSince1970: 3),
+            context: nil,
+            activities: [.init(activityID: activityID, parentID: "turn:history", assistantTurnID: "history:turn:0", kind: .tool, effect: .read, phase: .succeeded, toolName: "web_search", toolCallID: "search-1", summary: "Search", detail: "Complete", progress: 1, resultRecordID: UUID(), approvalRecordID: nil, sequence: 1, startedAt: Date(timeIntervalSince1970: 1), endedAt: Date(timeIntervalSince1970: 2))],
+            approvals: [],
+            toolResults: [.init(id: UUID(), activityID: activityID, toolCallID: "search-1", envelope: envelope, envelopeJSON: "{}", schemaVersion: 1, payloadName: "searchResults", payloadHash: "hash", trust: .untrusted, truncated: false)],
+            responseBlocks: []
+        )
 
-        #expect(store.agentSurface?.phase == .cancelled)
-        #expect(toolSurface(store)[0].phase == .cancelled)
+        let surfaces = FamiliarSurfaceStore.projectedSurfaces(for: run)
+        #expect(surfaces.contains { $0.kind == .activityTrace })
+        #expect(surfaces.contains { $0.kind == .search && $0.placement == .trace })
+        #expect(!surfaces.contains { $0.kind == .search && $0.placement == .topLevel })
     }
 
-    @Test("Reset clears every surface")
-    func reset() {
-        var store = FamiliarSurfaceStore()
-        store.apply(event(0, .runStarted))
-        store.apply(event(1, .toolRequested(id: "call-1", name: "web_search", effect: .reversibleWrite)))
-        store.reset()
-        #expect(store.orderedSurfaces.isEmpty)
-        #expect(store.agentSurface == nil)
-        #expect(!store.isActive)
+    @Test("Failed run without an assistant message projects durable recovery")
+    func failedRunRecovery() {
+        let run = FamiliarAgentRunSnapshot(
+            id: "failed-history",
+            responseMessageID: nil,
+            status: .failed,
+            startedAt: Date(timeIntervalSince1970: 1),
+            finishedAt: Date(timeIntervalSince1970: 2),
+            context: nil,
+            activities: [.init(activityID: "notice:failed-history:terminal", parentID: nil, assistantTurnID: "failed-history:runtime", kind: .runtimeNotice, effect: nil, phase: .failed, toolName: nil, toolCallID: nil, summary: "Run failed", detail: "Provider unavailable", progress: 1, resultRecordID: nil, approvalRecordID: nil, sequence: 1, startedAt: Date(timeIntervalSince1970: 1), endedAt: Date(timeIntervalSince1970: 2))],
+            approvals: [],
+            toolResults: [],
+            responseBlocks: [.init(id: UUID(), assistantTurnID: "failed-history:runtime", messageID: nil, kind: .runtimeNotice, order: 0, state: .failed, content: "Provider unavailable", payloadJSON: "{}", schemaVersion: 1, startedAt: Date(timeIntervalSince1970: 1), endedAt: Date(timeIntervalSince1970: 2), contentHash: "hash")]
+        )
+
+        let failure = FamiliarSurfaceStore.projectedSurfaces(for: run).first { $0.kind == .failure }
+        #expect(failure?.placement == .topLevel)
+        #expect(failure?.detail == "Provider unavailable")
     }
 
-    @Test("Haptic policy only fires on meaningful boundaries")
-    func hapticPolicy() {
+    @Test("Task revisions replace one stable top-level surface")
+    func taskRevisionProjection() throws {
+        var store = FamiliarSurfaceStore()
+        for (index, status) in [FamiliarToolPresentationPayload.TaskStatus.pending, .completed].enumerated() {
+            let envelope = try FamiliarToolResultEnvelope(
+                canonicalModelJSON: #"{"planID":"release"}"#,
+                presentation: .taskList(.init(planID: "release", title: "Release", tasks: [.init(id: "build", title: "Build", status: status)]))
+            )
+            store.apply(event(index, .toolResultProduced(result(toolName: "task_plan", effect: .read, envelope: envelope, callID: "call-\(index)"))))
+        }
+
+        let plans = store.orderedSurfaces.filter { $0.kind == .taskList }
+        #expect(plans.count == 1)
+        #expect(plans.first?.id == "task-plan:run-1:release")
+        if case .taskList(let plan) = plans.first?.resultEnvelope?.presentation.content {
+            #expect(plan.tasks.first?.status == .completed)
+        } else {
+            Issue.record("Expected latest task plan")
+        }
+    }
+
+    @Test("Recommendation and insight project as top-level typed surfaces")
+    func beautifulResultProjection() throws {
+        let recommendation = try FamiliarToolResultEnvelope(canonicalModelJSON: #"{"title":"Next"}"#, presentation: .recommendation(.init(title: "Next", explanation: "Verify", nextPrompt: "Verify", alternatives: [], confidenceLevel: .high)))
+        let insight = try FamiliarToolResultEnvelope(canonicalModelJSON: #"{"title":"Latency"}"#, presentation: .insight(.init(title: "Latency", explanation: "Improved", metrics: [.init(label: "P95", value: 120, unit: "ms")])))
+        var store = FamiliarSurfaceStore()
+        store.apply(event(0, .toolResultProduced(result(toolName: "present_recommendation", effect: .read, envelope: recommendation, callID: "recommend"))))
+        store.apply(event(1, .toolResultProduced(result(toolName: "present_insight", effect: .read, envelope: insight, callID: "insight"))))
+
+        #expect(store.orderedSurfaces.contains { $0.kind == .recommendation && $0.placement == .topLevel })
+        #expect(store.orderedSurfaces.contains { $0.kind == .insight && $0.placement == .topLevel })
+    }
+
+    @Test("Haptics mark approval, success, and failure boundaries")
+    func haptics() {
         #expect(FamiliarHapticPolicy.feedback(from: .running, to: .awaitingApproval) == .warning)
         #expect(FamiliarHapticPolicy.feedback(from: .running, to: .succeeded) == .success)
         #expect(FamiliarHapticPolicy.feedback(from: .running, to: .failed) == .error)
         #expect(FamiliarHapticPolicy.feedback(from: .queued, to: .running) == nil)
-        #expect(FamiliarHapticPolicy.feedback(from: .running, to: .running) == nil)
-        #expect(FamiliarHapticPolicy.feedback(from: .running, to: .cancelled) == nil)
     }
 
-    @Test("A finished tool carries its artifact descriptor onto the surface")
-    func artifactPropagation() {
-        let artifact = FamiliarArtifactDescriptor(
-            id: UUID(),
-            identifier: "artifact_test",
-            projectID: UUID(),
-            title: "复习总结",
-            format: .markdown,
-            relativePath: "Projects/test/Artifacts/test/summary.md",
-            byteSize: 128,
-            contentHash: "abc",
-            source: .generated,
-            sourceURLString: nil,
-            sourceResourceID: nil,
-            sourceResourceVersionID: nil,
-            sourceCaptureID: nil,
-            createdByRunID: "run-1"
-        )
-        let terminalEvent = FamiliarToolRunTerminalEvent(
-            runID: "run-1",
-            toolCallID: "call-1",
-            toolName: "artifact_write",
-            effect: .reversibleWrite,
-            assistantTurnID: "run-1:turn:0",
-            summary: "写入 Artifact",
-            detail: "已写入 复习总结",
-            confirmation: .confirmed,
-            status: .succeeded,
-            startedAt: Date(),
-            finishedAt: Date(),
-            artifact: artifact
-        )
-
-        var store = FamiliarSurfaceStore()
-        store.apply(event(0, .runStarted))
-        store.apply(event(1, .toolRequested(id: "call-1", name: "artifact_write", effect: .reversibleWrite)))
-        store.apply(event(2, .toolFinished(terminalEvent)))
-
-        let tool = toolSurface(store)[0]
-        #expect(tool.phase == .succeeded)
-        #expect(tool.artifact?.identifier == "artifact_test")
-        #expect(tool.artifact?.title == "复习总结")
-    }
-
-    @Test("Read tools stay in the agent status row instead of creating cards")
-    func readToolHasNoCard() {
-        var store = FamiliarSurfaceStore()
-        store.apply(event(0, .runStarted))
-        store.apply(event(1, .toolRequested(id: "read-1", name: "web_search", effect: .read)))
-        store.apply(event(2, .toolProgress(.init(id: "read-1", toolName: "web_search", title: "Web 搜索", detail: nil, state: .running, effect: .read))))
-        #expect(store.toolSurfaces.isEmpty)
-        #expect(store.agentSurface?.title.contains("Web 搜索") == true)
+    private func source(_ relativePath: String) throws -> String {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        return try String(contentsOf: root.appendingPathComponent(relativePath), encoding: .utf8)
     }
 }

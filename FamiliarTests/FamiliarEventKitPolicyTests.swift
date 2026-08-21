@@ -30,7 +30,7 @@ private actor FamiliarFakeEventKitService: FamiliarEventKitServicing {
     }
     func undoCommit(idempotencyKey: String) throws -> FamiliarToolExecutionResult {
         guard commits[idempotencyKey] != nil, undone.insert(idempotencyKey).inserted else { throw FamiliarEventKitError.undoUnavailable }
-        return .init(modelContent: #"{"undone":true}"#, displayContent: "已撤销")
+        return .init(envelope: try .init(canonicalModelJSON: #"{"undone":true}"#, presentation: .mutationReceipt(.init(summary: "已撤销", operation: "undo", targetIdentifier: nil, succeeded: true, undoAvailable: false))))
     }
     func setFailsCommit() { failsCommit = true }
 }

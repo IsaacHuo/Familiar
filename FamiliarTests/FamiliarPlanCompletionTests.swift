@@ -64,7 +64,7 @@ struct FamiliarPlanCompletionTests {
             targetKey: "calendar:default",
             evidence: "test"
         )
-        #expect(runtime.matchingAuthorization(manifest: manifest, arguments: "{\"title\":\"A\"}", projectID: nil, targetKey: "calendar:default"))
-        #expect(!runtime.matchingAuthorization(manifest: manifest, arguments: "{\"title\":\"B\"}", projectID: nil, targetKey: "calendar:default"))
+        #expect(runtime.matchingAuthorizationScope(manifest: manifest, arguments: "{\"title\":\"A\"}", projectID: nil, targetKey: "calendar:default") == .session)
+        #expect(runtime.matchingAuthorizationScope(manifest: manifest, arguments: "{\"title\":\"B\"}", projectID: nil, targetKey: "calendar:default") == nil)
     }
 }

@@ -237,7 +237,7 @@ private actor FamiliarBenchmarkEventKitService: FamiliarEventKitServicing {
         guard commits[idempotencyKey] != nil else {
             throw FamiliarEventKitError.undoUnavailable
         }
-        return .init(modelContent: #"{"undone":true}"#, displayContent: "Undone")
+        return .init(envelope: try .init(canonicalModelJSON: #"{"undone":true}"#, presentation: .mutationReceipt(.init(summary: "Undone", operation: "undo", targetIdentifier: nil, succeeded: true, undoAvailable: false))))
     }
 
     func commitCount() -> Int {
@@ -279,8 +279,10 @@ private struct FamiliarBenchmarkWebSearchTool: FamiliarTool {
             retrievedAt: Date(timeIntervalSince1970: 0)
         )
         return .result(.init(
-            modelContent: #"{"results":[{"url":"https://example.com/activity"}]}"#,
-            displayContent: "Found 1 result",
+            envelope: try .init(
+                canonicalModelJSON: #"{"results":[{"url":"https://example.com/activity"}]}"#,
+                presentation: .searchResults(.init(summary: "Found 1 result", query: input.query, results: [.init(id: source.id, title: source.title, url: source.url.absoluteString, snippet: source.snippet)]))
+            ),
             sources: [source]
         ))
     }
@@ -314,8 +316,10 @@ private struct FamiliarBenchmarkWebFetchTool: FamiliarTool {
             retrievedAt: Date(timeIntervalSince1970: 0)
         )
         return .result(.init(
-            modelContent: #"{"text":"The activity starts on August 20 at 10:00."}"#,
-            displayContent: "Read fixture activity",
+            envelope: try .init(
+                canonicalModelJSON: #"{"text":"The activity starts on August 20 at 10:00."}"#,
+                presentation: .document(.init(summary: "Read fixture activity", title: source.title, text: "The activity starts on August 20 at 10:00.", url: source.url.absoluteString))
+            ),
             sources: [source]
         ))
     }
@@ -423,15 +427,15 @@ struct FamiliarBenchmarkTests {
         let requests = await recorder.snapshot()
         let commitCount = await eventKit.commitCount()
         let toolSequence = events.compactMap { event in
-            if case .toolRequested(_, let name, _) = event.payload { return name }
+            if case .toolInvocationRequested(_, let name, _, _) = event.payload { return name }
             return nil
         }
         let approvalSequence = events.compactMap { event in
             if case .approvalRequested(let request) = event.payload { return request.toolName }
             return nil
         }
-        let terminals = events.compactMap { event -> FamiliarToolRunTerminalEvent? in
-            if case .toolFinished(let terminal) = event.payload { return terminal }
+        let terminals = events.compactMap { event -> FamiliarRuntimeActivityCompletion? in
+            if case .activityCompleted(let terminal) = event.payload { return terminal }
             return nil
         }
         let response = events.compactMap { event -> FamiliarCompletedResponse? in
@@ -452,8 +456,8 @@ struct FamiliarBenchmarkTests {
         if response == nil {
             failures.append("missing completed response")
         }
-        if !events.contains(where: { if case .runCompleted = $0.payload { return true }; return false }) {
-            failures.append("missing runCompleted")
+        if !events.contains(where: { if case .runFinished(let outcome) = $0.payload { return outcome.status == .succeeded }; return false }) {
+            failures.append("missing successful runFinished")
         }
 
         switch scenario {

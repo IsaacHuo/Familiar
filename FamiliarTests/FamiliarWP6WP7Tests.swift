@@ -38,9 +38,9 @@ struct FamiliarWP6WP7Tests {
         let service = FamiliarRunRecoveryService()
         let grant = FamiliarAuthorizationGrant(id: UUID(), userAction: "share", source: .shareExtension, capabilityID: "fixture", capabilityVersion: "1", argumentsHash: "hash", projectID: nil, expiresAt: Date().addingTimeInterval(60), singleUse: true, evidence: "provenance", consumedAt: nil, state: .issued)
         #expect(throws: FamiliarRunRecoveryService.Error.self) { try service.issueGrant(grant, in: container.mainContext) }
-        let invocation = try service.beginInvocation(idempotencyKey: "run:call", runtimeID: "run", toolName: "fixture", arguments: "{}", in: container.mainContext)
+        let invocation = try service.beginInvocation(idempotencyKey: "run:call", runtimeID: "run", toolCallID: "call", toolName: "fixture", arguments: "{}", assistantTurnID: "run:turn:0", activityID: "tool:run:call", in: container.mainContext)
         try service.setInvocationState(invocation, state: .committed, resultReference: "artifact", in: container.mainContext)
-        #expect(throws: FamiliarRunRecoveryService.Error.self) { try service.beginInvocation(idempotencyKey: "run:call", runtimeID: "run", toolName: "fixture", arguments: "{}", in: container.mainContext) }
+        #expect(throws: FamiliarRunRecoveryService.Error.self) { try service.beginInvocation(idempotencyKey: "run:call", runtimeID: "run", toolCallID: "call", toolName: "fixture", arguments: "{}", assistantTurnID: "run:turn:0", activityID: "tool:run:call", in: container.mainContext) }
     }
 
     @Test("Interrupted runs are finalized and in-flight invocations cancelled")
@@ -55,7 +55,7 @@ struct FamiliarWP6WP7Tests {
         try context.save()
 
         let service = FamiliarRunRecoveryService()
-        let invocation = try service.beginInvocation(idempotencyKey: "run:call", runtimeID: "run", toolName: "tool", arguments: "{}", in: context)
+        let invocation = try service.beginInvocation(idempotencyKey: "run:call", runtimeID: "run", toolCallID: "call", toolName: "tool", arguments: "{}", assistantTurnID: "run:turn:0", activityID: "tool:run:call", in: context)
         try service.setInvocationState(invocation, state: .approved, in: context)
         let cursor = try service.beginCursor(runtimeID: "run", runID: run.id, contextSnapshotID: UUID(), in: context)
 
