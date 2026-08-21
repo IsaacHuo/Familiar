@@ -10,13 +10,14 @@ final class FamiliarChatController {
     var selectedSkillID: UUID?
     var messages: [FamiliarMessageSnapshot] = []
     var modelSwitches: [FamiliarModelSwitchSnapshot] = []
-    var toolRunRecords: [FamiliarToolRunSnapshot] = []
     var agentRuns: [FamiliarAgentRunSnapshot] = []
     var pendingConfirmations: [FamiliarToolConfirmationRequest] = []
+    var pendingClarifications: [FamiliarClarificationRequest] = []
     var draft = ""
     var draftImages: [FamiliarDraftImage] = []
     var draftAttachments: [FamiliarAttachmentDraft] = []
     var streamingText = ""
+    var streamingReasoningSummary = ""
     var streamingMessageID: UUID?
     var surfaces = FamiliarSurfaceStore()
     var availableUndoKeys: Set<String> = []
@@ -27,6 +28,7 @@ final class FamiliarChatController {
 
     private let dependencies: FamiliarAppDependencies
     private let confirmationCoordinator: FamiliarToolConfirmationCoordinator
+    private let clarificationCoordinator: FamiliarClarificationCoordinator
     private let runRecorder: FamiliarRunPersistenceRecorder
     private let runRecovery: FamiliarRunRecoveryService
     private var runningTask: Task<Void, Never>?
@@ -34,6 +36,7 @@ final class FamiliarChatController {
     init(dependencies: FamiliarAppDependencies) {
         self.dependencies = dependencies
         confirmationCoordinator = dependencies.confirmationCoordinator
+        clarificationCoordinator = dependencies.clarificationCoordinator
         runRecorder = FamiliarRunPersistenceRecorder()
         runRecovery = FamiliarRunRecoveryService()
     }
@@ -109,7 +112,6 @@ final class FamiliarChatController {
             selectedProjectID = project?.id
             messages = []
             modelSwitches = []
-            toolRunRecords = []
             agentRuns = []
             availableUndoKeys = []
             resetTransientRunState()
@@ -130,7 +132,6 @@ final class FamiliarChatController {
         selectedProjectID = project?.id
         messages = []
         modelSwitches = []
-        toolRunRecords = []
         agentRuns = []
         availableUndoKeys = []
         resetTransientRunState()
@@ -152,7 +153,6 @@ final class FamiliarChatController {
                 self.selectedConversationID = nil
                 messages = []
                 modelSwitches = []
-                toolRunRecords = []
                 agentRuns = []
                 availableUndoKeys = []
                 resetTransientRunState()
@@ -225,8 +225,8 @@ final class FamiliarChatController {
             isSending = true
             resetTransientRunState()
             let preflightRunID = "vision-preflight-" + UUID().uuidString
-            surfaces.apply(.init(runID: preflightRunID, sequence: 0, timestamp: Date(), assistantTurnID: nil, payload: .runStarted))
-            surfaces.apply(.init(runID: preflightRunID, sequence: 1, timestamp: Date(), assistantTurnID: nil, payload: .state(.usingTool(String(localized: "vision.status.recognizing", defaultValue: "Recognizing image")))))
+            surfaces.apply(.init(runID: preflightRunID, sequence: 0, timestamp: Date(), assistantTurnID: nil, payload: .runPhaseChanged(.starting)))
+            surfaces.apply(.init(runID: preflightRunID, sequence: 1, timestamp: Date(), assistantTurnID: nil, payload: .runPhaseChanged(.executingActivities(["vision_recognition"]))))
             runningTask = Task { [weak self] in
                 guard let self else { return }
                 do {
@@ -326,7 +326,7 @@ final class FamiliarChatController {
         conversation.currentProviderID = requestSettings.providerID
         conversation.currentModelID = requestSettings.modelID
 
-        let nextSequence = nextTimelineSequence(in: conversation)
+        let nextSequence = nextConversationSequence(in: conversation)
         let messageID = UUID()
         var committedPaths: [String] = []
         do {
@@ -409,30 +409,12 @@ final class FamiliarChatController {
         }
     }
 
-    func cancelSending(in context: ModelContext) {
-        for request in pendingConfirmations {
-            persistToolRecord(
-                FamiliarToolRunTerminalEvent(
-                    runID: request.runID,
-                    toolCallID: request.toolCallID,
-                    toolName: request.toolName,
-                    effect: request.effect,
-                    assistantTurnID: request.runID + ":cancelled",
-                    summary: request.title,
-                    detail: String(localized: "tool.cancelled_by_user"),
-                    confirmation: .cancelled,
-                    status: .cancelled,
-                    startedAt: Date(),
-                    finishedAt: Date()
-                ),
-                eventSequence: Int.max,
-                conversationID: selectedConversationID,
-                context: context
-            )
-        }
+    func cancelSending(in _: ModelContext) {
         pendingConfirmations = []
+        pendingClarifications = []
         runningTask?.cancel()
         Task { await confirmationCoordinator.cancelAll() }
+        Task { await clarificationCoordinator.cancelAll() }
     }
 
     func resolveConfirmation(
@@ -441,6 +423,12 @@ final class FamiliarChatController {
     ) {
         Task {
             _ = await confirmationCoordinator.resolve(requestID: requestID, decision: decision)
+        }
+    }
+
+    func resolveClarification(requestID: UUID, resolution: FamiliarClarificationResolution) {
+        Task {
+            _ = await clarificationCoordinator.resolve(requestID: requestID, resolution: resolution)
         }
     }
 
@@ -476,8 +464,7 @@ final class FamiliarChatController {
         conversation.modelSwitchRecords
             .filter { $0.sequence >= message.sequence }
             .forEach(context.delete)
-        let runsToDelete = conversation.agentRuns
-            .filter { run in run.steps.contains { $0.timelineSequence >= message.sequence } }
+        let runsToDelete = conversation.agentRuns.filter { $0.startedAt >= message.createdAt }
         deleteSkillSnapshots(for: runsToDelete, in: context)
         runsToDelete.forEach(context.delete)
         conversation.updatedAt = Date()
@@ -537,11 +524,75 @@ final class FamiliarChatController {
         conversation.modelSwitchRecords
             .filter { $0.sequence >= userMessage.sequence }
             .forEach(context.delete)
-        let runsToDelete = conversation.agentRuns
-            .filter { run in run.steps.contains { $0.timelineSequence >= userMessage.sequence } }
+        let runsToDelete = conversation.agentRuns.filter { $0.startedAt >= userMessage.createdAt }
         deleteSkillSnapshots(for: runsToDelete, in: context)
         runsToDelete.forEach(context.delete)
         if let providerID = message.providerID, let modelID = message.modelID {
+            settings.providerID = providerID
+            settings.modelID = modelID
+            conversation.currentProviderID = providerID
+            conversation.currentModelID = modelID
+        }
+        conversation.updatedAt = Date()
+        do {
+            try context.save()
+            try FamiliarSettingsStore.save(settings)
+            FamiliarAttachmentStore.remove(relativePaths: attachmentPaths)
+            discardDraftAttachments()
+            draft = prompt
+            draftAttachments = stagedAttachments
+            reloadMessages(in: context)
+            startSending(in: context)
+        } catch {
+            context.rollback()
+            FamiliarAttachmentStore.remove(relativePaths: stagedAttachments.map(\.relativePath))
+            errorMessage = String(format: String(localized: "error.retry_message"), error.localizedDescription)
+        }
+    }
+
+    func retry(runID: String, in context: ModelContext) {
+        guard !isSending,
+              let run = fetchRun(runtimeID: runID, in: context),
+              let conversation = run.conversation
+        else { return }
+        let sortedMessages = conversation.messages.sorted {
+            $0.sequence == $1.sequence ? $0.createdAt < $1.createdAt : $0.sequence < $1.sequence
+        }
+        guard let userMessage = sortedMessages.last(where: { $0.role == .user && $0.createdAt <= run.startedAt }) else { return }
+        let prompt = userMessage.content
+        let providerID = run.contextSnapshot?.providerID
+        let modelID = run.contextSnapshot?.modelID
+        let snapshots = userMessage.attachments.map {
+            FamiliarAttachmentSnapshot(
+                id: $0.id,
+                kind: $0.kind,
+                filename: $0.filename,
+                mimeType: $0.mimeType,
+                relativePath: $0.relativePath,
+                extractedText: $0.extractedText,
+                byteSize: $0.byteSize,
+                extractionEngine: $0.extractionEngine,
+                extractionVersion: $0.extractionVersion,
+                detectedFormat: $0.detectedFormat,
+                usedOCR: $0.usedOCR
+            )
+        }
+        let stagedAttachments: [FamiliarAttachmentDraft]
+        do {
+            stagedAttachments = try stagedCopies(of: snapshots)
+        } catch {
+            errorMessage = error.localizedDescription
+            return
+        }
+
+        let messagesToDelete = conversation.messages.filter { $0.sequence >= userMessage.sequence }
+        let attachmentPaths = messagesToDelete.flatMap { $0.attachments.map(\.relativePath) }
+        messagesToDelete.forEach(context.delete)
+        conversation.modelSwitchRecords.filter { $0.sequence >= userMessage.sequence }.forEach(context.delete)
+        let runsToDelete = conversation.agentRuns.filter { $0.startedAt >= userMessage.createdAt }
+        deleteSkillSnapshots(for: runsToDelete, in: context)
+        runsToDelete.forEach(context.delete)
+        if let providerID, let modelID {
             settings.providerID = providerID
             settings.modelID = modelID
             conversation.currentProviderID = providerID
@@ -579,10 +630,24 @@ final class FamiliarChatController {
         guard let conversation = selectedConversation(in: context) else {
             messages = []
             modelSwitches = []
-            toolRunRecords = []
             agentRuns = []
             return
         }
+        let conversationRuntimeIDs = Set(conversation.agentRuns.map(\.runtimeID))
+        let activityRecords = ((try? context.fetch(FetchDescriptor<FamiliarActivityRecord>())) ?? [])
+            .filter { conversationRuntimeIDs.contains($0.runtimeID) }
+        let approvalRecords = ((try? context.fetch(FetchDescriptor<FamiliarApprovalRecord>())) ?? [])
+            .filter { conversationRuntimeIDs.contains($0.runtimeID) }
+        let resultRecords = ((try? context.fetch(FetchDescriptor<FamiliarToolResultRecord>())) ?? [])
+            .filter { conversationRuntimeIDs.contains($0.runtimeID) }
+        let clarificationRecords = ((try? context.fetch(FetchDescriptor<FamiliarClarificationRecord>())) ?? [])
+            .filter { conversationRuntimeIDs.contains($0.runtimeID) }
+        let blockRecords = ((try? context.fetch(FetchDescriptor<FamiliarResponseBlockRecord>())) ?? [])
+            .filter { conversationRuntimeIDs.contains($0.runtimeID) }
+        let blockSnapshots = blockRecords.map(responseBlockSnapshot)
+        let blocksByMessageID = Dictionary(grouping: blockSnapshots.compactMap { block in
+            block.messageID.map { ($0, block) }
+        }, by: \.0)
         messages = conversation.messages
             .sorted { lhs, rhs in
                 lhs.sequence == rhs.sequence ? lhs.createdAt < rhs.createdAt : lhs.sequence < rhs.sequence
@@ -624,9 +689,15 @@ final class FamiliarChatController {
                                 url: url,
                                 siteName: record.siteName,
                                 snippet: record.snippet,
-                                retrievedAt: record.retrievedAt
+                                retrievedAt: record.retrievedAt,
+                                responseBlockID: record.responseBlockID,
+                                retrievalActivityID: record.retrievalActivityID,
+                                citationOrdinal: record.citationOrdinal
                             )
-                        }
+                        },
+                    responseBlocks: (blocksByMessageID[$0.id] ?? [])
+                        .map(\.1)
+                        .sorted { $0.order < $1.order }
                 )
             }
         modelSwitches = conversation.modelSwitchRecords
@@ -644,27 +715,6 @@ final class FamiliarChatController {
                     createdAt: $0.createdAt
                 )
             }
-        toolRunRecords = conversation.agentRuns.flatMap(\.steps)
-            .filter { $0.type == .tool }
-            .sorted { lhs, rhs in
-                lhs.timelineSequence == rhs.timelineSequence ? lhs.finishedAt < rhs.finishedAt : lhs.timelineSequence < rhs.timelineSequence
-            }
-            .map {
-                FamiliarToolRunSnapshot(
-                    id: $0.id,
-                    runID: $0.run?.runtimeID ?? "",
-                    toolCallID: $0.toolCallID,
-                    toolName: $0.toolName,
-                    summary: $0.summary,
-                    detail: $0.detail,
-                    confirmation: $0.confirmation,
-                    status: $0.status,
-                    sequence: $0.timelineSequence,
-                    startedAt: $0.startedAt,
-                    finishedAt: $0.finishedAt
-                )
-            }
-        let conversationRuntimeIDs = Set(conversation.agentRuns.map(\.runtimeID))
         let skillSnapshotsByRuntimeID = Dictionary(grouping: (
             (try? context.fetch(FetchDescriptor<FamiliarRunSkillSnapshotRecord>())) ?? []
         ).filter { conversationRuntimeIDs.contains($0.runtimeID) }, by: \.runtimeID)
@@ -713,23 +763,94 @@ final class FamiliarChatController {
                     status: run.status,
                     startedAt: run.startedAt,
                     finishedAt: run.finishedAt,
-                    steps: run.steps
-                        .filter { $0.type != .result }
-                        .sorted { $0.eventSequence < $1.eventSequence }
+                    context: contextSummary,
+                    activities: activityRecords
+                        .filter { $0.runtimeID == run.runtimeID }
+                        .sorted { $0.sequence < $1.sequence }
                         .map {
-                            FamiliarAgentStepSnapshot(
-                                id: $0.id,
-                                type: $0.type,
+                            FamiliarActivitySnapshot(
+                                activityID: $0.activityID,
+                                parentID: $0.parentID,
+                                assistantTurnID: $0.assistantTurnID,
+                                kind: $0.kind,
+                                effect: $0.effect,
+                                phase: $0.phase,
                                 toolName: $0.toolName,
+                                toolCallID: $0.toolCallID,
                                 summary: $0.summary,
                                 detail: $0.detail,
-                                status: $0.status,
-                                eventSequence: $0.eventSequence,
+                                progress: $0.progress,
+                                resultRecordID: $0.resultRecordID,
+                                approvalRecordID: $0.approvalRecordID,
+                                sequence: $0.sequence,
                                 startedAt: $0.startedAt,
-                                finishedAt: $0.finishedAt
+                                endedAt: $0.endedAt
                             )
                         },
-                    context: contextSummary
+                    approvals: approvalRecords
+                        .filter { $0.runtimeID == run.runtimeID }
+                        .sorted { $0.requestedAt < $1.requestedAt }
+                        .map { record in
+                            FamiliarApprovalSnapshot(
+                                id: record.id,
+                                activityID: record.activityID,
+                                assistantTurnID: record.assistantTurnID,
+                                toolCallID: record.toolCallID,
+                                toolName: record.toolName,
+                                title: record.title,
+                                fields: (try? JSONDecoder().decode([FamiliarApprovalField].self, from: Data(record.orderedFieldsJSON.utf8))) ?? [],
+                                target: record.target,
+                                effect: record.effect,
+                                risk: record.risk,
+                                consequence: record.consequence,
+                                undoPolicy: record.undoPolicy,
+                                decision: record.decision,
+                                scope: record.scope,
+                                requestedAt: record.requestedAt,
+                                resolvedAt: record.resolvedAt,
+                                automaticAuthorization: record.automaticAuthorization
+                            )
+                        },
+                    clarifications: clarificationRecords
+                        .filter { $0.runtimeID == run.runtimeID }
+                        .sorted { $0.requestedAt < $1.requestedAt }
+                        .map { record in
+                            FamiliarClarificationSnapshot(
+                                id: record.id,
+                                activityID: record.activityID,
+                                assistantTurnID: record.assistantTurnID,
+                                toolCallID: record.toolCallID,
+                                question: record.question,
+                                options: (try? JSONDecoder().decode([FamiliarClarificationOption].self, from: Data(record.optionsJSON.utf8))) ?? [],
+                                allowCustom: record.allowCustom,
+                                state: record.state,
+                                resolution: record.resolutionJSON.flatMap { try? JSONDecoder().decode(FamiliarClarificationResolution.self, from: Data($0.utf8)) },
+                                requestedAt: record.requestedAt,
+                                resolvedAt: record.resolvedAt
+                            )
+                        },
+                    toolResults: resultRecords
+                        .filter { $0.runtimeID == run.runtimeID }
+                        .sorted { $0.createdAt < $1.createdAt }
+                        .map { record in
+                            FamiliarToolResultSnapshot(
+                                id: record.id,
+                                activityID: record.activityID,
+                                toolCallID: record.toolCallID,
+                                envelope: try? JSONDecoder().decode(FamiliarToolResultEnvelope.self, from: Data(record.envelopeJSON.utf8)),
+                                envelopeJSON: record.envelopeJSON,
+                                schemaVersion: record.schemaVersion,
+                                payloadName: record.payloadName,
+                                payloadHash: record.payloadHash,
+                                semanticID: record.semanticID,
+                                revision: record.revision,
+                                trust: record.trust,
+                                truncated: record.truncated
+                            )
+                        },
+                    responseBlocks: blockSnapshots
+                        .filter { block in blockRecords.contains { $0.id == block.id && $0.runtimeID == run.runtimeID } }
+                        .sorted { $0.order < $1.order }
                 )
             }
     }
@@ -745,7 +866,7 @@ final class FamiliarChatController {
             settings = value
             guard let conversation = selectedConversation(in: context) else { return }
             if oldValue.providerID != value.providerID || oldValue.modelID != value.modelID {
-                let nextSequence = nextTimelineSequence(in: conversation)
+                let nextSequence = nextConversationSequence(in: conversation)
                 let record = FamiliarModelSwitchRecord(
                     previousProviderID: conversation.currentProviderID,
                     previousModelID: conversation.currentModelID,
@@ -785,6 +906,11 @@ final class FamiliarChatController {
         }
 
         var activeRunID: UUID?
+        var activeRuntimeID: String?
+        var completedAssistantTurnID: String?
+        var retrievalActivityIDsBySourceID: [String: String] = [:]
+        var runOutcome: FamiliarRunOutcome?
+        var separatesNextReasoningSummary = false
         do {
             let manifests = settings.selectedModel.capabilities.supportsTools
                 ? await dependencies.registry.manifests()
@@ -805,89 +931,149 @@ final class FamiliarChatController {
                 contextSnapshot: contextSnapshot,
                 apiKey: apiKey
             ) {
-                surfaces.apply(event)
-                switch event.payload {
-                case .runStarted:
+                if activeRuntimeID == nil {
+                    activeRuntimeID = event.runID
                     activeRunID = UUID(uuidString: event.runID)
                     runRecorder.ensureRun(runtimeID: event.runID, snapshot: contextSnapshot, startedAt: event.timestamp, context: context)
                     do {
-                        let capabilitySnapshot = FamiliarCapabilitySnapshot(
-                            id: UUID(),
-                            createdAt: contextSnapshot.createdAt,
-                            projectID: contextSnapshot.projectID,
-                            manifests: contextSnapshot.toolManifests
-                        )
-                        try runRecovery.persistCapabilitySnapshot(
-                            capabilitySnapshot,
-                            contextSnapshotID: contextSnapshot.id,
-                            conversationID: conversationID,
-                            in: context
-                        )
-                        _ = try runRecovery.beginCursor(
+                        let capabilitySnapshot = FamiliarCapabilitySnapshot(id: UUID(), createdAt: contextSnapshot.createdAt, projectID: contextSnapshot.projectID, manifests: contextSnapshot.toolManifests)
+                        try runRecovery.persistCapabilitySnapshot(capabilitySnapshot, contextSnapshotID: contextSnapshot.id, conversationID: conversationID, in: context)
+                        _ = try runRecovery.beginCursor(runtimeID: event.runID, runID: activeRunID, contextSnapshotID: contextSnapshot.id, in: context)
+                    } catch {
+                        errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
+                    }
+                }
+                surfaces.apply(event)
+                switch event.payload {
+                case .runPhaseChanged, .assistantTurnStarted:
+                    break
+                case .responseTextDelta(let delta):
+                    streamingText += delta
+                case .reasoningSummaryDelta(let delta):
+                    if separatesNextReasoningSummary, !streamingReasoningSummary.isEmpty {
+                        streamingReasoningSummary += "\n\n"
+                        separatesNextReasoningSummary = false
+                    }
+                    streamingReasoningSummary += delta
+                case .reasoningSummaryCompleted:
+                    separatesNextReasoningSummary = true
+                case .activityStarted(let activity):
+                    guard let assistantTurnID = event.assistantTurnID else { throw FamiliarAgentError.incompleteResponse }
+                    do {
+                        try runRecorder.recordActivityStarted(
+                            activity,
                             runtimeID: event.runID,
-                            runID: activeRunID,
-                            contextSnapshotID: contextSnapshot.id,
-                            in: context
+                            assistantTurnID: assistantTurnID,
+                            eventSequence: event.sequence,
+                            context: context
                         )
                     } catch {
                         errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
                     }
-                case .state:
-                    break
-                case .textDelta(let delta):
-                    streamingText += delta
-                case .toolRequested:
-                    break
                 case .toolInvocationRequested(let toolCallID, let toolName, let arguments, _):
                     beginToolInvocation(
                         runtimeID: event.runID,
+                        assistantTurnID: event.assistantTurnID,
                         toolCallID: toolCallID,
                         toolName: toolName,
                         arguments: arguments,
                         eventSequence: event.sequence,
                         context: context
                     )
-                case .toolProgress:
-                    break
+                case .activityProgress(let progress):
+                    do {
+                        try runRecorder.recordActivityProgress(
+                            progress,
+                            runtimeID: event.runID,
+                            at: event.timestamp,
+                            context: context
+                        )
+                    } catch {
+                        errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
+                    }
                 case .approvalRequested(let request):
+                    guard let assistantTurnID = event.assistantTurnID else { throw FamiliarAgentError.incompleteResponse }
                     updateRunCursor(runtimeID: event.runID, phase: .awaitingApproval, eventSequence: event.sequence, context: context)
+                    do {
+                        try runRecorder.recordApprovalRequested(request, assistantTurnID: assistantTurnID, eventSequence: event.sequence, at: event.timestamp, context: context)
+                    } catch {
+                        errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
+                    }
                     if !pendingConfirmations.contains(where: { $0.id == request.id }) {
                         pendingConfirmations.append(request)
                     }
                 case .approvalResolved(let requestID, let decision):
+                    do {
+                        try runRecorder.recordApprovalResolved(requestID: requestID, decision: decision, eventSequence: event.sequence, at: event.timestamp, context: context)
+                    } catch {
+                        errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
+                    }
                     if let request = pendingConfirmations.first(where: { $0.id == requestID }) {
-                        runRecorder.recordCheckpoint(type: .approval, runtimeID: event.runID, eventSequence: event.sequence, summary: request.title, detail: "审批已完成", context: context)
-                        if decision == .confirmed {
+                        if decision.isConfirmed {
                             markInvocationApproved(runID: request.runID, toolCallID: request.toolCallID, context: context)
                         }
                     }
                     updateRunCursor(runtimeID: event.runID, phase: .committingTool, eventSequence: event.sequence, context: context)
                     pendingConfirmations.removeAll { $0.id == requestID }
-                case .toolFinished(let record):
+                case .clarificationRequested(let request):
+                    guard let assistantTurnID = event.assistantTurnID else { throw FamiliarAgentError.incompleteResponse }
+                    updateRunCursor(runtimeID: event.runID, phase: .awaitingClarification, eventSequence: event.sequence, context: context)
+                    do {
+                        try runRecorder.recordClarificationRequested(request, assistantTurnID: assistantTurnID, eventSequence: event.sequence, at: event.timestamp, context: context)
+                    } catch {
+                        errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
+                    }
+                    if !pendingClarifications.contains(where: { $0.id == request.id }) {
+                        pendingClarifications.append(request)
+                    }
+                case .clarificationResolved(let requestID, let resolution):
+                    do {
+                        try runRecorder.recordClarificationResolved(requestID: requestID, resolution: resolution, at: event.timestamp, context: context)
+                    } catch {
+                        errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
+                    }
+                    updateRunCursor(runtimeID: event.runID, phase: .committingTool, eventSequence: event.sequence, context: context)
+                    pendingClarifications.removeAll { $0.id == requestID }
+                case .activityCompleted(let record):
                     finishToolInvocation(record, eventSequence: event.sequence, context: context)
-                    persistToolRecord(record, eventSequence: event.sequence, conversationID: conversationID, context: context)
-                    persistToolOutputs(record, conversationID: conversationID, context: context)
-            if record.undoAvailable {
+                    do {
+                        try runRecorder.recordActivityCompleted(record, eventSequence: event.sequence, conversationID: conversationID, context: context)
+                    } catch {
+                        errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
+                    }
+                    if record.undoAvailable {
                         persistDurableUndo(record, context: context)
                         availableUndoKeys.insert(record.runID + ":" + record.toolCallID)
                     }
+                case .toolResultProduced(let record):
+                    let activityID = FamiliarRunPersistenceRecorder.toolActivityID(runtimeID: record.runID, toolCallID: record.toolCallID)
+                    for source in record.sources {
+                        retrievalActivityIDsBySourceID[source.id] = activityID
+                    }
+                    persistToolRecord(record, eventSequence: event.sequence, conversationID: conversationID, context: context)
+                    persistToolOutputs(record, conversationID: conversationID, context: context)
+                case .runtimeNotice(let notice):
+                    guard let assistantTurnID = event.assistantTurnID else { break }
+                    try? runRecorder.recordRuntimeNotice(notice, runtimeID: event.runID, assistantTurnID: assistantTurnID, eventSequence: event.sequence, at: event.timestamp, context: context)
                 case .responseCompleted(let response):
                     completedResponse = response
+                    completedAssistantTurnID = event.assistantTurnID
                     updateRunCursor(runtimeID: event.runID, phase: .model, eventSequence: event.sequence, context: context)
-                    runRecorder.recordCheckpoint(type: .model, runtimeID: event.runID, eventSequence: event.sequence, summary: "模型回复", detail: String(response.text.prefix(2_000)), context: context)
-                case .runCompleted:
+                case .runFinished(let outcome):
+                    runOutcome = outcome
                     updateRunCursor(runtimeID: event.runID, phase: .terminal, eventSequence: event.sequence, context: context)
-                    runRecorder.finishRun(runtimeID: event.runID, status: .completed, reason: "completed", eventSequence: event.sequence, at: event.timestamp, context: context)
-                case .runCancelled:
-                    updateRunCursor(runtimeID: event.runID, phase: .terminal, eventSequence: event.sequence, context: context)
-                    runRecorder.finishRun(runtimeID: event.runID, status: .cancelled, reason: "cancelled", eventSequence: event.sequence, at: event.timestamp, context: context)
-                case .runFailed(let message):
-                    updateRunCursor(runtimeID: event.runID, phase: .terminal, eventSequence: event.sequence, context: context)
-                    runRecorder.finishRun(runtimeID: event.runID, status: .failed, reason: message, eventSequence: event.sequence, at: event.timestamp, context: context)
-                    errorMessage = message
+                    runRecorder.finishRun(runtimeID: event.runID, outcome: outcome, eventSequence: event.sequence, at: event.timestamp, context: context)
+                    if outcome.status == .failed { errorMessage = outcome.message }
                 }
             }
-            try Task.checkCancellation()
+            guard runOutcome?.status == .succeeded else {
+                resetTransientRunState()
+                reloadMessages(in: context)
+                if runOutcome?.status == .failed {
+                    await FamiliarNotificationService.scheduleFailedRun(conversationID: conversationID, runID: activeRunID)
+                }
+                return
+            }
 
             let answer = (completedResponse?.text ?? streamingText).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !answer.isEmpty else { throw FamiliarAgentError.emptyResponse }
@@ -895,7 +1081,10 @@ final class FamiliarChatController {
                 throw CocoaError(.fileNoSuchFile)
             }
 
-            let nextSequence = nextTimelineSequence(in: conversation)
+            let nextSequence = nextConversationSequence(in: conversation)
+            guard let runtimeID = activeRuntimeID else { throw FamiliarAgentError.incompleteResponse }
+            let assistantTurnID = completedAssistantTurnID ?? "\(runtimeID):turn:response"
+            let responseBlockID = UUID()
             let assistantMessage = FamiliarMessage(
                 id: responseID,
                 role: .assistant,
@@ -903,9 +1092,38 @@ final class FamiliarChatController {
                 sequence: nextSequence,
                 providerID: settings.providerID,
                 modelID: settings.modelID,
+                runtimeID: runtimeID,
+                assistantTurnID: assistantTurnID,
+                responseBlockID: responseBlockID,
                 conversation: conversation
             )
             context.insert(assistantMessage)
+            let reasoning = streamingReasoningSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !reasoning.isEmpty {
+                _ = try runRecorder.recordResponseBlock(
+                    runtimeID: runtimeID,
+                    assistantTurnID: assistantTurnID,
+                    messageID: responseID,
+                    kind: .reasoningSummary,
+                    state: .completed,
+                    content: reasoning,
+                    payloadJSON: #"{"format":"plainText"}"#,
+                    endedAt: Date(),
+                    context: context
+                )
+            }
+            _ = try runRecorder.recordResponseBlock(
+                id: responseBlockID,
+                runtimeID: runtimeID,
+                assistantTurnID: assistantTurnID,
+                messageID: responseID,
+                kind: .markdown,
+                state: .completed,
+                content: answer,
+                payloadJSON: #"{"format":"markdown"}"#,
+                endedAt: Date(),
+                context: context
+            )
             for (sequence, source) in (completedResponse?.sources ?? []).enumerated() {
                 context.insert(FamiliarSourceRecord(
                     sourceID: source.id,
@@ -916,6 +1134,9 @@ final class FamiliarChatController {
                     snippet: source.snippet,
                     sequence: sequence,
                     retrievedAt: source.retrievedAt,
+                    responseBlockID: responseBlockID,
+                    retrievalActivityID: retrievalActivityIDsBySourceID[source.id],
+                    citationOrdinal: sequence + 1,
                     message: assistantMessage
                 ))
             }
@@ -932,11 +1153,10 @@ final class FamiliarChatController {
                 runID: activeRunID
             )
         } catch is CancellationError {
-            runRecorder.finishActiveRuns(conversationID: conversationID, status: .cancelled, reason: "cancelled", context: context)
             resetTransientRunState()
+            reloadMessages(in: context)
         } catch {
             context.rollback()
-            runRecorder.finishActiveRuns(conversationID: conversationID, status: .failed, reason: error.localizedDescription, context: context)
             resetTransientRunState()
             errorMessage = error.localizedDescription
             reloadMessages(in: context)
@@ -965,29 +1185,29 @@ final class FamiliarChatController {
                 }
                 availableUndoKeys.remove(key)
                 completedUndoKeys.insert(key)
-                let runDescriptor = FetchDescriptor<FamiliarAgentRun>(predicate: #Predicate { $0.runtimeID == runID })
-                if let run = try? context.fetch(runDescriptor).first,
-                    let step = run.steps.first(where: { $0.toolCallID == toolCallID }) {
-                    step.detail = result.displayContent
-                    if let artifact = result.artifact {
-                        try FamiliarArtifactService().persist(artifact, in: context)
-                    } else if step.toolName == "artifact_write",
-                              let identifier = step.artifactIdentifier {
-                        let artifactDescriptor = FetchDescriptor<FamiliarArtifact>(predicate: #Predicate { $0.identifier == identifier })
-                        if let artifact = try context.fetch(artifactDescriptor).first {
-                            context.delete(artifact)
-                        }
+                let activityID = FamiliarRunPersistenceRecorder.toolActivityID(runtimeID: runID, toolCallID: toolCallID)
+                let activityDescriptor = FetchDescriptor<FamiliarActivityRecord>(predicate: #Predicate { $0.activityID == activityID })
+                let activity = try context.fetch(activityDescriptor).first
+                activity?.detail = result.summary
+                activity?.phase = .undone
+                if let artifact = result.artifact {
+                    try FamiliarArtifactService().persist(artifact, in: context)
+                } else if activity?.toolName == "artifact_write",
+                          let identifier = artifactIdentifier(activityID: activityID, context: context) {
+                    let artifactDescriptor = FetchDescriptor<FamiliarArtifact>(predicate: #Predicate { $0.identifier == identifier })
+                    if let artifact = try context.fetch(artifactDescriptor).first {
+                        context.delete(artifact)
                     }
-                    try? context.save()
-                    reloadMessages(in: context)
                 }
+                try? context.save()
+                reloadMessages(in: context)
             } catch {
                 errorMessage = error.localizedDescription
             }
         }
     }
 
-    private func persistDurableUndo(_ event: FamiliarToolRunTerminalEvent, context: ModelContext) {
+    private func persistDurableUndo(_ event: FamiliarRuntimeActivityCompletion, context: ModelContext) {
         guard let identifier = event.artifactIdentifier else { return }
         let kind: FamiliarEventKitAccessKind
         switch event.toolName {
@@ -1010,9 +1230,11 @@ final class FamiliarChatController {
 
     private func resetTransientRunState() {
         streamingText = ""
+        streamingReasoningSummary = ""
         streamingMessageID = nil
         surfaces = FamiliarSurfaceStore()
         pendingConfirmations = []
+        pendingClarifications = []
     }
 
     var hasTransientActivity: Bool {
@@ -1020,13 +1242,13 @@ final class FamiliarChatController {
     }
 
     private func persistToolRecord(
-        _ event: FamiliarToolRunTerminalEvent,
+        _ event: FamiliarToolResultProduced,
         eventSequence: Int,
         conversationID: UUID?,
         context: ModelContext
     ) {
         do {
-            if try runRecorder.recordTool(event, eventSequence: eventSequence, conversationID: conversationID, context: context) {
+            if try runRecorder.recordToolResult(event, eventSequence: eventSequence, conversationID: conversationID, context: context) {
                 reloadMessages(in: context)
             }
         } catch {
@@ -1036,6 +1258,7 @@ final class FamiliarChatController {
 
     private func beginToolInvocation(
         runtimeID: String,
+        assistantTurnID: String?,
         toolCallID: String,
         toolName: String,
         arguments: String,
@@ -1046,8 +1269,11 @@ final class FamiliarChatController {
             _ = try runRecovery.beginInvocation(
                 idempotencyKey: runtimeID + ":" + toolCallID,
                 runtimeID: runtimeID,
+                toolCallID: toolCallID,
                 toolName: toolName,
                 arguments: arguments,
+                assistantTurnID: assistantTurnID,
+                activityID: FamiliarRunPersistenceRecorder.toolActivityID(runtimeID: runtimeID, toolCallID: toolCallID),
                 in: context
             )
             updateRunCursor(runtimeID: runtimeID, phase: .committingTool, eventSequence: eventSequence, context: context)
@@ -1059,7 +1285,7 @@ final class FamiliarChatController {
     }
 
     private func finishToolInvocation(
-        _ event: FamiliarToolRunTerminalEvent,
+        _ event: FamiliarRuntimeActivityCompletion,
         eventSequence: Int,
         context: ModelContext
     ) {
@@ -1097,8 +1323,7 @@ final class FamiliarChatController {
         try? runRecovery.setInvocationState(invocation, state: .approved, in: context)
     }
 
-    private func persistToolOutputs(_ event: FamiliarToolRunTerminalEvent, conversationID: UUID, context: ModelContext) {
-        guard event.status == .succeeded else { return }
+    private func persistToolOutputs(_ event: FamiliarToolResultProduced, conversationID: UUID, context: ModelContext) {
         do {
             if let descriptor = event.artifact {
                 try FamiliarArtifactService().persist(descriptor, in: context)
@@ -1131,11 +1356,10 @@ final class FamiliarChatController {
         )
     }
 
-    private func nextTimelineSequence(in conversation: FamiliarConversation?) -> Int {
+    private func nextConversationSequence(in conversation: FamiliarConversation?) -> Int {
         guard let conversation else { return 0 }
         let values = conversation.messages.map(\.sequence)
             + conversation.modelSwitchRecords.map(\.sequence)
-            + conversation.agentRuns.flatMap(\.steps).map(\.timelineSequence)
         return (values.max() ?? -1) + 1
     }
 
@@ -1181,6 +1405,15 @@ final class FamiliarChatController {
         return fetchConversation(id: selectedConversationID, in: context)
     }
 
+    private func artifactIdentifier(activityID: String, context: ModelContext) -> String? {
+        let descriptor = FetchDescriptor<FamiliarToolResultRecord>(predicate: #Predicate { $0.activityID == activityID })
+        guard let record = try? context.fetch(descriptor).first,
+              let envelope = try? JSONDecoder().decode(FamiliarToolResultEnvelope.self, from: Data(record.envelopeJSON.utf8)),
+              case .artifactMutation(let artifact) = envelope.presentation.content
+        else { return nil }
+        return artifact.identifier
+    }
+
     private func deleteSkillSnapshots(
         for runs: [FamiliarAgentRun],
         in context: ModelContext
@@ -1190,6 +1423,27 @@ final class FamiliarChatController {
               let records = try? context.fetch(FetchDescriptor<FamiliarRunSkillSnapshotRecord>())
         else { return }
         records
+            .filter { runtimeIDs.contains($0.runtimeID) }
+            .forEach(context.delete)
+        ((try? context.fetch(FetchDescriptor<FamiliarActivityRecord>())) ?? [])
+            .filter { runtimeIDs.contains($0.runtimeID) }
+            .forEach(context.delete)
+        ((try? context.fetch(FetchDescriptor<FamiliarToolResultRecord>())) ?? [])
+            .filter { runtimeIDs.contains($0.runtimeID) }
+            .forEach(context.delete)
+        ((try? context.fetch(FetchDescriptor<FamiliarApprovalRecord>())) ?? [])
+            .filter { runtimeIDs.contains($0.runtimeID) }
+            .forEach(context.delete)
+        ((try? context.fetch(FetchDescriptor<FamiliarClarificationRecord>())) ?? [])
+            .filter { runtimeIDs.contains($0.runtimeID) }
+            .forEach(context.delete)
+        ((try? context.fetch(FetchDescriptor<FamiliarResponseBlockRecord>())) ?? [])
+            .filter { runtimeIDs.contains($0.runtimeID) }
+            .forEach(context.delete)
+        ((try? context.fetch(FetchDescriptor<FamiliarRunResumeCursorRecord>())) ?? [])
+            .filter { runtimeIDs.contains($0.runtimeID) }
+            .forEach(context.delete)
+        ((try? context.fetch(FetchDescriptor<FamiliarToolInvocationRecord>())) ?? [])
             .filter { runtimeIDs.contains($0.runtimeID) }
             .forEach(context.delete)
     }
@@ -1225,10 +1479,33 @@ final class FamiliarChatController {
         )
     }
 
+    private func responseBlockSnapshot(_ record: FamiliarResponseBlockRecord) -> FamiliarResponseBlockSnapshot {
+        FamiliarResponseBlockSnapshot(
+            id: record.id,
+            assistantTurnID: record.assistantTurnID,
+            messageID: record.messageID,
+            kind: record.kind,
+            order: record.order,
+            state: record.state,
+            content: record.content,
+            payloadJSON: record.payloadJSON,
+            schemaVersion: record.schemaVersion,
+            startedAt: record.startedAt,
+            endedAt: record.endedAt,
+            contentHash: record.contentHash
+        )
+    }
+
     private func fetchConversation(id: UUID, in context: ModelContext) -> FamiliarConversation? {
         var descriptor = FetchDescriptor<FamiliarConversation>(
             predicate: #Predicate { conversation in conversation.id == id }
         )
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
+    }
+
+    private func fetchRun(runtimeID: String, in context: ModelContext) -> FamiliarAgentRun? {
+        var descriptor = FetchDescriptor<FamiliarAgentRun>(predicate: #Predicate { $0.runtimeID == runtimeID })
         descriptor.fetchLimit = 1
         return try? context.fetch(descriptor).first
     }

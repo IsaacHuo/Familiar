@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 
 enum FamiliarSettingsRoute: String, Hashable {
     case modelService
+    case searchService
     case localVision
     case appearance
     case tools
@@ -27,6 +28,7 @@ struct FamiliarSettingsView: View {
     let initialSettings: FamiliarSettings
     let initialRoute: FamiliarSettingsRoute?
     let registry: FamiliarToolRegistry
+    let searchService: FamiliarWebSearchService
     let onSaveSettings: (FamiliarSettings) -> Void
     let onRestartOnboarding: () -> Void
 
@@ -37,12 +39,14 @@ struct FamiliarSettingsView: View {
         initialSettings: FamiliarSettings,
         initialRoute: FamiliarSettingsRoute? = nil,
         registry: FamiliarToolRegistry,
+        searchService: FamiliarWebSearchService,
         onSaveSettings: @escaping (FamiliarSettings) -> Void,
         onRestartOnboarding: @escaping () -> Void
     ) {
         self.initialSettings = initialSettings
         self.initialRoute = initialRoute
         self.registry = registry
+        self.searchService = searchService
         self.onSaveSettings = onSaveSettings
         self.onRestartOnboarding = onRestartOnboarding
         _settings = State(initialValue: initialSettings)
@@ -70,6 +74,15 @@ struct FamiliarSettingsView: View {
                 }
 
                 Section(String(localized: "settings.hub.agent", defaultValue: "Agent")) {
+                    settingsLink(
+                        .searchService,
+                        title: String(localized: "settings.search.title", defaultValue: "Web Search"),
+                        subtitle: FamiliarSearchProviderCatalog.descriptor(
+                            for: searchService.settingsStore.selectedProviderID
+                        )?.displayName ?? "DuckDuckGo",
+                        symbol: "magnifyingglass",
+                        color: .blue
+                    )
                     settingsLink(
                         .tools,
                         title: String(localized: "settings.hub.tools", defaultValue: "Tools"),
@@ -218,6 +231,8 @@ struct FamiliarSettingsView: View {
                 },
                 onRestartOnboarding: onRestartOnboarding
             )
+        case .searchService:
+            FamiliarSearchSettingsView(searchService: searchService)
         case .localVision:
             FamiliarLocalVisionSettingsView()
         case .appearance:
@@ -837,6 +852,16 @@ private struct FamiliarRunHistoryView: View {
 
 private struct FamiliarRunDetailView: View {
     let run: FamiliarAgentRun
+    @Query private var activities: [FamiliarActivityRecord]
+
+    init(run: FamiliarAgentRun) {
+        self.run = run
+        let runtimeID = run.runtimeID
+        _activities = Query(
+            filter: #Predicate<FamiliarActivityRecord> { $0.runtimeID == runtimeID },
+            sort: \FamiliarActivityRecord.sequence
+        )
+    }
 
     var body: some View {
         List {
@@ -854,16 +879,17 @@ private struct FamiliarRunDetailView: View {
                 }
             }
 
-            Section(String(localized: "settings.runs.steps", defaultValue: "Steps")) {
-                if run.steps.isEmpty {
-                    Text(String(localized: "settings.runs.no_steps", defaultValue: "No persisted tool steps"))
+            Section(String(localized: "settings.runs.activities", defaultValue: "Activities")) {
+                let visibleActivities = activities.filter { $0.kind != .assistantTurn }
+                if visibleActivities.isEmpty {
+                    Text(String(localized: "settings.runs.no_activities", defaultValue: "No persisted activities"))
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(run.steps.sorted { $0.timelineSequence < $1.timelineSequence }) { step in
+                    ForEach(visibleActivities) { activity in
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(step.summary).font(.headline)
-                            if !step.detail.isEmpty {
-                                Text(step.detail).font(.subheadline).foregroundStyle(.secondary)
+                            Text(activity.summary).font(.headline)
+                            if let detail = activity.detail, !detail.isEmpty {
+                                Text(detail).font(.subheadline).foregroundStyle(.secondary)
                             }
                         }
                         .padding(.vertical, 3)

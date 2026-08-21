@@ -70,6 +70,72 @@ nonisolated enum FamiliarTheme {
     static let separator = Color.primary.opacity(0.10)
 }
 
+/// Beautiful UI's semantic palette translated to dynamic iOS colors. These
+/// tokens are intentionally scoped to AI response surfaces; navigation and
+/// system controls continue to use native materials and Liquid Glass.
+nonisolated enum FamiliarAISurfaceColor {
+    static let page = dynamic(light: 0xFAFAFB, dark: 0x17181A)
+    static let canvas = dynamic(light: 0xF1F2F3, dark: 0x1C1D1F)
+    static let surface = dynamic(light: 0xFFFFFF, dark: 0x232427)
+    static let inset = dynamic(light: 0xF7F8F9, dark: 0x1F2022)
+    static let hover = dynamic(light: 0xF4F5F6, dark: 0x2A2B2E)
+    static let hoverStrong = dynamic(light: 0xE7E9EB, dark: 0x313236)
+    static let ink = dynamic(light: 0x1F2124, dark: 0xF2F3F4)
+    static let inkSecondary = dynamic(light: 0x62656B, dark: 0xA5A8AD)
+    static let inkTertiary = dynamic(light: 0x9A9DA3, dark: 0x6C6F75)
+    static let line = dynamic(light: 0xECEDEF, dark: 0x2E3033)
+    static let lineStrong = dynamic(light: 0xE0E2E5, dark: 0x3A3C40)
+    static let field = dynamic(light: 0xF2F2F3, dark: 0x2B2C2F)
+    static let accent = dynamic(light: 0x0285FF, dark: 0x3D9AFF)
+    static let accentInk = dynamic(light: 0x0170DD, dark: 0x7EC0FF)
+    static let accentTint = dynamic(light: 0xE9F3FF, dark: 0x253E59)
+    static let success = dynamic(light: 0x189A4D, dark: 0x3DBB72)
+    static let successTint = dynamic(light: 0xE8F5ED, dark: 0x203D2C)
+    static let warning = dynamic(light: 0xEF720C, dark: 0xF68F3C)
+    static let warningTint = dynamic(light: 0xFDF1E5, dark: 0x46301F)
+    static let failure = dynamic(light: 0xE3474C, dark: 0xEE5C61)
+    static let failureTint = dynamic(light: 0xFCECEC, dark: 0x462629)
+
+    private static func dynamic(light: UInt32, dark: UInt32) -> Color {
+        Color(uiColor: UIColor { traits in
+            UIColor(rgb: traits.userInterfaceStyle == .dark ? dark : light)
+        })
+    }
+}
+
+nonisolated enum FamiliarAISurfaceRadius {
+    static let chip: CGFloat = 6
+    static let control: CGFloat = 8
+    static let card: CGFloat = 10
+    static let window: CGFloat = 14
+}
+
+nonisolated enum FamiliarAISurfaceMetric {
+    static let hairline: CGFloat = 1
+    static let spaceXS: CGFloat = 4
+    static let spaceS: CGFloat = 8
+    static let spaceM: CGFloat = 12
+    static let spaceL: CGFloat = 16
+    static let spaceXL: CGFloat = 24
+    static let cardPadding: CGFloat = 12
+    static let rowHeight: CGFloat = 44
+    static let icon: CGFloat = 18
+    static let compactIcon: CGFloat = 14
+    static let traceIndent: CGFloat = 18
+    static let timelineWidth: CGFloat = 780
+}
+
+private extension UIColor {
+    convenience init(rgb: UInt32) {
+        self.init(
+            red: CGFloat((rgb >> 16) & 0xFF) / 255,
+            green: CGFloat((rgb >> 8) & 0xFF) / 255,
+            blue: CGFloat(rgb & 0xFF) / 255,
+            alpha: 1
+        )
+    }
+}
+
 /// A deliberately small spacing scale for the app's core surfaces.
 /// Names describe relative rhythm so layout code does not invent one-off values.
 nonisolated enum FamiliarSpacing {

@@ -3,7 +3,10 @@
 
   const content = document.getElementById("content");
   let pendingHeightFrame = null;
+  let pendingSelectionFrame = null;
   let lastReportedHeight = 0;
+  let lastReportedSelection = "";
+  let selectionEnabled = false;
 
   function post(name, payload) {
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers[name]) {
@@ -20,6 +23,35 @@
       lastReportedHeight = height;
       post("heightChanged", height);
     });
+  }
+
+  function selectedPlainText() {
+    if (!selectionEnabled) return "";
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return "";
+    const text = selection.toString().trim();
+    return Array.from(text).slice(0, 4000).join("");
+  }
+
+  function reportSelection() {
+    if (pendingSelectionFrame !== null) cancelAnimationFrame(pendingSelectionFrame);
+    pendingSelectionFrame = requestAnimationFrame(function () {
+      pendingSelectionFrame = null;
+      const text = selectedPlainText();
+      if (text === lastReportedSelection) return;
+      lastReportedSelection = text;
+      post("selectionChanged", text);
+    });
+  }
+
+  function setSelectionEnabled(enabled) {
+    selectionEnabled = enabled;
+    content.classList.toggle("selection-disabled", !enabled);
+    if (!enabled) {
+      const selection = window.getSelection();
+      if (selection) selection.removeAllRanges();
+    }
+    reportSelection();
   }
 
   function escapeHTML(value) {
@@ -380,6 +412,25 @@
     }
   }
 
+  function decorateMermaidPreviews(root, diagrams, options) {
+    if (!(options && options.mermaidPreviewEnabled)) return;
+    root.querySelectorAll("[data-mermaid-id]").forEach(function (node) {
+      const source = diagrams[Number(node.getAttribute("data-mermaid-id"))] || "";
+      const svg = node.querySelector("svg");
+      const isLong = source.length > 320 || source.split(/\r?\n/).length > 8 || (svg && svg.scrollWidth > node.clientWidth);
+      if (!isLong || node.querySelector(".mermaid-preview-button")) return;
+
+      const button = document.createElement("button");
+      button.className = "mermaid-preview-button";
+      button.type = "button";
+      button.textContent = options.mermaidPreviewLabel || "Open diagram";
+      button.addEventListener("click", function () {
+        post("previewMermaid", source);
+      });
+      node.insertBefore(button, node.firstChild);
+    });
+  }
+
   function decorateCodeBlocks(root) {
     root.querySelectorAll("pre > code").forEach(function (code) {
       const pre = code.parentElement;
@@ -431,6 +482,7 @@
 
   function render(markdown, options) {
     try {
+      setSelectionEnabled(!(options && options.streaming));
       const md = createMarkdownIt();
       if (!md) {
         content.innerHTML = "<p>" + escapeHTML(markdown).replace(/\n/g, "<br>") + "</p>";
@@ -455,6 +507,7 @@
           });
         })
         .then(function () {
+          decorateMermaidPreviews(content, mermaidResult.diagrams, options);
           decorateCodeBlocks(content);
           decorateTables(content);
           reportHeight();
@@ -469,6 +522,7 @@
   if (window.ResizeObserver) {
     new ResizeObserver(reportHeight).observe(content);
   }
+  document.addEventListener("selectionchange", reportSelection);
 
   window.FamiliarMarkdown = {
     render: render

@@ -23,6 +23,11 @@ body {
   word-break: break-word;
 }
 
+#content.selection-disabled {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 #content > :first-child {
   margin-top: 0;
 }
@@ -351,6 +356,19 @@ th {
   max-width: none;
   min-width: min-content;
   height: auto;
+}
+
+.mermaid-preview-button {
+  display: block;
+  margin: 0 0 0.65em auto;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(26, 135, 250, 0.14);
+  color: #1a87fa;
+  font: inherit;
+  font-size: 0.82em;
+  font-weight: 600;
+  padding: 0.4em 0.7em;
 }
 
 details {

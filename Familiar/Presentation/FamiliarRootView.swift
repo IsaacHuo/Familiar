@@ -13,7 +13,9 @@ struct FamiliarRootView: View {
         ZStack {
             Color(uiColor: .systemBackground).ignoresSafeArea()
 
-            if hasCompletedOnboarding {
+            if ProcessInfo.processInfo.arguments.contains("-familiar.visual-fixture") {
+                NavigationStack { FamiliarAssistantTurnVisualFixture() }
+            } else if hasCompletedOnboarding {
                 FamiliarChatView(
                     dependencies: dependencies,
                     onRestartOnboarding: { setOnboardingCompleted(false) },

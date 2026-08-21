@@ -14,6 +14,10 @@ nonisolated enum FamiliarMotion {
     static let drawer = Animation.interactiveSpring(
         response: 0.38, dampingFraction: 0.86, blendDuration: 0.08
     )
+    /// Beautiful UI's emphasized ease-out curve for response surfaces.
+    static let response = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.4)
+    /// Short entrance used by result rows and intervention surfaces.
+    static let reveal = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.35)
 }
 
 /// Maps a surface phase transition to a single sensory feedback, or nil.

@@ -17,18 +17,30 @@ struct FamiliarMarkdownWebView: View {
     let sources: [FamiliarSource]
     let mode: Mode
     let isStreaming: Bool
+    let allowsMermaidPreview: Bool
+    let onSelectionChange: (String?) -> Void
 
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var contentHeight: CGFloat = 1
     @State private var hasReportedHeight = false
     @State private var didFailRendering = false
+    @State private var previewedDiagram: FamiliarMermaidPreview?
 
-    init(markdown: String, sources: [FamiliarSource] = [], mode: Mode = .compact, isStreaming: Bool = false) {
+    init(
+        markdown: String,
+        sources: [FamiliarSource] = [],
+        mode: Mode = .compact,
+        isStreaming: Bool = false,
+        allowsMermaidPreview: Bool = true,
+        onSelectionChange: @escaping (String?) -> Void = { _ in }
+    ) {
         self.markdown = FamiliarMarkdownNormalizer.normalize(markdown)
         self.sources = sources
         self.mode = mode
         self.isStreaming = isStreaming
+        self.allowsMermaidPreview = allowsMermaidPreview
+        self.onSelectionChange = onSelectionChange
     }
 
     var body: some View {
@@ -50,7 +62,10 @@ struct FamiliarMarkdownWebView: View {
                         didFailRendering: $didFailRendering,
                         isScrollEnabled: mode == .document,
                         isStreaming: isStreaming,
+                        allowsMermaidPreview: allowsMermaidPreview,
                         reduceMotion: reduceMotion,
+                        onSelectionChange: onSelectionChange,
+                        onMermaidPreview: { previewedDiagram = .init(source: $0) },
                         openURL: { openURL($0) }
                     )
                     .frame(height: mode == .document ? nil : max(1, contentHeight))
@@ -69,11 +84,33 @@ struct FamiliarMarkdownWebView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: mode == .document ? .infinity : nil, alignment: .topLeading)
         .onChange(of: contentHeight) { _, newHeight in
             if newHeight > 1 { hasReportedHeight = true }
         }
+        .fullScreenCover(item: $previewedDiagram) { diagram in
+            NavigationStack {
+                FamiliarMarkdownWebView(
+                    markdown: "~~~mermaid\n\(diagram.source)\n~~~",
+                    mode: .document,
+                    allowsMermaidPreview: false
+                )
+                .padding(FamiliarAISurfaceMetric.spaceM)
+                .navigationTitle(String(localized: "mermaid.preview.title", defaultValue: "Diagram preview"))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(String(localized: "common.done")) { previewedDiagram = nil }
+                    }
+                }
+            }
+        }
     }
+}
+
+private struct FamiliarMermaidPreview: Identifiable {
+    let id = UUID()
+    let source: String
 }
 
 struct FamiliarMarkdownFallbackText: View {
@@ -196,13 +233,18 @@ private struct FamiliarMarkdownPlatformWebView: UIViewRepresentable {
     @Binding var didFailRendering: Bool
     let isScrollEnabled: Bool
     let isStreaming: Bool
+    let allowsMermaidPreview: Bool
     let reduceMotion: Bool
+    let onSelectionChange: (String?) -> Void
+    let onMermaidPreview: (String) -> Void
     let openURL: (URL) -> Void
 
     func makeCoordinator() -> FamiliarMarkdownWebCoordinator {
         FamiliarMarkdownWebCoordinator(
             height: $height,
             didFailRendering: $didFailRendering,
+            onSelectionChange: onSelectionChange,
+            onMermaidPreview: onMermaidPreview,
             openURL: openURL
         )
     }
@@ -215,7 +257,9 @@ private struct FamiliarMarkdownPlatformWebView: UIViewRepresentable {
 
     func updateUIView(_ webView: WKWebView, context: Context) {
         context.coordinator.openURL = openURL
-        context.coordinator.update(markdown: markdown, sources: sources, isStreaming: isStreaming, reduceMotion: reduceMotion, in: webView)
+        context.coordinator.onSelectionChange = onSelectionChange
+        context.coordinator.onMermaidPreview = onMermaidPreview
+        context.coordinator.update(markdown: markdown, sources: sources, isStreaming: isStreaming, allowsMermaidPreview: allowsMermaidPreview, reduceMotion: reduceMotion, in: webView)
     }
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: FamiliarMarkdownWebCoordinator) {
@@ -249,13 +293,18 @@ private struct FamiliarMarkdownPlatformWebView: NSViewRepresentable {
     @Binding var didFailRendering: Bool
     let isScrollEnabled: Bool
     let isStreaming: Bool
+    let allowsMermaidPreview: Bool
     let reduceMotion: Bool
+    let onSelectionChange: (String?) -> Void
+    let onMermaidPreview: (String) -> Void
     let openURL: (URL) -> Void
 
     func makeCoordinator() -> FamiliarMarkdownWebCoordinator {
         FamiliarMarkdownWebCoordinator(
             height: $height,
             didFailRendering: $didFailRendering,
+            onSelectionChange: onSelectionChange,
+            onMermaidPreview: onMermaidPreview,
             openURL: openURL
         )
     }
@@ -268,7 +317,9 @@ private struct FamiliarMarkdownPlatformWebView: NSViewRepresentable {
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.openURL = openURL
-        context.coordinator.update(markdown: markdown, sources: sources, isStreaming: isStreaming, reduceMotion: reduceMotion, in: webView)
+        context.coordinator.onSelectionChange = onSelectionChange
+        context.coordinator.onMermaidPreview = onMermaidPreview
+        context.coordinator.update(markdown: markdown, sources: sources, isStreaming: isStreaming, allowsMermaidPreview: allowsMermaidPreview, reduceMotion: reduceMotion, in: webView)
     }
 
     static func dismantleNSView(_ webView: WKWebView, coordinator: FamiliarMarkdownWebCoordinator) {
@@ -294,26 +345,36 @@ private struct FamiliarMarkdownPlatformWebView: NSViewRepresentable {
 #endif
 
 private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
-    static let messageNames = ["heightChanged", "rendererReady", "renderFailed", "copyCode"]
+    static let selectionMessageName = "selectionChanged"
+    static let mermaidPreviewMessageName = "previewMermaid"
+    static let messageNames = ["heightChanged", "rendererReady", "renderFailed", "copyCode", mermaidPreviewMessageName, selectionMessageName]
 
     private var height: Binding<CGFloat>
     private var didFailRendering: Binding<Bool>
     private weak var webView: WKWebView?
     private var didStartLoading = false
     private var isRendererReady = false
-    private var pendingRender = FamiliarMarkdownRenderState(markdown: "", sourcesJSON: "[]", isStreaming: false, reduceMotion: false)
+    private var pendingRender = FamiliarMarkdownRenderState(markdown: "", sourcesJSON: "[]", isStreaming: false, allowsMermaidPreview: true, reduceMotion: false)
     private var renderedState: FamiliarMarkdownRenderState?
     private var isRendering = false
     private var scheduledRender: DispatchWorkItem?
+    private var deliveredSelection: String?
+    private var hasDeliveredSelection = false
+    var onSelectionChange: (String?) -> Void
+    var onMermaidPreview: (String) -> Void
     var openURL: (URL) -> Void
 
     init(
         height: Binding<CGFloat>,
         didFailRendering: Binding<Bool>,
+        onSelectionChange: @escaping (String?) -> Void,
+        onMermaidPreview: @escaping (String) -> Void,
         openURL: @escaping (URL) -> Void
     ) {
         self.height = height
         self.didFailRendering = didFailRendering
+        self.onSelectionChange = onSelectionChange
+        self.onMermaidPreview = onMermaidPreview
         self.openURL = openURL
     }
 
@@ -321,12 +382,16 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
         self.webView = webView
     }
 
-    func update(markdown: String, sources: [FamiliarSource], isStreaming: Bool, reduceMotion: Bool, in webView: WKWebView) {
+    func update(markdown: String, sources: [FamiliarSource], isStreaming: Bool, allowsMermaidPreview: Bool, reduceMotion: Bool, in webView: WKWebView) {
         self.webView = webView
+        if isStreaming {
+            deliverSelection(nil)
+        }
         pendingRender = .init(
             markdown: markdown,
             sourcesJSON: FamiliarMarkdownHTML.sourcesJSONString(sources),
             isStreaming: isStreaming,
+            allowsMermaidPreview: allowsMermaidPreview,
             reduceMotion: reduceMotion
         )
 
@@ -351,6 +416,11 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
     func dismantle(from webView: WKWebView) {
         scheduledRender?.cancel()
         scheduledRender = nil
+        if deliveredSelection != nil {
+            deliveredSelection = nil
+            let callback = onSelectionChange
+            DispatchQueue.main.async { callback(nil) }
+        }
         Self.messageNames.forEach {
             webView.configuration.userContentController.removeScriptMessageHandler(forName: $0)
         }
@@ -382,6 +452,21 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
                 if let text = message.body as? String {
                     Self.copyToPasteboard(text)
                 }
+            case Self.mermaidPreviewMessageName:
+                if let source = message.body as? String, !source.isEmpty {
+                    self.onMermaidPreview(source)
+                }
+            case Self.selectionMessageName:
+                guard !self.pendingRender.isStreaming else {
+                    self.deliverSelection(nil)
+                    break
+                }
+                guard let text = message.body as? String else {
+                    self.deliverSelection(nil)
+                    break
+                }
+                let selection = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                self.deliverSelection(selection.isEmpty ? nil : String(selection.prefix(4_000)))
             default:
                 break
             }
@@ -431,8 +516,9 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
 
         let target = pendingRender
         let literal = FamiliarMarkdownHTML.javascriptStringLiteral(target.markdown)
+        let mermaidPreviewLabel = FamiliarMarkdownHTML.javascriptStringLiteral(String(localized: "mermaid.preview.action", defaultValue: "Open full-screen diagram"))
         isRendering = true
-        webView.evaluateJavaScript("window.FamiliarMarkdown.render(\(literal), { sources: \(target.sourcesJSON), streaming: \(target.isStreaming), reduceMotion: \(target.reduceMotion) });") { [weak self] _, error in
+        webView.evaluateJavaScript("window.FamiliarMarkdown.render(\(literal), { sources: \(target.sourcesJSON), streaming: \(target.isStreaming), mermaidPreviewEnabled: \(target.allowsMermaidPreview), mermaidPreviewLabel: \(mermaidPreviewLabel), reduceMotion: \(target.reduceMotion) });") { [weak self] _, error in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isRendering = false
@@ -471,6 +557,13 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
         #endif
     }
 
+    private func deliverSelection(_ selection: String?) {
+        guard !hasDeliveredSelection || deliveredSelection != selection else { return }
+        hasDeliveredSelection = true
+        deliveredSelection = selection
+        onSelectionChange(selection)
+    }
+
     private func open(_ url: URL) -> Bool {
         guard let scheme = url.scheme?.lowercased(),
               ["http", "https", "mailto"].contains(scheme)
@@ -487,5 +580,6 @@ private struct FamiliarMarkdownRenderState: Equatable {
     let markdown: String
     let sourcesJSON: String
     let isStreaming: Bool
+    let allowsMermaidPreview: Bool
     let reduceMotion: Bool
 }

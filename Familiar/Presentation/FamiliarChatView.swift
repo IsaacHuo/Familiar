@@ -38,6 +38,7 @@ struct FamiliarChatView: View {
     @State private var webDestination: FamiliarWebDestination?
     @FocusState private var isComposerFocused: Bool
     private let toolRegistry: FamiliarToolRegistry
+    private let searchService: FamiliarWebSearchService
     private let onRestartOnboarding: () -> Void
     @Binding private var pendingSystemEntry: FamiliarSystemEntryRequest?
 
@@ -48,6 +49,7 @@ struct FamiliarChatView: View {
     ) {
         _controller = State(initialValue: FamiliarChatController(dependencies: dependencies))
         toolRegistry = dependencies.registry
+        searchService = dependencies.searchService
         self.onRestartOnboarding = onRestartOnboarding
         _pendingSystemEntry = pendingSystemEntry
     }
@@ -164,6 +166,7 @@ struct FamiliarChatView: View {
                     initialSettings: controller.settings,
                     initialRoute: route,
                     registry: toolRegistry,
+                    searchService: searchService,
                     onSaveSettings: {
                         controller.updateSettings($0, in: modelContext)
                         refreshConfiguredProviders()
@@ -340,9 +343,9 @@ struct FamiliarChatView: View {
 
     private var isInNewConversation: Bool {
         controller.messages.isEmpty
-            && controller.toolRunRecords.isEmpty
             && controller.agentRuns.isEmpty
             && controller.pendingConfirmations.isEmpty
+            && controller.pendingClarifications.isEmpty
             && controller.streamingText.isEmpty
             && !controller.hasTransientActivity
     }
@@ -547,9 +550,11 @@ struct FamiliarChatView: View {
     @ViewBuilder
     private var chatBody: some View {
         if controller.messages.isEmpty,
-           controller.toolRunRecords.isEmpty,
+           controller.agentRuns.isEmpty,
            controller.pendingConfirmations.isEmpty,
+           controller.pendingClarifications.isEmpty,
            controller.streamingText.isEmpty,
+           controller.streamingReasoningSummary.isEmpty,
            !controller.hasTransientActivity {
             FamiliarEmptyConversationView(
                 isProviderConfigured: isSelectedProviderConfigured,
@@ -564,21 +569,29 @@ struct FamiliarChatView: View {
             FamiliarMessageTimeline(
                 messages: controller.messages,
                 modelSwitches: controller.modelSwitches,
-                toolRunRecords: controller.toolRunRecords,
                 agentRuns: controller.agentRuns,
                 surfaces: controller.surfaces.orderedSurfaces,
                 streamingMessageID: controller.streamingMessageID,
                 streamingText: controller.streamingText,
+                streamingReasoningSummary: controller.streamingReasoningSummary,
                 availableUndoKeys: controller.availableUndoKeys,
                 completedUndoKeys: controller.completedUndoKeys,
                 onResolveConfirmation: { requestID, decision in
                     controller.resolveConfirmation(requestID: requestID, decision: decision)
                 },
+                onResolveClarification: { requestID, resolution in
+                    controller.resolveClarification(requestID: requestID, resolution: resolution)
+                },
+                onInsertPrompt: { prompt in
+                    controller.draft = prompt
+                    isComposerFocused = true
+                },
                 onUndo: { runID, toolCallID in
                     controller.undo(runID: runID, toolCallID: toolCallID, in: modelContext)
                 },
                 onEdit: { pendingMessageOperation = .edit($0) },
-                onRetry: { pendingMessageOperation = .retry($0) }
+                onRetry: { pendingMessageOperation = .retry($0) },
+                onRetryRecovery: { controller.retry(runID: $0, in: modelContext) }
             )
             .environment(\.openURL, OpenURLAction { url in
                 guard FamiliarConversationURLRouter.shouldOpenInApp(url) else {

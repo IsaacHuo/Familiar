@@ -5,8 +5,10 @@ struct FamiliarAppDependencies {
     let registry: FamiliarToolRegistry
     let policy: FamiliarExecutionPolicy
     let confirmationCoordinator: FamiliarToolConfirmationCoordinator
+    let clarificationCoordinator: FamiliarClarificationCoordinator
     let undoStore: FamiliarUndoStore
     let eventKit: FamiliarEventKitService
+    let searchService: FamiliarWebSearchService
     let visionProcessor = FamiliarVisionProcessor()
     let localVision = FamiliarLocalVisionModelManager.shared
     let sessionID = UUID().uuidString
@@ -14,7 +16,9 @@ struct FamiliarAppDependencies {
     init() {
         eventKit = FamiliarEventKitService()
         let web = FamiliarWebContentService()
+        searchService = FamiliarWebSearchService()
         confirmationCoordinator = FamiliarToolConfirmationCoordinator()
+        clarificationCoordinator = FamiliarClarificationCoordinator()
         policy = FamiliarExecutionPolicy()
         undoStore = FamiliarUndoStore()
         do {
@@ -22,11 +26,15 @@ struct FamiliarAppDependencies {
                 tools: [
                     AnyFamiliarTool(FamiliarCurrentDateTimeTool()),
                     AnyFamiliarTool(FamiliarAppInformationTool()),
-                    AnyFamiliarTool(FamiliarWebSearchTool(service: web)),
+                    AnyFamiliarTool(FamiliarWebSearchTool(service: searchService)),
                     AnyFamiliarTool(FamiliarWebFetchTool(service: web)),
                     AnyFamiliarTool(FamiliarResourceListTool()),
                     AnyFamiliarTool(FamiliarResourceReadTool()),
                     AnyFamiliarTool(FamiliarResourceSearchTool()),
+                    AnyFamiliarTool(FamiliarTaskPlanTool()),
+                    AnyFamiliarTool(FamiliarPresentRecommendationTool()),
+                    AnyFamiliarTool(FamiliarPresentInsightTool()),
+                    AnyFamiliarTool(FamiliarAskUserTool()),
                     AnyFamiliarTool(FamiliarArtifactWriteTool(store: FamiliarArtifactStore())),
                     AnyFamiliarTool(FamiliarArtifactEditTool(store: FamiliarArtifactStore())),
                     AnyFamiliarTool(FamiliarCalendarEventsTool(service: eventKit)),
@@ -47,6 +55,7 @@ struct FamiliarAppDependencies {
             registry: registry,
             policy: policy,
             confirmationCoordinator: confirmationCoordinator,
+            clarificationCoordinator: clarificationCoordinator,
             undoStore: undoStore,
             authorizationRuntime: authorizationRuntime
         )
