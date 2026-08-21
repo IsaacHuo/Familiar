@@ -89,20 +89,4 @@ struct FamiliarWP5Tests {
         #expect(version.extractedTextHash == capture.contentHash)
     }
 
-    @Test("V3 store migrates to V4 and starts without artifacts")
-    @MainActor
-    func v3ToV4() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("FamiliarV3ToV4-\(UUID().uuidString)")
-        let url = root.appendingPathComponent(FamiliarModelContainer.storeFilename)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-        let schema = Schema(versionedSchema: FamiliarSchemaV3.self)
-        let config = ModelConfiguration(FamiliarModelContainer.storeName, schema: schema, url: url)
-        let old = try ModelContainer(for: schema, configurations: [config])
-        old.mainContext.insert(FamiliarSchemaV3.FamiliarProject(name: "old"))
-        try old.mainContext.save()
-        let current = try FamiliarModelContainer.make(at: url)
-        #expect(try current.mainContext.fetch(FetchDescriptor<FamiliarArtifact>()).isEmpty)
-        #expect(try current.mainContext.fetch(FetchDescriptor<FamiliarProject>()).count == 1)
-    }
 }

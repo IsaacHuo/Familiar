@@ -25,40 +25,11 @@ private enum FamiliarComposerAddDestination {
     case files
 }
 
-enum FamiliarSlashCommand: String, CaseIterable, Identifiable {
-    case newConversation = "new"
-    case settings
-    case soul
-    case runHistory = "runs"
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .newConversation: String(localized: "conversation.new")
-        case .settings: String(localized: "drawer.settings")
-        case .soul: String(localized: "settings.hub.soul", defaultValue: "Soul")
-        case .runHistory: String(localized: "settings.hub.run_history", defaultValue: "Run History")
-        }
-    }
-
-    var detail: String {
-        switch self {
-        case .newConversation: String(localized: "slash.new.detail", defaultValue: "Start a new local conversation")
-        case .settings: String(localized: "slash.settings.detail", defaultValue: "Open Familiar settings")
-        case .soul: String(localized: "slash.soul.detail", defaultValue: "Edit personality and response style")
-        case .runHistory: String(localized: "slash.runs.detail", defaultValue: "Review local Agent runs")
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .newConversation: "square.and.pencil"
-        case .settings: "gearshape"
-        case .soul: "sparkles"
-        case .runHistory: "clock.arrow.circlepath"
-        }
-    }
+struct FamiliarSkillMenuItem: Identifiable, Equatable {
+    let id: UUID
+    let stableID: String
+    let name: String
+    let detail: String
 }
 
 private struct FamiliarComposerTextHeightKey: PreferenceKey {
@@ -69,6 +40,7 @@ private struct FamiliarComposerTextHeightKey: PreferenceKey {
 private struct FamiliarComposerLayout: Layout {
     let mode: FamiliarComposerMode
     let editorHeight: CGFloat
+    let leadingControlCount: Int
     private let control = FamiliarControlSize.minimumHitTarget
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
@@ -83,7 +55,7 @@ private struct FamiliarComposerLayout: Layout {
             let y = bounds.minY + max((bounds.height - control) / 2, 0)
             let sendX = bounds.maxX - control
             let micX = sendX - 2 - control
-            let editorX = bounds.minX + control + 4
+            let editorX = bounds.minX + control * CGFloat(leadingControlCount) + CGFloat(max(leadingControlCount - 1, 0) * 2) + 4
             let editorWidth = max(micX - 4 - editorX, 1)
             subviews[0].place(at: CGPoint(x: editorX, y: y), anchor: .topLeading, proposal: .init(width: editorWidth, height: control))
             subviews[1].place(at: CGPoint(x: micX, y: y), anchor: .topLeading, proposal: .init(width: control, height: control))
@@ -160,12 +132,13 @@ struct FamiliarComposer: View {
     @Binding var draft: String
     @Binding var images: [FamiliarDraftImage]
     @Binding var documents: [FamiliarAttachmentDraft]
+    @Binding var selectedSkillID: UUID?
+    let skills: [FamiliarSkillMenuItem]
     let isSending: Bool
     let isListening: Bool
     let draftScopeID: UUID?
     let focus: FocusState<Bool>.Binding
     let onSpeech: () -> Void
-    let onSlashCommand: (FamiliarSlashCommand) -> Void
     let onSend: () -> Void
 
     @State private var mode: FamiliarComposerMode = .compact
@@ -182,6 +155,7 @@ struct FamiliarComposer: View {
     @State private var showsFullPhotos = false
     @State private var transitionToFullPhotos = false
     @State private var showsFiles = false
+    @State private var showsSkillPalette = false
     @State private var notice: FamiliarComposerNotice?
     private let availableHeight: CGFloat
     private static let editorFontSize: CGFloat = 20
@@ -191,24 +165,26 @@ struct FamiliarComposer: View {
         draft: Binding<String>,
         images: Binding<[FamiliarDraftImage]>,
         documents: Binding<[FamiliarAttachmentDraft]>,
+        selectedSkillID: Binding<UUID?>,
+        skills: [FamiliarSkillMenuItem],
         isSending: Bool,
         isListening: Bool,
         draftScopeID: UUID?,
         focus: FocusState<Bool>.Binding,
         onSpeech: @escaping () -> Void,
-        onSlashCommand: @escaping (FamiliarSlashCommand) -> Void,
         onSend: @escaping () -> Void,
         availableHeight: CGFloat = UIScreen.main.bounds.height
     ) {
         _draft = draft
         _images = images
         _documents = documents
+        _selectedSkillID = selectedSkillID
+        self.skills = skills
         self.isSending = isSending
         self.isListening = isListening
         self.draftScopeID = draftScopeID
         self.focus = focus
         self.onSpeech = onSpeech
-        self.onSlashCommand = onSlashCommand
         self.onSend = onSend
         self.availableHeight = availableHeight
     }
@@ -217,7 +193,7 @@ struct FamiliarComposer: View {
     private var canSend: Bool {
         isSending || (importingFileCount == 0 && (hasText || !documents.isEmpty || !images.isEmpty))
     }
-    private var hasDraftContent: Bool { !images.isEmpty || !documents.isEmpty || importingFileCount > 0 }
+    private var hasDraftContent: Bool { selectedSkill != nil || !images.isEmpty || !documents.isEmpty || importingFileCount > 0 }
     private var effectiveTextHeight: CGFloat { max(measuredTextHeight, CGFloat(max(draft.components(separatedBy: "\n").count, 1)) * Self.lineHeight) }
     private var isLongText: Bool { effectiveTextHeight >= Self.lineHeight * 4 - 0.5 }
     private var showsExpansion: Bool { mode == .fullscreen || isLongText }
@@ -229,9 +205,13 @@ struct FamiliarComposer: View {
 
     var body: some View {
         VStack(spacing: FamiliarSpacing.small) {
-            slashCommandPalette
+            skillPalette
             draftPreview
-            FamiliarComposerLayout(mode: mode, editorHeight: editorHeight) {
+            FamiliarComposerLayout(
+                mode: mode,
+                editorHeight: editorHeight,
+                leadingControlCount: mode == .compact ? 1 : 2
+            ) {
                 editor
                 micButton
                 sendButton
@@ -239,7 +219,12 @@ struct FamiliarComposer: View {
             .frame(height: mode == .fullscreen ? nil : controlsHeight)
             .frame(maxHeight: mode == .fullscreen ? .infinity : nil)
             .overlay(alignment: .bottomLeading) {
-                addButton
+                HStack(spacing: -4) {
+                    addButton
+                    if focus.wrappedValue {
+                        slashButton
+                    }
+                }
             }
         }
         .padding(.horizontal, FamiliarSpacing.small)
@@ -271,44 +256,76 @@ struct FamiliarComposer: View {
         .alert(item: $notice) { notice in
             Alert(title: Text(notice.title), message: Text(notice.message), dismissButton: .default(Text(String(localized: "common.ok"))))
         }
-        .onChange(of: focus.wrappedValue) { _, focused in updateModeForFocus(focused) }
+        .onChange(of: focus.wrappedValue) { _, focused in
+            if !focused { showsSkillPalette = false }
+            updateModeForFocus(focused)
+        }
+        .onChange(of: draft) { oldValue, newValue in
+            if oldValue.first == "/", newValue.first != "/" {
+                showsSkillPalette = false
+            }
+        }
         .onChange(of: draftScopeID) { _, _ in cancelDraftTasks() }
         .onDisappear { cancelDraftTasks() }
         .onPreferenceChange(FamiliarComposerTextHeightKey.self) { measuredTextHeight = $0; updateModeForText() }
     }
 
     @ViewBuilder
-    private var slashCommandPalette: some View {
-        if showsSlashCommands {
-            VStack(spacing: 0) {
-                ForEach(filteredSlashCommands) { command in
-                    Button {
-                        onSlashCommand(command)
-                    } label: {
-                        HStack(spacing: FamiliarSpacing.medium) {
-                            Image(systemName: command.symbol)
-                                .frame(width: 24)
+    private var skillPalette: some View {
+        if showsSkills {
+            Group {
+                if filteredSkills.isEmpty {
+                    HStack(spacing: FamiliarSpacing.medium) {
+                        Image(systemName: "wand.and.stars")
+                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
+                            Text(String(localized: "slash.empty", defaultValue: "No Skills Available"))
+                                .font(.headline)
+                            Text(String(localized: "slash.empty.detail", defaultValue: "Create a Skill in Settings."))
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
-                            VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                                Text("/\(command.rawValue)")
-                                    .font(.headline)
-                                    .foregroundStyle(.primary)
-                                Text(command.detail)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            Spacer()
                         }
-                        .padding(.horizontal, FamiliarSpacing.large)
-                        .frame(minHeight: 58)
-                        .contentShape(Rectangle())
+                        Spacer()
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("/\(command.rawValue), \(command.title)")
-                    if command.id != filteredSlashCommands.last?.id {
-                        Divider().padding(.leading, FamiliarControlSize.minimumHitTarget + FamiliarSpacing.small)
+                    .padding(.horizontal, FamiliarSpacing.large)
+                    .frame(minHeight: 58)
+                } else {
+                    ScrollView(.vertical) {
+                        LazyVStack(spacing: 0) {
+                            ForEach(filteredSkills) { skill in
+                                Button {
+                                    selectedSkillID = skill.id
+                                    if draft.first == "/" { draft = "" }
+                                    showsSkillPalette = false
+                                } label: {
+                                    HStack(spacing: FamiliarSpacing.medium) {
+                                        Image(systemName: "wand.and.stars")
+                                            .frame(width: 24)
+                                            .foregroundStyle(.secondary)
+                                        VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
+                                            Text("/\(skill.stableID)")
+                                                .font(.headline)
+                                                .foregroundStyle(.primary)
+                                            Text(skill.detail.isEmpty ? skill.name : skill.detail)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                        }
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, FamiliarSpacing.large)
+                                    .frame(minHeight: 58)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("/\(skill.stableID), \(skill.name)")
+                                if skill.id != filteredSkills.last?.id {
+                                    Divider().padding(.leading, FamiliarControlSize.minimumHitTarget + FamiliarSpacing.small)
+                                }
+                            }
+                        }
                     }
+                    .frame(maxHeight: 58 * 4)
                 }
             }
             .background(
@@ -320,21 +337,31 @@ struct FamiliarComposer: View {
                     .stroke(FamiliarTheme.separator, lineWidth: 1)
             }
             .accessibilityElement(children: .contain)
-            .accessibilityLabel(String(localized: "slash.palette", defaultValue: "Slash commands"))
+            .accessibilityLabel(String(localized: "slash.palette", defaultValue: "Skills"))
         }
     }
 
-    private var showsSlashCommands: Bool {
-        draft.first == "/" && !filteredSlashCommands.isEmpty && !isSending
+    private var showsSkills: Bool {
+        focus.wrappedValue
+            && !isSending
+            && (showsSkillPalette || draft.first == "/")
     }
 
-    private var filteredSlashCommands: [FamiliarSlashCommand] {
-        guard draft.first == "/" else { return [] }
-        let query = String(draft.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
+    private var filteredSkills: [FamiliarSkillMenuItem] {
+        let query = draft.first == "/"
+            ? String(draft.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
+            : ""
         guard !query.contains(where: { $0.isWhitespace }) else { return [] }
-        return FamiliarSlashCommand.allCases.filter {
-            query.isEmpty || $0.rawValue.localizedCaseInsensitiveContains(query) || $0.title.localizedCaseInsensitiveContains(query)
+        return skills.filter {
+            query.isEmpty
+                || $0.stableID.localizedCaseInsensitiveContains(query)
+                || $0.name.localizedCaseInsensitiveContains(query)
+                || $0.detail.localizedCaseInsensitiveContains(query)
         }
+    }
+
+    private var selectedSkill: FamiliarSkillMenuItem? {
+        skills.first { $0.id == selectedSkillID }
     }
 
     private var editor: some View {
@@ -405,6 +432,28 @@ struct FamiliarComposer: View {
         .accessibilityLabel(String(localized: "attachment.add"))
     }
 
+    private var slashButton: some View {
+        Button {
+            focus.wrappedValue = true
+            if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                draft = "/"
+            }
+            showsSkillPalette = true
+        } label: {
+            Text("/")
+                .font(.system(size: 20, weight: .semibold, design: .rounded))
+                .foregroundStyle(.primary)
+                .frame(
+                    width: 28,
+                    height: FamiliarControlSize.minimumHitTarget
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isSending || skills.isEmpty)
+        .accessibilityLabel(String(localized: "slash.open", defaultValue: "Choose a Skill"))
+    }
+
     private func addMenuButton(_ destination: FamiliarComposerAddDestination, title: String, symbol: String) -> some View {
         Button {
             showsAddMenu = false
@@ -466,6 +515,21 @@ struct FamiliarComposer: View {
         if hasDraftContent {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: FamiliarSpacing.small) {
+                    if let selectedSkill {
+                        HStack(spacing: FamiliarSpacing.small) {
+                            Image(systemName: "wand.and.stars")
+                                .foregroundStyle(FamiliarTheme.accent)
+                            Text(selectedSkill.name)
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(1)
+                            removeButton(label: String(localized: "slash.remove", defaultValue: "Remove Skill")) {
+                                selectedSkillID = nil
+                            }
+                        }
+                        .padding(.leading, FamiliarSpacing.medium)
+                        .frame(height: 48)
+                        .background(FamiliarTheme.elevatedFill, in: Capsule())
+                    }
                     ForEach(images) { item in
                         ZStack(alignment: .topTrailing) {
                             Image(uiImage: item.image)

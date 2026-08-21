@@ -5,6 +5,7 @@
 "common.clear" = "Clear";
 "common.continue" = "Continue";
 "common.copy" = "Copy";
+"common.create" = "Create";
 "common.delete" = "Delete";
 "common.edit" = "Edit";
 "common.ok" = "OK";
@@ -108,11 +109,11 @@
 "settings.tools.registered" = "Registered Tools";
 "settings.tools.registered.footer" = "This read-only list reflects the tools registered with Familiar's Agent Runtime. Availability is checked only when a run uses a tool.";
 "settings.skills.title" = "Skills";
+"settings.skills.detail" = "Instruction-only guidance available from the composer";
 "settings.skills.add" = "Add Skill";
 "settings.skills.empty" = "No installed skills";
-"settings.skills.empty.detail" = "Import an instruction-only JSON skill, then enable it for a project.";
-"settings.skills.footer" = "Skills contain instructions only. They cannot authorize actions or expand system access, and affect only projects where they are enabled.";
-"settings.skills.import" = "Import Skill JSON";
+"settings.skills.empty.detail" = "Create an instruction-only Skill, then call it from the composer.";
+"settings.skills.footer" = "Skills contain instructions only. They cannot authorize actions or expand system access, and apply only when explicitly selected.";
 "settings.skills.delete" = "Delete";
 "settings.skills.name" = "Name";
 "settings.skills.version" = "Version";
@@ -124,12 +125,21 @@
 "settings.skills.preview.title" = "Preview Skill";
 "settings.skills.install" = "Install";
 "settings.skills.update" = "Update";
+"settings.skills.create.title" = "New Skill";
+"settings.skills.create.identifier_hint" = "Slash command: /%@";
+"settings.skills.create.no_tools" = "New Skills contain instructions only and start with no tool access.";
+"settings.skills.create.instructions_template" = "Goal:\n- Describe what this Skill should help accomplish.\n\nRules:\n- Add requirements the response must follow.\n\nOutput:\n- Describe the expected format and style.";
+"settings.skills.example.name" = "Clear Writing";
+"settings.skills.example.description" = "Turn rough ideas into clear, concise writing.";
+"settings.skills.example.instructions" = "Understand the user's goal first. Write clearly and concretely, remove filler, preserve important details, and state uncertainty when information is missing.";
 "error.skill.invalid" = "The skill file format is invalid.";
 "error.skill.unsupported" = "The skill file contains unsupported fields or content.";
 "error.skill.too_large" = "The skill file exceeds the local size limit.";
 "error.skill.unknown_tool" = "The skill requests an unknown tool: %@.";
 "error.skill.empty_instructions" = "A skill must contain non-empty instructions.";
 "error.skill.invalid_stored_allowed_tools" = "The installed skill %@ has an invalid tool scope. Reinstall it to continue.";
+"error.skill.already_installed" = "A Skill with this identifier already exists.";
+"error.skill.unavailable" = "This Skill is no longer installed.";
 
 "settings.memory.preview.title" = "Memory Preview";
 "settings.memory.preview.detail" = "Long-term memory is not connected to conversations or model context in this version.";
@@ -201,13 +211,11 @@
 "settings.about.notices" = "Third-Party Notices";
 "settings.about.notices.unavailable" = "Notices are unavailable.";
 "chat.actions" = "Conversation actions";
-"slash.palette" = "Slash commands";
-"slash.new.detail" = "Start a new local conversation";
-"slash.settings.detail" = "Open Familiar settings";
-"slash.soul.detail" = "Edit personality and response style";
-"slash.memory.detail" = "Open the long-term memory preview";
-"slash.mcp.detail" = "Open the MCP connections preview";
-"slash.runs.detail" = "Review local Agent runs";
+"slash.palette" = "Skills";
+"slash.open" = "Choose a Skill";
+"slash.remove" = "Remove Skill";
+"slash.empty" = "No Skills Available";
+"slash.empty.detail" = "Create a Skill in Settings.";
 
 "drawer.open" = "Open conversations";
 "drawer.search" = "Search projects and chats";
@@ -219,6 +227,10 @@
 "drawer.no_results" = "No matching conversations";
 "drawer.recent" = "Recent";
 "drawer.settings" = "Settings";
+"drawer.pinned" = "Pinned";
+"drawer.pin" = "Pin";
+"drawer.unpin" = "Unpin";
+"drawer.show_more" = "Show More";
 
 "draft.discard.title" = "Discard this draft?";
 "draft.discard.action" = "Discard Draft";
@@ -227,6 +239,7 @@
 "conversation.delete.detail" = "Messages, attachments, and saved run history in this chat will be deleted from this iPhone.";
 "conversation.project_context" = "Project: %@";
 "conversation.project_context.hint" = "Opens this project's context";
+"conversation.ordinary" = "Daily Chat";
 "run.context.model" = "Model";
 "run.context.project" = "Project";
 "run.context.resource" = "Resource Used";
@@ -269,7 +282,7 @@
 "project.run.resources" = "Resources Used";
 "project.run.resources.empty" = "No project resources were used.";
 "project.run.skills" = "Skills Used";
-"project.run.skills.empty" = "No project Skills were used.";
+"project.run.skills.empty" = "No Skills were used.";
 "project.run.tools" = "Available Tools";
 "project.run.tools.empty" = "No tools were exposed.";
 "project.run.status.running" = "Running";
@@ -301,8 +314,11 @@
 "artifact.empty" = "No artifacts yet";
 "artifact.delete.title" = "Delete this artifact?";
 "project.error.empty_name" = "Enter a project name.";
+"project.error.duplicate_name" = "A project with this name already exists.";
 "project.error.not_empty" = "Move or delete every project chat before permanently deleting this project.";
 "project.error.running" = "Wait for running tasks to finish before permanently deleting this project.";
+"project.expand" = "Expand Project";
+"project.collapse" = "Collapse Project";
 "project.delete.confirm.title" = "Delete this project?";
 "project.delete.confirm.detail" = "Project chats, attachments, and historical runs will remain as ordinary history. Instructions, resources, artifacts, project bindings, project Memory, and project authorizations will be permanently deleted.";
 "project.delete.confirm" = "Delete Project";

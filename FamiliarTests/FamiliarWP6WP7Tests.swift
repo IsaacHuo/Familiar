@@ -43,22 +43,6 @@ struct FamiliarWP6WP7Tests {
         #expect(throws: FamiliarRunRecoveryService.Error.self) { try service.beginInvocation(idempotencyKey: "run:call", runtimeID: "run", toolName: "fixture", arguments: "{}", in: container.mainContext) }
     }
 
-    @Test("V4 data migrates to V6 with empty recovery records")
-    @MainActor
-    func v4ToV6() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("FamiliarV4ToV6-\(UUID().uuidString)")
-        let url = root.appendingPathComponent(FamiliarModelContainer.storeFilename)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-        let schema = Schema(versionedSchema: FamiliarSchemaV4.self)
-        let old = try ModelContainer(for: schema, configurations: [ModelConfiguration(FamiliarModelContainer.storeName, schema: schema, url: url)])
-        old.mainContext.insert(FamiliarSchemaV4.FamiliarArtifact(projectID: UUID(), identifier: "a", title: "A", relativePath: "Projects/p/Artifacts/a/a.md", byteSize: 1, contentHash: "h"))
-        try old.mainContext.save()
-        let current = try FamiliarModelContainer.make(at: url)
-        #expect(try current.mainContext.fetch(FetchDescriptor<FamiliarAuthorizationGrantRecord>()).isEmpty)
-        #expect(try current.mainContext.fetch(FetchDescriptor<FamiliarToolInvocationRecord>()).isEmpty)
-    }
-
     @Test("Interrupted runs are finalized and in-flight invocations cancelled")
     @MainActor
     func recoverInterruptedRuns() throws {

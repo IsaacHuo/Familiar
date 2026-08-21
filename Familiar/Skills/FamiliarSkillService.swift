@@ -86,17 +86,54 @@ nonisolated enum FamiliarSkillToolScope {
 
 enum FamiliarSkillServiceError: LocalizedError, Sendable {
     case invalidStoredAllowedTools(String)
+    case alreadyInstalled
+    case unavailable
 
     var errorDescription: String? {
         switch self {
         case .invalidStoredAllowedTools(let stableID):
             String(format: String(localized: "error.skill.invalid_stored_allowed_tools"), stableID)
+        case .alreadyInstalled:
+            String(localized: "error.skill.already_installed", defaultValue: "A Skill with this identifier already exists.")
+        case .unavailable:
+            String(localized: "error.skill.unavailable", defaultValue: "This Skill is no longer installed.")
         }
     }
 }
 
 @MainActor
 struct FamiliarSkillService {
+    private static let exampleSeedKey = "familiar.skills.example.seeded.v1"
+
+    static var exampleDocument: FamiliarSkillDocument {
+        FamiliarSkillDocument(
+            format: "familiar.skill",
+            formatVersion: 1,
+            id: "clear-writing",
+            version: "1.0.0",
+            name: String(localized: "settings.skills.example.name", defaultValue: "Clear Writing"),
+            description: String(localized: "settings.skills.example.description", defaultValue: "Turn rough ideas into clear, concise writing."),
+            instructions: String(
+                localized: "settings.skills.example.instructions",
+                defaultValue: "Understand the user's goal first. Write clearly and concretely, remove filler, preserve important details, and state uncertainty when information is missing."
+            ),
+            allowedTools: [],
+            examples: []
+        )
+    }
+
+    func installExampleIfNeeded(in context: ModelContext) throws {
+        guard !UserDefaults.standard.bool(forKey: Self.exampleSeedKey) else { return }
+        let stableID = Self.exampleDocument.id
+        let existing = try context.fetch(FetchDescriptor<FamiliarSkill>(
+            predicate: #Predicate { $0.stableID == stableID }
+        )).first
+        if existing == nil {
+            _ = try install(Self.exampleDocument, in: context)
+        }
+        UserDefaults.standard.set(true, forKey: Self.exampleSeedKey)
+    }
+
     func install(_ document: FamiliarSkillDocument, in context: ModelContext) throws -> FamiliarSkill {
         let normalized = FamiliarSkillDocument(
             format: document.format,
@@ -122,47 +159,27 @@ struct FamiliarSkillService {
         context.insert(skill); try context.save(); return skill
     }
 
-    func setBinding(skillID: UUID, projectID: UUID, enabled: Bool, in context: ModelContext) throws {
-        if let binding = try context.fetch(FetchDescriptor<FamiliarSkillBinding>(predicate: #Predicate { $0.skillID == skillID && $0.projectID == projectID })).first { binding.enabled = enabled; binding.updatedAt = Date() }
-        else { context.insert(FamiliarSkillBinding(skillID: skillID, projectID: projectID, enabled: enabled)) }
-        try context.save()
-    }
-
-    func enabledSkills(projectID: UUID, in context: ModelContext) throws -> [FamiliarSkillSnapshot] {
-        let bindings = try context.fetch(FetchDescriptor<FamiliarSkillBinding>(
-            predicate: #Predicate { $0.projectID == projectID && $0.enabled }
-        ))
-        let enabledIDs = Set(bindings.map(\.skillID))
-        guard !enabledIDs.isEmpty else { return [] }
-
-        return try context.fetch(FetchDescriptor<FamiliarSkill>())
-            .filter { enabledIDs.contains($0.id) }
-            .map { skill in
-                guard let data = skill.allowedToolsJSON.data(using: .utf8),
-                      let allowedTools = try? JSONDecoder().decode([String].self, from: data)
-                else { throw FamiliarSkillServiceError.invalidStoredAllowedTools(skill.stableID) }
-                return FamiliarSkillSnapshot(
-                    stableID: skill.stableID,
-                    version: skill.version,
-                    name: skill.name,
-                    contentHash: skill.contentHash,
-                    instructions: skill.instructions,
-                    allowedTools: Array(Set(allowedTools)).sorted()
-                )
-            }
-            .sorted {
-                if $0.stableID == $1.stableID { return $0.version < $1.version }
-                return $0.stableID < $1.stableID
-            }
+    func snapshot(skillID: UUID, in context: ModelContext) throws -> FamiliarSkillSnapshot {
+        let id = skillID
+        guard let skill = try context.fetch(FetchDescriptor<FamiliarSkill>(
+            predicate: #Predicate { $0.id == id }
+        )).first else {
+            throw FamiliarSkillServiceError.unavailable
+        }
+        guard let data = skill.allowedToolsJSON.data(using: .utf8),
+              let allowedTools = try? JSONDecoder().decode([String].self, from: data)
+        else { throw FamiliarSkillServiceError.invalidStoredAllowedTools(skill.stableID) }
+        return FamiliarSkillSnapshot(
+            stableID: skill.stableID,
+            version: skill.version,
+            name: skill.name,
+            contentHash: skill.contentHash,
+            instructions: skill.instructions,
+            allowedTools: Array(Set(allowedTools)).sorted()
+        )
     }
 
     func uninstall(_ skill: FamiliarSkill, in context: ModelContext) throws {
-        let skillID = skill.id
-        for binding in try context.fetch(FetchDescriptor<FamiliarSkillBinding>(
-            predicate: #Predicate { $0.skillID == skillID }
-        )) {
-            context.delete(binding)
-        }
         context.delete(skill)
         do {
             try context.save()

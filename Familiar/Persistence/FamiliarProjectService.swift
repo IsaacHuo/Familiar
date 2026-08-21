@@ -1,13 +1,15 @@
 import Foundation
 import SwiftData
 
-enum FamiliarProjectServiceError: LocalizedError {
+enum FamiliarProjectServiceError: LocalizedError, Equatable {
     case emptyName
+    case duplicateName
     case projectHasRunningRun
 
     var errorDescription: String? {
         switch self {
         case .emptyName: String(localized: "project.error.empty_name")
+        case .duplicateName: String(localized: "project.error.duplicate_name")
         case .projectHasRunningRun: String(localized: "project.error.running")
         }
     }
@@ -32,6 +34,7 @@ struct FamiliarProjectService {
     @discardableResult
     func create(name: String, summary: String = "", in context: ModelContext) throws -> FamiliarProject {
         let normalizedName = try normalizedName(name)
+        try ensureNameAvailable(normalizedName, excluding: nil, in: context)
         let now = Date()
         let project = FamiliarProject(
             name: normalizedName,
@@ -45,7 +48,9 @@ struct FamiliarProjectService {
     }
 
     func update(_ project: FamiliarProject, name: String, summary: String, in context: ModelContext) throws {
-        project.name = try normalizedName(name)
+        let normalizedName = try normalizedName(name)
+        try ensureNameAvailable(normalizedName, excluding: project.id, in: context)
+        project.name = normalizedName
         project.summary = normalized(summary, maximumLength: Self.maximumSummaryLength)
         project.updatedAt = Date()
         try save(context)
@@ -87,9 +92,6 @@ struct FamiliarProjectService {
             let artifacts = try context.fetch(FetchDescriptor<FamiliarArtifact>(
                 predicate: #Predicate { $0.projectID == projectID }
             ))
-            let skillBindings = try context.fetch(FetchDescriptor<FamiliarSkillBinding>(
-                predicate: #Predicate { $0.projectID == projectID }
-            ))
             let mcpBindings = try context.fetch(FetchDescriptor<FamiliarMCPBindingRecord>(
                 predicate: #Predicate { $0.projectID == projectID }
             ))
@@ -103,11 +105,11 @@ struct FamiliarProjectService {
                 predicate: #Predicate { $0.projectID == projectID }
             ))
             artifacts.forEach { context.delete($0) }
-            skillBindings.forEach { context.delete($0) }
             mcpBindings.forEach { context.delete($0) }
             memoryItems.forEach { context.delete($0) }
             authorizationGrants.forEach { context.delete($0) }
             authorizationRules.forEach { context.delete($0) }
+            _ = try FamiliarPinService().stageRemoval(.project, targetIDs: [projectID], in: context)
             context.delete(project)
             try context.save()
             if let staged { try resourceStore.discard(staged) }
@@ -124,6 +126,14 @@ struct FamiliarProjectService {
         let name = normalized(value, maximumLength: Self.maximumNameLength)
         guard !name.isEmpty else { throw FamiliarProjectServiceError.emptyName }
         return name
+    }
+
+    private func ensureNameAvailable(_ name: String, excluding projectID: UUID?, in context: ModelContext) throws {
+        let projects = try context.fetch(FetchDescriptor<FamiliarProject>())
+        let duplicate = projects.contains {
+            $0.id != projectID && $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame
+        }
+        guard !duplicate else { throw FamiliarProjectServiceError.duplicateName }
     }
 
     private func normalized(_ value: String, maximumLength: Int) -> String {

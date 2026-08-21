@@ -5,7 +5,7 @@ enum FamiliarSchemaV8: VersionedSchema {
     static let versionIdentifier = Schema.Version(8, 0, 0)
     static var models: [any PersistentModel.Type] {
         FamiliarSchemaV7.models + [
-            FamiliarSkill.self, FamiliarSkillBinding.self, FamiliarMemoryItem.self,
+            FamiliarSkill.self, FamiliarMemoryItem.self,
             FamiliarMCPServerRecord.self, FamiliarMCPBindingRecord.self
         ]
     }
@@ -27,18 +27,6 @@ enum FamiliarSchemaV8: VersionedSchema {
             self.id = id; self.stableID = stableID; self.version = version; self.name = name
             self.descriptionText = descriptionText; self.instructions = instructions; self.examplesJSON = examplesJSON
             self.allowedToolsJSON = allowedToolsJSON; self.contentHash = contentHash; self.installedAt = installedAt; self.updatedAt = updatedAt
-        }
-    }
-
-    @Model final class FamiliarSkillBinding {
-        @Attribute(.unique) var id: UUID
-        var skillID: UUID
-        var projectID: UUID
-        var enabled: Bool
-        var createdAt: Date
-        var updatedAt: Date
-        init(skillID: UUID, projectID: UUID, enabled: Bool = true, id: UUID = UUID(), createdAt: Date = Date(), updatedAt: Date = Date()) {
-            self.id = id; self.skillID = skillID; self.projectID = projectID; self.enabled = enabled; self.createdAt = createdAt; self.updatedAt = updatedAt
         }
     }
 

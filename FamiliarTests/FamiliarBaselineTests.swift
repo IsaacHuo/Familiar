@@ -345,7 +345,7 @@ struct FamiliarBaselineTests {
         )
     }
 
-    @Test("Store recovery removes only the current store and local attachments") @MainActor
+    @Test("Store recovery removes the current store and all local content") @MainActor
     func storeRecovery() throws {
         let fileManager = FileManager.default
         let root = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -354,21 +354,25 @@ struct FamiliarBaselineTests {
         let persistence = root.appendingPathComponent("Familiar/Persistence", isDirectory: true)
         let attachments = root.appendingPathComponent("Familiar/Attachments", isDirectory: true)
         let projectResources = root.appendingPathComponent("Familiar/ProjectResources", isDirectory: true)
+        let artifacts = root.appendingPathComponent("Familiar/Artifacts", isDirectory: true)
         try fileManager.createDirectory(at: persistence, withIntermediateDirectories: true)
         try fileManager.createDirectory(at: attachments, withIntermediateDirectories: true)
         try fileManager.createDirectory(at: projectResources, withIntermediateDirectories: true)
-        try Data("store".utf8).write(to: persistence.appendingPathComponent("FamiliarAgentV2.store"))
-        try Data("wal".utf8).write(to: persistence.appendingPathComponent("FamiliarAgentV2.store-wal"))
+        try fileManager.createDirectory(at: artifacts, withIntermediateDirectories: true)
+        try Data("store".utf8).write(to: persistence.appendingPathComponent(FamiliarModelContainer.storeFilename))
+        try Data("wal".utf8).write(to: persistence.appendingPathComponent(FamiliarModelContainer.storeFilename + "-wal"))
         try Data("old".utf8).write(to: persistence.appendingPathComponent("FamiliarAgentV1.store"))
         try Data("attachment".utf8).write(to: attachments.appendingPathComponent("message.txt"))
         try Data("resource".utf8).write(to: projectResources.appendingPathComponent("resource.txt"))
+        try Data("artifact".utf8).write(to: artifacts.appendingPathComponent("artifact.txt"))
 
-        try FamiliarApp.resetV2Store(in: root, fileManager: fileManager)
+        try FamiliarApp.resetStore(in: root, fileManager: fileManager)
 
-        #expect(!fileManager.fileExists(atPath: persistence.appendingPathComponent("FamiliarAgentV2.store").path))
-        #expect(!fileManager.fileExists(atPath: persistence.appendingPathComponent("FamiliarAgentV2.store-wal").path))
+        #expect(!fileManager.fileExists(atPath: persistence.appendingPathComponent(FamiliarModelContainer.storeFilename).path))
+        #expect(!fileManager.fileExists(atPath: persistence.appendingPathComponent(FamiliarModelContainer.storeFilename + "-wal").path))
         #expect(fileManager.fileExists(atPath: persistence.appendingPathComponent("FamiliarAgentV1.store").path))
         #expect(!fileManager.fileExists(atPath: attachments.path))
         #expect(!fileManager.fileExists(atPath: projectResources.path))
+        #expect(!fileManager.fileExists(atPath: artifacts.path))
     }
 }

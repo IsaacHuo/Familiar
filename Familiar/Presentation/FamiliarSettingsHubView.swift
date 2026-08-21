@@ -87,7 +87,7 @@ struct FamiliarSettingsView: View {
                     settingsLink(
                         .skills,
                         title: String(localized: "settings.skills.title", defaultValue: "Skills"),
-                        subtitle: String(localized: "settings.skills.detail", defaultValue: "Installed instruction-only project guidance"),
+                        subtitle: String(localized: "settings.skills.detail", defaultValue: "Instruction-only guidance available from the composer"),
                         symbol: "wand.and.stars",
                         color: .purple
                     )
@@ -189,26 +189,19 @@ struct FamiliarSettingsView: View {
                         in: RoundedRectangle(cornerRadius: FamiliarRadius.compact, style: .continuous)
                     )
 
-                VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                    HStack(spacing: FamiliarSpacing.small) {
-                        Text(title)
-                            .font(FamiliarTypography.body)
-                        if let badge {
-                            Text(badge)
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(FamiliarTheme.accent)
-                                .padding(.horizontal, FamiliarSpacing.small)
-                                .padding(.vertical, FamiliarSpacing.xSmall)
-                                .background(FamiliarTheme.accent.opacity(0.12), in: Capsule())
-                        }
+                HStack(spacing: FamiliarSpacing.small) {
+                    Text(title)
+                        .font(FamiliarTypography.body)
+                    if let badge {
+                        Text(badge)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(FamiliarTheme.accent)
+                            .padding(.horizontal, FamiliarSpacing.small)
+                            .padding(.vertical, FamiliarSpacing.xSmall)
+                            .background(FamiliarTheme.accent.opacity(0.12), in: Capsule())
                     }
-                    Text(subtitle)
-                        .font(FamiliarTypography.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
                 }
             }
-            .padding(.vertical, FamiliarSpacing.xSmall)
         }
         .accessibilityValue(badge ?? subtitle)
     }
@@ -234,7 +227,7 @@ struct FamiliarSettingsView: View {
         case .authorizations:
             FamiliarAuthorizationSettingsView()
         case .skills:
-            FamiliarSkillsSettingsView(registry: registry)
+            FamiliarSkillsSettingsView()
         case .soul:
             FamiliarSoulSettingsView(systemPrompt: $settings.systemPrompt)
         case .storage:
@@ -259,12 +252,9 @@ struct FamiliarSettingsView: View {
 
 private struct FamiliarSkillsSettingsView: View {
     @Environment(\.modelContext) private var modelContext
-    let registry: FamiliarToolRegistry
     @Query(sort: \FamiliarSkill.installedAt, order: .reverse) private var skills: [FamiliarSkill]
-    @State private var importing = false
-    @State private var pending: FamiliarSkillDocument?
+    @State private var creating = false
     @State private var errorMessage: String?
-    @State private var knownToolNames: Set<String> = []
 
     var body: some View {
         List {
@@ -273,7 +263,7 @@ private struct FamiliarSkillsSettingsView: View {
                     ContentUnavailableView(
                         String(localized: "settings.skills.empty", defaultValue: "No installed skills"),
                         systemImage: "wand.and.stars",
-                        description: Text(String(localized: "settings.skills.empty.detail", defaultValue: "Import an instruction-only JSON skill, then enable it for a project."))
+                        description: Text(String(localized: "settings.skills.empty.detail", defaultValue: "Create an instruction-only Skill, then call it from the composer."))
                     )
                 }
                 ForEach(skills) { skill in
@@ -296,68 +286,23 @@ private struct FamiliarSkillsSettingsView: View {
             } footer: {
                 Text(String(localized: "settings.skills.footer", defaultValue: "Skills contain instruction-only guidance. They cannot grant permissions or authorize actions."))
             }
-            Section {
-                Button { importing = true } label: { Label(String(localized: "settings.skills.import", defaultValue: "Import Skill JSON"), systemImage: "square.and.arrow.down") }
-                    .disabled(knownToolNames.isEmpty)
-            }
         }
         .navigationTitle(String(localized: "settings.skills.title", defaultValue: "Skills"))
         .navigationBarTitleDisplayMode(.inline)
-        .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
-            guard case .success(let url) = result else { return }
-            let accessing = url.startAccessingSecurityScopedResource()
-            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-            do {
-                pending = try FamiliarSkillDocumentParser.parse(
-                    data: Data(contentsOf: url),
-                    toolIDs: knownToolNames
-                )
-            } catch { errorMessage = error.localizedDescription }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { creating = true } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel(String(localized: "settings.skills.add", defaultValue: "Add Skill"))
+            }
         }
-        .sheet(item: $pending) { document in
-            NavigationStack {
-                List {
-                    Section {
-                        LabeledContent(String(localized: "settings.skills.name", defaultValue: "Name"), value: document.name)
-                        LabeledContent(String(localized: "settings.skills.version", defaultValue: "Version"), value: document.version)
-                        LabeledContent(String(localized: "settings.skills.identifier", defaultValue: "Identifier"), value: document.id)
-                    }
-                    if !document.description.isEmpty {
-                        Section(String(localized: "settings.skills.description", defaultValue: "Description")) {
-                            Text(document.description)
-                        }
-                    }
-                    Section(String(localized: "settings.skills.instructions", defaultValue: "Instructions")) {
-                        Text(document.instructions)
-                            .textSelection(.enabled)
-                    }
-                    Section(String(localized: "settings.skills.allowed_tools", defaultValue: "Allowed Tools")) {
-                        Text(document.allowedTools.isEmpty
-                             ? String(localized: "settings.skills.no_tools", defaultValue: "No tools")
-                             : document.allowedTools.joined(separator: ", "))
-                            .textSelection(.enabled)
-                    }
+        .sheet(isPresented: $creating) {
+            FamiliarSkillCreatorView { document in
+                guard !skills.contains(where: { $0.stableID == document.id }) else {
+                    throw FamiliarSkillServiceError.alreadyInstalled
                 }
-                .navigationTitle(String(localized: "settings.skills.preview.title", defaultValue: "Preview Skill"))
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button(String(localized: "common.cancel")) { pending = nil }
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button(skills.contains(where: { $0.stableID == document.id })
-                               ? String(localized: "settings.skills.update", defaultValue: "Update")
-                               : String(localized: "settings.skills.install", defaultValue: "Install")) {
-                            do {
-                                _ = try FamiliarSkillService().install(document, in: modelContext)
-                                pending = nil
-                            } catch {
-                                errorMessage = error.localizedDescription
-                            }
-                        }
-                        .fontWeight(.semibold)
-                    }
-                }
+                _ = try FamiliarSkillService().install(document, in: modelContext)
             }
         }
         .alert(String(localized: "settings.skills.title", defaultValue: "Skills"), isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
@@ -365,9 +310,126 @@ private struct FamiliarSkillsSettingsView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-        .task {
-            knownToolNames = Set(await registry.snapshot().map(\.name))
+    }
+}
+
+private struct FamiliarSkillCreatorView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let onCreate: (FamiliarSkillDocument) throws -> Void
+
+    @State private var name = ""
+    @State private var identifier = ""
+    @State private var descriptionText = ""
+    @State private var instructions = String(
+        localized: "settings.skills.create.instructions_template",
+        defaultValue: "Goal:\n- Describe what this Skill should help accomplish.\n\nRules:\n- Add requirements the response must follow.\n\nOutput:\n- Describe the expected format and style."
+    )
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField(String(localized: "settings.skills.name", defaultValue: "Name"), text: $name)
+                    TextField(
+                        String(localized: "settings.skills.identifier", defaultValue: "Identifier"),
+                        text: $identifier,
+                        prompt: Text(generatedIdentifier.isEmpty ? "my-skill" : generatedIdentifier)
+                    )
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    TextField(
+                        String(localized: "settings.skills.description", defaultValue: "Description"),
+                        text: $descriptionText,
+                        axis: .vertical
+                    )
+                    .lineLimit(2...4)
+                } footer: {
+                    Text(String(
+                        format: String(localized: "settings.skills.create.identifier_hint", defaultValue: "Slash command: /%@"),
+                        resolvedIdentifier.isEmpty ? "my-skill" : resolvedIdentifier
+                    ))
+                }
+
+                Section(String(localized: "settings.skills.instructions", defaultValue: "Instructions")) {
+                    TextEditor(text: $instructions)
+                        .frame(minHeight: 220)
+                }
+
+                Section {
+                    Text(String(localized: "settings.skills.create.no_tools", defaultValue: "New Skills contain instructions only and start with no tool access."))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle(String(localized: "settings.skills.create.title", defaultValue: "New Skill"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(String(localized: "common.cancel")) { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(String(localized: "common.create", defaultValue: "Create")) {
+                        create()
+                    }
+                    .fontWeight(.semibold)
+                    .disabled(!canCreate)
+                }
+            }
         }
+        .alert(String(localized: "settings.skills.create.title", defaultValue: "New Skill"), isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button(String(localized: "common.ok")) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    private var generatedIdentifier: String {
+        normalizedIdentifier(name)
+    }
+
+    private var resolvedIdentifier: String {
+        let explicit = normalizedIdentifier(identifier)
+        return explicit.isEmpty ? generatedIdentifier : explicit
+    }
+
+    private var canCreate: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !resolvedIdentifier.isEmpty
+            && !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func create() {
+        let document = FamiliarSkillDocument(
+            format: "familiar.skill",
+            formatVersion: 1,
+            id: resolvedIdentifier,
+            version: "1.0.0",
+            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+            description: descriptionText.trimmingCharacters(in: .whitespacesAndNewlines),
+            instructions: instructions.trimmingCharacters(in: .whitespacesAndNewlines),
+            allowedTools: [],
+            examples: []
+        )
+        do {
+            let data = try JSONEncoder().encode(document)
+            let validated = try FamiliarSkillDocumentParser.parse(data: data, toolIDs: [])
+            try onCreate(validated)
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func normalizedIdentifier(_ value: String) -> String {
+        value.lowercased()
+            .split { !$0.isLetter && !$0.isNumber }
+            .map(String.init)
+            .joined(separator: "-")
     }
 }
 
@@ -838,11 +900,7 @@ private struct FamiliarAboutView: View {
         List {
             Section {
                 VStack(spacing: 10) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 34, weight: .medium))
-                        .foregroundStyle(FamiliarTheme.accent)
-                        .frame(width: 72, height: 72)
-                        .background(FamiliarTheme.brandGlow, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    appIconView
                     Text(String(localized: "app.name")).font(.title2.bold())
                     Text(version).font(.subheadline).foregroundStyle(.secondary)
                 }
@@ -871,6 +929,42 @@ private struct FamiliarAboutView: View {
         }
         .navigationTitle(String(localized: "settings.hub.about", defaultValue: "About Familiar"))
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ViewBuilder
+    private var appIconView: some View {
+        if let appIcon {
+            Image(uiImage: appIcon)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 72, height: 72)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        } else {
+            Image(systemName: "app.fill")
+                .font(.system(size: 34, weight: .medium))
+                .foregroundStyle(FamiliarTheme.accent)
+                .frame(width: 72, height: 72)
+                .background(FamiliarTheme.brandGlow, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+    }
+
+    private var appIcon: UIImage? {
+        guard let icons = Bundle.main.infoDictionary?["CFBundleIcons"] as? [String: Any],
+              let primary = icons["CFBundlePrimaryIcon"] as? [String: Any],
+              let files = primary["CFBundleIconFiles"] as? [String]
+        else { return UIImage(named: "AppIcon") }
+
+        for filename in files.reversed() {
+            if let image = UIImage(named: filename) { return image }
+            let resource = filename as NSString
+            if let path = Bundle.main.path(
+                forResource: resource.deletingPathExtension,
+                ofType: resource.pathExtension.isEmpty ? "png" : resource.pathExtension
+            ), let image = UIImage(contentsOfFile: path) {
+                return image
+            }
+        }
+        return UIImage(named: "AppIcon")
     }
 
     private var version: String {

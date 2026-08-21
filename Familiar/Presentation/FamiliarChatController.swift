@@ -6,6 +6,8 @@ import SwiftData
 @Observable
 final class FamiliarChatController {
     var selectedConversationID: UUID?
+    var selectedProjectID: UUID?
+    var selectedSkillID: UUID?
     var messages: [FamiliarMessageSnapshot] = []
     var modelSwitches: [FamiliarModelSwitchSnapshot] = []
     var toolRunRecords: [FamiliarToolRunSnapshot] = []
@@ -40,11 +42,16 @@ final class FamiliarChatController {
         guard !isSending else { return }
         discardDraftAttachments()
         draft = ""
+        selectedSkillID = nil
         selectedConversationID = id
         availableUndoKeys = []
         resetTransientRunState()
         reloadMessages(in: context)
-        guard let conversation = selectedConversation(in: context) else { return }
+        guard let conversation = selectedConversation(in: context) else {
+            selectedProjectID = nil
+            return
+        }
+        selectedProjectID = conversation.project?.id
         var value = settings
         value.providerID = conversation.currentProviderID
         value.modelID = conversation.currentModelID
@@ -89,6 +96,7 @@ final class FamiliarChatController {
     func createConversation(project: FamiliarProject? = nil, in context: ModelContext) -> FamiliarConversation? {
         discardDraftAttachments()
         draft = ""
+        selectedSkillID = nil
         let conversation = FamiliarConversation(
             currentProviderID: settings.providerID,
             currentModelID: settings.modelID,
@@ -98,6 +106,7 @@ final class FamiliarChatController {
         do {
             try context.save()
             selectedConversationID = conversation.id
+            selectedProjectID = project?.id
             messages = []
             modelSwitches = []
             toolRunRecords = []
@@ -112,6 +121,21 @@ final class FamiliarChatController {
         }
     }
 
+    func startNewConversation(project: FamiliarProject?, in context: ModelContext) {
+        guard !isSending else { return }
+        discardDraftAttachments()
+        draft = ""
+        selectedSkillID = nil
+        selectedConversationID = nil
+        selectedProjectID = project?.id
+        messages = []
+        modelSwitches = []
+        toolRunRecords = []
+        agentRuns = []
+        availableUndoKeys = []
+        resetTransientRunState()
+    }
+
     func delete(_ conversations: [FamiliarConversation], in context: ModelContext) {
         guard !isSending else { return }
         let deletedIDs = Set(conversations.map(\.id))
@@ -119,8 +143,9 @@ final class FamiliarChatController {
             conversation.messages.flatMap { $0.attachments.map(\.relativePath) }
         }
         deleteSkillSnapshots(for: conversations.flatMap(\.agentRuns), in: context)
-        conversations.forEach(context.delete)
         do {
+            _ = try FamiliarPinService().stageRemoval(.conversation, targetIDs: deletedIDs, in: context)
+            conversations.forEach(context.delete)
             try context.save()
             FamiliarAttachmentStore.remove(relativePaths: attachmentPaths)
             if let selectedConversationID, deletedIDs.contains(selectedConversationID) {
@@ -243,12 +268,13 @@ final class FamiliarChatController {
             return
         }
         let selectedProject = selectedConversation(in: context)?.project
-        let enabledSkills: [FamiliarSkillSnapshot]
+            ?? selectedProjectID.flatMap { fetchProject(id: $0, in: context) }
+        let invokedSkills: [FamiliarSkillSnapshot]
         do {
-            if let projectID = selectedProject?.id {
-                enabledSkills = try FamiliarSkillService().enabledSkills(projectID: projectID, in: context)
+            if let selectedSkillID {
+                invokedSkills = [try FamiliarSkillService().snapshot(skillID: selectedSkillID, in: context)]
             } else {
-                enabledSkills = []
+                invokedSkills = []
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -268,6 +294,7 @@ final class FamiliarChatController {
             + prompt.count
             + combinedAttachments.reduce(0) { $0 + $1.extractedText.count }
             + (visualEvidence ?? []).reduce(0) { $0 + $1.renderedText.count }
+            + invokedSkills.reduce(0) { $0 + $1.instructions.count }
         guard requestCharacterCount <= requestSettings.selectedModel.capabilities.maximumInputCharacters else {
             errorMessage = String(localized: "error.message.context_too_large")
             return
@@ -288,7 +315,8 @@ final class FamiliarChatController {
         } else {
             let created = FamiliarConversation(
                 currentProviderID: requestSettings.providerID,
-                currentModelID: requestSettings.modelID
+                currentModelID: requestSettings.modelID,
+                project: selectedProject
             )
             context.insert(created)
             conversation = created
@@ -357,7 +385,8 @@ final class FamiliarChatController {
         draftImages = []
         reloadMessages(in: context)
         let requestMessages = messages
-        let contextSeed = makeContextSeed(conversation: conversation, skills: enabledSkills)
+        let contextSeed = makeContextSeed(conversation: conversation, skills: invokedSkills)
+        selectedSkillID = nil
         let responseID = UUID()
         isSending = true
         availableUndoKeys = []
@@ -1199,6 +1228,14 @@ final class FamiliarChatController {
     private func fetchConversation(id: UUID, in context: ModelContext) -> FamiliarConversation? {
         var descriptor = FetchDescriptor<FamiliarConversation>(
             predicate: #Predicate { conversation in conversation.id == id }
+        )
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
+    }
+
+    private func fetchProject(id: UUID, in context: ModelContext) -> FamiliarProject? {
+        var descriptor = FetchDescriptor<FamiliarProject>(
+            predicate: #Predicate { project in project.id == id }
         )
         descriptor.fetchLimit = 1
         return try? context.fetch(descriptor).first

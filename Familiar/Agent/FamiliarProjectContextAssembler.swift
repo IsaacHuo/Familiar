@@ -67,7 +67,7 @@ nonisolated enum FamiliarProjectContextAssembler {
         visualEvidence: [FamiliarVisualEvidence] = [],
         now: Date = Date()
     ) throws -> FamiliarContextSnapshot {
-        let skills = (seed.projectID == nil ? [] : seed.skills).sorted {
+        let skills = seed.skills.sorted {
             if $0.stableID == $1.stableID {
                 if $0.version == $1.version { return $0.contentHash < $1.contentHash }
                 return $0.version < $1.version
@@ -91,7 +91,7 @@ nonisolated enum FamiliarProjectContextAssembler {
             systemPrompt += "\n\n<project_instruction>\n\(boundedInstruction)\n</project_instruction>"
         }
         if !skills.isEmpty {
-            systemPrompt += "\n\n<project_skills>"
+            systemPrompt += "\n\n<skills>"
             for skill in skills {
                 systemPrompt += "\n<skill>\n"
                 systemPrompt += "stable_id: \(skill.stableID)\n"
@@ -100,7 +100,7 @@ nonisolated enum FamiliarProjectContextAssembler {
                 systemPrompt += "instructions:\n\(skill.instructions)\n"
                 systemPrompt += "</skill>"
             }
-            systemPrompt += "\n</project_skills>"
+            systemPrompt += "\n</skills>"
         }
         systemPrompt += "\n\n" + toolPolicy(hasTools: !manifests.isEmpty)
 

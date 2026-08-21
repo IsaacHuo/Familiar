@@ -5,6 +5,7 @@
 "common.clear" = "清除";
 "common.continue" = "继续";
 "common.copy" = "复制";
+"common.create" = "创建";
 "common.delete" = "删除";
 "common.edit" = "编辑";
 "common.ok" = "知道了";
@@ -108,11 +109,11 @@
 "settings.tools.registered" = "已注册工具";
 "settings.tools.registered.footer" = "此只读列表来自 Familiar Agent Runtime 的工具注册表。仅当运行实际使用工具时，Familiar 才会检查可用性。";
 "settings.skills.title" = "技能";
+"settings.skills.detail" = "可从输入框调用的纯指令能力";
 "settings.skills.add" = "添加技能";
 "settings.skills.empty" = "还没有安装技能";
-"settings.skills.empty.detail" = "导入 instruction-only JSON 技能，再到项目中启用。";
-"settings.skills.footer" = "技能只包含指令，不能授权操作或扩大系统权限。启用后只影响对应项目。";
-"settings.skills.import" = "导入技能 JSON";
+"settings.skills.empty.detail" = "新建一个仅包含指令的 Skill，然后在输入框中调用。";
+"settings.skills.footer" = "Skill 只包含指令，不能授权操作或扩大系统权限，并且只在用户明确选择时生效。";
 "settings.skills.delete" = "删除";
 "settings.skills.name" = "名称";
 "settings.skills.version" = "版本";
@@ -124,12 +125,21 @@
 "settings.skills.preview.title" = "预览技能";
 "settings.skills.install" = "安装";
 "settings.skills.update" = "更新";
+"settings.skills.create.title" = "新建技能";
+"settings.skills.create.identifier_hint" = "斜杠命令：/%@";
+"settings.skills.create.no_tools" = "新建技能只包含指令，默认不使用任何工具。";
+"settings.skills.create.instructions_template" = "目标：\n- 描述这个 Skill 要帮助完成什么。\n\n规则：\n- 写出回答必须遵守的要求。\n\n输出要求：\n- 描述期望的格式和风格。";
+"settings.skills.example.name" = "清晰写作示例";
+"settings.skills.example.description" = "把零散想法整理成清晰、简洁的文字。";
+"settings.skills.example.instructions" = "先理解用户目标。回答要清晰、具体，删除空话，保留重要细节；信息不足时明确说明不确定之处。";
 "error.skill.invalid" = "技能文件格式无效。";
 "error.skill.unsupported" = "技能文件包含不受支持的字段或内容。";
 "error.skill.too_large" = "技能文件超过本地大小限制。";
 "error.skill.unknown_tool" = "技能请求了未知工具：%@。";
 "error.skill.empty_instructions" = "技能必须包含非空指令。";
 "error.skill.invalid_stored_allowed_tools" = "已安装技能 %@ 的工具范围无效，请重新安装。";
+"error.skill.already_installed" = "已存在使用该标识符的 Skill。";
+"error.skill.unavailable" = "这个 Skill 已不再安装。";
 
 "settings.memory.preview.title" = "长期记忆预览";
 "settings.memory.preview.detail" = "当前版本的长期记忆尚未连接会话或模型上下文。";
@@ -201,13 +211,11 @@
 "settings.about.notices" = "第三方软件声明";
 "settings.about.notices.unavailable" = "无法读取第三方软件声明。";
 "chat.actions" = "会话操作";
-"slash.palette" = "斜杠命令";
-"slash.new.detail" = "开始一个新的本地会话";
-"slash.settings.detail" = "打开 Familiar 设置";
-"slash.soul.detail" = "编辑人格与回答风格";
-"slash.memory.detail" = "打开长期记忆预览";
-"slash.mcp.detail" = "打开 MCP 连接预览";
-"slash.runs.detail" = "查看本地 Agent 运行记录";
+"slash.palette" = "Skill";
+"slash.open" = "选择 Skill";
+"slash.remove" = "移除 Skill";
+"slash.empty" = "没有可用的 Skill";
+"slash.empty.detail" = "请先在设置中创建 Skill。";
 
 "drawer.open" = "打开会话列表";
 "drawer.search" = "搜索项目与对话";
@@ -219,6 +227,10 @@
 "drawer.no_results" = "没有找到相关对话";
 "drawer.recent" = "最近";
 "drawer.settings" = "设置";
+"drawer.pinned" = "置顶";
+"drawer.pin" = "置顶";
+"drawer.unpin" = "取消置顶";
+"drawer.show_more" = "展开更多";
 
 "draft.discard.title" = "要丢弃当前草稿吗？";
 "draft.discard.action" = "丢弃草稿";
@@ -227,6 +239,7 @@
 "conversation.delete.detail" = "这个对话中的消息、附件和运行记录会从此 iPhone 删除。";
 "conversation.project_context" = "项目：%@";
 "conversation.project_context.hint" = "打开这个项目的上下文";
+"conversation.ordinary" = "日常对话";
 "run.context.model" = "模型";
 "run.context.project" = "项目";
 "run.context.resource" = "使用的资料";
@@ -269,7 +282,7 @@
 "project.run.resources" = "使用的资料";
 "project.run.resources.empty" = "本次运行没有使用项目资料。";
 "project.run.skills" = "使用的技能";
-"project.run.skills.empty" = "本次运行没有使用项目技能。";
+"project.run.skills.empty" = "本次运行没有使用 Skill。";
 "project.run.tools" = "可用工具";
 "project.run.tools.empty" = "本次运行没有向模型暴露工具。";
 "project.run.status.running" = "运行中";
@@ -301,8 +314,11 @@
 "artifact.empty" = "还没有生成结果";
 "artifact.delete.title" = "要删除这个生成结果吗？";
 "project.error.empty_name" = "请输入项目名称。";
+"project.error.duplicate_name" = "已存在同名项目。";
 "project.error.not_empty" = "请先移动或删除项目内的所有对话，再永久删除项目。";
 "project.error.running" = "请等待运行中的任务结束，再永久删除项目。";
+"project.expand" = "展开项目";
+"project.collapse" = "收起项目";
 "project.delete.confirm.title" = "删除这个项目？";
 "project.delete.confirm.detail" = "项目对话、附件和历史 Run 会保留并转为普通历史。项目指令、资料、生成结果、项目绑定、项目记忆和项目授权会被永久删除。";
 "project.delete.confirm" = "删除项目";

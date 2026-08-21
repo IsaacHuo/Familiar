@@ -155,8 +155,6 @@ private struct FamiliarProjectDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \FamiliarArtifact.updatedAt, order: .reverse) private var allArtifacts: [FamiliarArtifact]
-    @Query(sort: \FamiliarSkill.name) private var allSkills: [FamiliarSkill]
-    @Query private var allSkillBindings: [FamiliarSkillBinding]
 
     let project: FamiliarProject
     let registry: FamiliarToolRegistry?
@@ -171,7 +169,6 @@ private struct FamiliarProjectDetailView: View {
     @State private var resourceToDelete: FamiliarResource?
     @State private var artifactToDelete: FamiliarArtifact?
     @State private var confirmsProjectDeletion = false
-    @State private var availableToolNames: Set<String>?
 
     var body: some View {
         List {
@@ -255,17 +252,6 @@ private struct FamiliarProjectDetailView: View {
                 }
 
                 NavigationLink {
-                    FamiliarProjectSkillsView(projectID: project.id, registry: registry, onError: onError)
-                } label: {
-                    FamiliarProjectContextRow(
-                        title: String(localized: "project.skills.enabled", defaultValue: "Enabled Skills"),
-                        detail: skillToolScopeSummary,
-                        symbol: "wand.and.stars",
-                        count: enabledSkills.count
-                    )
-                }
-
-                NavigationLink {
                     FamiliarProjectRunsView(runs: sortedRuns)
                 } label: {
                     FamiliarProjectContextRow(
@@ -282,14 +268,15 @@ private struct FamiliarProjectDetailView: View {
         }
         .navigationTitle(project.name)
         .navigationBarTitleDisplayMode(.inline)
-        .task {
-            if let registry {
-                availableToolNames = Set(await registry.manifests().map(\.name))
-            }
-        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
+                    Button {
+                        onConversationRequest(.create(projectID: project.id))
+                    } label: {
+                        Label(String(localized: "project.new_chat"), systemImage: "square.and.pencil")
+                    }
+                    Divider()
                     Button(action: onEdit) {
                         Label(String(localized: "common.edit"), systemImage: "pencil")
                     }
@@ -384,19 +371,8 @@ private struct FamiliarProjectDetailView: View {
 
     private var projectActions: some View {
         Group {
-            if sortedConversations.isEmpty {
+            if !sortedConversations.isEmpty {
                 primaryProjectAction
-            } else {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: FamiliarSpacing.medium) {
-                        primaryProjectAction
-                        newProjectChatAction
-                    }
-                    VStack(spacing: FamiliarSpacing.small) {
-                        primaryProjectAction
-                        newProjectChatAction
-                    }
-                }
             }
         }
     }
@@ -410,26 +386,13 @@ private struct FamiliarProjectDetailView: View {
             }
         } label: {
             Label(
-                sortedConversations.isEmpty
-                    ? String(localized: "project.new_chat")
-                    : String(localized: "project.continue_chat", defaultValue: "Continue Chat"),
+                String(localized: "project.continue_chat", defaultValue: "Continue Chat"),
                 systemImage: "bubble.left.and.bubble.right"
             )
             .frame(maxWidth: .infinity, minHeight: FamiliarControlSize.minimumHitTarget)
         }
         .buttonStyle(FamiliarPillButtonStyle(prominence: .primary))
         .accessibilityIdentifier("project.continueChat")
-    }
-
-    private var newProjectChatAction: some View {
-        Button {
-            onConversationRequest(.create(projectID: project.id))
-        } label: {
-            Label(String(localized: "project.new_chat"), systemImage: "square.and.pencil")
-                .frame(maxWidth: .infinity, minHeight: FamiliarControlSize.minimumHitTarget)
-        }
-        .buttonStyle(FamiliarPillButtonStyle(prominence: .secondary))
-        .accessibilityIdentifier("project.newChat")
     }
 
     private var resourceImportMenu: some View {
@@ -464,7 +427,6 @@ private struct FamiliarProjectDetailView: View {
         .foregroundStyle(FamiliarTheme.accent)
         .frame(
             maxWidth: .infinity,
-            minHeight: FamiliarControlSize.minimumHitTarget,
             alignment: .leading
         )
         .disabled(isImportingResource)
@@ -474,27 +436,6 @@ private struct FamiliarProjectDetailView: View {
 
     private var projectArtifacts: [FamiliarArtifact] {
         allArtifacts.filter { $0.projectID == project.id }
-    }
-    private var enabledSkills: [FamiliarSkill] {
-        let enabledIDs = Set(allSkillBindings.filter { $0.projectID == project.id && $0.enabled }.map(\.skillID))
-        return allSkills.filter { enabledIDs.contains($0.id) }
-    }
-    private var skillToolScope: [String] {
-        let declared = Set(enabledSkills.flatMap(Self.allowedTools(for:)))
-        guard let availableToolNames else { return declared.sorted() }
-        return declared.intersection(availableToolNames).sorted()
-    }
-    private var skillToolScopeSummary: String {
-        guard !enabledSkills.isEmpty else {
-            return String(localized: "project.skills.unrestricted", defaultValue: "No Skill restriction; current device tools remain available.")
-        }
-        guard !skillToolScope.isEmpty else {
-            return String(localized: "project.skills.no_tools", defaultValue: "Final tool scope: no tools")
-        }
-        return String(
-            format: String(localized: "project.skills.final_tools", defaultValue: "Final tool scope: %@"),
-            skillToolScope.joined(separator: ", ")
-        )
     }
     private var sortedResources: [FamiliarResource] { project.resources.sorted { $0.updatedAt > $1.updatedAt } }
     private var sortedConversations: [FamiliarConversation] { project.conversations.sorted { $0.updatedAt > $1.updatedAt } }
@@ -596,12 +537,6 @@ private struct FamiliarProjectDetailView: View {
         }
     }
 
-    private static func allowedTools(for skill: FamiliarSkill) -> [String] {
-        guard let data = skill.allowedToolsJSON.data(using: .utf8),
-              let tools = try? JSONDecoder().decode([String].self, from: data)
-        else { return [] }
-        return tools
-    }
 }
 
 private struct FamiliarProjectHero: View {
@@ -846,120 +781,6 @@ private struct FamiliarProjectConversationsView: View {
     }
 }
 
-private struct FamiliarProjectSkillsView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query(sort: \FamiliarSkill.name) private var skills: [FamiliarSkill]
-    @Query private var bindings: [FamiliarSkillBinding]
-
-    let projectID: UUID
-    let registry: FamiliarToolRegistry?
-    let onError: (String) -> Void
-    @State private var availableToolNames: Set<String>?
-
-    var body: some View {
-        List {
-            Section {
-                if enabledSkills.isEmpty {
-                    Text(String(
-                        localized: "project.skills.unrestricted",
-                        defaultValue: "No Skill restriction; current device tools remain available."
-                    ))
-                    .foregroundStyle(.secondary)
-                } else if finalAllowedTools.isEmpty {
-                    Label(
-                        String(localized: "project.skills.no_tools", defaultValue: "Final tool scope: no tools"),
-                        systemImage: "nosign"
-                    )
-                    .foregroundStyle(.secondary)
-                } else {
-                    ForEach(finalAllowedTools, id: \.self) { toolName in
-                        Label(toolName, systemImage: "wrench.and.screwdriver")
-                    }
-                }
-            } header: {
-                Text(String(localized: "project.skills.final_scope", defaultValue: "Final Tool Scope"))
-            } footer: {
-                Text(String(
-                    localized: "project.skills.scope_footer",
-                    defaultValue: "Enabled Skills can only reduce the tools visible to a run. Their allowed tool lists are combined."
-                ))
-            }
-
-            Section(String(localized: "project.skills.installed", defaultValue: "Installed Skills")) {
-                if skills.isEmpty {
-                    Text(String(localized: "project.skills.none_installed", defaultValue: "No Skills are installed."))
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(skills) { skill in
-                        Toggle(isOn: binding(for: skill)) {
-                            VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                                Text(skill.name)
-                                Text("\(skill.stableID) · v\(skill.version)")
-                                    .font(.caption).foregroundStyle(.secondary)
-                                Text(allowedToolsSummary(for: skill))
-                                    .font(.caption).foregroundStyle(.secondary)
-                                    .lineLimit(2)
-                            }
-                        }
-                        .accessibilityIdentifier("project.skill.\(skill.stableID)")
-                    }
-                }
-            }
-        }
-        .navigationTitle(String(localized: "settings.skills", defaultValue: "Skills"))
-        .navigationBarTitleDisplayMode(.inline)
-        .task {
-            if let registry {
-                availableToolNames = Set(await registry.manifests().map(\.name))
-            }
-        }
-    }
-
-    private var enabledSkillIDs: Set<UUID> {
-        Set(bindings.filter { $0.projectID == projectID && $0.enabled }.map(\.skillID))
-    }
-    private var enabledSkills: [FamiliarSkill] {
-        skills.filter { enabledSkillIDs.contains($0.id) }
-    }
-    private var finalAllowedTools: [String] {
-        let declared = Set(enabledSkills.flatMap(allowedTools(for:)))
-        guard let availableToolNames else { return declared.sorted() }
-        return declared.intersection(availableToolNames).sorted()
-    }
-
-    private func binding(for skill: FamiliarSkill) -> Binding<Bool> {
-        Binding(
-            get: { enabledSkillIDs.contains(skill.id) },
-            set: { enabled in
-                do {
-                    try FamiliarSkillService().setBinding(
-                        skillID: skill.id,
-                        projectID: projectID,
-                        enabled: enabled,
-                        in: modelContext
-                    )
-                } catch {
-                    onError(error.localizedDescription)
-                }
-            }
-        )
-    }
-
-    private func allowedTools(for skill: FamiliarSkill) -> [String] {
-        guard let data = skill.allowedToolsJSON.data(using: .utf8),
-              let tools = try? JSONDecoder().decode([String].self, from: data)
-        else { return [] }
-        return tools
-    }
-
-    private func allowedToolsSummary(for skill: FamiliarSkill) -> String {
-        let tools = allowedTools(for: skill)
-        return tools.isEmpty
-            ? String(localized: "project.skills.no_tools", defaultValue: "No tools")
-            : tools.joined(separator: ", ")
-    }
-}
-
 private struct FamiliarProjectRunsView: View {
     let runs: [FamiliarAgentRun]
 
@@ -1057,7 +878,7 @@ private struct FamiliarProjectRunDetailView: View {
 
             Section(String(localized: "project.run.skills", defaultValue: "Skills Used")) {
                 if skillSnapshots.isEmpty {
-                    Text(String(localized: "project.run.skills.empty", defaultValue: "No project Skills were used."))
+                    Text(String(localized: "project.run.skills.empty", defaultValue: "No Skills were used."))
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(skillSnapshots) { skill in

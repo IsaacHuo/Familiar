@@ -3,9 +3,9 @@ import SwiftData
 import Testing
 @testable import Familiar
 
-@Suite("Familiar Skills v1 and V9")
+@Suite("Familiar Skills")
 @MainActor
-struct FamiliarSkillsV9Tests {
+struct FamiliarSkillsTests {
     @Test("Instruction-only parser rejects executable or asset fields")
     func parserRejectsUnsupportedFields() throws {
         let valid = """
@@ -39,12 +39,11 @@ struct FamiliarSkillsV9Tests {
         }
     }
 
-    @Test("Bindings resolve enabled Skills deterministically and updates keep identity")
+    @Test("Installed Skills resolve snapshots and updates keep identity")
     @MainActor
     func bindingResolutionAndStableHash() throws {
         let container = try FamiliarTestStore.make(name: "SkillBindings")
         let context = container.mainContext
-        let project = try FamiliarProjectService().create(name: "Skills", in: context)
         let service = FamiliarSkillService()
         let later = try service.install(document(
             id: "zeta",
@@ -70,12 +69,8 @@ struct FamiliarSkillsV9Tests {
         #expect(updated.id == originalID)
         #expect(updated.contentHash == originalHash)
 
-        try service.setBinding(skillID: later.id, projectID: project.id, enabled: true, in: context)
-        try service.setBinding(skillID: earlier.id, projectID: project.id, enabled: true, in: context)
-        #expect(try service.enabledSkills(projectID: project.id, in: context).map(\.stableID) == ["alpha", "zeta"])
-
-        try service.setBinding(skillID: earlier.id, projectID: project.id, enabled: false, in: context)
-        #expect(try service.enabledSkills(projectID: project.id, in: context).map(\.stableID) == ["zeta"])
+        #expect(try service.snapshot(skillID: earlier.id, in: context).stableID == "alpha")
+        #expect(try service.snapshot(skillID: later.id, in: context).stableID == "zeta")
     }
 
     @Test("Assembler injects Skills after Project instruction and narrows the tool union")
@@ -138,16 +133,13 @@ struct FamiliarSkillsV9Tests {
             messages: [],
             toolManifests: manifests
         )
-        #expect(ordinary.skills.isEmpty)
-        #expect(ordinary.exposedToolNames == ["calendar_read", "resource_read", "web_fetch"])
+        #expect(ordinary.skills.map(\.stableID) == ["alpha", "zeta"])
+        #expect(ordinary.exposedToolNames == ["resource_read", "web_fetch"])
     }
 
     @Test("V9 persists immutable Run Skill snapshots across uninstall")
     @MainActor
     func runSnapshotSurvivesUninstall() throws {
-        #expect(FamiliarSchemaV9.versionIdentifier == Schema.Version(9, 0, 0))
-        #expect(FamiliarSchemaV9.models.count == FamiliarSchemaV8.models.count + 1)
-
         let container = try FamiliarTestStore.make(name: "RunSkillSnapshots")
         let context = container.mainContext
         let project = try FamiliarProjectService().create(name: "Audit", in: context)
@@ -160,8 +152,7 @@ struct FamiliarSkillsV9Tests {
             instructions: "Keep this frozen.",
             allowedTools: ["web_fetch"]
         ), in: context)
-        try service.setBinding(skillID: skill.id, projectID: project.id, enabled: true, in: context)
-        let enabled = try service.enabledSkills(projectID: project.id, in: context)
+        let invoked = [try service.snapshot(skillID: skill.id, in: context)]
         let snapshot = try FamiliarProjectContextAssembler.assemble(
             seed: .init(
                 projectID: project.id,
@@ -169,7 +160,7 @@ struct FamiliarSkillsV9Tests {
                 conversationID: conversation.id,
                 projectInstruction: nil,
                 resources: [],
-                skills: enabled
+                skills: invoked
             ),
             settings: .defaultValue,
             messages: [],
@@ -191,60 +182,7 @@ struct FamiliarSkillsV9Tests {
 
         try service.uninstall(skill, in: context)
         #expect(try context.fetch(FetchDescriptor<FamiliarSkill>()).isEmpty)
-        #expect(try context.fetch(FetchDescriptor<FamiliarSkillBinding>()).isEmpty)
         #expect(try context.fetch(FetchDescriptor<FamiliarRunSkillSnapshotRecord>()).map(\.id) == [record.id])
-    }
-
-    @Test("A disk-backed V8 store migrates to V9 and preserves installed Skills")
-    @MainActor
-    func diskBackedV8MigratesToV9() throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("FamiliarV8ToV9-\(UUID().uuidString)", isDirectory: true)
-        let storeURL = root.appendingPathComponent(FamiliarModelContainer.storeFilename)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-
-        let skillID = UUID()
-        let projectID = UUID()
-        try autoreleasepool {
-            let schema = Schema(versionedSchema: FamiliarSchemaV8.self)
-            let configuration = ModelConfiguration(
-                FamiliarModelContainer.storeName,
-                schema: schema,
-                url: storeURL,
-                cloudKitDatabase: .none
-            )
-            let container = try ModelContainer(for: schema, configurations: [configuration])
-            let skill = FamiliarSchemaV8.FamiliarSkill(
-                id: skillID,
-                stableID: "migration-skill",
-                version: "1",
-                name: "Migration Skill",
-                descriptionText: "Fixture",
-                instructions: "Keep this instruction.",
-                examplesJSON: "[]",
-                allowedToolsJSON: "[\"web_fetch\"]",
-                contentHash: String(repeating: "a", count: 64)
-            )
-            let binding = FamiliarSchemaV8.FamiliarSkillBinding(
-                skillID: skillID,
-                projectID: projectID,
-                enabled: true
-            )
-            container.mainContext.insert(skill)
-            container.mainContext.insert(binding)
-            try container.mainContext.save()
-        }
-
-        let migrated = try FamiliarModelContainer.make(at: storeURL)
-        #expect(migrated.schema.version == FamiliarSchemaV9.versionIdentifier)
-        let skill = try #require(migrated.mainContext.fetch(FetchDescriptor<FamiliarSkill>()).first)
-        let binding = try #require(migrated.mainContext.fetch(FetchDescriptor<FamiliarSkillBinding>()).first)
-        #expect(skill.id == skillID)
-        #expect(skill.instructions == "Keep this instruction.")
-        #expect(binding.projectID == projectID)
-        #expect(binding.enabled)
-        #expect(try migrated.mainContext.fetch(FetchDescriptor<FamiliarRunSkillSnapshotRecord>()).isEmpty)
     }
 
     private func document(

@@ -62,6 +62,26 @@ struct FamiliarProjectTests {
         #expect(try context.fetch(FetchDescriptor<FamiliarProjectInstruction>()).isEmpty)
     }
 
+    @Test("Project names are unique regardless of case or surrounding whitespace")
+    @MainActor
+    func projectNamesAreUnique() throws {
+        let container = try FamiliarTestStore.make()
+        let context = container.mainContext
+        let service = FamiliarProjectService()
+        let first = try service.create(name: "Research", in: context)
+        let second = try service.create(name: "Writing", in: context)
+
+        #expect(throws: FamiliarProjectServiceError.duplicateName) {
+            try service.create(name: "  research  ", in: context)
+        }
+        #expect(throws: FamiliarProjectServiceError.duplicateName) {
+            try service.update(second, name: "RESEARCH", summary: "", in: context)
+        }
+        #expect(first.name == "Research")
+        #expect(second.name == "Writing")
+        #expect(try context.fetch(FetchDescriptor<FamiliarProject>()).count == 2)
+    }
+
     @Test("Archive is always available while permanent deletion only blocks running runs")
     @MainActor
     func archiveAndEmptyDelete() throws {
@@ -75,6 +95,7 @@ struct FamiliarProjectTests {
         context.insert(conversation)
         context.insert(running)
         try context.save()
+        try FamiliarPinService().pin(.project, targetID: project.id, in: context)
 
         try service.setArchived(true, for: project, in: context)
         #expect(project.status == .archived)
@@ -91,6 +112,7 @@ struct FamiliarProjectTests {
         #expect(try context.fetch(FetchDescriptor<FamiliarProjectInstruction>()).isEmpty)
         #expect(try #require(context.fetch(FetchDescriptor<FamiliarAgentRun>()).first).project == nil)
         #expect(try #require(context.fetch(FetchDescriptor<FamiliarConversation>()).first).project == nil)
+        #expect(try context.fetch(FetchDescriptor<FamiliarPinnedItemRecord>()).isEmpty)
     }
 
     @Test("Ordinary and project chats preserve distinct ownership")
@@ -105,6 +127,26 @@ struct FamiliarProjectTests {
         #expect(ordinary.project == nil)
         let owned = try #require(controller.createConversation(project: project, in: context))
         #expect(owned.project?.id == project.id)
+    }
+
+    @Test("Starting a workspace chat stays transient and selecting history restores its scope")
+    @MainActor
+    func transientWorkspaceSelection() throws {
+        let container = try FamiliarTestStore.make(name: "TransientWorkspace")
+        let context = container.mainContext
+        let project = try FamiliarProjectService().create(name: "Workspace", in: context)
+        let controller = FamiliarChatController(dependencies: FamiliarAppDependencies())
+
+        controller.startNewConversation(project: project, in: context)
+        #expect(controller.selectedConversationID == nil)
+        #expect(controller.selectedProjectID == project.id)
+        #expect(try context.fetch(FetchDescriptor<FamiliarConversation>()).isEmpty)
+
+        let conversation = try #require(controller.createConversation(project: project, in: context))
+        controller.select(nil, in: context)
+        #expect(controller.selectedProjectID == nil)
+        controller.select(conversation.id, in: context)
+        #expect(controller.selectedProjectID == project.id)
     }
 
     @Test("A Run snapshots its Project at start and keeps it after conversation detachment")

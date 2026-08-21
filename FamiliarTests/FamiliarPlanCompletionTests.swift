@@ -13,12 +13,11 @@ struct FamiliarPlanCompletionTests {
         #expect(FamiliarToolConfirmationDecision.cancelled.authorizationDuration == nil)
     }
 
-    @Test("V8 adds skills, memory, and MCP configuration records")
+    @Test("Current schema includes all active records")
     @MainActor
-    func schemaV8Entities() {
-        #expect(FamiliarSchemaV8.versionIdentifier == Schema.Version(8, 0, 0))
-        #expect(FamiliarSchemaV8.models.count == FamiliarSchemaV7.models.count + 5)
-        #expect(FamiliarModelContainer.currentSchema.entities.count == FamiliarSchemaV9.models.count)
+    func currentSchemaEntities() {
+        #expect(FamiliarModelContainer.currentSchema.entities.count == FamiliarModelSchema.models.count)
+        #expect(FamiliarModelContainer.currentSchema.entities.contains { $0.name == "FamiliarPinnedItemRecord" })
     }
 
     @Test("FastVLM manifest is pinned to the verified Apple archive")
@@ -51,9 +50,7 @@ struct FamiliarPlanCompletionTests {
     @Test("Remembered authorization remains scoped to exact arguments")
     @MainActor
     func authorizationArgumentScope() throws {
-        let schema = Schema(versionedSchema: FamiliarSchemaV7.self)
-        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let container = try FamiliarTestStore.make(name: "AuthorizationArgumentScope")
         let manifest = FamiliarToolManifest(
             name: "calendar_create", title: "Create event", description: "", parameters: .init(type: .object),
             effect: .reversibleWrite, risk: .low, requirements: []

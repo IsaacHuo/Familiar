@@ -95,7 +95,6 @@ struct FamiliarProjectWorkspaceTests {
             allowedToolsJSON: "[]",
             contentHash: "hash"
         )
-        let skillBinding = FamiliarSkillBinding(skillID: skill.id, projectID: project.id)
         let memory = FamiliarMemoryItem(
             scopeRawValue: FamiliarMemoryScope.project.rawValue,
             projectID: project.id,
@@ -154,7 +153,6 @@ struct FamiliarProjectWorkspaceTests {
         context.insert(run)
         context.insert(snapshot)
         context.insert(skill)
-        context.insert(skillBinding)
         context.insert(memory)
         context.insert(server)
         context.insert(mcpBinding)
@@ -193,7 +191,6 @@ struct FamiliarProjectWorkspaceTests {
         #expect(try context.fetch(FetchDescriptor<FamiliarProject>()).isEmpty)
         #expect(try context.fetch(FetchDescriptor<FamiliarResource>()).isEmpty)
         #expect(try context.fetch(FetchDescriptor<FamiliarArtifact>()).isEmpty)
-        #expect(try context.fetch(FetchDescriptor<FamiliarSkillBinding>()).isEmpty)
         #expect(try context.fetch(FetchDescriptor<FamiliarMemoryItem>()).isEmpty)
         #expect(try context.fetch(FetchDescriptor<FamiliarMCPBindingRecord>()).isEmpty)
         #expect(try context.fetch(FetchDescriptor<FamiliarAuthorizationGrantRecord>()).isEmpty)

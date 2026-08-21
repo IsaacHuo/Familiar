@@ -477,7 +477,7 @@ private struct FamiliarMessageRow: View {
     }
 
     private var assistantMessage: some View {
-        VStack(alignment: .leading, spacing: FamiliarSpacing.medium) {
+        VStack(alignment: .leading, spacing: FamiliarSpacing.small) {
             if message.isStreaming {
                 FamiliarMarkdownFallbackText(markdown: message.content)
                     .textSelection(.enabled)
@@ -503,7 +503,7 @@ private struct FamiliarMessageRow: View {
                         .accessibilityLabel(String(format: String(localized: "message.generated_by"), sourceLabel))
                 }
 
-                HStack(spacing: FamiliarSpacing.xSmall) {
+                HStack(spacing: -FamiliarSpacing.small) {
                     MessageActionButton(symbol: "doc.on.doc", label: String(localized: "common.copy")) {
                         UIPasteboard.general.string = message.content
                     }
@@ -512,7 +512,8 @@ private struct FamiliarMessageRow: View {
                         Image(systemName: "square.and.arrow.up")
                             .frame(
                                 width: FamiliarControlSize.minimumHitTarget,
-                                height: FamiliarControlSize.minimumHitTarget
+                                height: FamiliarControlSize.minimumHitTarget,
+                                alignment: .leading
                             )
                             .contentShape(Rectangle())
                     }
@@ -861,11 +862,12 @@ private struct MessageActionButton: View {
             Image(systemName: symbol)
                 .frame(
                     width: FamiliarControlSize.minimumHitTarget,
-                    height: FamiliarControlSize.minimumHitTarget
+                    height: FamiliarControlSize.minimumHitTarget,
+                    alignment: .leading
                 )
                 .contentShape(Rectangle())
         }
-        .buttonStyle(FamiliarIconButtonStyle())
+        .buttonStyle(.plain)
         .accessibilityLabel(label)
     }
 }
