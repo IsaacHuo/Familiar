@@ -6,7 +6,7 @@
 
 ## 1. 真实 Provider 冒烟
 
-当前阶段只把 DeepSeek 作为阻塞验收 Provider，默认主路径为 `deepseek-chat`；真实 Key 和真机验收由所有者执行。其他内置 Provider 保留在后续兼容性矩阵，不阻塞当前工作层交付。
+当前阶段只把 DeepSeek 作为阻塞验收 Provider，默认主路径为 `deepseek-v4-flash`；真实 Key 和真机验收由所有者执行。其他内置 Provider 保留在后续兼容性矩阵，不阻塞当前工作层交付。
 
 ### 1.1 通用前置
 
@@ -17,7 +17,7 @@
 
 ### 1.2 当前主路径：DeepSeek
 
-使用 `deepseek-chat` 完成认证、文本流式、错误 Key、模型列表、取消、工具调用、Apple Vision 证据注入以及日历/提醒闭环。`deepseek-reasoner` 保留为可选验证，不作为当前阻塞项。
+使用 `deepseek-v4-flash` 完成认证、文本流式、错误 Key、模型列表、取消、工具调用、Apple Vision 证据注入以及日历/提醒闭环。`deepseek-v4-pro` 与 `deepseek-v4-flash-vision-exp` 保留为可选验证，不作为当前阻塞项。
 
 ### 1.3 后续 Provider 兼容矩阵
 

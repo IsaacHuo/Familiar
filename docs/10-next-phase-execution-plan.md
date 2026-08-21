@@ -13,7 +13,7 @@ Chat 是主要交互与执行 Surface，Project 是长期 Context Workspace。�
 ## 2. 执行原则
 
 1. 所有方向保留在路线图中，但按可工作的层次依次交付，不并行铺开孤立菜单。
-2. 当前真实 Provider 验收以 DeepSeek 为主，默认主模型为 `deepseek-chat`；其他 Provider 暂不阻塞本阶段。
+2. 当前真实 Provider 验收以 DeepSeek 为主，默认主模型为 `deepseek-v4-flash`；其他 Provider 暂不阻塞本阶段。
 3. 信息性运行事件使用轻量状态行；只有写动作使用卡片。
 4. 模型不能产生自己的授权。首次授权由用户明确产生，有效 grant 范围内可以免重复询问。
 5. 图片能力按当前模型路由；本地 fallback 不产生新的网络目的地。

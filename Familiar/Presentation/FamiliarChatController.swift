@@ -57,7 +57,7 @@ final class FamiliarChatController {
         selectedProjectID = conversation.project?.id
         var value = settings
         value.providerID = conversation.currentProviderID
-        value.modelID = conversation.currentModelID
+        value.modelID = FamiliarProviderCatalog.normalizedModelID(conversation.currentModelID, providerID: conversation.currentProviderID)
         settings = value
     }
 

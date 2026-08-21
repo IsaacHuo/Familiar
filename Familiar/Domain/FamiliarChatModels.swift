@@ -362,8 +362,9 @@ enum FamiliarSettingsStore {
 
     static func load() -> FamiliarSettings {
         guard let data = UserDefaults.standard.data(forKey: key),
-              let settings = try? JSONDecoder().decode(FamiliarSettings.self, from: data)
+              var settings = try? JSONDecoder().decode(FamiliarSettings.self, from: data)
         else { return .defaultValue }
+        settings.modelID = FamiliarProviderCatalog.normalizedModelID(settings.modelID, providerID: settings.providerID)
         return settings
     }
 

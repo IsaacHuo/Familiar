@@ -188,6 +188,15 @@ nonisolated enum FamiliarProviderCatalog {
         configurations[providerID] ?? .empty
     }
 
+    static func normalizedModelID(_ id: String, providerID: String) -> String {
+        guard providerID == "deepseek" else { return id }
+        switch id {
+        case "deepseek-chat": return "deepseek-v4-flash"
+        case "deepseek-reasoner": return "deepseek-v4-pro"
+        default: return id
+        }
+    }
+
     private static let toolText = FamiliarModelCapabilities(supportsTools: true)
     private static let toolVision = FamiliarModelCapabilities(supportsTools: true, supportsImages: true)
     private static let longToolText = FamiliarModelCapabilities(supportsTools: true, maximumInputCharacters: 300_000)
@@ -239,8 +248,9 @@ nonisolated enum FamiliarProviderCatalog {
         id: "deepseek", name: "DeepSeek", baseURL: "https://api.deepseek.com",
         chatPath: "/chat/completions", modelsPath: "/models",
         models: [
-            .init(id: "deepseek-chat", displayName: "Flash", capabilities: toolText),
-            .init(id: "deepseek-reasoner", displayName: "Pro", capabilities: toolText)
+            .init(id: "deepseek-v4-flash", displayName: "Flash", capabilities: toolText),
+            .init(id: "deepseek-v4-pro", displayName: "Pro", capabilities: toolText),
+            .init(id: "deepseek-v4-flash-vision-exp", displayName: "Flash Vision", capabilities: toolVision)
         ],
         sendsStreamOptions: false
     )
@@ -270,7 +280,8 @@ nonisolated enum FamiliarProviderCatalog {
         headers: ["HTTP-Referer": "https://familiar.app", "X-Title": "Familiar"],
         models: [
             .init(id: "openai/gpt-4.1-mini", displayName: "GPT-4.1 mini", capabilities: toolVision),
-            .init(id: "anthropic/claude-sonnet-4", displayName: "Claude Sonnet 4", capabilities: toolVision)
+            .init(id: "anthropic/claude-sonnet-4", displayName: "Claude Sonnet 4", capabilities: toolVision),
+            .init(id: "stealth/ox-alpha", displayName: "Ox Alpha", capabilities: toolVision)
         ]
     )
 
