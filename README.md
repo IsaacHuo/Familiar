@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/IsaacHuo/familiar/actions/workflows/pages.yml"><img src="https://github.com/IsaacHuo/familiar/actions/workflows/pages.yml/badge.svg" alt="Website deployment"></a>
+  <a href="https://github.com/IsaacHuo/Familiar/actions/workflows/pages.yml"><img src="https://github.com/IsaacHuo/Familiar/actions/workflows/pages.yml/badge.svg" alt="Website deployment"></a>
   <img src="https://img.shields.io/badge/iOS-18%2B-0A84FF?logo=apple" alt="iOS 18 or later">
   <img src="https://img.shields.io/badge/Swift-SwiftUI-F05138?logo=swift&logoColor=white" alt="Swift and SwiftUI">
   <img src="https://img.shields.io/badge/Platform-iPhone-111111" alt="iPhone only">
@@ -45,13 +45,13 @@
   </tr>
 </table>
 
-*Chat · Drawer · Settings · Permissions · Storage · Tools*
+*Screenshots are from an earlier development build; the current interface may differ.*
 
 ## Overview
 
-> **Familiar is a native, safe and inspectable personal AI workspace.** Projects are the long-lived work unit, chat is the primary entry, and native tools plus read-only Web form the current execution surface. The single-Agent Runtime is the execution kernel.
+> **Familiar is a native, safe and inspectable personal AI workspace.** Projects are the long-lived work unit, chat is the primary entry, and a typed set of local-information, restricted Web, Project and EventKit tools forms the current execution surface. The single-Agent Runtime is the execution kernel.
 
-Familiar turns the iPhone's native capabilities into a composable runtime without adopting a Linux execution environment, Apple Intelligence dependency or multi-agent orchestration. Project, versioned document resources, and Markdown/text artifacts are implemented; writable workspace capabilities beyond artifacts and runtime resumable execution remain the next product layer.
+Familiar turns the iPhone's native capabilities into a composable runtime without adopting a Linux execution environment, Apple Intelligence dependency or multi-agent orchestration. Projects, versioned document resources, Markdown/text artifacts, persistent workspace pins and explicit one-Run Skills are implemented; broader writable workspace capabilities and byte-level resumable execution remain future layers.
 
 The app is BYOK-only: users bring their own model API Key, model requests go directly from the device to the selected Provider, and conversations, attachments and tool records stay on the device. When web tools are used, search queries go directly to DuckDuckGo and page requests go directly to the selected public HTTPS site.
 
@@ -60,10 +60,12 @@ The app is BYOK-only: users bring their own model API Key, model requests go dir
 ## Highlights
 
 - **iPhone-native Agent Runtime** — a single primary Agent that plans with tools and executes through native iOS frameworks; no Linux environment, no Apple Intelligence dependency.
-- **Tools as the core abstraction** — Calendar, Vision, PDF, Maps and more are just Tools registered in a Capability Registry; each tool is small, orthogonal and composable.
-- **Native First** — reuse EventKit, Vision, MapKit, PDFKit, Photos and Foundation instead of reimplementing calendar, OCR, maps or document rendering.
-- **Project workspace v1** — projects share an instruction and versioned local document resources across chats; resources use independent protected storage and immutable Run context references. Markdown/text artifacts are stored per project under structured confirmation. Writable workspace capabilities beyond artifacts remain planned.
-- **Code-enforced authorization** — low-risk reads run automatically; current EventKit writes require structured per-action confirmation and provide an in-process, one-shot Undo after success.
+- **Tools as the core abstraction** — 13 typed tools cover local information, restricted Web, frozen Project resources, Project artifacts and EventKit; each tool is small, inspectable and policy-controlled.
+- **Native First** — reuse EventKit, Vision, PDFKit, Photos and Foundation for native capabilities and local preprocessing instead of rebuilding system services.
+- **Unified Chat workspace** — ordinary and Project chats share one surface. The top bar switches workspace and model; the left drawer provides search, persistent pins, expandable Project history and recent ordinary chats.
+- **Project workspace** — projects share an instruction and versioned local resources across chats; resources use protected storage and immutable Run references. Markdown/text artifacts support controlled write and edit operations, and Project names are globally unique after normalization.
+- **Explicit Skills** — instruction-only Skills are created from a template in Settings and selected from the Composer for one Run in either ordinary or Project chat. There is no import row or Project binding; a Skill can narrow tool scope but cannot authorize an action.
+- **Code-enforced authorization** — available reads run automatically; reversible writes require structured approval unless an exact active once/session/always rule matches. EventKit Undo survives restarts, while Artifact Undo remains session-local.
 - **Runtime-event-driven UI** — the timeline renders Agent events (model thinking, tool progress, approval, success and failure) instead of each tool owning its own UI.
 - **Local-first and BYOK** — API Keys are stored per Provider in the iOS Keychain; requests never pass through Familiar servers.
 - **Multi-provider catalog** — OpenAI, Anthropic, Gemini, DeepSeek, Groq, xAI, OpenRouter, Qwen, Kimi, GLM, MiniMax, SiliconFlow, and custom OpenAI-compatible endpoints.
@@ -71,7 +73,7 @@ The app is BYOK-only: users bring their own model API Key, model requests go dir
 - **System entry** — Share selected text, web links or documents into an App Group inbox; typed Deep Links restore local context; optional local notifications return to completed or failed Runs; protected on-device Spotlight results reopen local conversations; Siri and Shortcuts expose `Ask Familiar`, `Process with Familiar` and `Open Familiar`.
 - **Rich answer rendering** — local Markdown, syntax highlighting, tables, block quotes, Mermaid, KaTeX, code copying and safe external links.
 - **Voice transcription** — Apple Speech and `AVAudioEngine` generate editable text drafts; original recordings are not stored.
-- **Bilingual UI** — complete Simplified Chinese and English resources, Light and Dark Mode, Dynamic Type, VoiceOver, Reduce Motion and Reduce Transparency.
+- **Bilingual and accessible UI foundations** — Simplified Chinese and English resources, Light and Dark Mode, Dynamic Type, VoiceOver, Reduce Motion and Reduce Transparency support are implemented; physical-device acceptance remains ongoing.
 
 ## Target architecture
 
@@ -125,7 +127,9 @@ Familiar is evolving toward six layers. The diagram includes planned capabilitie
   Artifacts / Trace / History
 ```
 
-Current implementation: ordinary conversations remain available alongside Project-owned chats. The runtime has a bounded sequential tool loop, nine statically registered tools (including project artifact writes), structured EventKit approval, read-only Web search/fetch, Project instructions/resources, immutable input context records, artifact storage, and summary Run/Step persistence. Durable Memory, Skills, MCP, and runtime resumable runs are not yet implemented.
+Current implementation: ordinary and Project chats share one Chat surface and bounded sequential Agent loop. The startup Registry contains 13 tools: two local-information, two restricted Web, three Project Resource, two Project Artifact and four EventKit tools. The runtime also supports scoped authorization rules, durable EventKit Undo, immutable Context/Capability/Skill snapshots, invocation and resume-cursor records, visual evidence, persistent project/conversation pins and explicit one-Run Skills. Memory Runtime behavior, MCP Runtime, reliable background continuation and byte-level Run resumption are not implemented.
+
+Local persistence uses one current 27-entity SwiftData schema in `FamiliarDevelopment.store`. During development, incompatible schema changes intentionally rotate to a fresh store instead of migrating test data; a public release requires an explicit compatibility and migration policy.
 
 ```mermaid
 flowchart TD
@@ -136,7 +140,7 @@ flowchart TD
     Runtime --> State[State Layer: Session Memory Trace]
 ```
 
-The Agent Runtime is the key layer: it knows only `ToolDefinition`, `ToolCall` and `ToolResult`. It never touches EventKit, Vision, HealthKit or MapKit directly; those live behind the Capability Registry and Execution Policy.
+The Agent Runtime is the key layer: it consumes typed `FamiliarToolManifest` values, Provider tool calls, `FamiliarToolOutcome` values, policy decisions and runtime events. It never touches EventKit or other native frameworks directly; those stay behind tool adapters and execution policy.
 
 ### System entry
 
@@ -150,6 +154,8 @@ System entry points are prioritized:
 
 The current System Entry layer includes the Familiar App, a Share Extension, typed Deep Links, opt-in local Run notifications, a protected on-device Spotlight conversation index, a launcher Widget and Control, three App Intents and bilingual App Shortcuts. The Widget opens a new editable draft and the Control opens Familiar without replacing the current context. Shared content is staged locally and Deep Links only restore or prefill context. Run notifications use generic text and carry only a local Run or conversation identifier; they do not use remote push or provide background execution. Spotlight indexes only bounded conversation titles, modification dates and local identifiers, never transcripts or attachment metadata. `Ask Familiar` and `Process with Familiar` explicitly start the existing in-app send path; `Open Familiar` changes no draft or conversation. None of these entries can authorize a tool action.
 
+These entry points are implemented in code but still require physical-device acceptance.
+
 App Intents stay outside the Agent core. Their text input is bounded, they never read Keychain or call a Provider directly, and they refuse to overwrite an unsent draft. The full Capability Registry is not duplicated into App Intents.
 
 ## Agent runtime
@@ -159,7 +165,7 @@ Familiar uses a single-Agent-first design with a composable tool loop:
 ```text
 User
   → AgentRun
-  → Conversation context assembly (current) / ProjectContextAssembler (target)
+  → FamiliarProjectContextAssembler
   → Model
   → Tool Call?
        ├── No ──→ Final Answer
@@ -193,21 +199,24 @@ The current `FamiliarToolManifest` carries:
 
 ```text
 FamiliarToolManifest
+  id / version / source
   name
   title
   description
   parameters
-  effect        read / write / destructiveWrite
-  risk          low / high
+  effect / risk
   requirements  EventKit, Calendar permission, ...
+  payload / data / network / privacy metadata
+  idempotency / cancellation / recovery / parallelism
+  requiredScopes
 ```
 
 Internally Familiar separates, following the spirit of MCP but in native Swift:
 
-- **Current resources** — conversation history and extracted message attachments (application-controlled)
-- **Current tools** — two device-information, two read-only Web, one project-artifact and four EventKit tools (model-controlled)
-- **Target resources** — Project files, URLs, Artifacts and scoped Memory
-- **Target instructions** — base policy, Project instructions and Skills (user-controlled)
+- **Current resources** — conversation history, extracted attachments, versioned Project resources and Project artifacts (application-controlled)
+- **Current tools** — two local-information, two restricted Web, three Resource, two Artifact and four EventKit tools (model-controlled)
+- **Current instructions** — base policy, Project instructions and at most one explicitly selected one-Run Skill (user-controlled)
+- **Target resources** — scoped Memory and broader controlled workspace data
 
 MCP is an adapter, not the kernel. A future remote HTTPS client will convert MCP Tools into Familiar manifests and continue to apply Familiar policy; MCP is not currently implemented.
 
@@ -228,24 +237,23 @@ The target Registry is a core asset organized into two capability families:
 | Notifications | Document |
 | Clipboard | Web |
 
-The current Registry is a startup-supplied dictionary of nine tools with EventKit availability filtering. Native Workspace in the table is a target built from Project + Resource + Artifact; runtime discovery, installation, versioning and project binding are not implemented.
+The current Registry is a startup-supplied dictionary of 13 tools with EventKit availability filtering and active Project scoping for Resource and Artifact tools. Generic runtime discovery and remote installation are not implemented; MCP remains a future adapter.
 
 ## Permission model
 
-Current production authorization behavior:
+Current code authorization behavior:
 
 | Operation | Default behavior |
 | --- | --- |
-| Read + low risk | Automatic |
-| Reversible write | Structured confirmation, then in-process one-shot Undo |
-| Inferred write | Structured confirmation |
-| Sensitive read | Permission / policy |
-| Destructive | Confirm |
-| Financial / external consequential | Strong confirmation |
+| Available read | Automatic |
+| Requestable system access | Structured approval, then the iOS permission flow |
+| Reversible write | Structured approval unless an exact once/session/always authorization matches |
+| Destructive or high risk | Always request approval |
+| Undo | Durable across restarts for EventKit creates; session-local for Artifact writes and edits |
 
-Permissions are controlled by code, not by prompt: the model cannot bypass HealthKit permissions, delete confirmations or sensitive-data policy with a sentence.
+Permissions are controlled by code, not by prompt: the model cannot bypass iOS permissions, action confirmations or sensitive-data policy with a sentence.
 
-The target authorization model may avoid repeated confirmation only when a user action creates an auditable, single-use grant that matches the capability, normalized arguments, scope and expiry. Share Extension, App Intent and Deep Link provenance never grants write authority.
+Remembered authorization is enforced in Swift and matches Project, capability ID/version, target, normalized argument hash, session and expiry. Users can revoke remembered rules in Settings. Share Extension, App Intent and Deep Link provenance never grants write authority.
 
 ## Provider support
 
@@ -257,7 +265,7 @@ The target authorization model may avoid repeated confirmation only when a user 
 
 Each Provider has its own Keychain item, endpoint configuration, headers and model-catalog policy. Model capabilities are marked by `providerID + modelID`; unknown custom models are text-only by default.
 
-The model layer uses a simple `FamiliarModelProvider` abstraction with OpenAI Chat, Anthropic Messages and Gemini adapters. The next phase establishes deterministic Agent benchmarks before any model splitting or local-model work.
+The model layer uses a `FamiliarModelProvider` abstraction with OpenAI Chat, Anthropic Messages and Gemini adapters. Deterministic Agent benchmarks exist; real-Key Provider smoke testing remains incomplete. An optional local FastVLM package augments visual preflight without replacing the BYOK language model.
 
 ## Document pipeline
 
@@ -276,11 +284,11 @@ All documents are first copied to the App's private directory and then converted
 
 Only the converted Markdown and filename enter the model request. Original document bytes, local paths and security-scoped URLs are never sent to Firecrawl or the selected model Provider.
 
-Image preprocessing is a Tool, not a forced pipeline: an image goes to Vision OCR, barcode detection or the multimodal model based on what the Agent decides the task needs, not by default OCR.
+Image-capable Providers receive image content directly. For text-only models, the Controller runs Apple Vision OCR/barcode/classification preflight and can optionally augment it with installed FastVLM; the resulting untrusted visual evidence is persisted with provenance.
 
 ## Rendering
 
-Assistant output is rendered by a bundled, non-persistent `WKWebView` using local resources only.
+Streaming output uses native fallback text. Final assistant output is rendered by a bundled, non-persistent `WKWebView` using local resources only.
 
 Supported output includes CommonMark-style Markdown, syntax-highlighted code blocks with copy, tables, block quotes, lists, Mermaid diagrams, KaTeX expressions and safe external links.
 
@@ -294,7 +302,7 @@ Supported output includes CommonMark-style Markdown, syntax-highlighted code blo
 - Streaming tokens and pending confirmations are not broadly persisted.
 - Documents are converted locally; only converted text is sent with a user-initiated request.
 - Calendar and reminder access is requested only when the corresponding tool is invoked.
-- Writes require per-action confirmation or an explicit reversible Undo path.
+- Writes use action proposals; unmatched actions require structured approval, while exact remembered authorization can skip repeat approval.
 - Website code contains no advertising, analytics or tracking scripts.
 
 ## Technology stack
@@ -303,10 +311,10 @@ Supported output includes CommonMark-style Markdown, syntax-highlighted code blo
 | --- | --- |
 | UI | SwiftUI |
 | Local persistence | SwiftData |
-| Networking | URLSession, SSE streaming |
+| Networking | URLSession/SSE for model traffic; Network.framework HTTP/1.1 for restricted Web fetch |
 | Secrets | iOS Keychain |
 | Rich content | WebKit with bundled Markdown, Mermaid and KaTeX resources |
-| Native tools | EventKit |
+| Registered tools | Local information, restricted Web, Project Resource/Artifact and EventKit adapters |
 | Documents | AnyDoc Rust core, PDFKit, Vision |
 | Voice input | Speech, AVFoundation |
 | Photos | PhotosPicker |
@@ -324,12 +332,16 @@ Familiar/
 ├── Data/           Provider adapters, Keychain and model catalog services
 ├── Domain/         Provider, message and capability models
 ├── EventKit/       Calendar and reminder services/tools
-├── Persistence/    SwiftData schema and migration chain
+├── LocalVision/    Optional FastVLM installation and visual preflight
+├── Memory/         Scoped Memory data/service foundation (Runtime not active)
+├── Persistence/    Current SwiftData schema and local services
 ├── Presentation/   SwiftUI screens, composer and message rendering
-├── Resources/      Localizations, assets and bundled renderer resources
+├── Resources/      Project resource services, localizations and bundled assets
+├── Skills/         Instruction-only Skill parsing, storage and Run snapshots
 ├── Speech/         Native voice transcription
 ├── Support/        Theme and platform compatibility helpers
 ├── SystemEntry/    Deep links, intents, notifications and Spotlight
+├── Vision/         Apple Vision preprocessing and evidence
 └── Web/            Read-only web search/fetch with restricted HTTP client
 
 FamiliarWidgets/    Home/Lock Screen launcher Widget and Control Center control
@@ -337,7 +349,8 @@ FamiliarWidgets/    Home/Lock Screen launcher Widget and Control Center control
 Shared/             App-group inbox and control intent (app + extensions)
 Vendor/
 ├── AnyDocBridge.xcframework/
-└── AnyDocBridgeRust/
+├── AnyDocBridgeRust/
+└── ml-fastvlm/
 
 docs/               Design and planning (what we intend to build)
 state/              Current implementation truth (code-verified)
@@ -361,7 +374,7 @@ Rust is not required for normal App builds because the arm64 AnyDoc XCFramework 
 ## Build the iOS app
 
 ```bash
-git clone https://github.com/IsaacHuo/familiar.git
+git clone https://github.com/IsaacHuo/Familiar.git
 cd familiar
 open familiar.xcodeproj
 ```
@@ -403,7 +416,8 @@ Familiar does not currently include:
 
 - iPad support
 - Account systems
-- Writable workspace beyond project artifacts, and runtime resumable Run execution (data contracts exist; not wired into execution yet)
+- Arbitrary writable workspace beyond controlled Project artifacts
+- Byte-level resumable execution or reliable background continuation; cursor/invocation records and startup failure-finalization for interrupted Runs are implemented
 - Familiar-hosted model proxying
 - Subscription or entitlement flows
 - Linux / iSH execution environment
@@ -418,17 +432,23 @@ Familiar does not currently include:
 
 ## Third-party software
 
-Familiar embeds AnyDoc and SwiftSoup under the MIT License. The required notices are included in:
+Familiar embeds AnyDoc and SwiftSoup under the MIT License. Their notices are included in:
 
 - `Vendor/AnyDocBridgeRust/LICENSE.anydoc`
 - `Familiar/Resources/ThirdPartyNotices.txt`
 
-Other bundled renderer resources retain their respective upstream notices and licenses.
+FastVLM and its model have separate terms and acknowledgements:
+
+- `Vendor/ml-fastvlm/LICENSE`
+- `Vendor/ml-fastvlm/ACKNOWLEDGEMENTS`
+- `Vendor/ml-fastvlm/LICENSE_MODEL`
+
+Pinned MLX, Swift Transformers, ZIPFoundation and bundled renderer dependencies retain their respective upstream licenses and notices.
 
 ## Support
 
 - Product support: <https://isaachuo.github.io/familiar/support/>
 - Privacy questions: <https://isaachuo.github.io/familiar/privacy/>
-- Bug reports: <https://github.com/IsaacHuo/familiar/issues>
+- Bug reports: <https://github.com/IsaacHuo/Familiar/issues>
 
 When reporting a problem, do not include API Keys, private conversations, calendar data, reminders, documents or other sensitive information.

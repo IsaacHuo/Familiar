@@ -4,12 +4,12 @@ Familiar is a native, safe, inspectable personal AI workspace for iPhone. Projec
 
 - Core stack: SwiftUI, SwiftData, URLSession, WebKit, Keychain.
 - Minimum deployment target: iOS 18.
-- The currently implemented product scope is one main Agent, BYOK model access, local conversation history, Project/ProjectInstruction, versioned project Resources, immutable input ContextSnapshot records, Markdown/text Artifacts, instruction-only JSON Skills with explicit Project binding and tool-scope narrowing, capability/authorization and resumable-run data contracts, read-only Web search/fetch, native EventKit tools, local document processing, image drafts, and editable speech transcription. Durable Memory Runtime behavior, MCP, runtime resumable execution, and background execution are target capabilities, not current behavior.
+- The currently implemented product scope is one main Agent, BYOK model access, local conversation history, Project/ProjectInstruction, versioned project Resources, immutable input ContextSnapshot records, Markdown/text Artifacts, instruction-only Skills explicitly selected for one Run with tool-scope narrowing, capability/authorization and resumable-run data contracts, read-only Web search/fetch, native EventKit tools, local document processing, image drafts, and editable speech transcription. Durable Memory Runtime behavior, MCP, runtime resumable execution, and background execution are target capabilities, not current behavior.
 - The app has no account system, login, backend database, Supabase dependency, managed quota, subscription, entitlement flow, cloud sync, arbitrary code execution, or multi-Agent orchestration.
 - Familiar never reads academic-system or other app data.
 - Every Provider is BYOK-only. Keys remain in the device Keychain and requests go directly from iOS to the selected Provider.
 - The Agent Runtime only understands typed tool definitions, calls, results, policy decisions, and runtime events. Apple frameworks remain behind native tool adapters.
-- Permissions and write authorization are enforced in Swift code. Natural-language writes require structured confirmation; a model cannot authorize its own action.
+- Permissions and write authorization are enforced in Swift code. Writes require an exact active authorization match or structured approval; a model cannot authorize its own action.
 - System entries provide input provenance only and never grant write authorization.
 - Conversation history is local SwiftData. Keep transient streaming text out of broad persistence invalidation and persist only at explicit checkpoints and terminal states.
 - Markdown, code highlighting, Mermaid, and KaTeX are rendered from bundled local resources in a non-persistent WebKit view.

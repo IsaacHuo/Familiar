@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/IsaacHuo/familiar/actions/workflows/pages.yml"><img src="https://github.com/IsaacHuo/familiar/actions/workflows/pages.yml/badge.svg" alt="Website deployment"></a>
+  <a href="https://github.com/IsaacHuo/Familiar/actions/workflows/pages.yml"><img src="https://github.com/IsaacHuo/Familiar/actions/workflows/pages.yml/badge.svg" alt="Website deployment"></a>
   <img src="https://img.shields.io/badge/iOS-18%2B-0A84FF?logo=apple" alt="iOS 18 or later">
   <img src="https://img.shields.io/badge/Swift-SwiftUI-F05138?logo=swift&logoColor=white" alt="Swift and SwiftUI">
   <img src="https://img.shields.io/badge/Platform-iPhone-111111" alt="iPhone only">
@@ -30,9 +30,9 @@
 
 ## 项目概览
 
-> **Familiar 是一个原生、安全、可检查的个人 AI 工作台。** Project 是长期工作单元，聊天是主要入口，原生工具与只读 Web 是当前执行面，单 Agent Runtime 是执行内核。
+> **Familiar 是一个原生、安全、可检查的个人 AI 工作台。** Project 是长期工作单元，聊天是主要入口，本机信息、受限 Web、Project 与 EventKit 类型化工具共同组成当前执行面，单 Agent Runtime 是执行内核。
 
-Familiar 把 iPhone 的原生能力转成一个可组合的 Runtime，不引入 Linux 执行环境、Apple Intelligence 依赖或复杂多 Agent。Project、版本化文档资源和 Markdown/纯文本 Artifact 已进入当前实现；Artifact 之外的可写 Workspace 和运行时可恢复执行仍是下一阶段能力。
+Familiar 把 iPhone 的原生能力转成一个可组合的 Runtime，不引入 Linux 执行环境、Apple Intelligence 依赖或复杂多 Agent。Project、版本化文档资源、Markdown/纯文本 Artifact、持久化工作区置顶和显式单次 Run Skill 已进入当前实现；更广泛的可写 Workspace 与字节级续跑仍是后续能力。
 
 App 采用 BYOK 模式：用户使用自己的模型 API Key，模型请求从设备直接发送到所选 Provider；会话、附件和工具记录保存在本机。使用网页工具时，搜索词会直接发送给 DuckDuckGo，网页请求会直接发送给所选公开 HTTPS 站点。
 
@@ -41,18 +41,20 @@ App 采用 BYOK 模式：用户使用自己的模型 API Key，模型请求从�
 ## 核心特性
 
 - **iPhone 原生 Agent Runtime** — 单一主 Agent 通过 Tool 规划，并由 iOS 原生 Framework 执行；无 Linux 环境，无 Apple Intelligence 依赖。
-- **Tool 是最核心的抽象** — Calendar、Vision、PDF、Maps 都只是注册在 Capability Registry 中的 Tool；每个 Tool 小而正交、可组合。
-- **Native First** — 复用 EventKit、Vision、MapKit、PDFKit、Photos 与 Foundation，而不是重新实现日历、OCR、地图或文档渲染。
-- **Project Workspace v1** — 项目指令和版本化本地文档资源可跨项目对话共享；资源使用独立受保护目录，并在 Run 中保存不可变上下文引用。Markdown/纯文本 Artifact 在结构化确认下按项目保存。Artifact 之外的可写 Workspace 仍属后续架构。
-- **代码强制授权** — 低风险读取自动执行；当前 EventKit 写入逐次结构化确认，成功后提供当前进程内的一次性 Undo。
+- **Tool 是最核心的抽象** — 13 个类型化工具覆盖本机信息、受限 Web、冻结的 Project Resource、Project Artifact 与 EventKit；每个 Tool 小而可检查，并统一经过策略控制。
+- **Native First** — 复用 EventKit、Vision、PDFKit、Photos 与 Foundation 承接原生能力和本地预处理，不重复实现系统服务。
+- **统一 Chat Workspace** — 普通聊天与 Project 对话共用一个 Surface。顶栏切换工作区和模型，左侧抽屉提供搜索、持久置顶、可展开的项目历史与普通最近会话。
+- **Project Workspace** — 项目指令和版本化本地资源可跨项目对话共享；资源使用受保护目录，并在 Run 中保存不可变引用。Markdown/纯文本 Artifact 支持受控新建和编辑，规范化后的项目名称全局唯一。
+- **显式 Skill** — instruction-only Skill 从设置模板创建，可从普通或项目聊天的 Composer 选择，仅作用于下一次 Run。当前没有导入行或 Project binding；Skill 可以收窄工具范围，但不能授权操作。
+- **代码强制授权** — 可用读取自动执行；可逆写入需要结构化审批，除非存在精确匹配且有效的仅一次/本会话/长期规则。EventKit Undo 可跨重启恢复，Artifact Undo 保留在当前会话。
 - **Runtime Event 驱动的 UI** — 时间线渲染 Agent 事件（模型思考、工具进度、审批、成功与失败），而不是每个工具自造一套 UI。
 - **本地优先与 BYOK** — API Key 按 Provider 分别保存在 iOS Keychain；请求不经过 Familiar 服务器。
 - **完整 Provider Catalog** — OpenAI、Anthropic、Gemini、DeepSeek、Groq、xAI、OpenRouter、Qwen、Kimi、GLM、MiniMax、SiliconFlow，以及自定义 OpenAI-compatible endpoint。
 - **本地文档转换** — AnyDoc 在设备上将 Office、OpenDocument、RTF、EPUB、CSV 与 PDF 转换为 Markdown；扫描 PDF 使用 Vision OCR。
-- **系统入口** — 从其他 App 将文本、网页链接或文档保存到 App Group 收件箱；类型化 Deep Link 恢复本地上下文；Siri、快捷指令与 Spotlight 提供 `Ask Familiar`、`Process with Familiar`、`Open Familiar`。
+- **系统入口** — Share Extension 将文本、网页链接或文档保存到 App Group 收件箱；Deep Link 与 Spotlight 恢复本地上下文；Siri/快捷指令提供 `Ask Familiar`、`Process with Familiar`、`Open Familiar`，另有本地 Run 通知、启动 Widget 与 Control。
 - **富文本回答渲染** — 本地 Markdown、代码高亮、表格、引用、Mermaid、KaTeX、代码复制和安全外链。
 - **语音转写** — 使用 Apple Speech 与 `AVAudioEngine` 生成可编辑文字草稿，不保存原始录音。
-- **双语界面** — 完整简体中文与英文资源，支持深浅色、Dynamic Type、VoiceOver、Reduce Motion 和 Reduce Transparency。
+- **双语与无障碍基础** — 已提供简体中文与英文资源，并支持深浅色、Dynamic Type、VoiceOver、Reduce Motion 和 Reduce Transparency；真机验收仍在进行。
 
 ## 截图
 
@@ -64,7 +66,7 @@ App 采用 BYOK 模式：用户使用自己的模型 API Key，模型请求从�
   <img src="screenshots/storage.png" width="180" alt="存储页">
 </p>
 
-*聊天页 · 抽屉页 · 设置页 · 权限页 · 存储页*
+*截图来自较早的开发版本，当前界面可能已有变化。*
 
 ## 目标架构
 
@@ -118,7 +120,9 @@ Familiar 正在向六层架构演进。下图包含规划能力，不是当前�
   Artifacts / Trace / History
 ```
 
-当前实现同时支持普通 Conversation 与 Project 对话，包含有限串行 Tool Loop、9 个静态注册工具（含项目 Artifact 写入）、EventKit 结构化确认、只读 Web Search/Fetch、Project 指令/资源、不可变输入上下文记录、Artifact 存储和摘要性 Run/Step 持久化。长期 Memory、Skills、MCP 与运行时可恢复 Run 尚未实现。
+当前普通聊天与 Project 对话共用同一个 Chat Surface 和有限串行 Agent Loop。启动注册表包含 13 个工具：2 个本机信息、2 个受限 Web、3 个 Project Resource、2 个 Project Artifact 和 4 个 EventKit 工具。Runtime 还支持作用域授权规则、跨重启 EventKit Undo、不可变 Context/Capability/Skill 快照、Invocation 与 Resume Cursor 记录、视觉证据、项目/会话持久置顶和显式单次 Run Skill。Memory Runtime、MCP Runtime、可靠后台承接与字节级续跑尚未实现。
+
+本地持久化使用 `FamiliarDevelopment.store` 中单一当前 27 实体 SwiftData Schema。开发阶段遇到不兼容 Schema 变化时会使用新 Store，不迁移测试数据；公开发布前必须另行确定兼容与迁移策略。
 
 ```mermaid
 flowchart TD
@@ -129,7 +133,7 @@ flowchart TD
     Runtime --> State[State Layer: Session Memory Trace]
 ```
 
-Agent Runtime 是最关键的一层：它只认识 `ToolDefinition`、`ToolCall` 与 `ToolResult`，从不直接触碰 EventKit、Vision、HealthKit 或 MapKit；这些都位于 Capability Registry 与 Execution Policy 之后。
+Agent Runtime 是最关键的一层：它只消费类型化 `FamiliarToolManifest`、Provider Tool Call、`FamiliarToolOutcome`、策略决策和 Runtime Event，不直接触碰 EventKit 或其他原生 Framework；这些能力都位于 Tool Adapter 与执行策略之后。
 
 ### 系统入口
 
@@ -141,7 +145,9 @@ Agent Runtime 是最关键的一层：它只认识 `ToolDefinition`、`ToolCall`
 | **第二优先级** | ④ Widgets / Controls · ⑤ Spotlight 等轻量系统入口 |
 | **兼容能力** | ⑥ App Intents · ⑦ Shortcuts |
 
-当前 System Entry Layer 已包含 Familiar App、Share Extension、类型化 Deep Link、Run 终态本地通知、受保护的 Spotlight 会话索引、启动 Widget、控制中心 Control、三项 App Intent 和双语 App Shortcut。Widget 打开新的可编辑草稿，Control 打开 Familiar 且不替换当前上下文。共享内容只在本机暂存，Deep Link 只恢复或预填上下文；`Ask Familiar` 与 `Process with Familiar` 会明确启动现有 App 内发送链路，`Open Familiar` 不改变草稿或会话。所有入口都不能授权工具操作。
+当前 System Entry Layer 已包含 Familiar App、Share Extension、类型化 Deep Link、Run 终态本地通知、受保护的 Spotlight 会话索引、启动 Widget、控制中心 Control、三项 App Intent 和双语 App Shortcut。Widget 打开新的可编辑草稿，Control 打开 Familiar 且不替换当前上下文。共享内容只在本机暂存，Deep Link 只恢复或预填上下文；Run 通知使用通用文案，只携带本地 Run 或会话标识，不依赖远程推送，也不提供后台执行。Spotlight 只索引有限长度的会话标题、修改时间和本地标识，不索引正文或附件元数据。`Ask Familiar` 与 `Process with Familiar` 会明确启动现有 App 内发送链路，`Open Familiar` 不改变草稿或会话。所有入口都不能授权工具操作。
+
+这些入口已在代码中实现，但仍需真机验收。
 
 App Intents 位于 Agent Core 之外。其文本输入有长度上限，不读取 Keychain，也不直接调用 Provider；存在未发送草稿时拒绝覆盖。完整 Capability Registry 不会复制到 App Intents。
 
@@ -152,7 +158,7 @@ Familiar 采用单 Agent First 设计，核心是可组合的 Tool Loop：
 ```text
 User
   → AgentRun
-  → 会话上下文组装（当前）/ ProjectContextAssembler（目标）
+  → FamiliarProjectContextAssembler
   → Model
   → Tool Call?
        ├── No ──→ Final Answer
@@ -186,21 +192,24 @@ protocol FamiliarTool {
 
 ```text
 FamiliarToolManifest
+  id / version / source
   name
   title
   description
   parameters
-  effect        read / write / destructiveWrite
-  risk          low / high
+  effect / risk
   requirements  EventKit, Calendar permission, ...
+  payload / data / network / privacy metadata
+  idempotency / cancellation / recovery / parallelism
+  requiredScopes
 ```
 
 Familiar 内部借鉴 MCP 的思想但不把它当作内核，用原生 Swift 实现三种资源分离：
 
-- **当前 Resources** — 会话历史和消息附件抽取文本（application-controlled）
-- **当前 Tools** — 2 个本机信息、2 个只读 Web、1 个项目 Artifact 和 4 个 EventKit 工具（model-controlled）
-- **目标 Resources** — Project 文件、URL、Artifact 和 scoped Memory
-- **目标 Instructions** — Base Policy、ProjectInstruction 和 Skills（user-controlled）
+- **当前 Resources** — 会话历史、消息附件抽取文本、版本化 Project Resource 和 Project Artifact（application-controlled）
+- **当前 Tools** — 2 个本机信息、2 个受限 Web、3 个 Resource、2 个 Artifact 和 4 个 EventKit 工具（model-controlled）
+- **当前 Instructions** — Base Policy、ProjectInstruction，以及最多一个显式选择的单次 Run Skill（user-controlled）
+- **目标 Resources** — scoped Memory 和更广泛的受控 Workspace 数据
 
 > **MCP 是 Adapter，不是 Kernel。** 未来远程 HTTPS Client 把 MCP Tools 转成 Familiar Manifest，并继续经过 Familiar Policy；MCP 当前尚未实现。
 
@@ -221,24 +230,23 @@ Familiar 内部借鉴 MCP 的思想但不把它当作内核，用原生 Swift �
 | Notifications | Document |
 | Clipboard | Web |
 
-当前 Registry 是启动时提供的 9 工具字典，并按 EventKit availability 过滤。表中的 Native Workspace 是由 Project + Resource + Artifact 构成的目标；运行时发现、安装、版本治理和项目绑定尚未实现。
+当前 Registry 是启动时提供的 13 工具字典，并按 EventKit availability 过滤；Resource 与 Artifact 工具已经按 Project 作用域运行。通用运行时发现和远程安装尚未实现，MCP 仍是未来 Adapter。
 
 ## 权限模型
 
-当前生产授权行为：
+当前代码授权行为：
 
 | 操作 | 默认行为 |
 | --- | --- |
-| Read + 低风险 | 自动执行 |
-| 可逆写入 | 结构化确认，成功后提供当前进程内一次性 Undo |
-| 推断出的写入 | 结构化确认 |
-| 敏感读取 | Permission / policy |
-| 破坏性操作 | 确认 |
-| 财务 / 外部重大影响 | 强确认 |
+| 可用读取 | 自动执行 |
+| 可请求的系统访问 | 结构化审批，然后进入 iOS 权限流程 |
+| 可逆写入 | 结构化审批，除非存在精确匹配的仅一次/本会话/长期授权 |
+| 破坏性或高风险操作 | 始终请求审批 |
+| Undo | EventKit 新建操作可跨重启恢复；Artifact 新建和编辑为会话内撤销 |
 
-权限由代码控制，不靠 Prompt：模型无法用一句话绕过 HealthKit 权限、删除确认或敏感数据策略。
+权限由代码控制，不靠 Prompt：模型无法用一句话绕过 iOS 权限、操作确认或敏感数据策略。
 
-目标授权模型只有在用户动作生成可审计、单次使用且精确匹配 capability、规范化参数、作用域和有效期的 grant 后，才可能免除重复确认。Share Extension、App Intent 与 Deep Link 的来源信息永远不授予写权限。
+记忆授权由 Swift 强制执行，并精确匹配 Project、Capability ID/版本、目标、规范化参数 hash、会话和有效期；用户可在设置中撤销规则。Share Extension、App Intent 与 Deep Link 的来源信息永远不授予写权限。
 
 ## Provider 支持
 
@@ -250,7 +258,7 @@ Familiar 内部借鉴 MCP 的思想但不把它当作内核，用原生 Swift �
 
 每个 Provider 拥有独立 Keychain 项、端点配置、Header 和模型目录策略。模型能力按 `providerID + modelID` 标记；未知自定义模型默认仅文本。
 
-模型层使用简单的 `FamiliarModelProvider` 抽象，当前包含 OpenAI Chat、Anthropic Messages 与 Gemini adapter。下一阶段先建立确定性的 Agent benchmark，再进行模型拆分或本地模型工作。
+模型层使用 `FamiliarModelProvider` 抽象，当前包含 OpenAI Chat、Anthropic Messages 与 Gemini Adapter。确定性 Agent Benchmark 已存在，真实 Key Provider 冒烟仍未完成。可选本地 FastVLM 用于补充视觉预处理，不替代 BYOK 语言模型。
 
 ## 文档处理链路
 
@@ -269,11 +277,11 @@ Familiar 内部借鉴 MCP 的思想但不把它当作内核，用原生 Swift �
 
 只有转换后的 Markdown 和文件名会进入模型请求。原始文档字节、本地路径和 security-scoped URL 不会发送给 Firecrawl 或所选模型 Provider。
 
-图片预处理是 Tool，不是强制 pipeline：根据 Agent 判断的任务需要，图片才走 Vision OCR、二维码检测或多模态模型，而不是默认先 OCR。
+支持图片的 Provider 会直接接收图片内容。对于纯文本模型，Controller 自动执行 Apple Vision OCR、条码和分类预处理，并可在路由允许时使用已安装的 FastVLM 补充；结果以带来源信息的不可信视觉证据持久化。
 
 ## 富文本渲染
 
-助手回答由内置的非持久化 `WKWebView` 渲染，并且只使用本地资源。支持的输出包括 CommonMark 风格 Markdown、语法高亮代码块与代码复制、表格、引用、列表、Mermaid 图表、KaTeX 数学表达式和安全外链。
+流式输出使用原生回退文本；最终助手回答由内置的非持久化 `WKWebView` 渲染，并且只使用本地资源。支持的输出包括 CommonMark 风格 Markdown、语法高亮代码块与代码复制、表格、引用、列表、Mermaid 图表、KaTeX 数学表达式和安全外链。
 
 ## 隐私与安全模型
 
@@ -285,7 +293,7 @@ Familiar 内部借鉴 MCP 的思想但不把它当作内核，用原生 Swift �
 - 流式 token 和等待中的确认不会被广泛持久化。
 - 文档在本机转换；只有转换后的文字会随用户主动发起的请求发送。
 - 只有调用相应工具时才请求日历或提醒事项访问权限。
-- 写操作要求逐次确认，或提供明确的可逆撤销路径。
+- 写操作使用 Action Proposal；未匹配授权的操作需要结构化审批，精确匹配的记忆授权可以免除重复审批。
 - 网站代码不包含广告、分析或跟踪脚本。
 
 ## 技术栈
@@ -294,10 +302,10 @@ Familiar 内部借鉴 MCP 的思想但不把它当作内核，用原生 Swift �
 | --- | --- |
 | UI | SwiftUI |
 | 本地持久化 | SwiftData |
-| 网络 | URLSession、SSE streaming |
+| 网络 | 模型流量使用 URLSession/SSE；受限 Web Fetch 使用 Network.framework HTTP/1.1 |
 | 密钥 | iOS Keychain |
 | 富文本 | WebKit 与内置 Markdown、Mermaid、KaTeX 资源 |
-| 原生工具 | EventKit |
+| 注册工具 | 本机信息、受限 Web、Project Resource/Artifact 与 EventKit Adapter |
 | 文档 | AnyDoc Rust core、PDFKit、Vision |
 | 语音输入 | Speech、AVFoundation |
 | 照片 | PhotosPicker |
@@ -315,12 +323,16 @@ Familiar/
 ├── Data/           Provider 适配器、Keychain 与模型目录服务
 ├── Domain/         Provider、消息与能力模型
 ├── EventKit/       日历与提醒事项服务/工具
-├── Persistence/    SwiftData Schema 与迁移链
+├── LocalVision/    可选 FastVLM 安装与视觉预处理
+├── Memory/         作用域 Memory 数据/服务基础（Runtime 未启用）
+├── Persistence/    当前 SwiftData Schema 与本地服务
 ├── Presentation/   SwiftUI 页面、输入器与消息渲染
-├── Resources/      本地化、资产与内置渲染资源
+├── Resources/      Project Resource 服务、本地化与内置资产
+├── Skills/         instruction-only Skill 解析、存储与 Run 快照
 ├── Speech/         原生语音转写
 ├── Support/        主题与平台兼容辅助代码
 ├── SystemEntry/    Deep Link、App Intents、通知与 Spotlight
+├── Vision/         Apple Vision 预处理与证据
 └── Web/            只读 Web 搜索/抓取与受限 HTTP 客户端
 
 FamiliarWidgets/    主屏幕/锁屏启动 Widget 与控制中心 Control
@@ -328,7 +340,8 @@ FamiliarWidgets/    主屏幕/锁屏启动 Widget 与控制中心 Control
 Shared/             App Group 收件箱与控制 Intent（App 与扩展共享）
 Vendor/
 ├── AnyDocBridge.xcframework/
-└── AnyDocBridgeRust/
+├── AnyDocBridgeRust/
+└── ml-fastvlm/
 
 docs/               设计与规划（我们打算构建什么）
 state/              当前实现真实状态（以代码验证）
@@ -352,7 +365,7 @@ Scripts/            可复现的 AnyDoc XCFramework 构建脚本
 ## 构建 iOS App
 
 ```bash
-git clone https://github.com/IsaacHuo/familiar.git
+git clone https://github.com/IsaacHuo/Familiar.git
 cd familiar
 open familiar.xcodeproj
 ```
@@ -393,7 +406,9 @@ npm --prefix website run build
 Familiar 当前不包含：
 
 - iPad 支持
-- 账号或工作区系统
+- 账号、登录、云端 Workspace 或同步系统
+- 受控 Project Artifact 之外的任意可写 Workspace
+- 字节级续跑或可靠后台承接；Cursor/Invocation 记录与启动时中断 Run 失败终结已实现
 - Familiar 托管的模型代理
 - 订阅或权益流程
 - Linux / iSH 执行环境
@@ -408,17 +423,23 @@ Familiar 当前不包含：
 
 ## 第三方软件
 
-Familiar 依据 MIT License 内置 AnyDoc，所需许可声明位于：
+Familiar 依据 MIT License 内置 AnyDoc 与 SwiftSoup，相关声明位于：
 
 - `Vendor/AnyDocBridgeRust/LICENSE.anydoc`
 - `Familiar/Resources/ThirdPartyNotices.txt`
 
-其他内置渲染资源遵循各自上游项目的许可要求。
+FastVLM 与模型使用独立条款和致谢文件：
+
+- `Vendor/ml-fastvlm/LICENSE`
+- `Vendor/ml-fastvlm/ACKNOWLEDGEMENTS`
+- `Vendor/ml-fastvlm/LICENSE_MODEL`
+
+锁定的 MLX、Swift Transformers、ZIPFoundation 与内置渲染依赖继续遵循各自上游许可证和声明。
 
 ## 支持
 
 - 产品支持：<https://isaachuo.github.io/familiar/support/>
 - 隐私问题：<https://isaachuo.github.io/familiar/privacy/>
-- Bug 反馈：<https://github.com/IsaacHuo/familiar/issues>
+- Bug 反馈：<https://github.com/IsaacHuo/Familiar/issues>
 
 反馈问题时，请勿包含 API Key、私人会话、日历数据、提醒事项、文档或其他敏感信息。
