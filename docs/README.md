@@ -26,8 +26,8 @@ git     → 普通代码改动历史
 | [07-decision-log.md](07-decision-log.md) | 关键产品和工程决策、依据、影响、复审条件 |
 | [08-reference-repositories.md](08-reference-repositories.md) | 实现代码时的参考仓库、视觉能力参考、许可证与使用规则 |
 | [09-ui-component-reference.md](09-ui-component-reference.md) | 聊天页模型回复 UI 的 Beautiful UI 组件源码摘录、CSS 令牌与 Familiar 适配建议 |
-| [10-next-phase-execution-plan.md](10-next-phase-execution-plan.md) | 分层执行计划：动作 Surface、授权、跨重启撤销、Apple Vision、FastVLM 与后续能力 |
-| [11-verification-and-release-checklist.md](11-verification-and-release-checklist.md) | DeepSeek 主路径、后续 Provider 矩阵、真机验收、UI 与个人实验交付门槛 |
+| [10-next-phase-execution-plan.md](10-next-phase-execution-plan.md) | 当前收敛基础与后续分层计划：动作 Surface、授权、跨重启撤销、Apple Vision、FastVLM、Skills、Memory 与 MCP |
+| [11-verification-and-release-checklist.md](11-verification-and-release-checklist.md) | 当前静态/构建验证基线、DeepSeek 主路径、真机验收，以及开发阶段破坏性 schema 策略与未来公开发布迁移门槛 |
 | [research/](research/) | 阶段性专题研究材料（2026-08-13 产品/架构评估、UI 壁垒、原生运行时后端、项目 Workspace 流程） |
 
 > 04（Agent/Provider/内容链路）与 06（工程状态与验证）已按职责拆分：当前实现细节并入 `../state/ARCHITECTURE.md`，验证清单并入 `11-verification-and-release-checklist.md`，调试经验并入 `../logs/`。对应的旧文件已删除，不再维护。

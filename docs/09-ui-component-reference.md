@@ -521,7 +521,7 @@ export default function ThinkingState({ variant = "Steps" }: { variant?: string 
 
 - **描述**：Streamed answer with inline sources, actions, and follow-ups. 流式回答 + 内联来源 + 操作 + 追问。
 - **变体**：来源徽标堆叠（sources 数量）、来源展开列表、Follow-ups 追问按钮。
-- **适配建议**：Familiar 的流式助手消息已经用 WKWebView 渲染 Markdown。此组件的来源引用和追问按钮可借鉴：来源以胶囊/徽标形式内联，追问以浅色按钮呈现。
+- **适配结论**：Familiar 的终态助手消息使用 WKWebView 渲染 Markdown，流式阶段使用原生回退文本；终态操作按复制、系统分享、重试排列，并与助手正文左边缘对齐。来源引用和追问按钮仍只作为候选参考。
 
 ```tsx
 "use client";
@@ -1404,7 +1404,7 @@ export default function TaskRows({ variant = "Capsules" }: { variant?: string })
 
 - **描述**：Tabbed chat panel with reasoning replies and a composer. 页签式聊天面板 + 推理回复 + 输入器。
 - **变体**：页签（Flavors/Suppliers）、推理回复内联展示（Reasoning 耗时）、输入器。
-- **适配建议**：Familiar 已是完整聊天界面，此组件作为整体布局参照（页签式多会话/多主题、推理过程与结论内联展示）。具体输入器以 Familiar 现有 ComposerView 为准。
+- **适配结论**：Familiar 使用单一 Chat Surface，不采用页签式多会话。Chat 顶栏依次提供 Settings、工作区文件夹、模型菜单和新对话；工作区切换恢复该范围最近的会话，没有历史时保持临时新对话，直到首次发送才持久化。具体输入器以现有 `FamiliarComposerView` 为准。
 
 ```tsx
 "use client";
@@ -1602,7 +1602,7 @@ export default function ChatComposer() {
 
 - **描述**：Composer with @ sources, / commands, model picker, and dictation. @ 来源 / 命令 / 模型选择 / 听写。
 - **变体**：模型选择胶囊、@ 来源、/ 命令、语音听写入口。
-- **适配建议**：与 Familiar 输入器的模型选择胶囊思路一致。@/ 命令弹层可参考；听写已有语音转写。
+- **适配结论**：模型选择位于 Familiar Chat 顶栏，不放入 Composer。Composer 的 `/` 面板用于显式选择一个已安装 Skill；选择结果只作用于下一次 Run，发送后清除。Skills 设置通过右上角加号和预填指令模板创建，不提供 JSON 导入行；听写继续使用现有语音转写。
 
 ```tsx
 "use client";
@@ -3039,7 +3039,7 @@ export default function FilterTable() {
 
 - **描述**：Workspace navigation with quick search. 工作区导航 + 快速搜索。
 - **变体**：对象分组（Workspace/Objects）、计数徽标、搜索入口。
-- **适配结论**：Familiar 侧栏按 New Chat、Projects、Recent Conversations、Settings 组织，并使用统一搜索。Project Conversation 的归属由 Chat 顶栏单一 Project 入口表达，不在侧栏复制第二套 Workspace 导航。
+- **适配结论**：Familiar 侧栏从左边缘打开，按 Pinned、可展开的项目历史、All Projects 和 Recent 普通对话组织，顶部提供统一搜索。项目展开使用轻量过渡，Reduce Motion 开启时直接切换；项目行负责展开历史，长按菜单提供置顶和项目详情。Settings、工作区文件夹、模型菜单与新对话位于 Chat 顶栏，不在侧栏重复。
 
 ```tsx
 "use client";
@@ -3241,7 +3241,7 @@ export default function SidebarNav() {
 
 - **描述**：Command search with live filtering and an empty state. 命令搜索 + 实时过滤 + 空态。
 - **变体**：实时过滤列表 + 空状态。
-- **适配建议**：会话搜索可参考过滤交互。Familiar 抽屉已有搜索按钮，逻辑可直接复用。
+- **适配结论**：Familiar 抽屉搜索已统一过滤项目和对话，并支持全部、普通对话和指定项目范围；不采用独立的 Workspace 搜索体系。
 
 ```tsx
 "use client";

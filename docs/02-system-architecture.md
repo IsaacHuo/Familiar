@@ -4,7 +4,7 @@
 
 ## 1. 系统边界
 
-Familiar 是一个 iPhone 原生、安全、可检查的个人 AI 工作台。Project 是长期工作单元，聊天是主要入口，单 Agent Runtime 是执行内核。网络请求从 App 直接发送到用户选择的 AI Provider；只读 Web 请求直接发送到 DuckDuckGo 或用户选择的公共 HTTPS 站点。图片优先由当前 Provider 原生处理；纯文本模型使用设备端 Vision 或用户安装的本地视觉模型生成证据。项目没有 Familiar 业务后端。
+Familiar 是一个 iPhone 原生、安全、可检查的个人 AI 工作台。顶层产品模型是 Chat、Project 与单 Agent：Chat 是主要交互和执行界面，Project 是长期 Context Workspace，单 Agent Runtime 是执行内核。网络请求从 App 直接发送到用户选择的 AI Provider；只读 Web 请求直接发送到 DuckDuckGo 或用户选择的公共 HTTPS 站点。图片优先由当前 Provider 原生处理；纯文本模型使用设备端 Vision 或用户安装的本地视觉模型生成证据。项目没有 Familiar 业务后端。
 
 它不以 Linux 为执行环境，不依赖 Apple Intelligence，不把用户需求硬编码成 workflow，也不从复杂多 Agent 开始。
 
@@ -104,7 +104,7 @@ User
 目标内部组件：
 
 - Agent Loop：有限轮次循环，支持可恢复、可取消、有预算约束。
-- Context Assembly：每次 Run 生成不可变 `ContextSnapshot`（Project/Conversation、Resource 版本、ProjectInstruction、Provider/Model、暴露工具、输入预算）。
+- Context Assembly：每次 Run 生成不可变 `ContextSnapshot`（Project/Conversation、Resource 版本、ProjectInstruction、本次显式选择的 Skill、Provider/Model、暴露工具、输入预算）。
 - Model Router / Tool Router：模型决策与工具分发。
 - Run / Step State：一次 Run 的执行状态与恢复游标。
 
@@ -168,7 +168,7 @@ Apple Framework 只通过适配层进入相应功能，不被 Agent Runtime 直�
 - Project Workspace：Project、Resource、Artifact、Instruction、Binding、MemoryItem、Schedule。
 - Run Workspace：不可变 Context/Capability/Authorization snapshot、工具输入输出引用、ResumeCursor、持久化幂等状态。
 
-## 3. 目标能力设计（未实现部分）
+## 3. 目标能力设计与当前边界
 
 ### 3.1 可恢复 Run 与后台
 
@@ -198,7 +198,7 @@ Agent Run 的目标是可中断、可恢复，不是常驻 daemon。
 
 ### 3.3 Skills
 
-Familiar Skill 第一版不包含 Python、Shell、Executable Script，是 Instruction Package + Tool Scope：
+当前 Familiar Skill 不包含 Python、Shell、Executable Script，是 Instruction Package + Tool Scope：
 
 ```text
 Skill
@@ -209,7 +209,7 @@ Skill
 └── examples
 ```
 
-Skill 只能收窄 Tool Scope，不能扩大用户授权。支持 Files/Share 导入、内容预览、明确安装、项目绑定、禁用和删除。
+当前已安装 Skill 由用户在普通聊天或项目聊天的 Composer 中显式选择，只作用于下一次 Run，并冻结 ID、版本、内容 hash 与 `allowedTools` 供审计。Skill 只能收窄 Tool Scope，不能扩大或创建用户授权。当前没有 Project SkillBinding，也没有 Files/Share 导入界面；文件导入、内容预览与项目绑定保留为明确标注的未来目标。
 
 ### 3.4 MCP：Adapter，不是 Kernel
 
@@ -252,7 +252,7 @@ Skill 只能收窄 Tool Scope，不能扩大用户授权。支持 Files/Share �
 
 ### 3.7 远程 Web 内容
 
-只读 Web 先于交互：`web_search` / `web_fetch` 已实现；`web.read`（selector/readerMode）、Project URL Resource、浏览器登录、表单提交、Cookie 会话与自动点击延后。Web/MCP 内容一律按不可信输入处理，不授予工具权限。
+只读 Web 先于交互：`web_search` / `web_fetch` 与公开 HTTPS 页面导入 Project Resource 已实现；`web.read`（selector/readerMode）、浏览器登录、表单提交、Cookie 会话与自动点击延后。Web/MCP 内容一律按不可信输入处理，不授予工具权限。
 
 ## 4. 架构约束
 
@@ -271,3 +271,4 @@ Skill 只能收窄 Tool Scope，不能扩大用户授权。支持 Files/Share �
 - 本地通知只携带通用终态文案与本地类型化路由，不携带会话正文或授权信息。
 - Spotlight 只索引受保护的本地会话标题与 UUID，不索引聊天正文或运行详情。
 - 权限由代码控制，不靠 Prompt。
+- Skill 只能提供指令并收窄本次 Run 的工具范围，永远不构成授权依据。

@@ -10,7 +10,7 @@
 - Agent Run 与 Step 终态保存在 SwiftData。
 - 文档原文件复制到 App 私有目录。
 - 文档转换和 PDF OCR 在设备内执行。
-- 流式 token 和待确认请求只存在于内存。
+- 流式 token 和等待用户决策的 continuation 只存在于内存；工具 invocation 的 requested / approved / terminal 检查点保存在 SwiftData。
 - 图片原文件保存在 App 私有附件目录，不写入 SwiftData；图片字节只进入当前多模态 Provider 请求或设备端 Vision/FastVLM 处理，不发送到其他 Provider。
 - 本地视觉结果以有限证据文本和 provenance 持久化；删除本地模型不删除历史证据。
 - App 不创建原始录音文件。
@@ -21,6 +21,7 @@
 - Ask / Process App Intents 只把用户明确提供且经过长度限制的文本交给主 App；文本随后沿用普通消息的 BYOK 请求路径。Open Familiar 不创建草稿、不发送网络请求，所有 Intent 均不能授予工具写权限。
 - Run 终态通知是用户可选的本地通知，不使用远程推送；通知只包含通用状态与本地 Run / 会话标识，不包含问题、回答、附件名或工具结果。
 - Spotlight 使用受保护的设备内索引，只保存已有内容会话的标题、更新时间和本地 UUID；不索引消息正文、附件名、工具结果、密钥或 Provider 配置。
+- Skill 只有在用户从 Composer 为下一次 Run 显式选择时才进入上下文；它只能收窄工具范围，不能创建授权或绕过确认。
 
 ## 2. 数据清单
 
@@ -35,7 +36,8 @@
 | 工具终态 | Agent 与系统结果 | SwiftData | 可能进入后续模型上下文 | 会话删除或路径重写 |
 | Run/Step 记录 | Agent Runtime | SwiftData | 不单独发送 | 会话删除或路径重写 |
 | Project / Resource / Artifact | 用户导入或 Agent 生成 | SwiftData + 独立受保护目录 | 抽取文本进入上下文 | 项目删除或用户删除 |
-| 待确认请求 | Agent | 内存 | 不发送到 Familiar 服务 | 决策、取消或进程结束 |
+| Skill / Run Skill 快照 | App 首次示例或用户在 App 内创建，并由用户显式选择 | SwiftData | 被选择的 Skill 指令进入对应 Provider 的下一次 Run | Skill 由用户删除；Run 快照沿用 Run 生命周期 |
+| 待确认请求 | Agent | continuation 在内存；invocation requested 状态在 SwiftData | 不发送到 Familiar 服务 | 决策、取消或进程结束；检查点沿用 Run 生命周期 |
 | 流式 token | Provider | 内存 | 不作二次上传 | 回答终态或任务结束 |
 | 文档原文件 | 文件选择器 | App Support | 不上传 | 附件、消息或会话删除 |
 | 文档抽取文本 | AnyDoc/OCR | SwiftData | 对应 Provider | 附件、消息或会话删除 |
@@ -46,7 +48,7 @@
 | 原始录音 | 麦克风输入 | 不落盘 | Speech framework 按系统能力处理 | audio buffer 生命周期 |
 | 日历/提醒数据 | EventKit | 查询结果进入内存和工具记录摘要 | 可能作为工具结果进入 Provider | 运行结束和历史记录生命周期 |
 | 网页搜索 | 用户问题经 Agent 生成的最小搜索词 | 结果正文主要在运行内存；来源标题、HTTPS URL、站点、时间和有限 snippet 随助手消息保存 | 搜索词直接发送给 DuckDuckGo；结果可能作为工具内容进入所选 Provider | 临时结果随 Run 结束；来源与 snippet 随消息删除 |
-| 网页读取 | 用户提供或搜索返回的公开 HTTPS URL | 原始 HTML 与完整正文仅在运行内存；来源元数据和最多 360 字符的有限正文 snippet 随助手消息保存 | 请求直接发送给目标站点及允许的 HTTPS 重定向目标；抽取正文可能进入所选 Provider | 原始内容随 Run 结束；来源与 snippet 随消息删除 |
+| 网页读取 | 用户提供或搜索返回的公开 HTTPS URL | 原始 HTML 与完整正文默认仅在运行内存；来源元数据和最多 360 字符的有限正文 snippet 随助手消息保存；用户导入项目时抽取正文保存为 Project Resource | 请求直接发送给目标站点及允许的 HTTPS 重定向目标；抽取正文可能进入所选 Provider | 临时原始内容随 Run 结束；来源与 snippet 随消息删除；导入副本沿用 Resource 生命周期 |
 | Deep Link 输入 | 其他 App 或系统入口 | 草稿文本进入内存；会话 / Run UUID 仅用于本地查询 | 不因打开链接自动发送 | 链接处理或草稿生命周期 |
 | Share Extension 输入 | 用户从其他 App 明确共享 | App Group `ShareInbox`，导入后复制到 App 私有草稿附件目录 | 不因共享或导入自动发送 | 成功或终态失败处理后删除共享副本；草稿副本沿用附件生命周期 |
 | App Intent 文本 | 用户在 Siri / Shortcuts / Spotlight 明确提供 | 仅作为进程内 handoff 和新草稿短暂存在，发送后进入本地消息记录 | Ask / Process 通过当前选择的 BYOK Provider 发送；Open 不发送 | 未发送草稿被拒绝覆盖；成功提交后沿用会话生命周期 |
@@ -55,13 +57,15 @@
 
 ## 3. SwiftData 与 store 策略
 
-当前实体模型、迁移链与 store 地址见 `state/ARCHITECTURE.md` 第 5 节。数据模型设计约束：
+当前使用 `FamiliarDevelopment.store` 中的单一 27 实体 SwiftData Schema，生产和测试容器都不配置 migration plan。完整实体模型与 store 地址见 `state/ARCHITECTURE.md` 第 5 节。数据模型设计约束：
 
 - 关系删除规则使用 cascade；附件 / 项目资源 / Artifact 文件由控制器显式清理。
+- Project 名称在本地 store 中全局唯一，比较时不区分大小写。
 - Project Resource 必须独立于 Message 文件目录，具备稳定 ID、版本、来源和 lineage；删除或编辑消息不能误删项目共享资料。
 - 每次 Run 保存不可变 ContextSnapshot 及其资源引用，不保存完整资源抽取文本进快照记录。
-- store 版本策略：新 Schema 必须作为后续 `VersionedSchema` 加入现有 migration plan，并提供对应 migration stage 与磁盘迁移测试；用户确认后的全量重建只作为异常恢复，不作为正常升级方式。
-- 容器打开或迁移失败不自动重置数据；恢复界面保留 Keychain API Key。（历史启动崩溃的根因与修复见 `logs/swiftdata-store-migration-134110.md`。）
+- 当前开发策略：Schema 变化可轮换到全新开发 store，不迁移测试数据；首次创建当前 store 时清理旧开发 store 及失去元数据的附件、项目资源和 Artifact 目录。
+- 正式发布后的目标策略：冻结公开 Schema 后再建立版本化 migration plan、migration stage 与磁盘迁移测试，不把当前开发期的破坏性轮换当作用户数据升级方案。
+- 容器打开失败不自动重置数据；只有用户在恢复界面确认后才删除当前 store、附件、项目资源和 Artifact，Keychain API Key 保留。（历史启动崩溃及当时迁移链方案见 `logs/swiftdata-store-migration-134110.md`。）
 
 ## 4. 持久化时点
 
@@ -75,7 +79,7 @@
 
 ### 4.3 工具记录
 
-工具成功、取消或失败后保存：工具名、用户可见摘要、详情、确认结果、终态、开始和结束时间。等待确认状态不保存。
+工具 invocation 请求时保存 requested 检查点，用户决策后保存 approved / cancelled，执行完成后保存 committed / failed；工具终态同时保存工具名、用户可见摘要、详情、确认结果、开始和结束时间。等待用户决策的 continuation 不持久化。
 
 ### 4.4 模型切换
 
@@ -83,7 +87,7 @@
 
 ### 4.5 Run 与 Step
 
-一次 Agent Run 创建时保存 Run；审批、工具终态和模型响应摘要作为检查点保存。流式增量不保存。目标：补充完整调用载荷、Authorization snapshot 与 ResumeCursor，支持严格恢复（见 `02-system-architecture.md` 3.1）。
+一次 Agent Run 创建时保存 Run；ContextSnapshot、CapabilitySnapshot、ResumeCursor、ToolInvocation、审批、工具终态和模型响应摘要作为检查点保存。流式增量和字节级中断续跑尚未持久化；完整 Authorization snapshot 与严格恢复仍是目标（见 `02-system-architecture.md` 3.1）。
 
 ## 5. 文件系统
 
@@ -118,7 +122,7 @@ Project 资源、Artifact 使用独立的受保护目录（具体路径见 `stat
 
 ### 5.3 清理
 
-设计要求：导入失败、转换失败、导入取消、多附件提交中途失败、删除会话、编辑或重试删除后续消息、丢弃草稿时均清理对应文件；页面出现时清理未被引用的 Drafts 与 Messages 孤儿文件；附件目录创建时设置 `.completeUntilFirstUserAuthentication` 文件保护。
+设计要求：导入失败、转换失败、导入取消、多附件提交中途失败、删除会话、编辑或重试删除后续消息、丢弃草稿时均清理对应文件；页面出现时清理未被引用的 Drafts 与 Messages 孤儿文件；删除项目时清理对应 Project Resource 与 Artifact；开发 store 轮换或用户确认恢复时清理附件、项目资源和 Artifact。附件目录创建时设置 `.completeUntilFirstUserAuthentication` 文件保护。
 
 ## 6. Keychain
 
@@ -180,7 +184,7 @@ CSP 主要限制：
 3. 无有效 grant 时展示结构化动作卡，由用户选择仅这次、本次会话或始终允许；默认本次会话。
 4. 有效授权产生后调用 EventKit save，并保存执行与撤销所需记录。
 
-动作卡展示目标容器和字段。取消结果进入 Agent Loop，取消路径不调用 save。有效 grant 可以免除重复询问，但不能隐藏动作卡，也不能越过 Project、工具、目标或参数边界。修改、删除和目标变化必须重新判断授权；跨重启 Undo 是目标能力，当前实现边界见 `state/CURRENT.md`。
+动作卡展示目标容器和字段。取消结果进入 Agent Loop，取消路径不调用 save。有效 grant 可以免除重复询问，但不能隐藏动作卡，也不能越过 Project、工具、目标或参数边界。修改、删除和目标变化必须重新判断授权；EventKit create 已保存跨重启 Undo 记录，真机边界仍待验证（见 `state/CURRENT.md`）。
 
 ### 9.3 权限
 
@@ -218,7 +222,7 @@ CSP 主要限制：
 | 操作 | 默认行为 |
 |---|---|
 | Read + 低风险 | 自动执行 |
-| 可逆写入 | 首次结构化授权；有效 grant 范围内免重复确认但仍展示动作卡；目标为跨重启 Undo |
+| 可逆写入 | 首次结构化授权；有效 grant 范围内免重复确认但仍展示动作卡；EventKit create 保存跨重启 Undo 记录 |
 | 推断出的写入 | 无匹配 grant 时结构化授权 |
 | Web 敏感读取 | 受限公网请求自动执行；不授予后续工具权限 |
 | EventKit 可申请读取 | 结构化确认后请求系统权限 |
@@ -254,7 +258,7 @@ CSP 主要限制：
 | 远程 prompt injection | Web 内容标记为不可信，不授予工具权限；来源单独保存 |
 | 未来 MCP server annotation 伪造风险 | annotation 不作为授权依据，凭据按 server identity 隔离并继续通过 Familiar Policy |
 | 流式 token 触发广泛持久化 | 内存状态和终态保存分离 |
-| 旧 Schema 启动崩溃 | 版本化开发 store（见 `logs/swiftdata-store-migration-134110.md`） |
+| 旧 Schema 启动崩溃 | 当前开发期使用独立 `FamiliarDevelopment.store` 与破坏性 store 轮换，不迁移测试数据；历史方案见 `logs/swiftdata-store-migration-134110.md` |
 
 ## 13. 删除语义
 
@@ -272,7 +276,7 @@ CSP 主要限制：
 
 ### 卸载 App
 
-App 容器中的 SwiftData、UserDefaults 和附件文件由系统删除。`kSecAttrAccessibleWhenUnlockedThisDeviceOnly` Keychain 项目的卸载行为由系统管理；产品需要提供设置内清除 Key 的操作。
+App 容器中的 SwiftData、UserDefaults、附件、项目资源和 Artifact 文件由系统删除。`kSecAttrAccessibleWhenUnlockedThisDeviceOnly` Keychain 项目的卸载行为由系统管理；产品需要提供设置内清除 Key 的操作。
 
 ## 14. 后台与通知
 
@@ -304,7 +308,7 @@ App 容器中的 SwiftData、UserDefaults 和附件文件由系统删除。`kSec
 - 检查请求体不含原文件 bytes 与未授权数据。
 - 检查日志不含 API Key。
 - 检查流式 token 未写入 SwiftData。
-- 检查等待确认状态未写入 SwiftData。
+- 检查等待确认 continuation 未写入 SwiftData，且 invocation requested 检查点已写入。
 - 拒绝 EventKit 权限时零读取和零写入。
 - 取消写入确认时零写入。
 - 授权范围越界、目标变化或 grant 过期时零写入并重新询问。

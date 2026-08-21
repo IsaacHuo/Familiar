@@ -17,118 +17,62 @@ Chat 是主要交互与执行 Surface，Project 是长期 Context Workspace。�
 3. 信息性运行事件使用轻量状态行；只有写动作使用卡片。
 4. 模型不能产生自己的授权。首次授权由用户明确产生，有效 grant 范围内可以免重复询问。
 5. 图片能力按当前模型路由；本地 fallback 不产生新的网络目的地。
-6. 恢复和撤销的数据契约先于后台 API。
+6. 后台承接不得绕过现有恢复、幂等、授权和审计边界。
 7. 每一层完成自动化验证和真机验收后再进入下一层。
-8. Skills、Memory、Remote MCP 在端到端接入 Runtime、Policy、删除语义前保持隐藏或 Labs。
+8. Memory、Remote MCP 和后台执行在端到端接入 Runtime、Policy、恢复与删除语义前保持隐藏或 Labs。
 
-## 3. 已有基础
+## 3. 执行起点
 
-- 8 场景 fake-provider Benchmark、arm64 Simulator 构建和 iOS CI 配置。
-- SwiftData V1→V9 migration plan（八个轻量 stage）。
-- Project、ProjectInstruction、版本化 Resource、ContextSnapshot 和 Artifact。
-- Web Search/Fetch 与 Web capture 落为 Project Resource。
-- CapabilitySnapshot、AuthorizationGrant、RunResumeCursor 和 ToolInvocation 数据契约。
-- Runtime Event、稳定 Surface identity、工具生命周期卡片和摘要轨迹。
+动作 Surface、持久授权、跨重启 Undo、Apple Vision fallback、FastVLM 0.5B、统一 Chat/Project Workspace 和 Composer 单次 Skill 选择均已进入当前实现。本文不再重复其实现方案；准确边界和最新验证证据以 `state/CURRENT.md` 与 `state/ARCHITECTURE.md` 为准。
 
-具体当前边界以 `state/ARCHITECTURE.md` 为准。
+下一阶段只处理尚未完成的真机验收、缺陷硬化、Runtime 能力与发布准备。
 
-## 4. 第一层：执行界面、授权、撤销与基础视觉
+## 4. 第一层：真机验证与缺陷硬化
 
-### 4.1 Surface 信息层级
+### 4.1 Provider、动作与恢复
 
-- 将思考、查阅、Web/Resource 读取、本地识图和整理回答统一为无卡片背景的单行状态。
-- Run 完成后将信息性状态折叠为“查看运行过程”。
-- 只有 `reversibleWrite`、`destructive` 或其他真实写动作使用动作卡。
-- 同一卡片原位呈现提案、等待授权、执行中、成功、失败和已撤销。
-- 失败显示原因和重试；重试复用原结构化提案，参数变化时按新动作重新判断授权。
+- 使用 DeepSeek 真 Key 完成认证、文本流式、取消、错误处理、读工具和写工具闭环。
+- 在真机验证 EventKit 权限、零授权零写入、授权范围匹配、重复调用幂等、App 重启后 Undo，以及系统对象被外部修改或删除时的失败呈现。
+- 验证进程在系统保存后立即终止等边界；发现数据或授权不一致时优先修复，不扩展新动作类型。
 
-### 4.2 多动作卡片 pager
+### 4.2 Surface 与无障碍
 
-- 同一 Assistant 回合只有一张动作卡时使用普通全宽布局。
-- 两张以上时横向排列；单卡近乎占满容器，露出下一张约 16–24 pt。
-- 使用逐卡吸附，页码变化时轻触觉反馈。
-- 只让视口边缘被裁切部分渐隐；滚动到头时移除对应方向渐隐。
-- Reduce Motion 关闭弹簧感但保留稳定吸附；系统禁用触觉时不触发反馈。
-- 每张卡独立执行、失败、重试和撤销；最终回答分别总结成功、失败和可重试项。
+- 在真机检查读取状态、单卡、多卡 pager、部分成功、失败重试和已撤销终态，确认长回答滚动与草稿切换稳定。
+- 完成 VoiceOver、极端 Dynamic Type、Reduce Motion、Reduce Transparency、触觉关闭、中英文和明暗模式验收。
 
-### 4.3 授权策略接线
+### 4.3 视觉路径
 
-- 设置增加 Agent 授权策略和长期授权管理，不与 iOS 系统权限页面混用。
-- 首次授权提供“仅这次 / 本次会话 / 始终允许”，默认“本次会话”。
-- grant 绑定 Project、工具、目标、规范化参数边界、期限和确认证据；普通聊天使用独立作用域。
-- 将 grant 创建、查询、匹配、消费和撤销接入真实 Agent Loop，移除生产路径固定 `grant: nil`。
-- 有效 grant 免重复询问，但每次写入仍显示动作卡并写入审计记录。
-- 修改、删除、目标变化、参数越界和高风险动作重新确认。
+- 验证 Apple Vision OCR、条码、分类、证据 provenance、失败恢复和不跨 Provider 上传。
+- 在目标真机验证 FastVLM 下载恢复、哈希、空间不足、Core ML 编译、自动路由、60 秒降级、内存与热表现；根据真实失败硬化，不扩大模型矩阵。
+- 记录中文描述、比较和图表问答质量，不根据模型基座预先声明支持程度。
 
-### 4.4 跨重启撤销
+### 4.4 现有能力闭环
 
-- 持久化 EventKit 系统对象标识、动作提案、撤销状态和有效边界。
-- App 重启后仍能从原动作卡发起撤销。
-- 撤销成功后卡片进入“已撤销”终态；对象已被外部修改或删除时显示真实失败。
-- 不声明日历和提醒跨对象事务；多动作分别撤销。
+- 验证 Web/Artifact、文档/OCR、Speech、Share、Deep Link、通知、Spotlight、App Intents 和 Widget/Control 的真机主路径与失败恢复。
+- 验证 Composer 选择的 Skill 只影响下一次 Run，immutable snapshot 和 tool scope 与审计记录一致。
+- 只有验收暴露的缺陷进入本层；Skill 导入、分发和 Project binding 属于后续能力。
 
-### 4.5 Apple Vision 基础 fallback
+### 4.5 完成条件
 
-- 图片输入先根据当前模型能力建立处理计划。
-- 原生多模态模型沿用当前 Provider 图片编码路径。
-- DeepSeek 等纯文本模型使用 Apple Vision 提取 OCR、条码和基础分类。
-- 将最终证据文本、处理方法、系统版本和原图引用持久化为 VisualEvidence；坐标级中间结果默认不持久化。
-- 证据以不可信只读块进入主模型上下文，不授予工具权限，不伪装成系统或用户指令。
-- 结果不足时明确说明基础能力边界，并建议切换到用户已配置的多模态 Provider；不自动上传到另一个 Provider。
+- 实际执行单元测试和 8 场景 Agent benchmark；仅编译测试产物不算测试通过。
+- 所有者完成 DeepSeek、EventKit、视觉、Surface 与系统入口真机验收。
+- 发现的问题修复后重新执行对应的最窄验证，并把最新证据写入 `state/CURRENT.md`。
 
-### 4.6 第一层验收
+## 5. 第二层：未完成的 Runtime 能力
 
-- arm64 iOS Simulator 构建通过。
-- 单元测试和 8 场景 Agent benchmark 通过。
-- `state/CURRENT.md`、`state/ARCHITECTURE.md` 与代码一致。
-- 真机由所有者使用 DeepSeek 验收：基础图片识读、日历/提醒写入、会话级免重复确认、重启后撤销和多卡滑动。
-- VoiceOver、极端 Dynamic Type、Reduce Motion、Reduce Transparency 和触觉关闭状态可操作。
+按以下顺序交付，每项都必须贯通 Runtime、Policy、审计、恢复与删除语义：
 
-## 5. 第二层：FastVLM 高级本地视觉
+1. instruction-only Skill 导入、预览、安装、卸载与 Project binding；继续保持显式调用和 tool scope 收窄。
+2. global/project/conversation scoped Memory；先提供显式读写与删除，自动写入默认关闭。
+3. Remote HTTPS Streamable HTTP MCP Client；所有工具继续经过 Familiar Policy，不引入本机 Server 或任意代码执行。
+4. iOS 26+ 后台承接；iOS 18–25 明确降级，不承诺可靠 cron，恢复与幂等验证先于扩大入口。
 
-### 5.1 模型包
+## 6. 第三层：Provider 与发布准备
 
-- 第一版只支持固定版本 `FastVLM-0.5B`，官方预转换下载约 1.23 GB，iOS 18.2+。
-- 仅用于当前个人非商业研究实验；设置展示 Apple 模型许可证、归属和用途限制。
-- 固定下载 URL、文件大小与 SHA-256，不自动跟随上游版本。
-
-### 5.2 安装与设备准入
-
-- 用户在设置中主动下载，不随 App 默认打包，不在首次图片请求时静默下载。
-- 初始准入同时检查芯片、至少约 3.5 GB 可用存储和运行时环境。
-- 安装后运行短基准，记录首响应时间、内存失败和热状态；基准失败时禁用高级视觉但保留 Apple Vision。
-- 下载支持进度、暂停/恢复、失败重试和删除；校验失败删除损坏文件。
-- 删除模型文件和缓存时保留历史视觉证据。
-
-### 5.3 自动路由与降级
-
-- OCR、二维码和文字提取优先走 Apple Vision。
-- 描述、比较、图表解释和开放式图片问答自动选择 FastVLM。
-- 基础识别不足且 FastVLM 已安装时自动升级，不要求用户逐次选择。
-- FastVLM 内存失败、模型损坏、取消或 60 秒超时时退回 Apple Vision，并明确能力受限。
-- 中文图片问答质量属于真机实验指标，不能根据 Qwen2 基座预先声明支持程度。
-
-### 5.4 第二层验收
-
-- 下载恢复、哈希校验、空间不足、删除和重新安装路径通过。
-- 目标真机基准通过，连续运行无不可接受的内存终止或热降频。
-- OCR 任务不错误升级；描述和图表任务能够自动选择 FastVLM。
-- 高级路径失败后基础识别和主聊天仍可继续。
-- 删除模型后历史视觉证据和回答仍可检查。
-
-## 6. 后续层次
-
-按以下顺序继续，每项仍需真实任务驱动：
-
-1. Web 与 Artifact：读取结果轻量化、Artifact 创建/编辑/撤销和项目呈现。
-2. 语音：稳定设备端转写、权限恢复和长输入体验。
-3. 系统入口：Share、通知、Deep Link、Spotlight、App Intents、Widget/Control 的真机闭环。
-4. instruction-only Skills：导入、预览、安装、项目绑定、tool scope 和卸载。
-5. global/project/conversation scoped Memory，自动写入默认关闭。
-6. Remote HTTPS Streamable HTTP MCP Client，继续经过 Familiar Policy。
-7. 新原生能力与 iOS 26+ 后台承接；iOS 18–25 明确降级，不承诺可靠 cron。
-
-当前进度：Web/Artifact 与语音、系统入口基础已存在；Project Workspace 与 instruction-only Skills v1 已接入真实 Chat Runtime、项目设置、工具范围和 V9 Run 审计快照。Memory 仍只有 V8 基础服务，MCP 仍只有 V8 配置记录；两者必须完成 Runtime、Policy 和删除语义后再标记为完成。
+- DeepSeek 主路径稳定后，按协议族扩展真实 Provider 兼容矩阵，不用模拟结果代替真实认证、流式和工具冒烟。
+- 开发阶段继续使用可破坏性重建的 `FamiliarDevelopment.store`；首次公开发布前冻结版本化 schema，之后每次 schema 变化都提供旧版本 fixture、覆盖安装、磁盘迁移和失败恢复测试。
+- 公开分发前完成许可证、隐私披露、数据删除、API Key、模型下载来源与哈希审查。
+- 将 Debug、Release、Simulator、实际测试执行和真机验收分别记录，不用其中一项替代另一项。
 
 ## 7. 暂不进入当前层
 

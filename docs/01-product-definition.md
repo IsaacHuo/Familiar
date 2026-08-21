@@ -53,7 +53,7 @@ Familiar 为普通 iPhone 用户提供统一的移动问答与 Agent 执行入�
 
 1. 使用用户选择的 AI Provider 完成文本问答。
 2. 读取本机日历和提醒事项，回答时间安排相关问题。
-3. 创建日历事件或提醒事项；首次授权由用户明确产生，精确授权范围内可免重复确认，每次动作仍可检查，并以跨重启 Undo 为目标。
+3. 创建日历事件或提醒事项；首次授权由用户明确产生，精确授权范围内可免重复确认，每次动作仍可检查，并保存跨重启 Undo 记录。
 4. 将本机文档转换为可发送的文本上下文。
 5. 将语音转换为可编辑的输入草稿。
 6. 在本机保存会话历史、Run/Step 执行记录和工具终态。
@@ -78,11 +78,11 @@ Familiar 为普通 iPhone 用户提供统一的移动问答与 Agent 执行入�
 
 ### 4.4 创建日程或提醒
 
-模型生成结构化写入请求。首次授权时，动作卡展示目标日历或列表、标题、时间、备注、优先级等字段；用户可以选择“仅这次 / 本次会话 / 始终允许”，默认“本次会话”。授权按 Project、工具和目标精确隔离，参数或作用域越界时重新确认。有效授权范围内可以直接执行，但每次动作仍展示同一张动作卡，并以跨重启 Undo 为目标。取消、失败、成功和撤销结果都返回 Agent Loop 并保留可检查终态（见 `02-system-architecture.md` 2.4）。
+模型生成结构化写入请求。首次授权时，动作卡展示目标日历或列表、标题、时间、备注、优先级等字段；用户可以选择“仅这次 / 本次会话 / 始终允许”，默认“本次会话”。授权按 Project、工具和目标精确隔离，参数或作用域越界时重新确认。有效授权范围内可以直接执行，但每次动作仍展示同一张动作卡；EventKit create 保存跨重启 Undo 记录。取消、失败、成功和撤销结果都返回 Agent Loop 并保留可检查终态（见 `02-system-architecture.md` 2.4）；真机边界仍待验证。
 
 ### 4.5 使用本机文档与项目资料
 
-用户从系统文件选择器添加文档。App 将文件复制到私有目录，通过 AnyDoc 转换为 Markdown；PDF 页面缺少文本层时使用 Vision OCR。发送给 Provider 的内容为抽取文本和文件名上下文。目标：项目内文档成为带版本、lineage 和共享引用的 Project Resource，支撑跨对话的长期上下文。
+用户从系统文件选择器添加文档。App 将文件复制到私有目录，通过 AnyDoc 转换为 Markdown；PDF 页面缺少文本层时使用 Vision OCR。发送给 Provider 的内容为抽取文本和文件名上下文。在 Project 中导入的文档保存为带版本和 lineage 的 Project Resource，支撑跨对话的长期上下文；Project 名称全局唯一，比较时不区分大小写。
 
 ### 4.6 使用图片
 
@@ -93,6 +93,10 @@ Familiar 为普通 iPhone 用户提供统一的移动问答与 Agent 执行入�
 ### 4.7 使用语音输入
 
 用户启动语音识别，转写结果持续写入输入框。转写文本保持可编辑状态。App 不创建音频消息，不保留原始录音文件。
+
+### 4.8 显式使用 Skill
+
+用户可以在普通聊天或项目聊天的 Composer 中显式选择一个已安装 Skill。当前选择只作用于下一次 Run，发送后清除；Skill 只注入指令并收窄该次 Run 的 Tool Scope，不能授予权限或绕过确认。当前没有 Project SkillBinding，也没有 Skill 文件导入界面。
 
 ## 5. 产品原则
 
@@ -163,12 +167,13 @@ Provider 原生能力、设备端预处理和可选本地模型是不同的数�
 - 文本聊天与本地会话管理。
 - 12 个内置 Provider + 自定义 OpenAI-compatible Provider。
 - OpenAI Chat、Anthropic Messages、Gemini Generate Content 三类协议适配。
-- 日历事件与提醒事项的查询与创建；目标为精确授权、动作卡审计和跨重启 Undo。
+- 日历事件与提醒事项的查询与创建；精确授权、动作卡审计和跨重启 Undo 记录已接入，真机验收仍待完成。
 - 只读 `web_search`、`web_fetch` 与回答来源记录。
 - PDF、Office、OpenDocument、RTF、EPUB、CSV、TXT、Markdown 等文档导入；AnyDoc 本地转换、PDFKit 文本层检查与 Vision OCR。
 - 图片选择、拍照和预览；原生多模态发送、Apple Vision 基础视觉 fallback，以及用户主动安装的 FastVLM 高级本地视觉包。
 - Apple Speech 转写。
 - Project / Resource / Artifact / ContextSnapshot 主链路。
+- Composer 显式选择、仅作用于下一次 Run 的 instruction-only Skill。
 - 简体中文和英文界面。
 
 ### 7.2 当前排除
@@ -208,7 +213,7 @@ Provider 原生能力、设备端预处理和可选本地模型是不同的数�
 
 ## 9. 长期路线图
 
-路线图见 `10-next-phase-execution-plan.md`。核心顺序：先补可验证内核与迁移基础，再 Project/Context/Workspace 主链路，然后只读 Web 与能力契约，最后 Skills / Remote MCP / Memory / 后台承接。
+路线图见 `10-next-phase-execution-plan.md`。可验证内核、Project/Context/Workspace、只读 Web、能力契约与一次性显式 Skill 已形成当前基础；Remote MCP、Memory Runtime 与后台承接仍是后续目标。
 
 ## 10. 实验交付门槛
 
@@ -220,7 +225,7 @@ Provider 原生能力、设备端预处理和可选本地模型是不同的数�
 6. API Key 只进入 Keychain 和对应 Provider 请求。
 7. 隐私用途说明与实际调用一致。
 8. 内置模型 ID 失效时允许用户输入有效模型 ID，界面保持可恢复。
-9. SwiftData 启动路径能够处理当前开发 Schema 与旧开发 store 的切换。
+9. SwiftData 启动路径能够打开 `FamiliarDevelopment.store` 的当前 27 实体 Schema，并以破坏性开发 store 轮换处理旧测试数据，不依赖迁移链。
 10. EventKit、相机、Apple Vision、Speech 和安全作用域文件完成真机验收。
 11. 通知权限只在用户明确开启时请求；关闭后不再安排 Familiar 通知，并清理待处理与已投递通知。
 12. Spotlight 结果只暴露受保护的本地会话标题和 UUID，点击后能回到存在的本地会话；删除会话后对应结果被清理。

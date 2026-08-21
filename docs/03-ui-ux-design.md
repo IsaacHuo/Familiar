@@ -21,20 +21,26 @@ flowchart TD
     Root[Root] --> Onboarding[三步首启]
     Root --> Chat[聊天主界面]
     Chat --> Drawer[全局侧栏]
+    Drawer --> Pinned[置顶项目与对话]
     Drawer --> Projects[项目]
+    Drawer --> AllProjects[全部项目]
     Drawer --> Recent[最近对话]
+    Drawer --> Search[统一搜索]
     Projects --> ProjectHome[项目主页]
     ProjectHome --> ProjectChat[继续或新建项目对话]
     ProjectHome --> Resources[资料]
     ProjectHome --> Artifacts[生成结果]
     ProjectHome --> Context[次级项目上下文]
     Context --> Conversations[对话]
-    Context --> Skills[技能]
     Context --> Runs[运行记录]
     Chat --> TopBar[顶栏]
+    TopBar --> Settings[设置]
+    TopBar --> Workspace[聊天范围]
+    TopBar --> Model[模型菜单]
+    TopBar --> NewConversation[新对话]
     Chat --> Timeline[消息时间线]
     Chat --> Composer[输入器]
-    Drawer --> Settings[设置]
+    Composer --> Skills[单次运行技能]
     Composer --> Files[文件选择]
     Composer --> Camera[相机]
     Composer --> Photos[相册]
@@ -111,7 +117,7 @@ runCompleted / runCancelled / runFailed
 - **信息性状态**：模型思考、查阅资料、Web/Resource 读取、本地图片识别和整理回答只显示一行状态文字，不使用卡片背景。运行结束后折叠为“查看运行过程”。
 - **动作 Surface**：只有会改变系统或项目数据的写操作使用动作卡。同一张卡片原位经历提案、等待授权、执行中、成功、失败和已撤销状态。
 
-读取工具不会因为使用了 Tool Call 就升级成卡片。当前实现状态与尚未交付的横向分组、持久授权和撤销终态见 `state/CURRENT.md`。
+读取工具不会因为使用了 Tool Call 就升级成卡片。同一 Assistant 回合的多张写动作卡已按 `assistantTurnID` 组成横向 pager；授权已支持仅这次、本次会话和长期范围，长期授权可在设置中撤销；可撤销写操作在可用期显示 Undo，完成后显示“已撤销”终态，其中 EventKit 创建操作的 Undo 入口可跨重启恢复。当前 Runtime 仍不支持字节级中断续跑或可靠后台承接，详见 `state/CURRENT.md`。
 
 ## 3. 首启流程
 
@@ -156,7 +162,6 @@ runCompleted / runCancelled / runFailed
 
 ### 4.1 全局侧栏
 
-- 宽度约为屏幕的 82%。
 - 支持左边缘拖动打开。
 - 支持遮罩点击、拖动和选择会话后关闭。
 - 主界面在抽屉打开时横移、裁切圆角和添加阴影，不做纵向缩放。
@@ -164,30 +169,30 @@ runCompleted / runCancelled / runFailed
 
 Project v1 上线后的侧栏内容：
 
-- 新聊天与统一搜索。
-- 置顶项目与全部项目入口。
-- 最近普通对话和项目对话。
-- 会话选择。
+- 置顶区同时容纳置顶项目和置顶对话。
+- 项目按行展示；点击项目行或尾部箭头展开、收起其对话历史，使用轻量位移与淡入淡出。Reduce Motion 开启时直接切换，不播放展开动画。
+- “全部项目”入口打开项目列表与管理界面。
+- “最近”只展示不属于项目的普通对话；项目对话收纳在各自项目下。
+- 顶部搜索入口统一搜索项目和对话，并支持全部、普通对话或指定项目范围。
+- 点击会话后恢复该会话并关闭侧栏。
 - 会话标题使用正文级字号和宽松行高，不使用偏小的辅助字号。
-- 重命名。
-- 删除。
-- 固定在右下角、与搜索按钮右侧对齐的圆形本地用户头像入口。
-- 头像入口打开资料与设置汇总页，其中包含 Provider、模型、API Key、回答偏好与隐私说明。
+- 会话长按菜单提供置顶或取消置顶、重命名和删除；项目长按菜单提供置顶或取消置顶以及打开项目详情。
 
 范围约束：
 
 - 不展示账户、订阅和团队入口。
 - UI 使用用户可理解的“项目”，不暴露 Workspace、ContextSnapshot 等实现术语。
 - 搜索统一匹配项目和对话，并允许按项目筛选。
-- 运行与计划只有在能力真实可用后出现；Skills、MCP 和 Memory 预览移入 Labs 或隐藏。
+- 运行与计划只有在能力真实可用后出现；MCP 和 Memory 预览移入 Labs 或隐藏。
 
 ### 4.1.1 Project v1
 
-- 项目列表、空状态、创建、重命名、归档和删除。
-- 项目主页优先展示说明、指令与 Continue / New Chat；独立 Ask 输入框不再与 Chat Composer 重复。
-- Resources 与 Artifacts 展示最近内容并提供完整列表；Conversations、Skills 与 Runs 合并为紧凑的 Project Context 导航。
+- “全部项目”列表中的项目行打开对应项目主页；导航栏右上角加号创建项目，项目主页菜单负责新建项目对话、编辑、归档或恢复归档，以及删除。
+- 项目名保存前去除首尾空白，最长 80 个字符，并在全部项目中进行不区分大小写的唯一性校验；创建和重命名使用同一规则。
+- 项目主页展示说明与指令；有历史时在内容区提供 Continue Chat，新建项目对话始终可从项目主页导航栏菜单进入。独立 Ask 输入框不再与 Chat Composer 重复。
+- Resources 与 Artifacts 展示最近内容并提供完整列表；Conversations 与 Runs 合并为紧凑的 Project Context 导航。
 - 支持项目内添加文件和新聊天；普通聊天可以不属于项目。Project Conversation 与普通 Chat 共用同一个 Chat Surface、Composer、Runtime、授权和执行 Surface。
-- Project Conversation 顶栏显示唯一的 Project 名称入口，点击返回对应 Project Home；不叠加常驻 Banner 或第二个 Context Pill。
+- Project Conversation 的归属由顶栏工作区文件夹菜单表达；菜单可切换普通聊天或项目，并可打开当前项目详情，不叠加常驻 Banner 或第二个 Context Pill。
 - 项目编辑、归档和删除位于导航栏菜单，不与继续工作争夺主内容区。
 - Project UI 只能在持久化模型、文件生命周期和 ContextSnapshot 路径可用后开放。
 
@@ -195,13 +200,15 @@ Project v1 上线后的侧栏内容：
 
 固定结构：
 
-- 左：会话抽屉按钮。
-- 中：Provider 与模型选择胶囊；Project Conversation 额外显示一个紧凑的 Project 名称入口。
+- 左起：设置按钮、工作区文件夹菜单、Provider / 模型菜单。
+- 中间：弹性留白。
 - 右：新对话按钮。
 
-模型选择胶囊紧邻左侧抽屉按钮，不在顶栏中居中。设置只从抽屉进入，不在顶栏重复出现。
+侧栏从屏幕左边缘打开，不占用顶栏按钮。设置从顶栏进入；工作区文件夹菜单在普通聊天与各个有效项目之间切换，并提供当前项目详情和“全部项目”入口。
 
-发送期间禁用模型切换和新对话，避免当前请求上下文发生变化。
+选择工作区时恢复该范围内最近更新的会话；该范围没有历史时只建立一个临时的新对话状态，不写入 SwiftData，直到首次发送成功保存用户消息时才创建会话。新对话按钮继承当前项目范围，并同样保持临时状态直到首次发送。
+
+发送期间禁用工作区切换、模型切换和新对话，避免当前请求上下文发生变化。
 
 模型菜单只展示已保存 API Key 的 Provider。设置页保留完整 Provider 列表，并展示当前已配置数量。
 
@@ -246,9 +253,9 @@ Project v1 上线后的侧栏内容：
 
 - 左对齐。
 - 无气泡正文排版。
-- 使用同一 `FamiliarMarkdownWebView` 承载流式和终态内容。
+- 流式阶段使用原生 `FamiliarMarkdownFallbackText`，终态 Markdown 使用 `FamiliarMarkdownWebView`。
 - 终态显示实际 Provider 和模型来源。
-- 提供复制、系统分享和重试。
+- 回答下方按复制、系统分享、重试的顺序提供操作；三者与助手正文左边缘对齐，并使用一致的可点击区域。
 
 重试前显示确认对话。确认后删除目标消息之后的消息、模型切换和工具记录。
 
@@ -321,10 +328,13 @@ WebView 关闭内部滚动，由内容高度回传 SwiftUI。文档预览模式�
 输入器包含：
 
 - 添加按钮。
+- 聚焦后可用的 Skill 选择入口与 `/` 筛选面板。
 - 文本编辑区。
 - 语音按钮。
 - 发送或停止按钮。
 - 文档和图片草稿预览区。
+
+Skill 必须由用户在 Composer 中显式选择。已选 Skill 以可移除的草稿项展示，只快照到下一次 Run，发送后立即清除，不自动延续到后续 Run，也不因进入项目而自动启用。
 
 ### 8.2 模式
 
@@ -408,7 +418,10 @@ WebView 关闭内部滚动，由内容高度回传 SwiftUI。文档预览模式�
 - 回答偏好。
 - 隐私与数据。
 - Agent 授权策略与长期授权管理。
+- Skills。
 - 本地视觉模型下载、基准、许可证、状态和删除。
+
+Skills 设置使用导航栏右上角加号创建 instruction-only Skill。创建页预填 Goal、Rules、Output 指令模板，并填写必填名称、可选标识和可选描述；当前界面不提供 JSON 导入行。创建 Skill 不授予工具权限，实际使用仍需在 Composer 为单次 Run 显式选择。
 
 Provider 特定字段：
 

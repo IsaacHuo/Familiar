@@ -13,21 +13,21 @@ Familiar 统一为一个原生 iPhone AI Workspace：
 | 层级 | 用户理解 | 产品职责 |
 | --- | --- | --- |
 | Chat | 在这里提问和完成事情 | 输入、回答、执行状态、授权与结果 |
-| Project | Familiar 持续了解这件事的地方 | 指令、资料、对话、Skills、Artifacts、Runs 与后续 Memory 的共同边界 |
+| Project | Familiar 持续了解这件事的地方 | 指令、资料、对话、Artifacts、Runs 与后续 Memory 的共同边界 |
 | Agent Runtime | 不暴露为用户导航 | 组装上下文、调用模型与工具、执行 Policy、产生 Runtime Events |
 | Native Capabilities | 在需要时出现的能力 | 以类型化工具连接 Web、文件和 Apple Frameworks |
 
-普通 Chat 与 Project Conversation 共用同一个 Chat Surface、Composer、Runtime、授权和执行 Surface。两者的差别只在上下文边界：普通 Chat 适合临时问题和一次性任务；Project Conversation 会冻结并使用所属 Project 的指令、资料版本、启用 Skills 和能力范围。
+普通 Chat 与 Project Conversation 共用同一个 Chat Surface、Composer、Runtime、授权和执行 Surface。两者的差别只在上下文边界：普通 Chat 适合临时问题和一次性任务；Project Conversation 会冻结并使用所属 Project 的指令、资料版本和能力范围。Skills 是全局安装项，没有 Project binding；用户可以在普通或项目聊天的 Composer 中显式选择一个 Skill，该选择只快照到下一次 Run，随后清除。
 
 ## 2. 信息架构审计
 
-### 2.1 当前问题
+### 2.1 收敛前的问题
 
-当前 Project Home 同时突出 Hero、Continue Chat、New Chat、Ask Familiar、Resources、Conversations、Artifacts、Skills 和 Runs。`Ask Familiar` 会新建并立即发送 Project Conversation，与 Continue/New Chat 属于同一任务链路，形成三个相互竞争的执行入口。五个内容模块又全部使用一级 List Section，导致长期上下文容器看起来更像功能 Dashboard。
+本轮开始时，Project Home 同时突出 Hero、Continue Chat、New Chat、Ask Familiar、Resources、Conversations、Artifacts、Skills 和 Runs。`Ask Familiar` 会新建并立即发送 Project Conversation，与 Continue/New Chat 属于同一任务链路，形成三个相互竞争的执行入口。五个内容模块又全部使用一级 List Section，导致长期上下文容器看起来更像功能 Dashboard。
 
-Project Conversation 虽然已经复用主 Chat Surface，界面却没有表达当前 Project 归属。用户离开 Project Home 后无法直接理解资料、指令和 Skill 为什么会进入当前对话。Chat 顶栏同时提供设置按钮，抽屉底部也有设置入口，进一步增加主任务之外的视觉权重。
+当时 Project Conversation 虽然已经复用主 Chat Surface，界面却没有表达当前 Project 归属。用户离开 Project Home 后无法直接理解资料、指令和 Skill 为什么会进入当前对话。Chat 顶栏同时提供设置按钮，抽屉底部也有设置入口，进一步增加主任务之外的视觉权重。
 
-### 2.2 收敛后的一级结构
+### 2.2 当时确定的一级结构
 
 ```text
 Familiar
@@ -56,7 +56,7 @@ Project Home 不承担执行器职责。它帮助用户确认 Familiar 当前掌
 5. Conversations、Skills 与 Runs 合并为紧凑的 Project Context 导航组。它们可检查，但不与继续工作争夺视觉焦点。
 6. 归档、删除与 Project 编辑留在导航栏菜单和编辑流程，不占用主内容区。
 
-### 2.3 Chat 与 Project 的连接
+### 2.3 当时确定的 Chat 与 Project 连接
 
 Project Conversation 的顶栏只增加一个 Project 标识，显示 Project 名称并允许返回该 Project Home。它是唯一的常驻归属表达，不再叠加 Banner、第二个 context pill 或大块说明。
 
@@ -67,6 +67,17 @@ Drawer | Model | Project context when present | spacer | New Chat
 ```
 
 设置只从抽屉进入。普通 Conversation 不显示 Project 标识。新建按钮继承当前 Conversation 的 Project 归属，因此在 Project 中继续创建的仍是 Project Chat。
+
+### 2.4 实现结果
+
+后续实现保留了“单一 Chat Surface”和“Project 是上下文边界”的核心判断，但根据移动端实际使用进一步调整了入口：
+
+- Chat 顶栏当前从左到右为 Settings、工作区文件夹、模型菜单和新对话。工作区文件夹负责在普通聊天与项目之间切换，并提供当前项目详情和“全部项目”入口；侧栏不再重复 Settings 或 New Chat。
+- 切换工作区时恢复该范围内最近更新的会话。没有历史或主动新建时，只更新临时的项目范围，不提前创建空会话；首次发送并保存用户消息时才持久化 Conversation。
+- 侧栏从左边缘打开，包含置顶项目与对话、可展开的项目历史、“全部项目”、最近普通对话和统一搜索。项目展开使用轻量动画，并在 Reduce Motion 开启时直接切换。
+- 抽屉项目行点击或尾部箭头用于展开历史，长按提供置顶和项目详情；“全部项目”列表中的项目行进入项目主页。项目创建与重命名统一去除首尾空白、限制长度，并执行不区分大小写的全局名称唯一性校验。
+- Project Home 删除了独立 Ask 输入框；当前紧凑 Project Context 导航只展示 Conversations 与 Runs。Skills 在 Settings 中全局安装，通过右上角加号和指令模板创建，没有 JSON 导入行，也没有 Project binding；普通或项目聊天都必须从 Composer 显式选择一个 Skill，且只作用于下一次 Run。
+- 助手回答下方的复制、系统分享、重试按此顺序与正文左边缘对齐。
 
 ## 3. Design System 范围
 
@@ -87,8 +98,8 @@ OpenMinis 当前公开产品把本机 Linux、浏览器自动化、Skills、持�
 
 | Capability | OpenMinis | Familiar Current | Native Familiar Equivalent | Status | Decision |
 | --- | --- | --- | --- | --- | --- |
-| Workspace | 独立 Workspaces 与 URL 寻址 | Project、Instructions、Resources、Conversations、Artifacts、Runs、Skills | Project Context Workspace | Already covered | 收敛入口和层级，不新增容器 |
-| Skills | `SKILL.md`，可含 scripts、references、assets | instruction-only JSON Skill，Project 显式绑定并收窄工具 | 安全的 Project instruction package | Already covered | 保持无脚本模型，不追求格式 parity |
+| Workspace | 独立 Workspaces 与 URL 寻址 | Project、Instructions、Resources、Conversations、Artifacts、Runs | Project Context Workspace | Already covered | 收敛入口和层级，不新增容器 |
+| Skills | `SKILL.md`，可含 scripts、references、assets | 全局安装的 instruction-only Skill；普通或项目聊天从 Composer 显式选择一次，无 Project binding | 安全的显式 instruction package | Already covered | 保持无脚本模型，不追求格式 parity |
 | Memory | 跨会话持久 Memory | V8 数据与基础服务，Runtime 行为未开放 | 后续 global/project/conversation Memory tools | Valuable future capability | 只写 roadmap，本轮不实现 |
 | Web | 浏览与交互自动化 | 只读 `web_search` / `web_fetch`，可保存为 Resource | 受限只读 Web + Safari 用户交互 | Native alternative | 保持只读，不加入浏览器自动化 |
 | System Integration | Health、Calendar、Reminders、Contacts、HomeKit 等工具 | EventKit、Speech、Vision、系统入口与类型化 Tool Runtime | Apple Framework adapters + Swift Policy | Native alternative | 真实任务驱动逐项加入，不做 parity |
@@ -103,10 +114,10 @@ OpenMinis 当前公开产品把本机 Linux、浏览器自动化、Skills、持�
 
 ## 5. 决策检查
 
-- 首次进入 App，抽屉中的 New Chat 与 Projects 构成两个清晰起点。
-- 普通 Chat 与 Project 的差别由 Project Home 的上下文内容和 Chat 顶栏的单一归属标识共同说明。
+- 首次进入 App，顶栏的新对话与工作区文件夹构成两个清晰起点；抽屉负责恢复历史和搜索。
+- 普通 Chat 与 Project 的差别由 Project Home 的上下文内容和 Chat 顶栏工作区文件夹的当前选择共同说明。
 - 用户在 Project Home 看到资料、结果和可检查的 Context 摘要，但完成任务仍回到 Chat。
-- 删除独立 Ask 输入框、重复设置按钮和多个同权 Section 后，主路径更短。
+- 删除独立 Ask 输入框、侧栏中的重复设置入口和多个同权 Section 后，主路径更短。
 - 视觉强调顺序固定为继续工作、创建新 Chat、管理上下文、审计细节。
 
 ## 6. 本轮非目标

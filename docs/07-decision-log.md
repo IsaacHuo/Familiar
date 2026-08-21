@@ -116,7 +116,7 @@
 
 ## D-011 EventKit 写入逐次确认
 
-- 状态：当前实现生效；目标授权体验由 D-041 替代
+- 状态：历史方案；逐次确认政策被已实现的 D-041 精确期限授权替代
 - 决策：创建事件和提醒前显示结构化确认卡。
 - 依据：系统数据写入需要明确用户意图和可审查参数。
 - 影响：
@@ -173,7 +173,7 @@
 
 ## D-016 图片保留输入能力，关闭发送链路
 
-- 状态：当前实现过渡状态；目标图片路由由 D-042 替代
+- 状态：历史过渡方案；纯文本模型阻断路径被已实现的 D-042 设备端视觉 fallback 替代
 - 决策：相机和相册可以创建图片草稿。图片发送只对支持图片的模型开放，且图片字节只发往用户所选 Provider；能力不支持时阻止请求并保留草稿。
 - 依据：输入器结构需要完整，模型图片编码和隐私验收尚未进入首发交付。
 - 影响：
@@ -205,7 +205,7 @@
 
 ## D-019 开发 Schema 使用版本化 store
 
-- 状态：生效（修复已落地）；真机损坏 store 场景待验证
+- 状态：被 D-047 替代
 - 决策：当前 Schema 使用 `FamiliarAgentV2.store`。首次成功创建后清理旧开发 store；当前 store 无法创建时显示恢复界面，由用户确认重建。
 - 依据：旧开发 store 缺少必填字段，SwiftData 自动迁移返回 134110；项目当前无正式用户，计划允许直接替换开发 Schema。
 - 影响：
@@ -217,7 +217,7 @@
 
 ## D-039 当前 7 实体冻结为 SwiftData V1
 
-- 状态：生效（V1 仍为冻结基线；Project/Resource/Artifact/Context/Capability/Resume/Authorization/Visual/Skills 契约以 V2–V9 轻量迁移链追加）
+- 状态：被 D-047 替代
 - 决策：当前 7 实体冻结为 `FamiliarSchemaV1` 1.0.0，所有生产和测试容器通过 `FamiliarSchemaMigrationPlan` 的 V1→V9 八个轻量 stage 打开，文件名继续使用 `FamiliarAgentV2.store`。顶层模型名由 typealias 指向当前版本模型，现有调用点不变。
 - 依据：Project/Resource 引入前需要稳定的迁移起点；磁盘测试已证明旧直接 Schema store 可通过 migration plan 重开并保持全部实体数据和关系。
 - 影响：后续持久化字段变更必须新增 VersionedSchema 和 migration stage。打开或迁移失败保持可观察，只有用户在恢复界面再次确认后才删除 store 与附件。
@@ -257,7 +257,7 @@
 
 ## D-023 Tool 是最核心的抽象
 
-- 状态：生效
+- 状态：生效；Manifest v2 已实现，影响中“仍待实现”的表述仅保留为历史状态
 - 决策：Calendar、Vision、PDF、Maps 等都只是 Capability Registry 中的 Tool。Tool 要小、正交、可组合。
 - 依据：LLM 决定做什么，Swift 决定怎么做；模型只生成结构化 Tool Call。
 - 影响：
@@ -324,7 +324,7 @@
 
 ## D-028 意图感知授权
 
-- 状态：数据契约已建（V5/V6），目标交互由 D-041 细化，生产路径未启用免确认
+- 状态：核心授权原则继续生效；决策正文中“当前按 D-011 全部逐次确认并仅提供进程内 Undo”的历史路径，分别被已实现的 D-041 与 D-045 替代
 - 决策：目标授权模型允许精确匹配可审计 `AuthorizationGrant` 的可逆写入免除重复确认。当前按 D-011 对所有 EventKit 写入逐次结构化确认，成功后提供进程内一次性 Undo。
 - 依据：权限由代码控制，不靠 Prompt；个人 Agent 需要比简单 Read/Write 更细的风险模型。
 - 影响：
@@ -344,7 +344,7 @@
 
 ## D-030 Run/Step 成为正式数据模型
 
-- 状态：部分实现
+- 状态：部分实现；影响中 ResumeCursor 尚未持久化的历史限制被 D-037 记录的 V6 数据契约替代，字节级恢复与严格重放仍未实现
 - 决策：不只保存 Chat Message。当前 Conversation → Runs → 摘要 Steps（model / tool / approval / result）。
 - 依据：复杂任务需要真正的执行状态。
 - 影响：
@@ -364,7 +364,7 @@
 
 ## D-032 Skills 不含 Python/Shell/Executable
 
-- 状态：目标设计，未实现
+- 状态：核心约束已实现；当前调用与创建方式见 D-047
 - 决策：Familiar Skill 是 Instruction Package + Tool Scope：id、description、instructions、allowedTools、examples。
 - 依据：不引入任意代码执行面。
 - 影响：
@@ -404,7 +404,7 @@
 
 ## D-036 Project 是第一层工作单元
 
-- 状态：生效（Project/Resource/Artifact/ContextSnapshot 主链路已实现）
+- 状态：核心决策生效（Project/Resource/Artifact/ContextSnapshot 主链路已实现）；影响中的旧侧栏布局及 Binding/Skills 路径被 D-047 替代
 - 决策：Familiar 的产品定位是原生、安全、可检查的个人 AI 工作台。Project 是长期、有边界、可恢复的工作上下文；Conversation 可以属于 Project，也可以作为普通聊天独立存在。
 - 依据：聊天、资料、项目指令、能力和执行记录需要稳定共同作用域，附件注入无法支撑长期 Workspace。
 - 影响：
@@ -415,7 +415,7 @@
 
 ## D-037 当前不具备严格恢复与重放
 
-- 状态：恢复数据契约已建（V6），运行时重放/恢复未实现
+- 状态：恢复数据契约已建（V6）；依据中“未持久化恢复游标”的表述已被本决策记录的 RunResumeCursor/ToolInvocation 实现替代，运行时重放与字节级恢复仍未实现
 - 决策：现有 Run/Step 只表示摘要执行轨迹。只有保存 ContextSnapshot、CapabilitySnapshot、AuthorizationSnapshot、稳定输入输出引用、持久化幂等状态和 ResumeCursor 后，才能声明恢复或重放。V6 已持久化 RunResumeCursor 与 ToolInvocation 幂等记录（数据契约），但运行时尚未接通恢复执行。
 - 依据：当前持久化不包含完整模型请求、工具参数/结果、授权证据和恢复游标。
 - 影响：后台 API 接入不能先于恢复数据契约；产品文案不得把终态查看描述为恢复或重放。
@@ -423,7 +423,7 @@
 
 ## D-038 冻结入口扩张，优先能力内核
 
-- 状态：生效
+- 状态：部分生效；影响中的 Skills 隐藏/Labs 限制被 D-047 的设置页与 Composer 显式一次性调用替代，Memory、MCP 与其他未接线能力的限制继续生效
 - 决策：暂停新增 Provider、Widget、系统入口和近似可用的预览页，优先 benchmark/CI、迁移、Project/Context/Workspace 和可恢复 Run。
 - 依据：当前系统入口和展示面扩张快于能力内核。
 - 影响：Memory、Skills、MCP 维持隐藏或明确 Labs 状态；新功能以端到端任务成功率验收。
@@ -439,7 +439,7 @@
 
 ## D-041 写操作采用可选择期限的精确授权
 
-- 状态：目标设计，未实现
+- 状态：已实现；真机授权交互尚未验收
 - 决策：首次写操作以结构化动作卡请求授权，提供“仅这次 / 本次会话 / 始终允许”，默认“本次会话”。grant 按 Project、工具、目标和规范化参数边界隔离；普通聊天使用独立作用域。有效范围内免重复询问，但每次执行仍展示动作卡并写入审计记录。
 - 依据：减少高频日历和提醒写入的重复打断，同时保持用户产生授权、模型不能自授权和每次动作可检查。
 - 影响：设置增加授权策略和长期授权管理；修改、删除、目标变化、参数越界、过期或撤销后的操作重新询问；破坏性和财务敏感操作始终强确认。grant 创建、匹配、消费和撤销必须进入真实 Runtime。
@@ -447,7 +447,7 @@
 
 ## D-042 纯文本模型使用设备端视觉 fallback
 
-- 状态：目标设计，未实现
+- 状态：已实现；真实图片与真机性能尚未验收
 - 决策：支持图片的当前模型直接接收图片；DeepSeek 等纯文本模型由 Familiar 先生成设备端视觉证据。默认使用 Apple Vision 的 OCR、条码和基础分类；高级任务在安装 FastVLM 后自动路由。未经用户选择，不自动把图片发送到另一个 Provider。
 - 依据：当前主要测试模型为 DeepSeek，用户仍需要基础图片识读；本地处理无需第二个 API Key，也不增加网络数据目的地。
 - 影响：视觉结果作为带 provenance 的不可信只读证据交给主模型；基础结果不足时明确能力边界并建议切换已配置的多模态 Provider。Provider adapter 不承担 fallback。
@@ -455,7 +455,7 @@
 
 ## D-043 FastVLM 作为可选高级本地视觉包
 
-- 状态：目标设计，未实现
+- 状态：已实现；真机下载、编译、推理与资源表现尚未验收
 - 决策：个人非商业实验第一版只提供固定版本 `FastVLM-0.5B`。用户在设置中主动下载；安装检查芯片、至少约 3.5 GB 可用空间和安装后短基准。模型失败或 60 秒超时自动退回 Apple Vision。
 - 依据：FastVLM 有 Apple 官方 iOS 18.2+ Demo 和移动端推理路径；0.5B 官方预转换下载约 1.23 GB。官方未公布统一设备内存门槛或中文质量，因此必须以真机基准为准。
 - 影响：固定下载 URL、大小和 SHA-256，不自动跟随上游；支持断点续传、失败重试和删除；许可证与归属在设置中可见。删除模型不删除历史视觉证据。该权重不得在未重新取得许可的商业或公开分发场景使用。
@@ -463,7 +463,7 @@
 
 ## D-044 执行界面只为写动作使用卡片
 
-- 状态：目标设计，部分实现
+- 状态：已实现；真机视觉与无障碍尚未验收
 - 决策：思考、查阅、Web/Resource 读取、本地识图和整理回答使用无卡片背景的单行状态，运行结束后折叠。只有改变系统或项目数据的写操作使用动作卡，同一卡片贯穿提案、授权、执行、成功、失败和已撤销。
 - 依据：信息性事件不应占据与真实系统改变相同的视觉权重；动作卡应稳定表达发生了什么、依据什么授权、结果如何以及是否可撤销。
 - 影响：同一 Assistant 回合两张以上动作卡横向逐卡吸附，近全宽并露出下一张 16–24 pt；边缘只渐隐被裁切部分；页码变化触发轻触觉并尊重 Reduce Motion。每张卡独立失败、重试和撤销。
@@ -471,7 +471,7 @@
 
 ## D-045 跨重启撤销是写动作的目标保证
 
-- 状态：目标设计，未实现
+- 状态：已实现；真机跨重启边界尚未验收
 - 决策：日历和提醒写入的撤销依据持久化，App 重启后仍可撤销。撤销后原动作卡保留并进入“已撤销”终态；撤销失败显示真实原因。
 - 依据：作为行动助手，Familiar 不能把安全回退限制在当前进程生命周期。
 - 影响：需要持久化系统对象标识、原动作、撤销能力、状态和有效边界；多动作分别撤销，不声明跨 EventKit 对象的原子事务。
@@ -479,11 +479,29 @@
 
 ## D-046 Chat 是主 Surface，Project 是长期 Context Workspace
 
-- 状态：生效
+- 状态：部分被 D-047 替代；统一 Chat Surface 与 Project 长期 Context 边界继续生效，Project Skills 归属及顶栏/工作区导航以 D-047 为准
 - 决策：普通 Chat 与 Project Conversation 共用同一个 Chat Surface、Composer、Runtime、授权和执行 Surface。Project 负责指令、资料、对话、Skills、Artifacts、Runs 与后续 Memory 的长期边界，但不成为执行 Dashboard。Project Home 只突出 Continue / New Chat；Resources 与 Artifacts 为主要内容，Conversations / Skills / Runs 为次级 Context 导航。Project Conversation 顶栏使用一个 Project 名称入口表达归属。
 - 依据：用户完成任务应始终停留在 Chat；Project 的价值来自持续上下文，而不是同时展示全部已实现能力。独立 Ask 输入框、多个同权 Section 和重复设置入口增加了路径竞争，却没有增加执行能力。
 - 影响：删除 Project Home 独立 Ask 路径；Chat 顶栏不重复设置按钮；核心 Surface 使用统一 spacing、Dynamic Type typography、radius、icon visual size 与 hit-target tokens。Glass 保持在导航、Composer 和临时 Overlay。
 - 复审条件：真机可用性测试显示 Project 归属仍不清晰，或 Project Home 无法支持真实的长期工作回访。
+
+## D-047 开发存储、聊天工作区与显式 Skills 收敛
+
+- 日期：2026-08-21
+- 状态：生效；替代 D-019、D-039 的当前存储与迁移政策、D-036 的旧侧栏与 Binding/Skills 路径、D-038 的 Skills 隐藏/Labs 限制，以及 D-046 的 Project Skills 归属与顶栏/工作区路径
+- 决策：
+  - 当前 SwiftData 使用单一 27 实体 `FamiliarModelSchema`，生产和测试容器均不配置 migration plan；开发持久化文件固定为 `FamiliarDevelopment.store`。开发阶段不迁移旧测试数据，schema 不兼容时允许用户确认后破坏性重建；公开发布前必须另行冻结版本化 schema 并建立迁移路径。
+  - 删除 Project `SkillBinding` 实体、项目 Skill 开关和自动注入。instruction-only Skill 全局安装，由用户在普通聊天或项目聊天的 Composer 中显式选择，最多选择一个且只作用于下一次 Run；Run 启动时冻结 ID、版本、内容 hash 和 allowedTools，Skill 只能收窄工具范围，不能授权。
+  - Chat 顶栏固定提供设置、工作区、模型和新对话。工作区菜单在普通聊天与活跃项目之间切换，恢复该作用域最近会话；没有历史时保持未持久化空白会话，首次发送才创建。抽屉只承担搜索、置顶、可折叠项目及普通最近会话；项目和普通最近会话按 20 条逐批展开。项目与会话共用持久化置顶记录，目标删除时同步清理置顶。
+  - Skills 设置页只通过右上角加号打开带默认 instructions 模板的创建表单，新建 Skill 默认没有工具访问；当前不显示导入行。首次进入 Chat 时通过 UserDefaults gate 一次性加入一个可删除的 Clear Writing 示例，单独重建 SwiftData store 不会再次加入。
+  - Project 名称在去除首尾空白并截断到 80 字符后全局唯一，创建和编辑均按不区分大小写比较，归档项目也参与冲突检查。
+- 依据：当前产品仍处于个人开发实验阶段，保留未发布迁移链和 Project Skill 自动绑定增加了数据与交互复杂度；显式一次性调用能让每次 Run 的上下文和工具范围可见、可检查。统一顶栏、工作区恢复、抽屉分区和置顶可减少普通聊天与项目聊天之间的重复入口。
+- 影响：
+  - 首次成功创建 `FamiliarDevelopment.store` 后清理旧开发 store 及无法再对应元数据的附件、项目资源和 Artifact 目录；恢复重建清理当前 store 及这三类本地内容，但保留 Keychain。
+  - 单个 Artifact 删除同时删除元数据和文件；永久删除 Project 时暂存 Resource 与 Artifact 目录，数据库提交成功后清理，失败则恢复目录。
+  - 旧 Project Skill binding 不保留兼容读取或迁移。未显式选择 Skill 的 Run 不注入 Skill；发送提交后清空选择，后续 Run 不继承。
+  - 置顶会话在抽屉置顶区作为顶层条目显示，不在项目或普通最近列表重复出现；置顶项目仍可在置顶区展开其未置顶会话。
+- 复审条件：准备公开发布、需要保留已发布数据、真实使用证明一次性 Skill 不足，或工作区恢复与抽屉分区在真机可用性测试中产生阻塞。
 
 ## 决策维护
 

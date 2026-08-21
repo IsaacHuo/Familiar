@@ -1,13 +1,13 @@
 # Architecture
 
-基于当前代码（`feat/familiar-product-convergence-v1`，基于 `main @ ed66605`）验证。目标是回答"现在代码实际上长什么样"；设计目标见 `docs/02-system-architecture.md`。
+基于当前代码验证。目标是回答"现在代码实际上长什么样"；设计目标见 `docs/02-system-architecture.md`。
 
 ## 1. 技术基线
 
 | 领域 | 技术 |
 |---|---|
 | UI | SwiftUI |
-| 数据模型 | SwiftData（VersionedSchema V1→V9，轻量迁移链） |
+| 数据模型 | SwiftData（单一当前 schema；开发阶段破坏性更新） |
 | 网络 | URLSession + SSE（模型请求）；Network.framework 自研 HTTP/1.1（Web fetch） |
 | 富文本 | WKWebView 非持久化 + 内置 Markdown-It、highlight.js、KaTeX、Mermaid、DOMPurify |
 | 密钥 | Security.framework Keychain，`kSecAttrAccessibleWhenUnlockedThisDeviceOnly` |
@@ -27,9 +27,9 @@
 
 - **`Familiar/App/FamiliarApp.swift`** — `@main`。创建 `FamiliarAppDependencies`，经 `FamiliarModelContainer` 构建 `ModelContainer`：
   - store 目录 `<Application Support>/Familiar/Persistence/`（`.completeUntilFirstUserAuthentication`）。
-  - store 文件名 `FamiliarAgentV2.store`。
-  - 新 store 首次创建时清理旧开发 store（`FamiliarAgentV1.store`、`default.store`）与旧附件目录。
-  - 容器创建失败显示 `FamiliarStoreRecoveryView`，用户确认后删除当前 store、附件与项目资源，保留 Keychain。
+  - store 文件名 `FamiliarDevelopment.store`。
+  - 新 store 首次创建时清理旧开发 store（`FamiliarAgentV2.store`、`FamiliarAgentV1.store`、`default.store`）与失去元数据的附件、项目资源和 Artifact 目录。
+  - 容器创建失败显示 `FamiliarStoreRecoveryView`，用户确认后删除当前 store、附件、项目资源与 Artifact，保留 Keychain。
 - **`Familiar/App/FamiliarAppDependencies.swift`** — `@MainActor` DI 根。持有：`FamiliarToolRegistry`、`FamiliarExecutionPolicy`、`FamiliarToolConfirmationCoordinator`、`FamiliarUndoStore`、`FamiliarVisionProcessor`、`FamiliarLocalVisionModelManager`。`makeRuntime(for:)` 组装带 `FamiliarAuthorizationRuntime` 的 `FamiliarAgentLoop`。
 
 ## 3. 模块清单
@@ -45,7 +45,7 @@
 | `FamiliarCapabilityContract.swift` | Manifest v2 字段、`FamiliarCapabilityCatalog/Resolver/Binding`、`FamiliarAuthorizationGrant`（共享规范化 arguments hash、single-use、expiry）；Capability snapshot/catalog 仍是契约层，实际免重复授权由 `FamiliarAuthorizationRuntime` 接线 |
 | `FamiliarToolConfirmationCoordinator.swift` | `public actor`，`runID + toolCallID` 幂等确认，checked continuation 暂停 Agent Loop |
 | `FamiliarAuthorizationRuntime.swift` | `@MainActor` SwiftData 授权查询、单次消费、session/长期授权签发与撤销范围匹配 |
-| `FamiliarProjectContextAssembler.swift` | 从 Project seed + 消息快照 + 工具 manifest 组装不可变 `FamiliarContextSnapshot`；按 base→Project→Skills→安全策略注入，并以启用 Skills 的 allowedTools 并集收窄 manifests；执行输入字符预算 |
+| `FamiliarProjectContextAssembler.swift` | 从 Project seed + 消息快照 + 工具 manifest 组装不可变 `FamiliarContextSnapshot`；按 base→Project→本次显式选择的 Skill→安全策略注入，并以该 Skill 的 allowedTools 收窄 manifests；执行输入字符预算 |
 | `FamiliarNativeTools.swift` | `current_date_time`、`app_information`（read/low） |
 
 ### `Familiar/App/` — 见 §2。
@@ -80,21 +80,21 @@
 - `FamiliarEventKitTools.swift` — `calendar_events`、`create_calendar_event`、`reminders`、`create_reminder`。
 
 ### `Familiar/Persistence/` — SwiftData
-- `FamiliarModels.swift` — `FamiliarSchemaV1`（7 实体）、typealias 映射、`FamiliarSchemaMigrationPlan`（8 个轻量 stage，V1→V9）、`FamiliarModelContainer`。
-- `FamiliarSchemaV2..V9.swift` — 见 §5。
-- `FamiliarProjectService.swift` — `@MainActor`，项目 CRUD、指令（8k 上限）、归档、删除（运行中 Run 保护 + 资源/Artifact staged 删除/回滚；保留并解除 Conversation/Run，清理项目 bindings/Memory/授权）。
+- `FamiliarModels.swift` — 当前模型 typealias 与 `FamiliarModelContainer`；生产和测试容器直接打开单一当前 schema，不配置 migration plan。
+- `FamiliarSchema.swift` — 当前 27 个实体集合与项目/会话统一置顶记录。
+- `FamiliarProjectService.swift` — `@MainActor`，项目 CRUD（名称去除首尾空白并截断至 80 字符；创建/编辑时跨活跃与归档项目做不区分大小写的全局唯一检查）、指令（8k 上限）、归档、删除（运行中 Run 保护 + 资源/Artifact staged 删除/回滚；保留并解除 Conversation/Run，清理项目 Memory/授权）。
 - `FamiliarRunPersistenceRecorder.swift` — `@MainActor`，**已接线**：ensureRun + ContextSnapshot/VisualEvidence 持久化、recordTool、finishRun。
 - `FamiliarRunRecoveryService.swift` — `@MainActor`，capability/grant/cursor/tool-invocation 持久化 + `recoverInterruptedRuns`（启动时把遗留 running Run 终结为 failed、取消在途 invocation）；CapabilitySnapshot 与 RunResumeCursor 已接入，grant 创建/消费与字节级中断续跑仍未接入。
 
 ### `Familiar/Presentation/` — SwiftUI
 - `FamiliarRootView.swift` — 首启 gate + Deep Link/Spotlight/App Intent handoff 路由。
-- `FamiliarChatView.swift` — 统一 Chat Surface：会话抽屉（含项目列表/最近）、聊天主体、顶栏、设置/项目 sheet、Web 浏览器入口；Project Conversation 在同一顶栏显示唯一 Project 归属入口。
-- `FamiliarChatController.swift` — `@MainActor @Observable` 中央状态容器（约 900 行）：`startSending`/`performSend` 编排整条 Agent Run。
+- `FamiliarChatView.swift` — 统一 Chat Surface：顶栏依次提供设置、普通/活跃项目工作区、模型和新对话；切换工作区恢复该作用域最近更新的会话，无历史时建立未持久化空白会话。左缘手势打开的抽屉只保留搜索、置顶、可折叠项目、全部项目和普通最近会话；项目与普通最近会话按 20 条逐批展开。
+- `FamiliarChatController.swift` — `@MainActor @Observable` 中央状态容器：`startSending`/`performSend` 编排整条 Agent Run。
 - `FamiliarChatMessageViews.swift` — 时间线渲染；读取活动仅更新 `FamiliarAgentStatusRow`，写动作由稳定 `FamiliarToolActivityCard` 呈现，并按 `assistantTurnID` 使用横向 pager。
 - `FamiliarSurfaceDescriptor.swift` — Surface Protocol：稳定 identity、effect、assistant turn group、已撤销 phase；reducer 忽略旧 sequence 防止终态被覆盖。
-- `FamiliarComposerView.swift` — compact/expanded/fullscreen 输入器、附件/相机/相册、slash 命令、语音。
-- `FamiliarSettingsHubView.swift` / `FamiliarSettingsView.swift` — 设置 hub 与模型服务设置。
-- `FamiliarProjectsView.swift` — Project Context Workspace：项目列表/主页/编辑、文件/网页/文本资料与 Artifact；主页主动作回到 Chat，Conversations/Skills/Runs 收敛为次级 Context 导航。
+- `FamiliarComposerView.swift` — compact/expanded/fullscreen 输入器、附件/相机/相册、一次性 Slash Skill 选择与语音。
+- `FamiliarSettingsHubView.swift` / `FamiliarSettingsView.swift` — 设置 hub 与模型服务设置；Skills 页只以右上角加号打开带默认 instructions 模板的创建表单，没有导入行，新建 Skill 的 allowedTools 为空。
+- `FamiliarProjectsView.swift` — Project Context Workspace：项目列表/主页/编辑、文件/网页/文本资料与 Artifact；主页主动作回到 Chat，对话与 Runs 作为次级 Context 导航。
 - `FamiliarSharedDestinationView.swift` — Share 收件箱目标选择（已有项目、新建项目、普通聊天草稿）。
 - `FamiliarOnboardingView.swift` — 三步首启。
 - `FamiliarMarkdownWebView.swift` — 非持久化 WKWebView 渲染 + 高度回传 + 首帧回退文本。
@@ -106,7 +106,7 @@
 - `Vendor/ml-fastvlm` — Apple 官方源码的本地 Swift Package wrapper，动态从用户下载目录加载 Core ML visual encoder 与 MLX 权重。
 
 ### `Familiar/Skills/`、`Familiar/Memory/`
-- `FamiliarSkillService.swift` — 严格 JSON instruction-only Skill parser、安装/更新/卸载、Project binding 解析与确定性 Run snapshot；已接入 Project context 和工具范围收窄。
+- `FamiliarSkillService.swift` — 严格 JSON instruction-only Skill parser、安装/更新/卸载、首次进入 Chat 时经 UserDefaults gate 一次性加入可删除示例，以及按安装 UUID 冻结确定性 Run snapshot；Composer 在普通或项目聊天中最多显式选择一个 Skill，只作用于下一次 Run，并收窄该次 Run 的工具范围。当前没有 `SkillBinding` 模型或项目自动注入路径。
 - `FamiliarMemoryService.swift` — global/project/conversation 作用域的显式 Memory 搜索与写入基础；自动写入尚未开启。
 
 ### `Familiar/Resources/`
@@ -162,23 +162,24 @@
 
 > 旧文档中的 8、9 或 12 个工具是加入 Resource 与 `artifact_edit` 前的历史口径。当前实际名称使用下划线形式 `resource_list/read/search`，仅 tool-capable 模型收到 manifest。
 
-## 5. SwiftData Schema（V1→V9，当前 store 为 V9）
+## 5. SwiftData Schema
 
-store：`FamiliarAgentV2.store`，`FamiliarSchemaMigrationPlan` 8 个轻量 stage（V1→V2→V3→V4→V5→V6→V7→V8→V9）。当前 26 个实体：
+store：`FamiliarDevelopment.store`。当前 27 个实体；开发阶段 schema 变化使用全新 store，不迁移测试数据：
 
-| 实体 | 引入版本 | 运行时是否写入 |
-|---|---|---|
-| Conversation, Message, SourceRecord, Attachment, ModelSwitchRecord, AgentRun, AgentStep | V1 | 是 |
-| Project, ProjectInstruction | V2 | 是 |
-| Resource, ResourceVersion, ContextSnapshotRecord, ContextResourceReference | V3 | 是（`FamiliarRunPersistenceRecorder` / `FamiliarProjectResourceService`） |
-| Artifact | V4 | 是（`FamiliarArtifactService`） |
-| CapabilitySnapshotRecord, AuthorizationGrantRecord | V5 | CapabilitySnapshot 是（Run 启动）；AuthorizationGrantRecord 否 |
-| RunResumeCursorRecord, ToolInvocationRecord | V6 | 是（工具请求/审批/完成与终态 cursor；跨进程恢复未实现） |
-| AuthorizationRuleRecord, EventKitUndoRecord, VisualEvidenceRecord | V7 | 是（真实授权、跨重启 Undo、视觉证据） |
-| Skill, SkillBinding, MemoryItem, MCPServerRecord, MCPBindingRecord | V8 | Skill 安装/绑定已写入；Memory 仅基础服务；MCP Runtime 尚未接线 |
-| RunSkillSnapshotRecord | V9 | 是（Run 启动时冻结 Skill ID/版本/hash/allowedTools） |
+| 实体 | 运行时是否写入 |
+|---|---|
+| Conversation, Message, SourceRecord, Attachment, ModelSwitchRecord, AgentRun, AgentStep | 是 |
+| Project, ProjectInstruction | 是 |
+| Resource, ResourceVersion, ContextSnapshotRecord, ContextResourceReference | 是（`FamiliarRunPersistenceRecorder` / `FamiliarProjectResourceService`） |
+| Artifact | 是（`FamiliarArtifactService`） |
+| CapabilitySnapshotRecord, AuthorizationGrantRecord | CapabilitySnapshot 是（Run 启动）；AuthorizationGrantRecord 否 |
+| RunResumeCursorRecord, ToolInvocationRecord | 是（工具请求/审批/完成与终态 cursor；跨进程恢复未实现） |
+| AuthorizationRuleRecord, EventKitUndoRecord, VisualEvidenceRecord | 是（真实授权、跨重启 Undo、视觉证据） |
+| Skill, MemoryItem, MCPServerRecord, MCPBindingRecord | Skill 安装已写入；Memory 仅基础服务；MCP Runtime 尚未接线 |
+| RunSkillSnapshotRecord | 是（Run 启动时冻结 Skill ID/版本/hash/allowedTools） |
+| PinnedItemRecord | 是（项目/会话统一持久置顶） |
 
-关系删除规则使用 cascade；附件/资源文件由控制器显式清理。
+关系删除规则使用 cascade。附件文件由 Controller 显式清理；Resource 与 Artifact 文件经各自 Service 清理。单个 Artifact 删除同步删除元数据和文件；永久删除 Project 时先暂存 Resource 与 Artifact 项目目录，数据库提交后丢弃暂存目录，失败时恢复。新建开发 store 与用户确认的 store recovery 也会清理 Artifact 根目录。
 
 ## 6. 数据流（消息 → Agent → 持久化）
 
@@ -189,7 +190,7 @@ Composer
       → 提交用户消息 + 附件
   → performSend
       → registry.manifests()（仅 tool-capable 模型）
-      → SkillService.enabledSkills（仅 Project；普通聊天为空）
+      → SkillService.snapshot（Composer 最多显式选择一个；普通/项目聊天均可，仅下一次 Run）
       → FamiliarProjectContextAssembler.assemble（不可变 ContextSnapshot + Skill tool scope）
       → FamiliarAgentLoop.stream
           → provider.stream（SSE 增量 / 工具调用增量；transient/限流首字节前有界重试）
@@ -214,7 +215,7 @@ MainActor 容器：`FamiliarChatController`、`FamiliarRunPersistenceRecorder`�
 
 | 数据 | 位置 |
 |---|---|
-| SwiftData store | `<Application Support>/Familiar/Persistence/FamiliarAgentV2.store` |
+| SwiftData store | `<Application Support>/Familiar/Persistence/FamiliarDevelopment.store` |
 | 附件 | `<Application Support>/Familiar/Attachments/{Drafts,Messages}/` |
 | 项目资源 | `<Application Support>/Familiar/ProjectResources/Projects/<projectID>/...` |
 | Artifact | `<Application Support>/Familiar/Artifacts` |
@@ -226,7 +227,7 @@ MainActor 容器：`FamiliarChatController`、`FamiliarRunPersistenceRecorder`�
 ## 8. 已知缺口与未验证边界
 
 - ToolInvocation/cursor、授权创建/消费均已接入；字节级中断续跑仍未实现。
-- 通用 Project Capability Binding UI 未实现；Skills v1 已接线，Remote MCP 与 Memory Runtime 工具未实现。
+- 通用 Project Capability Binding UI 未实现；Skill 使用 Composer 一次性显式调用，当前没有 Project Skill binding 或 Skill 导入 UI；Remote MCP 与 Memory Runtime 工具未实现。
 - 后台承接（`BGContinuedProcessingTask`，iOS 26+）未实现；当前无后台 Run 保证。
 - FastVLM、DeepSeek、EventKit 跨重启 Undo 与 Surface 视觉/无障碍仍缺真机验收；当前没有真实 Provider 冒烟结论。
-- Skills v1 已完成项目绑定、Context 注入、工具收窄与 V9 审计快照；不支持 scripts/references/assets。Memory Runtime tools、Remote MCP 与可靠后台承接仍未实现。
+- Skills 已完成显式一次性 Context 注入、工具收窄与 Run 审计快照；不支持 scripts/references/assets。Memory Runtime tools、Remote MCP 与可靠后台承接仍未实现。
