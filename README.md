@@ -75,6 +75,78 @@ The app is BYOK-only: users bring their own model API Key, model requests go dir
 - **Voice transcription** — Apple Speech and `AVAudioEngine` generate editable text drafts; original recordings are not stored.
 - **Bilingual and accessible UI foundations** — Simplified Chinese and English resources, Light and Dark Mode, Dynamic Type, VoiceOver, Reduce Motion and Reduce Transparency support are implemented; physical-device acceptance remains ongoing.
 
+## Current architecture
+
+The current implementation is a single-Agent Runtime layered over native iOS capabilities. The diagram reflects what exists in code today, not the target layers below:
+
+```mermaid
+flowchart TB
+    subgraph Entry["System Entry Layer"]
+        direction LR
+        App[Familiar App]
+        Share[Share Extension]
+        Links[Deep Links]
+        Notify[Notifications]
+        Spotlight[Spotlight]
+        Intents[App Intents / Shortcuts]
+        Widget[Widget / Control]
+    end
+
+    subgraph UI["SwiftUI Presentation"]
+        direction LR
+        Chat[Chat Surface + Composer]
+        Projects[Project Workspace]
+        Settings[Settings Hub]
+        Timeline[Assistant Turn Timeline]
+    end
+
+    subgraph Runtime["Agent Runtime"]
+        Loop[FamiliarAgentLoop]
+        Assembly[Context Assembly]
+        Registry[Tool Registry · 17 tools]
+        Policy[Execution Policy]
+        Auth[Authorization Runtime]
+        Clarify[Clarification Coordinator]
+        Undo[Undo Store]
+    end
+
+    subgraph Models["Model Providers · BYOK"]
+        direction LR
+        OpenAI[OpenAI-compatible]
+        Anthropic[Anthropic]
+        Gemini[Gemini]
+    end
+
+    subgraph Native["Native Capability Adapters"]
+        direction LR
+        EventKit[EventKit]
+        Vision[Vision / FastVLM]
+        Docs[PDFKit / AnyDoc]
+        Speech[Speech]
+        Photos[Photos]
+        Web[Restricted Web]
+    end
+
+    subgraph Store["Local Storage"]
+        direction LR
+        SwiftData[SwiftData store]
+        Keychain[Keychain]
+        Group[App Group]
+        Files[Attachments / Resources / Artifacts]
+    end
+
+    Entry --> UI
+    UI --> Loop
+    Loop --> Models
+    Loop --> Registry
+    Registry --> Policy
+    Policy --> Auth
+    Policy --> Native
+    Loop --> Store
+```
+
+The Agent Runtime is the kernel: it consumes typed tool manifests, Provider tool calls, tool outcomes, policy decisions and runtime events, and it never touches native frameworks directly — EventKit, Vision, AnyDoc, Speech, Photos and the restricted Web client all stay behind tool adapters and execution policy. Persistence uses one SwiftData store (`FamiliarDevelopment.store`), the iOS Keychain for API Keys, the App Group for the Share inbox, and protected on-device directories for attachments, Project resources and Artifacts.
+
 ## Target architecture
 
 Familiar is evolving toward six layers. The diagram includes planned capabilities and is not a current implementation inventory:

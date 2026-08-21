@@ -68,6 +68,78 @@ App 采用 BYOK 模式：用户使用自己的模型 API Key，模型请求从�
 
 *截图来自较早的开发版本，当前界面可能已有变化。*
 
+## 当前架构
+
+当前实现是单 Agent Runtime 叠加在原生 iOS 能力之上。下图反映代码里真实存在的内容，而非下面要演进到的目标层：
+
+```mermaid
+flowchart TB
+    subgraph Entry["系统入口层"]
+        direction LR
+        App[Familiar App]
+        Share[Share Extension]
+        Links[Deep Links]
+        Notify[通知]
+        Spotlight[Spotlight]
+        Intents[App Intents / Shortcuts]
+        Widget[Widget / Control]
+    end
+
+    subgraph UI["SwiftUI 展示层"]
+        direction LR
+        Chat[Chat Surface + Composer]
+        Projects[Project Workspace]
+        Settings[Settings Hub]
+        Timeline[Assistant Turn Timeline]
+    end
+
+    subgraph Runtime["Agent Runtime"]
+        Loop[FamiliarAgentLoop]
+        Assembly[Context Assembly]
+        Registry[Tool Registry · 17 个工具]
+        Policy[Execution Policy]
+        Auth[Authorization Runtime]
+        Clarify[Clarification Coordinator]
+        Undo[Undo Store]
+    end
+
+    subgraph Models["模型 Provider · BYOK"]
+        direction LR
+        OpenAI[OpenAI-compatible]
+        Anthropic[Anthropic]
+        Gemini[Gemini]
+    end
+
+    subgraph Native["原生能力适配器"]
+        direction LR
+        EventKit[EventKit]
+        Vision[Vision / FastVLM]
+        Docs[PDFKit / AnyDoc]
+        Speech[Speech]
+        Photos[Photos]
+        Web[受限 Web]
+    end
+
+    subgraph Store["本地存储"]
+        direction LR
+        SwiftData[SwiftData store]
+        Keychain[Keychain]
+        Group[App Group]
+        Files[附件 / 项目资源 / Artifact]
+    end
+
+    Entry --> UI
+    UI --> Loop
+    Loop --> Models
+    Loop --> Registry
+    Registry --> Policy
+    Policy --> Auth
+    Policy --> Native
+    Loop --> Store
+```
+
+Agent Runtime 是内核：它只消费类型化 Tool Manifest、Provider Tool Call、Tool Outcome、策略决策和 Runtime Event，绝不直接触碰原生框架——EventKit、Vision、AnyDoc、Speech、Photos 与受限 Web 客户端都留在 Tool Adapter 与执行策略之后。持久化使用单一 SwiftData Store（`FamiliarDevelopment.store`）、iOS Keychain 保存 API Key、App Group 承接分享收件箱，附件、项目资源与 Artifact 使用受保护的设备端目录。
+
 ## 目标架构
 
 Familiar 正在向六层架构演进。下图包含规划能力，不是当前实现清单：
