@@ -113,6 +113,11 @@ nonisolated public struct FamiliarWriteCommitResult: Codable, Sendable {
     public let identifier: String
 }
 
+nonisolated private struct FamiliarUndoResult: Codable, Sendable {
+    let undone: Bool
+    let identifier: String
+}
+
 nonisolated public protocol FamiliarEventKitWriteExecutor: Sendable {
     func commit(
         _ request: FamiliarPendingWriteRequest,
@@ -288,8 +293,10 @@ public actor FamiliarEventKitService: FamiliarEventKitServicing {
         }
         undoneKeys.insert(idempotencyKey)
         return FamiliarToolExecutionResult(
-            modelContent: #"{"undone":true}"#,
-            displayContent: "已撤销",
+            envelope: try FamiliarToolResultEnvelope(
+                model: FamiliarUndoResult(undone: true, identifier: committed.identifier),
+                presentation: .mutationReceipt(.init(summary: "已撤销", operation: "undo", targetIdentifier: committed.identifier, succeeded: true, undoAvailable: false))
+            ),
             artifactIdentifier: committed.identifier
         )
     }
@@ -304,7 +311,13 @@ public actor FamiliarEventKitService: FamiliarEventKitServicing {
             guard let reminder = store.calendarItem(withIdentifier: identifier) as? EKReminder else { throw FamiliarEventKitError.undoUnavailable }
             try store.remove(reminder, commit: true)
         }
-        return FamiliarToolExecutionResult(modelContent: #"{"undone":true}"#, displayContent: String(localized: "tool.undone", defaultValue: "Undone"), artifactIdentifier: identifier)
+        return FamiliarToolExecutionResult(
+            envelope: try FamiliarToolResultEnvelope(
+                model: FamiliarUndoResult(undone: true, identifier: identifier),
+                presentation: .mutationReceipt(.init(summary: String(localized: "tool.undone", defaultValue: "Undone"), operation: "undo", targetIdentifier: identifier, succeeded: true, undoAvailable: false))
+            ),
+            artifactIdentifier: identifier
+        )
     }
 
     private func fetchReminders(matching predicate: NSPredicate) async -> [FamiliarReminderCandidate] {

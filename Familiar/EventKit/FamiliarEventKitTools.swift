@@ -7,10 +7,40 @@ nonisolated private enum FamiliarEventKitToolSupport {
     static func object(_ properties: [String: FamiliarJSONSchema], required: [String]) -> FamiliarJSONSchema {
         .init(type: .object, properties: properties, required: required)
     }
-    static func encode<T: Encodable>(_ value: T) throws -> FamiliarToolExecutionResult {
-        let data = try JSONEncoder().encode(value)
-        let content = String(decoding: data, as: UTF8.self)
-        return FamiliarToolExecutionResult(modelContent: content, displayContent: content)
+    static func result<T: Encodable>(_ value: T, presentation: FamiliarToolPresentationPayload, artifactIdentifier: String? = nil) throws -> FamiliarToolExecutionResult {
+        FamiliarToolExecutionResult(
+            envelope: try FamiliarToolResultEnvelope(model: value, presentation: presentation),
+            artifactIdentifier: artifactIdentifier
+        )
+    }
+
+    static func eventRecords(_ events: [FamiliarCalendarEvent]) -> [FamiliarToolPresentationPayload.Record] {
+        events.map { event in
+            var fields: [FamiliarToolPresentationPayload.RecordField] = [
+                .init(name: "title", value: event.title),
+                .init(name: "start", value: event.startISO8601),
+                .init(name: "end", value: event.endISO8601),
+                .init(name: "allDay", value: String(event.isAllDay)),
+                .init(name: "calendar", value: event.calendarTitle)
+            ]
+            if let location = event.location { fields.append(.init(name: "location", value: location)) }
+            if let notes = event.notes { fields.append(.init(name: "notes", value: notes)) }
+            return .init(id: event.id, fields: fields)
+        }
+    }
+
+    static func reminderRecords(_ reminders: [FamiliarReminder]) -> [FamiliarToolPresentationPayload.Record] {
+        reminders.map { reminder in
+            var fields: [FamiliarToolPresentationPayload.RecordField] = [
+                .init(name: "title", value: reminder.title),
+                .init(name: "completed", value: String(reminder.isCompleted)),
+                .init(name: "priority", value: String(reminder.priority)),
+                .init(name: "list", value: reminder.listTitle)
+            ]
+            if let due = reminder.dueISO8601 { fields.append(.init(name: "due", value: due)) }
+            if let notes = reminder.notes { fields.append(.init(name: "notes", value: notes)) }
+            return .init(id: reminder.id, fields: fields)
+        }
     }
 }
 
@@ -22,10 +52,14 @@ nonisolated struct FamiliarCalendarEventsTool: FamiliarTool {
         name: "calendar_events", title: String(localized: "tool.calendar_query"),
         description: "按严格 ISO8601 时间范围读取日历事件；结果最多 200 条，超限直接失败。",
         parameters: FamiliarEventKitToolSupport.object(["startISO8601": FamiliarEventKitToolSupport.string("包含起点，严格 ISO8601"), "endISO8601": FamiliarEventKitToolSupport.string("不晚于终点，严格 ISO8601"), "limit": FamiliarEventKitToolSupport.integer("1-200")], required: ["startISO8601", "endISO8601", "limit"]),
-        effect: .read, risk: .sensitive, requirements: [.calendarFullAccess]
+        effect: .read, risk: .sensitive, requirements: [.calendarFullAccess], supportsParallelism: true
     )
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
-        .result(try FamiliarEventKitToolSupport.encode(await service.events(from: input.startISO8601, to: input.endISO8601, limit: input.limit)))
+        let events = try await service.events(from: input.startISO8601, to: input.endISO8601, limit: input.limit)
+        return .result(try FamiliarEventKitToolSupport.result(
+            events,
+            presentation: .recordCollection(.init(summary: "找到 \(events.count) 个日历事件。", recordType: "calendarEvent", records: FamiliarEventKitToolSupport.eventRecords(events)))
+        ))
     }
 }
 
@@ -37,10 +71,14 @@ nonisolated struct FamiliarRemindersTool: FamiliarTool {
         name: "reminders", title: String(localized: "tool.reminders_query"),
         description: "按严格 ISO8601 截止时间范围和标题/备注文字查询提醒事项；结果最多 200 条。",
         parameters: FamiliarEventKitToolSupport.object(["startISO8601": FamiliarEventKitToolSupport.string("可选，严格 ISO8601"), "endISO8601": FamiliarEventKitToolSupport.string("可选，严格 ISO8601"), "text": FamiliarEventKitToolSupport.string("可选，匹配标题或备注"), "limit": FamiliarEventKitToolSupport.integer("1-200")], required: ["limit"]),
-        effect: .read, risk: .sensitive, requirements: [.remindersFullAccess]
+        effect: .read, risk: .sensitive, requirements: [.remindersFullAccess], supportsParallelism: true
     )
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
-        .result(try FamiliarEventKitToolSupport.encode(await service.reminders(from: input.startISO8601, to: input.endISO8601, text: input.text, limit: input.limit)))
+        let reminders = try await service.reminders(from: input.startISO8601, to: input.endISO8601, text: input.text, limit: input.limit)
+        return .result(try FamiliarEventKitToolSupport.result(
+            reminders,
+            presentation: .recordCollection(.init(summary: "找到 \(reminders.count) 个提醒事项。", recordType: "reminder", records: FamiliarEventKitToolSupport.reminderRecords(reminders)))
+        ))
     }
 }
 
@@ -64,12 +102,19 @@ nonisolated struct FamiliarCreateCalendarEventTool: FamiliarTool {
             title: manifest.title,
             fields: FamiliarEventKitPreview.fields(for: request),
             target: target,
+            effect: manifest.effect,
+            risk: manifest.risk,
+            consequence: "将在 \(target) 中创建日历事件。",
+            undoPolicy: .durable,
             idempotencyKey: context.idempotencyKey,
             execute: {
                 try await service.request(.calendarFullAccess)
                 let commit = try await service.commit(request, idempotencyKey: context.idempotencyKey)
-                let encoded = try FamiliarEventKitToolSupport.encode(commit)
-                return FamiliarToolExecutionResult(modelContent: encoded.modelContent, displayContent: String(localized: "tool.write_succeeded"), artifactIdentifier: commit.identifier)
+                return try FamiliarEventKitToolSupport.result(
+                    commit,
+                    presentation: .mutationReceipt(.init(summary: String(localized: "tool.write_succeeded"), operation: "createCalendarEvent", targetIdentifier: commit.identifier, succeeded: true, undoAvailable: true)),
+                    artifactIdentifier: commit.identifier
+                )
             },
             undo: { try await service.undoCommit(idempotencyKey: context.idempotencyKey) }
         ))
@@ -97,12 +142,19 @@ nonisolated struct FamiliarCreateReminderTool: FamiliarTool {
             title: manifest.title,
             fields: FamiliarEventKitPreview.fields(for: request),
             target: target,
+            effect: manifest.effect,
+            risk: manifest.risk,
+            consequence: "将在 \(target) 中创建提醒事项。",
+            undoPolicy: .durable,
             idempotencyKey: context.idempotencyKey,
             execute: {
                 try await service.request(.remindersFullAccess)
                 let commit = try await service.commit(request, idempotencyKey: context.idempotencyKey)
-                let encoded = try FamiliarEventKitToolSupport.encode(commit)
-                return FamiliarToolExecutionResult(modelContent: encoded.modelContent, displayContent: String(localized: "tool.write_succeeded"), artifactIdentifier: commit.identifier)
+                return try FamiliarEventKitToolSupport.result(
+                    commit,
+                    presentation: .mutationReceipt(.init(summary: String(localized: "tool.write_succeeded"), operation: "createReminder", targetIdentifier: commit.identifier, succeeded: true, undoAvailable: true)),
+                    artifactIdentifier: commit.identifier
+                )
             },
             undo: { try await service.undoCommit(idempotencyKey: context.idempotencyKey) }
         ))
@@ -110,17 +162,26 @@ nonisolated struct FamiliarCreateReminderTool: FamiliarTool {
 }
 
 nonisolated enum FamiliarEventKitPreview {
-    static func fields(for request: FamiliarPendingWriteRequest) -> [String: String] {
+    static func fields(for request: FamiliarPendingWriteRequest) -> [FamiliarApprovalField] {
         switch request {
         case .event(let event):
-            var fields = [String(localized: "eventkit.field.title"): event.title, String(localized: "eventkit.field.start"): event.startISO8601, String(localized: "eventkit.field.end"): event.endISO8601, String(localized: "eventkit.field.all_day"): event.isAllDay ? String(localized: "common.yes") : String(localized: "common.no")]
-            if let value = event.location, !value.isEmpty { fields[String(localized: "eventkit.field.location")] = value }
-            if let value = event.notes, !value.isEmpty { fields[String(localized: "eventkit.field.notes")] = value }
+            var fields = [
+                FamiliarApprovalField(id: "title", label: String(localized: "eventkit.field.title"), type: .text, value: event.title),
+                FamiliarApprovalField(id: "start", label: String(localized: "eventkit.field.start"), type: .date, value: event.startISO8601),
+                FamiliarApprovalField(id: "end", label: String(localized: "eventkit.field.end"), type: .date, value: event.endISO8601),
+                FamiliarApprovalField(id: "all_day", label: String(localized: "eventkit.field.all_day"), type: .boolean, value: String(event.isAllDay))
+            ]
+            if let value = event.location, !value.isEmpty { fields.append(.init(id: "location", label: String(localized: "eventkit.field.location"), type: .text, value: value)) }
+            if let value = event.notes, !value.isEmpty { fields.append(.init(id: "notes", label: String(localized: "eventkit.field.notes"), type: .text, value: value)) }
+            if let value = event.urlString, !value.isEmpty { fields.append(.init(id: "url", label: "URL", type: .url, value: value)) }
             return fields
         case .reminder(let reminder):
-            var fields = [String(localized: "eventkit.field.title"): reminder.title, String(localized: "eventkit.field.priority"): String(reminder.priority)]
-            if let value = reminder.dueISO8601 { fields[String(localized: "eventkit.field.due")] = value }
-            if let value = reminder.notes, !value.isEmpty { fields[String(localized: "eventkit.field.notes")] = value }
+            var fields = [
+                FamiliarApprovalField(id: "title", label: String(localized: "eventkit.field.title"), type: .text, value: reminder.title),
+                FamiliarApprovalField(id: "priority", label: String(localized: "eventkit.field.priority"), type: .number, value: String(reminder.priority))
+            ]
+            if let value = reminder.dueISO8601 { fields.append(.init(id: "due", label: String(localized: "eventkit.field.due"), type: .date, value: value)) }
+            if let value = reminder.notes, !value.isEmpty { fields.append(.init(id: "notes", label: String(localized: "eventkit.field.notes"), type: .text, value: value)) }
             return fields
         }
     }
