@@ -449,15 +449,14 @@ private struct FamiliarThinkingRail: View {
     var body: some View {
         HStack(alignment: .top, spacing: FamiliarAISurfaceMetric.spaceM) {
             VStack(spacing: 0) {
-                FamiliarThinkingGlyph(reduceMotion: reduceMotion)
+                FamiliarPixelLoader(reduceMotion: reduceMotion)
+                    .frame(width: FamiliarAISurfaceMetric.icon, height: FamiliarAISurfaceMetric.icon)
                 Rectangle()
                     .fill(FamiliarAISurfaceColor.accentTint)
                     .frame(width: FamiliarAISurfaceMetric.hairline, height: FamiliarAISurfaceMetric.spaceXL)
             }
             VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
-                Text(surface.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(FamiliarAISurfaceColor.ink)
+                FamiliarShimmerLabel(text: surface.title, reduceMotion: reduceMotion)
                 if let startedAt = surface.startedAt {
                     TimelineView(.periodic(from: startedAt, by: 0.2)) { context in
                         Text(elapsed(startedAt, context.date))
@@ -479,23 +478,83 @@ private struct FamiliarThinkingRail: View {
     }
 }
 
-private struct FamiliarThinkingGlyph: View {
+private struct FamiliarPixelLoader: View {
+    enum Variant { case drive, dots, orbit }
+
+    var variant: Variant = .drive
+    let reduceMotion: Bool
+
+    private static let cellSize: CGFloat = 4
+    private static let gap: CGFloat = 1.5
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { context in
+            VStack(spacing: Self.gap) {
+                ForEach(0..<3, id: \.self) { row in
+                    HStack(spacing: Self.gap) {
+                        ForEach(0..<3, id: \.self) { column in
+                            cell(row: row, column: column, time: context.date.timeIntervalSinceReferenceDate)
+                        }
+                    }
+                }
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private func cell(row: Int, column: Int, time: TimeInterval) -> some View {
+        RoundedRectangle(cornerRadius: variant == .dots ? Self.cellSize / 2 : 1, style: .continuous)
+            .fill(FamiliarAISurfaceColor.ink)
+            .frame(width: Self.cellSize, height: Self.cellSize)
+            .opacity(opacity(row: row, column: column, time: time))
+    }
+
+    private func opacity(row: Int, column: Int, time: TimeInterval) -> Double {
+        if reduceMotion { return delay(row: row, column: column) == nil ? 0.07 : 0.15 }
+        guard let delay = delay(row: row, column: column) else { return 0.07 }
+        let duration = variant == .orbit ? 950.0 : 650.0
+        let milliseconds = time * 1000
+        let phase = (milliseconds + delay).truncatingRemainder(dividingBy: duration) / duration
+        return 0.15 + 0.85 * sin(phase * .pi)
+    }
+
+    private func delay(row: Int, column: Int) -> Double? {
+        switch variant {
+        case .drive, .dots:
+            return Double((column + abs(row - 1)) * 90)
+        case .orbit:
+            let order = [0, 1, 2, 5, 8, 7, 6, 3]
+            let index = row * 3 + column
+            guard let position = order.firstIndex(of: index) else { return nil }
+            return Double(position * 110)
+        }
+    }
+}
+
+private struct FamiliarShimmerLabel: View {
+    let text: String
     let reduceMotion: Bool
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 16, paused: reduceMotion)) { timeline in
-            let phase = reduceMotion ? 0 : Int(timeline.date.timeIntervalSinceReferenceDate / 0.18) % 3
-            HStack(spacing: 2) {
-                ForEach(0..<3, id: \.self) { index in
-                    Circle()
-                        .fill(FamiliarAISurfaceColor.accent)
-                        .frame(width: index == phase ? 6 : 4, height: index == phase ? 6 : 4)
-                        .opacity(index == phase ? 1 : 0.28)
-                }
+        if reduceMotion {
+            Text(text)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(FamiliarAISurfaceColor.ink)
+        } else {
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+                let cycle = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.4) / 1.4
+                Text(text)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [FamiliarAISurfaceColor.inkSecondary, FamiliarAISurfaceColor.ink, FamiliarAISurfaceColor.inkSecondary],
+                            startPoint: UnitPoint(x: CGFloat(cycle * 2 - 1), y: 0.5),
+                            endPoint: UnitPoint(x: CGFloat(cycle * 2), y: 0.5)
+                        )
+                    )
             }
-            .animation(FamiliarMotion.micro, value: phase)
         }
-        .frame(width: FamiliarAISurfaceMetric.icon, height: FamiliarAISurfaceMetric.icon)
     }
 }
 
