@@ -9,7 +9,7 @@ const base = import.meta.env.BASE_URL;
       <h1>隐私政策</h1>
       <p>我们希望你准确知道 Familiar 在设备上保存什么、何时会发送数据，以及你可以怎样保持控制。</p>
       <div class="meta-row">
-        <span>生效日期：2026 年 8 月 13 日</span>
+        <span>生效日期：2026 年 8 月 21 日</span>
         <span>适用于 Familiar 1.0 及本网站</span>
       </div>
     </header>
@@ -20,6 +20,7 @@ const base = import.meta.env.BASE_URL;
         <a href="#overview">概览</a>
         <a href="#local-data">本机数据</a>
         <a href="#provider-data">模型服务请求</a>
+        <a href="#search-data">网页搜索服务</a>
         <a href="#permissions">系统权限</a>
         <a href="#website">网站数据</a>
         <a href="#retention">保留与删除</a>
@@ -68,6 +69,13 @@ const base = import.meta.env.BASE_URL;
           <div class="notice"><strong>第三方服务提示：</strong>模型服务和自定义 endpoint 的数据保留、日志、内容训练、安全措施及跨境传输政策不受 Familiar 控制。发送敏感内容前，请先阅读并配置相应服务的隐私政策。删除 Familiar 中的本地会话，不能撤回此前已发送给第三方的内容。</div>
         </section>
 
+        <section id="search-data">
+          <h2>3.1 网页搜索服务</h2>
+          <p>Familiar 的 web_search 工具支持 DuckDuckGo、Brave Search API、Tavily 和 Exa。搜索词会从你的设备直接发送到你在“网页搜索”设置中选择的服务，不经过 Familiar 服务器。搜索结果可能作为工具结果发送给你当前选择的模型服务，以便生成回答。</p>
+          <p>DuckDuckGo 路径不要求 API Key。Brave、Tavily 和 Exa 使用你自己的账户与 API Key；搜索 Key 按服务分别保存在独立于模型 Key 的 iOS Keychain 服务中。对应服务的日志、保留、跨境处理、额度和费用由其自身政策、条款与账户方案决定。</p>
+          <div class="notice"><strong>不会静默切换服务：</strong>所选搜索服务缺少 Key、拒绝请求、超时或不可用时，Familiar 会直接返回失败，不会把同一搜索词转发给另一家搜索服务。web_fetch 是独立功能，只访问明确选择的公开 HTTPS 页面。</div>
+        </section>
+
         <section id="permissions">
           <h2>4. 系统权限</h2>
           <p>Familiar 仅在相关功能需要时请求系统权限。你可以拒绝权限，并随时在 iOS“设置”中更改授权。</p>
@@ -95,11 +103,11 @@ const base = import.meta.env.BASE_URL;
           <h2>6. 数据保留、删除与控制</h2>
           <ul>
             <li>你可以在 Familiar 中删除会话及其本地附件。</li>
-            <li>你可以在设置中清除各模型服务的 API Key。</li>
+            <li>你可以在设置中分别清除各模型服务和搜索服务的 API Key。</li>
             <li>你可以在 iOS“设置”中撤销相机、麦克风、语音识别、日历、提醒事项或通知权限。</li>
             <li>卸载 App 通常会删除 App 容器中的会话与附件；Keychain 项可能在卸载后仍由系统保留，因此如需确保清除，请先在 Familiar 设置中移除 API Key。</li>
           </ul>
-          <p>Familiar 无法代表第三方模型服务删除其已经接收的数据。相关请求请直接依据该服务提供的控制项或隐私渠道处理。</p>
+          <p>Familiar 无法代表第三方模型或搜索服务删除其已经接收的数据。相关请求请直接依据该服务提供的控制项或隐私渠道处理。</p>
         </section>
 
         <section id="security">

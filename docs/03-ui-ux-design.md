@@ -105,11 +105,12 @@ flowchart TD
 工具不自己造 UI。当前界面渲染 `FamiliarRuntimeEventPayload`：
 
 ```text
-runStarted / state / textDelta
-toolRequested / toolProgress
+runPhaseChanged / assistantTurnStarted / responseTextDelta
+reasoningSummaryDelta / reasoningSummaryCompleted
+activityStarted / activityProgress / activityCompleted
+toolInvocationRequested / toolResultProduced
 approvalRequested / approvalResolved
-toolFinished / responseCompleted
-runCompleted / runCancelled / runFailed
+runtimeNotice / responseCompleted / runFinished(outcome)
 ```
 
 时间线将 Runtime Event 分为两种表现：

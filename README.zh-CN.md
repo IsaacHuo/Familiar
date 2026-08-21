@@ -41,7 +41,7 @@ App 采用 BYOK 模式：用户使用自己的模型 API Key，模型请求从�
 ## 核心特性
 
 - **iPhone 原生 Agent Runtime** — 单一主 Agent 通过 Tool 规划，并由 iOS 原生 Framework 执行；无 Linux 环境，无 Apple Intelligence 依赖。
-- **Tool 是最核心的抽象** — 13 个类型化工具覆盖本机信息、受限 Web、冻结的 Project Resource、Project Artifact 与 EventKit；每个 Tool 小而可检查，并统一经过策略控制。
+- **Tool 是最核心的抽象** — 17 个类型化工具覆盖本机信息、受限 Web、冻结的 Project Resource、Project Artifact、EventKit 与结构化展示；每个 Tool 小而可检查，并统一经过策略控制。
 - **Native First** — 复用 EventKit、Vision、PDFKit、Photos 与 Foundation 承接原生能力和本地预处理，不重复实现系统服务。
 - **统一 Chat Workspace** — 普通聊天与 Project 对话共用一个 Surface。顶栏切换工作区和模型，左侧抽屉提供搜索、持久置顶、可展开的项目历史与普通最近会话。
 - **Project Workspace** — 项目指令和版本化本地资源可跨项目对话共享；资源使用受保护目录，并在 Run 中保存不可变引用。Markdown/纯文本 Artifact 支持受控新建和编辑，规范化后的项目名称全局唯一。
@@ -120,7 +120,7 @@ Familiar 正在向六层架构演进。下图包含规划能力，不是当前�
   Artifacts / Trace / History
 ```
 
-当前普通聊天与 Project 对话共用同一个 Chat Surface 和有限串行 Agent Loop。启动注册表包含 13 个工具：2 个本机信息、2 个受限 Web、3 个 Project Resource、2 个 Project Artifact 和 4 个 EventKit 工具。Runtime 还支持作用域授权规则、跨重启 EventKit Undo、不可变 Context/Capability/Skill 快照、Invocation 与 Resume Cursor 记录、视觉证据、项目/会话持久置顶和显式单次 Run Skill。Memory Runtime、MCP Runtime、可靠后台承接与字节级续跑尚未实现。
+当前普通聊天与 Project 对话共用同一个 Chat Surface 和有限 Agent Loop。启动注册表包含 17 个工具：2 个本机信息、2 个受限 Web、3 个 Project Resource、2 个 Project Artifact、4 个 EventKit 和 4 个结构化展示工具。Runtime 还支持作用域授权规则、跨重启 EventKit Undo、不可变 Context/Capability/Skill 快照、Invocation 与 Resume Cursor 记录、视觉证据、项目/会话持久置顶和显式单次 Run Skill。Memory Runtime、MCP Runtime、可靠后台承接与字节级续跑尚未实现。
 
 本地持久化使用 `FamiliarDevelopment.store` 中单一当前 27 实体 SwiftData Schema。开发阶段遇到不兼容 Schema 变化时会使用新 Store，不迁移测试数据；公开发布前必须另行确定兼容与迁移策略。
 
@@ -206,8 +206,19 @@ FamiliarToolManifest
 
 Familiar 内部借鉴 MCP 的思想但不把它当作内核，用原生 Swift 实现三种资源分离：
 
+启动注册表当前恰好包含以下 17 个工具：
+
+| 分组 | 工具名 |
+| --- | --- |
+| 本机信息 | `current_date_time`、`app_information` |
+| 受限 Web | `web_search`、`web_fetch` |
+| Project Resource | `resource_list`、`resource_read`、`resource_search` |
+| Project Artifact | `artifact_write`、`artifact_edit` |
+| EventKit | `calendar_events`、`create_calendar_event`、`reminders`、`create_reminder` |
+| 结构化展示 | `task_plan`、`present_recommendation`、`present_insight`、`ask_user` |
+
 - **当前 Resources** — 会话历史、消息附件抽取文本、版本化 Project Resource 和 Project Artifact（application-controlled）
-- **当前 Tools** — 2 个本机信息、2 个受限 Web、3 个 Resource、2 个 Artifact 和 4 个 EventKit 工具（model-controlled）
+- **当前 Tools** — 上表列出的 17 个注册工具（model-controlled）
 - **当前 Instructions** — Base Policy、ProjectInstruction，以及最多一个显式选择的单次 Run Skill（user-controlled）
 - **目标 Resources** — scoped Memory 和更广泛的受控 Workspace 数据
 
@@ -230,7 +241,7 @@ Familiar 内部借鉴 MCP 的思想但不把它当作内核，用原生 Swift �
 | Notifications | Document |
 | Clipboard | Web |
 
-当前 Registry 是启动时提供的 13 工具字典，并按 EventKit availability 过滤；Resource 与 Artifact 工具已经按 Project 作用域运行。通用运行时发现和远程安装尚未实现，MCP 仍是未来 Adapter。
+当前 Registry 是启动时提供的 17 工具字典，并按 EventKit availability 过滤；Resource 与 Artifact 工具已经按 Project 作用域运行。通用运行时发现和远程安装尚未实现，MCP 仍是未来 Adapter。
 
 ## 权限模型
 

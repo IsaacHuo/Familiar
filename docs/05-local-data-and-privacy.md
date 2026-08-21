@@ -29,6 +29,8 @@
 |---|---|---|---|---|
 | Provider API Key | 用户输入 | Keychain | 对应 Provider | 用户清除或卸载相关 Keychain 项目 |
 | Provider 配置 | 用户输入 | UserDefaults | 用于构建请求 | 用户修改或重置设置 |
+| Search Provider API Key | 用户输入 | 独立 Keychain service | 对应 Search Provider | 用户在搜索设置中清除 |
+| Search Provider 选择 | 用户输入 | 独立 UserDefaults key | 用于路由 `web_search` | 用户修改设置 |
 | 会话 | 用户行为 | SwiftData | 作为模型上下文 | 用户删除会话 |
 | 用户消息 | 用户输入 | SwiftData | 对应 Provider | 用户删除或编辑路径 |
 | 助手消息 | Provider 返回 | SwiftData | 后续请求上下文 | 用户删除或重试路径 |
@@ -47,7 +49,7 @@
 | 语音转写 | Apple Speech | 输入草稿 | 发送后进入 Provider | 用户编辑或清空草稿 |
 | 原始录音 | 麦克风输入 | 不落盘 | Speech framework 按系统能力处理 | audio buffer 生命周期 |
 | 日历/提醒数据 | EventKit | 查询结果进入内存和工具记录摘要 | 可能作为工具结果进入 Provider | 运行结束和历史记录生命周期 |
-| 网页搜索 | 用户问题经 Agent 生成的最小搜索词 | 结果正文主要在运行内存；来源标题、HTTPS URL、站点、时间和有限 snippet 随助手消息保存 | 搜索词直接发送给 DuckDuckGo；结果可能作为工具内容进入所选 Provider | 临时结果随 Run 结束；来源与 snippet 随消息删除 |
+| 网页搜索 | 用户问题经 Agent 生成的最小搜索词 | 结果正文主要在运行内存；来源标题、HTTPS URL、站点、时间和有限 snippet 随助手消息保存 | 搜索词直接发送给所选 DuckDuckGo、Brave、Tavily 或 Exa；结果可能作为工具内容进入所选模型 Provider | 临时结果随 Run 结束；来源与 snippet 随消息删除 |
 | 网页读取 | 用户提供或搜索返回的公开 HTTPS URL | 原始 HTML 与完整正文默认仅在运行内存；来源元数据和最多 360 字符的有限正文 snippet 随助手消息保存；用户导入项目时抽取正文保存为 Project Resource | 请求直接发送给目标站点及允许的 HTTPS 重定向目标；抽取正文可能进入所选 Provider | 临时原始内容随 Run 结束；来源与 snippet 随消息删除；导入副本沿用 Resource 生命周期 |
 | Deep Link 输入 | 其他 App 或系统入口 | 草稿文本进入内存；会话 / Run UUID 仅用于本地查询 | 不因打开链接自动发送 | 链接处理或草稿生命周期 |
 | Share Extension 输入 | 用户从其他 App 明确共享 | App Group `ShareInbox`，导入后复制到 App 私有草稿附件目录 | 不因共享或导入自动发送 | 成功或终态失败处理后删除共享副本；草稿副本沿用附件生命周期 |
@@ -141,6 +143,8 @@ kSecAttrAccessible = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
 - 空 Key 输入触发删除。
 
 API Key 不进入 SwiftData、UserDefaults、日志文案和工具记录。
+
+Search Provider Key 使用独立 service `com.isaachuo.familiar.search-provider-api-keys.v1`，account 为 Search Provider ID；搜索服务选择使用独立 UserDefaults key `familiar.search.provider.v1`。搜索 Key 不与模型 Provider Key 共用。DuckDuckGo 不需要 Key；选择 Brave、Tavily 或 Exa 后缺少 Key 会明确失败，不会回退到其他搜索服务。
 
 ## 7. Provider 网络数据
 

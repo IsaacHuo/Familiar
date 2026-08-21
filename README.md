@@ -60,7 +60,7 @@ The app is BYOK-only: users bring their own model API Key, model requests go dir
 ## Highlights
 
 - **iPhone-native Agent Runtime** — a single primary Agent that plans with tools and executes through native iOS frameworks; no Linux environment, no Apple Intelligence dependency.
-- **Tools as the core abstraction** — 13 typed tools cover local information, restricted Web, frozen Project resources, Project artifacts and EventKit; each tool is small, inspectable and policy-controlled.
+- **Tools as the core abstraction** — 17 typed tools cover local information, restricted Web, frozen Project resources, Project artifacts, EventKit and structured presentation; each tool is small, inspectable and policy-controlled.
 - **Native First** — reuse EventKit, Vision, PDFKit, Photos and Foundation for native capabilities and local preprocessing instead of rebuilding system services.
 - **Unified Chat workspace** — ordinary and Project chats share one surface. The top bar switches workspace and model; the left drawer provides search, persistent pins, expandable Project history and recent ordinary chats.
 - **Project workspace** — projects share an instruction and versioned local resources across chats; resources use protected storage and immutable Run references. Markdown/text artifacts support controlled write and edit operations, and Project names are globally unique after normalization.
@@ -127,7 +127,7 @@ Familiar is evolving toward six layers. The diagram includes planned capabilitie
   Artifacts / Trace / History
 ```
 
-Current implementation: ordinary and Project chats share one Chat surface and bounded sequential Agent loop. The startup Registry contains 13 tools: two local-information, two restricted Web, three Project Resource, two Project Artifact and four EventKit tools. The runtime also supports scoped authorization rules, durable EventKit Undo, immutable Context/Capability/Skill snapshots, invocation and resume-cursor records, visual evidence, persistent project/conversation pins and explicit one-Run Skills. Memory Runtime behavior, MCP Runtime, reliable background continuation and byte-level Run resumption are not implemented.
+Current implementation: ordinary and Project chats share one Chat surface and bounded Agent loop. The startup Registry contains 17 tools: two local-information, two restricted Web, three Project Resource, two Project Artifact, four EventKit and four structured-presentation tools. The runtime also supports scoped authorization rules, durable EventKit Undo, immutable Context/Capability/Skill snapshots, invocation and resume-cursor records, visual evidence, persistent project/conversation pins and explicit one-Run Skills. Memory Runtime behavior, MCP Runtime, reliable background continuation and byte-level Run resumption are not implemented.
 
 Local persistence uses one current 27-entity SwiftData schema in `FamiliarDevelopment.store`. During development, incompatible schema changes intentionally rotate to a fresh store instead of migrating test data; a public release requires an explicit compatibility and migration policy.
 
@@ -213,8 +213,19 @@ FamiliarToolManifest
 
 Internally Familiar separates, following the spirit of MCP but in native Swift:
 
+The startup Registry currently contains exactly these 17 tools:
+
+| Group | Tool names |
+| --- | --- |
+| Local information | `current_date_time`, `app_information` |
+| Restricted Web | `web_search`, `web_fetch` |
+| Project Resource | `resource_list`, `resource_read`, `resource_search` |
+| Project Artifact | `artifact_write`, `artifact_edit` |
+| EventKit | `calendar_events`, `create_calendar_event`, `reminders`, `create_reminder` |
+| Structured presentation | `task_plan`, `present_recommendation`, `present_insight`, `ask_user` |
+
 - **Current resources** — conversation history, extracted attachments, versioned Project resources and Project artifacts (application-controlled)
-- **Current tools** — two local-information, two restricted Web, three Resource, two Artifact and four EventKit tools (model-controlled)
+- **Current tools** — the 17 Registry entries listed above (model-controlled)
 - **Current instructions** — base policy, Project instructions and at most one explicitly selected one-Run Skill (user-controlled)
 - **Target resources** — scoped Memory and broader controlled workspace data
 
@@ -237,7 +248,7 @@ The target Registry is a core asset organized into two capability families:
 | Notifications | Document |
 | Clipboard | Web |
 
-The current Registry is a startup-supplied dictionary of 13 tools with EventKit availability filtering and active Project scoping for Resource and Artifact tools. Generic runtime discovery and remote installation are not implemented; MCP remains a future adapter.
+The current Registry is a startup-supplied dictionary of 17 tools with EventKit availability filtering and active Project scoping for Resource and Artifact tools. Generic runtime discovery and remote installation are not implemented; MCP remains a future adapter.
 
 ## Permission model
 
