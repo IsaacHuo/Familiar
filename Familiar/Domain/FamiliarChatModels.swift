@@ -48,6 +48,7 @@ nonisolated struct FamiliarMessageSnapshot: Identifiable, Equatable, Sendable {
     let modelID: String?
     let attachments: [FamiliarAttachmentSnapshot]
     let sources: [FamiliarSource]
+    let responseBlocks: [FamiliarResponseBlockSnapshot]
 
     init(
         id: UUID,
@@ -58,7 +59,8 @@ nonisolated struct FamiliarMessageSnapshot: Identifiable, Equatable, Sendable {
         providerID: String?,
         modelID: String?,
         attachments: [FamiliarAttachmentSnapshot],
-        sources: [FamiliarSource] = []
+        sources: [FamiliarSource] = [],
+        responseBlocks: [FamiliarResponseBlockSnapshot] = []
     ) {
         self.id = id
         self.role = role
@@ -69,6 +71,7 @@ nonisolated struct FamiliarMessageSnapshot: Identifiable, Equatable, Sendable {
         self.modelID = modelID
         self.attachments = attachments
         self.sources = sources
+        self.responseBlocks = responseBlocks
     }
 }
 
@@ -86,6 +89,33 @@ nonisolated struct FamiliarSource: Identifiable, Codable, Equatable, Sendable {
     let siteName: String?
     let snippet: String?
     let retrievedAt: Date
+    let responseBlockID: UUID?
+    let retrievalActivityID: String?
+    let citationOrdinal: Int?
+
+    init(
+        id: String,
+        kind: FamiliarSourceKind,
+        title: String,
+        url: URL,
+        siteName: String?,
+        snippet: String?,
+        retrievedAt: Date,
+        responseBlockID: UUID? = nil,
+        retrievalActivityID: String? = nil,
+        citationOrdinal: Int? = nil
+    ) {
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.url = url
+        self.siteName = siteName
+        self.snippet = snippet
+        self.retrievedAt = retrievedAt
+        self.responseBlockID = responseBlockID
+        self.retrievalActivityID = retrievalActivityID
+        self.citationOrdinal = citationOrdinal
+    }
 }
 
 nonisolated struct FamiliarCompletedResponse: Equatable, Sendable {
@@ -109,32 +139,18 @@ nonisolated enum FamiliarAgentRunStatus: String, Codable, Sendable {
     case running, completed, cancelled, failed
 }
 
-nonisolated enum FamiliarAgentStepType: String, Codable, Sendable {
-    case model, tool, approval, result
-}
-
-nonisolated struct FamiliarToolRunSnapshot: Identifiable, Equatable, Sendable {
-    let id: UUID
-    let runID: String
-    let toolCallID: String
-    let toolName: String
-    let summary: String
-    let detail: String
-    let confirmation: FamiliarPersistedConfirmationResult
-    let status: FamiliarToolRunTerminalStatus
-    let sequence: Int
-    let startedAt: Date
-    let finishedAt: Date
-}
-
 nonisolated struct FamiliarAgentRunSnapshot: Identifiable, Equatable, Sendable {
     let id: String
     let responseMessageID: UUID?
     let status: FamiliarAgentRunStatus
     let startedAt: Date
     let finishedAt: Date?
-    let steps: [FamiliarAgentStepSnapshot]
     let context: FamiliarRunContextSummary?
+    let activities: [FamiliarActivitySnapshot]
+    let approvals: [FamiliarApprovalSnapshot]
+    let clarifications: [FamiliarClarificationSnapshot]
+    let toolResults: [FamiliarToolResultSnapshot]
+    let responseBlocks: [FamiliarResponseBlockSnapshot]
 
     init(
         id: String,
@@ -142,16 +158,24 @@ nonisolated struct FamiliarAgentRunSnapshot: Identifiable, Equatable, Sendable {
         status: FamiliarAgentRunStatus,
         startedAt: Date,
         finishedAt: Date?,
-        steps: [FamiliarAgentStepSnapshot],
-        context: FamiliarRunContextSummary? = nil
+        context: FamiliarRunContextSummary? = nil,
+        activities: [FamiliarActivitySnapshot] = [],
+        approvals: [FamiliarApprovalSnapshot] = [],
+        clarifications: [FamiliarClarificationSnapshot] = [],
+        toolResults: [FamiliarToolResultSnapshot] = [],
+        responseBlocks: [FamiliarResponseBlockSnapshot] = []
     ) {
         self.id = id
         self.responseMessageID = responseMessageID
         self.status = status
         self.startedAt = startedAt
         self.finishedAt = finishedAt
-        self.steps = steps
         self.context = context
+        self.activities = activities
+        self.approvals = approvals
+        self.clarifications = clarifications
+        self.toolResults = toolResults
+        self.responseBlocks = responseBlocks
     }
 }
 
@@ -178,16 +202,103 @@ nonisolated struct FamiliarRunSkillSummary: Identifiable, Equatable, Sendable {
     let version: String
 }
 
-nonisolated struct FamiliarAgentStepSnapshot: Identifiable, Equatable, Sendable {
+nonisolated struct FamiliarToolResultSnapshot: Identifiable, Equatable, Sendable {
     let id: UUID
-    let type: FamiliarAgentStepType
+    let activityID: String
+    let toolCallID: String
+    let envelope: FamiliarToolResultEnvelope?
+    let envelopeJSON: String
+    let schemaVersion: Int
+    let payloadName: String
+    let payloadHash: String
+    let semanticID: String?
+    let revision: Int
+    let trust: FamiliarContentTrust
+    let truncated: Bool
+
+    init(id: UUID, activityID: String, toolCallID: String, envelope: FamiliarToolResultEnvelope?, envelopeJSON: String, schemaVersion: Int, payloadName: String, payloadHash: String, semanticID: String? = nil, revision: Int = 1, trust: FamiliarContentTrust, truncated: Bool) {
+        self.id = id
+        self.activityID = activityID
+        self.toolCallID = toolCallID
+        self.envelope = envelope
+        self.envelopeJSON = envelopeJSON
+        self.schemaVersion = schemaVersion
+        self.payloadName = payloadName
+        self.payloadHash = payloadHash
+        self.semanticID = semanticID
+        self.revision = revision
+        self.trust = trust
+        self.truncated = truncated
+    }
+}
+
+nonisolated struct FamiliarClarificationSnapshot: Identifiable, Equatable, Sendable {
+    let id: UUID
+    let activityID: String
+    let assistantTurnID: String
+    let toolCallID: String
+    let question: String
+    let options: [FamiliarClarificationOption]
+    let allowCustom: Bool
+    let state: FamiliarClarificationState
+    let resolution: FamiliarClarificationResolution?
+    let requestedAt: Date
+    let resolvedAt: Date?
+}
+
+nonisolated struct FamiliarApprovalSnapshot: Identifiable, Equatable, Sendable {
+    let id: UUID
+    let activityID: String
+    let assistantTurnID: String
+    let toolCallID: String
     let toolName: String
+    let title: String
+    let fields: [FamiliarApprovalField]
+    let target: String?
+    let effect: FamiliarToolEffect
+    let risk: FamiliarToolRisk
+    let consequence: String
+    let undoPolicy: FamiliarApprovalUndoPolicy
+    let decision: FamiliarApprovalDecision?
+    let scope: FamiliarApprovalScope?
+    let requestedAt: Date
+    let resolvedAt: Date?
+    let automaticAuthorization: Bool
+}
+
+nonisolated struct FamiliarActivitySnapshot: Identifiable, Equatable, Sendable {
+    var id: String { activityID }
+    let activityID: String
+    let parentID: String?
+    let assistantTurnID: String
+    let kind: FamiliarActivityKind
+    let effect: FamiliarToolEffect?
+    let phase: FamiliarActivityPhase
+    let toolName: String?
+    let toolCallID: String?
     let summary: String
-    let detail: String
-    let status: FamiliarToolRunTerminalStatus
-    let eventSequence: Int
+    let detail: String?
+    let progress: Double?
+    let resultRecordID: UUID?
+    let approvalRecordID: UUID?
+    let sequence: Int
     let startedAt: Date
-    let finishedAt: Date
+    let endedAt: Date?
+}
+
+nonisolated struct FamiliarResponseBlockSnapshot: Identifiable, Equatable, Sendable {
+    let id: UUID
+    let assistantTurnID: String
+    let messageID: UUID?
+    let kind: FamiliarResponseBlockKind
+    let order: Int
+    let state: FamiliarResponseBlockState
+    let content: String
+    let payloadJSON: String
+    let schemaVersion: Int
+    let startedAt: Date
+    let endedAt: Date?
+    let contentHash: String
 }
 
 nonisolated struct FamiliarModelSwitchSnapshot: Identifiable, Equatable, Sendable {

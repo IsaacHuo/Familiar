@@ -43,19 +43,27 @@ enum FamiliarSchemaV6: VersionedSchema {
         @Attribute(.unique) var id: UUID
         @Attribute(.unique) var idempotencyKey: String
         var runtimeID: String
+        var toolCallID: String
         var toolName: String
         var argumentsHash: String
+        var assistantTurnID: String?
+        var activityID: String?
+        var approvalRecordID: UUID?
+        var toolResultRecordID: UUID?
         var stateRawValue: String
         var startedAt: Date
         var committedAt: Date?
         var resultReference: String?
 
-        init(idempotencyKey: String, runtimeID: String, toolName: String, argumentsHash: String, state: FamiliarToolInvocationState = .requested, startedAt: Date = Date()) {
+        init(idempotencyKey: String, runtimeID: String, toolCallID: String, toolName: String, argumentsHash: String, assistantTurnID: String? = nil, activityID: String? = nil, state: FamiliarToolInvocationState = .requested, startedAt: Date = Date()) {
             id = UUID()
             self.idempotencyKey = idempotencyKey
             self.runtimeID = runtimeID
+            self.toolCallID = toolCallID
             self.toolName = toolName
             self.argumentsHash = argumentsHash
+            self.assistantTurnID = assistantTurnID
+            self.activityID = activityID
             stateRawValue = state.rawValue
             self.startedAt = startedAt
         }
@@ -67,5 +75,5 @@ enum FamiliarSchemaV6: VersionedSchema {
     }
 }
 
-nonisolated enum FamiliarRunRecoveryPhase: String, Codable, Sendable { case model, awaitingApproval, committingTool, terminal }
+nonisolated enum FamiliarRunRecoveryPhase: String, Codable, Sendable { case model, awaitingApproval, awaitingClarification, committingTool, terminal }
 nonisolated enum FamiliarToolInvocationState: String, Codable, Sendable { case requested, approved, committing, committed, failed, cancelled }

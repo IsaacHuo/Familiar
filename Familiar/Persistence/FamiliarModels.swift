@@ -11,7 +11,6 @@ typealias FamiliarMessage = FamiliarSchemaV3.FamiliarMessage
 typealias FamiliarSourceRecord = FamiliarSchemaV3.FamiliarSourceRecord
 typealias FamiliarAttachment = FamiliarSchemaV3.FamiliarAttachment
 typealias FamiliarAgentRun = FamiliarSchemaV3.FamiliarAgentRun
-typealias FamiliarAgentStep = FamiliarSchemaV3.FamiliarAgentStep
 typealias FamiliarProject = FamiliarSchemaV3.FamiliarProject
 typealias FamiliarProjectInstruction = FamiliarSchemaV3.FamiliarProjectInstruction
 typealias FamiliarResource = FamiliarSchemaV3.FamiliarResource
@@ -31,6 +30,11 @@ typealias FamiliarMemoryItem = FamiliarSchemaV8.FamiliarMemoryItem
 typealias FamiliarMCPServerRecord = FamiliarSchemaV8.FamiliarMCPServerRecord
 typealias FamiliarMCPBindingRecord = FamiliarSchemaV8.FamiliarMCPBindingRecord
 typealias FamiliarRunSkillSnapshotRecord = FamiliarSchemaV9.FamiliarRunSkillSnapshotRecord
+typealias FamiliarActivityRecord = FamiliarSchemaV10.FamiliarActivityRecord
+typealias FamiliarToolResultRecord = FamiliarSchemaV10.FamiliarToolResultRecord
+typealias FamiliarApprovalRecord = FamiliarSchemaV10.FamiliarApprovalRecord
+typealias FamiliarResponseBlockRecord = FamiliarSchemaV10.FamiliarResponseBlockRecord
+typealias FamiliarClarificationRecord = FamiliarSchemaV10.FamiliarClarificationRecord
 
 enum FamiliarModelContainer {
     static let storeName = "FamiliarDevelopment"

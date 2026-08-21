@@ -44,12 +44,12 @@ final class FamiliarRunRecoveryService {
         try context.save()
     }
 
-    func beginInvocation(idempotencyKey: String, runtimeID: String, toolName: String, arguments: String, in context: ModelContext) throws -> FamiliarToolInvocationRecord {
+    func beginInvocation(idempotencyKey: String, runtimeID: String, toolCallID: String, toolName: String, arguments: String, assistantTurnID: String?, activityID: String, in context: ModelContext) throws -> FamiliarToolInvocationRecord {
         if let existing = try context.fetch(FetchDescriptor<FamiliarToolInvocationRecord>(predicate: #Predicate { $0.idempotencyKey == idempotencyKey })).first {
             if existing.state == .committed { throw Error.invocationAlreadyCommitted }
             return existing
         }
-        let record = FamiliarToolInvocationRecord(idempotencyKey: idempotencyKey, runtimeID: runtimeID, toolName: toolName, argumentsHash: FamiliarAuthorizationGrant.argumentsHash(arguments), state: .requested)
+        let record = FamiliarToolInvocationRecord(idempotencyKey: idempotencyKey, runtimeID: runtimeID, toolCallID: toolCallID, toolName: toolName, argumentsHash: FamiliarAuthorizationGrant.argumentsHash(arguments), assistantTurnID: assistantTurnID, activityID: activityID, state: .requested)
         context.insert(record)
         try context.save()
         return record
@@ -68,10 +68,17 @@ final class FamiliarRunRecoveryService {
         let runs = try context.fetch(FetchDescriptor<FamiliarAgentRun>(predicate: #Predicate { $0.statusRawValue == runningRaw }))
         let runtimeIDs = runs.map(\.runtimeID)
         let now = Date()
+        let recorder = FamiliarRunPersistenceRecorder()
         for run in runs {
-            run.status = .failed
-            run.finishReason = reason
-            run.finishedAt = now
+            let runtimeID = run.runtimeID
+            let cursor = try context.fetch(FetchDescriptor<FamiliarRunResumeCursorRecord>(predicate: #Predicate { $0.runtimeID == runtimeID })).first
+            recorder.finishRun(
+                runtimeID: runtimeID,
+                outcome: .init(status: .failed, failureKind: .unknown, message: reason),
+                eventSequence: (cursor?.lastEventSequence ?? -1) + 1,
+                at: now,
+                context: context
+            )
         }
         for runtimeID in runtimeIDs {
             let invocations = try context.fetch(FetchDescriptor<FamiliarToolInvocationRecord>(predicate: #Predicate { $0.runtimeID == runtimeID }))

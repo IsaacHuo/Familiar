@@ -44,7 +44,12 @@ enum FamiliarModelSchema {
         FamiliarMCPServerRecord.self,
         FamiliarMCPBindingRecord.self,
         FamiliarRunSkillSnapshotRecord.self,
-        FamiliarPinnedItemRecord.self
+        FamiliarPinnedItemRecord.self,
+        FamiliarActivityRecord.self,
+        FamiliarToolResultRecord.self,
+        FamiliarApprovalRecord.self,
+        FamiliarResponseBlockRecord.self,
+        FamiliarClarificationRecord.self
     ]
 
     static var schema: Schema { Schema(models) }

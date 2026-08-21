@@ -12,7 +12,6 @@ enum FamiliarSchemaV3: VersionedSchema {
             FamiliarAttachment.self,
             FamiliarModelSwitchRecord.self,
             FamiliarAgentRun.self,
-            FamiliarAgentStep.self,
             FamiliarProject.self,
             FamiliarProjectInstruction.self,
             FamiliarResource.self,
@@ -70,10 +69,10 @@ enum FamiliarSchemaV3: VersionedSchema {
         var finishedAt: Date?
         var finishReason: String?
         var responseMessageID: UUID?
+        var responseBlockID: UUID?
+        var assistantTurnID: String?
         var conversation: FamiliarConversation?
         var project: FamiliarProject?
-        @Relationship(deleteRule: .cascade, inverse: \FamiliarAgentStep.run)
-        var steps: [FamiliarAgentStep]
         @Relationship(deleteRule: .cascade, inverse: \FamiliarContextSnapshotRecord.run)
         var contextSnapshot: FamiliarContextSnapshotRecord?
 
@@ -91,72 +90,11 @@ enum FamiliarSchemaV3: VersionedSchema {
             self.startedAt = startedAt
             self.conversation = conversation
             self.project = project
-            steps = []
         }
 
         var status: FamiliarAgentRunStatus {
             get { FamiliarAgentRunStatus(rawValue: statusRawValue) ?? .failed }
             set { statusRawValue = newValue.rawValue }
-        }
-    }
-
-    @Model
-    final class FamiliarAgentStep {
-        @Attribute(.unique) var id: UUID
-        var typeRawValue: String
-        var eventSequence: Int
-        var timelineSequence: Int
-        var toolCallID: String
-        var toolName: String
-        var summary: String
-        var detail: String
-        var confirmationRawValue: String
-        var statusRawValue: String
-        var startedAt: Date
-        var finishedAt: Date
-        var artifactIdentifier: String?
-        var run: FamiliarAgentRun?
-
-        init(
-            id: UUID = UUID(),
-            type: FamiliarAgentStepType,
-            eventSequence: Int,
-            timelineSequence: Int,
-            toolCallID: String,
-            toolName: String,
-            summary: String,
-            detail: String,
-            confirmation: FamiliarPersistedConfirmationResult,
-            status: FamiliarToolRunTerminalStatus,
-            startedAt: Date,
-            finishedAt: Date,
-            artifactIdentifier: String? = nil,
-            run: FamiliarAgentRun? = nil
-        ) {
-            self.id = id
-            typeRawValue = type.rawValue
-            self.eventSequence = eventSequence
-            self.timelineSequence = timelineSequence
-            self.toolCallID = toolCallID
-            self.toolName = toolName
-            self.summary = summary
-            self.detail = detail
-            confirmationRawValue = confirmation.rawValue
-            statusRawValue = status.rawValue
-            self.startedAt = startedAt
-            self.finishedAt = finishedAt
-            self.artifactIdentifier = artifactIdentifier
-            self.run = run
-        }
-
-        var confirmation: FamiliarPersistedConfirmationResult {
-            FamiliarPersistedConfirmationResult(rawValue: confirmationRawValue) ?? .notRequired
-        }
-        var status: FamiliarToolRunTerminalStatus {
-            FamiliarToolRunTerminalStatus(rawValue: statusRawValue) ?? .failed
-        }
-        var type: FamiliarAgentStepType {
-            FamiliarAgentStepType(rawValue: typeRawValue) ?? .result
         }
     }
 
@@ -169,6 +107,9 @@ enum FamiliarSchemaV3: VersionedSchema {
         var sequence: Int
         var providerID: String?
         var modelID: String?
+        var runtimeID: String?
+        var assistantTurnID: String?
+        var responseBlockID: UUID?
         var conversation: FamiliarConversation?
         @Relationship(deleteRule: .cascade, inverse: \FamiliarAttachment.message)
         var attachments: [FamiliarAttachment]
@@ -183,6 +124,9 @@ enum FamiliarSchemaV3: VersionedSchema {
             sequence: Int,
             providerID: String? = nil,
             modelID: String? = nil,
+            runtimeID: String? = nil,
+            assistantTurnID: String? = nil,
+            responseBlockID: UUID? = nil,
             conversation: FamiliarConversation? = nil
         ) {
             self.id = id
@@ -192,6 +136,9 @@ enum FamiliarSchemaV3: VersionedSchema {
             self.sequence = sequence
             self.providerID = providerID
             self.modelID = modelID
+            self.runtimeID = runtimeID
+            self.assistantTurnID = assistantTurnID
+            self.responseBlockID = responseBlockID
             self.conversation = conversation
             attachments = []
             sources = []
@@ -213,6 +160,9 @@ enum FamiliarSchemaV3: VersionedSchema {
         var snippet: String?
         var sequence: Int
         var retrievedAt: Date
+        var responseBlockID: UUID?
+        var retrievalActivityID: String?
+        var citationOrdinal: Int?
         var message: FamiliarMessage?
 
         init(
@@ -225,6 +175,9 @@ enum FamiliarSchemaV3: VersionedSchema {
             snippet: String? = nil,
             sequence: Int,
             retrievedAt: Date,
+            responseBlockID: UUID? = nil,
+            retrievalActivityID: String? = nil,
+            citationOrdinal: Int? = nil,
             message: FamiliarMessage? = nil
         ) {
             self.id = id
@@ -236,6 +189,9 @@ enum FamiliarSchemaV3: VersionedSchema {
             self.snippet = snippet
             self.sequence = sequence
             self.retrievedAt = retrievedAt
+            self.responseBlockID = responseBlockID
+            self.retrievalActivityID = retrievalActivityID
+            self.citationOrdinal = citationOrdinal
             self.message = message
         }
 
