@@ -35,15 +35,20 @@ nonisolated public enum FamiliarToolConfirmationError: Error, Sendable, Equatabl
 }
 
 /// A value that can safely cross the AgentLoop/SwiftUI boundary.
-nonisolated public struct FamiliarToolConfirmationRequest: Identifiable, Sendable, Equatable {
+nonisolated public struct FamiliarToolConfirmationRequest: Identifiable, Codable, Sendable, Equatable {
     public let id: UUID
     public let runID: String
     public let toolCallID: String
     public let toolName: String
     public let effect: FamiliarToolEffect
+    public let risk: FamiliarToolRisk
     public let title: String
-    public let fields: [String: String]
+    public let fields: [FamiliarApprovalField]
     public let target: String?
+    public let consequence: String
+    public let undoPolicy: FamiliarApprovalUndoPolicy
+    public let automaticAuthorization: Bool
+    public let automaticAuthorizationScope: FamiliarAuthorizationDuration?
 
     nonisolated public init(
         id: UUID = UUID(),
@@ -51,18 +56,28 @@ nonisolated public struct FamiliarToolConfirmationRequest: Identifiable, Sendabl
         toolCallID: String,
         toolName: String,
         effect: FamiliarToolEffect = .read,
+        risk: FamiliarToolRisk = .low,
         title: String,
-        fields: [String: String] = [:],
-        target: String? = nil
+        fields: [FamiliarApprovalField] = [],
+        target: String? = nil,
+        consequence: String = "",
+        undoPolicy: FamiliarApprovalUndoPolicy = .unavailable,
+        automaticAuthorization: Bool = false,
+        automaticAuthorizationScope: FamiliarAuthorizationDuration? = nil
     ) {
         self.id = id
         self.runID = runID
         self.toolCallID = toolCallID
         self.toolName = toolName
         self.effect = effect
+        self.risk = risk
         self.title = title
         self.fields = fields
         self.target = target
+        self.consequence = consequence
+        self.undoPolicy = undoPolicy
+        self.automaticAuthorization = automaticAuthorization
+        self.automaticAuthorizationScope = automaticAuthorizationScope
     }
 }
 

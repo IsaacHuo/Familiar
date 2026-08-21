@@ -39,6 +39,8 @@ nonisolated enum FamiliarProviderConnectionValidator {
             switch event {
             case .textDelta(let text):
                 if !text.isEmpty { receivedContent = true }
+            case .reasoningSummaryDelta:
+                break
             case .toolCallDelta:
                 break
             case .completed:

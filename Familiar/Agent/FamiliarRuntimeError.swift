@@ -1,6 +1,6 @@
 import Foundation
 
-nonisolated enum FamiliarRuntimeFailureKind: Equatable, Sendable {
+nonisolated enum FamiliarRuntimeFailureKind: String, Codable, Equatable, Sendable {
     case authentication
     case rateLimited
     case transientServer
@@ -25,6 +25,28 @@ nonisolated enum FamiliarRuntimeFailureKind: Equatable, Sendable {
         default: false
         }
     }
+
+    var code: String {
+        switch self {
+        case .authentication: "authentication_failed"
+        case .rateLimited: "rate_limited"
+        case .transientServer: "transient_server_error"
+        case .network: "network_error"
+        case .clientRequest: "client_request_failed"
+        case .invalidResponse: "invalid_response"
+        case .emptyResponse: "empty_response"
+        case .incompleteResponse: "incomplete_response"
+        case .contextTooLarge: "context_too_large"
+        case .toolArgument: "invalid_tool_arguments"
+        case .toolResult: "invalid_tool_result"
+        case .toolUnavailable: "tool_unavailable"
+        case .maxIterations: "max_iterations_exceeded"
+        case .maxToolCalls: "max_tool_calls_exceeded"
+        case .durationExceeded: "duration_exceeded"
+        case .cancelled: "cancelled"
+        case .unknown: "tool_failed"
+        }
+    }
 }
 
 nonisolated enum FamiliarRuntimeFailure {
@@ -33,6 +55,11 @@ nonisolated enum FamiliarRuntimeFailure {
         if let agent = error as? FamiliarAgentError { return kind(for: agent) }
         if let tool = error as? FamiliarToolRegistryError { return kind(for: tool) }
         if let provider = error as? FamiliarProviderRequestError { return kind(for: provider) }
+        if let web = error as? FamiliarWebError {
+            if case .rateLimited = web { return .rateLimited }
+            if case .httpError(let status) = web, (500...599).contains(status) { return .transientServer }
+            return web.isRetryable ? .network : .clientRequest
+        }
         if error is URLError { return .network }
         return .unknown
     }

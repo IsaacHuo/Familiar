@@ -81,6 +81,10 @@ nonisolated struct OpenAICompatibleClient: FamiliarModelProvider, Sendable {
                         else { continue }
 
                         for choice in event.choices {
+                            if let reasoning = choice.delta.reasoningContent, !reasoning.isEmpty {
+                                emittedContent = true
+                                continuation.yield(.reasoningSummaryDelta(reasoning))
+                            }
                             if let content = choice.delta.content, !content.isEmpty {
                                 emittedContent = true
                                 continuation.yield(.textDelta(content))
@@ -276,10 +280,12 @@ private nonisolated extension OpenAICompatibleClient {
 
         struct Delta: Decodable {
             let content: String?
+            let reasoningContent: String?
             let toolCalls: [ToolCall]?
 
             enum CodingKeys: String, CodingKey {
                 case content
+                case reasoningContent = "reasoning_content"
                 case toolCalls = "tool_calls"
             }
         }

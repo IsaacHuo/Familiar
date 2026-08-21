@@ -1,14 +1,14 @@
 import Foundation
 import SwiftData
 
-nonisolated enum FamiliarAuthorizationDuration: String, Codable, CaseIterable, Sendable {
+nonisolated public enum FamiliarAuthorizationDuration: String, Codable, CaseIterable, Sendable {
     case once
     case session
     case always
 }
 
 nonisolated protocol FamiliarAuthorizationServicing: Sendable {
-    func matchingAuthorization(manifest: FamiliarToolManifest, arguments: String, projectID: UUID?, targetKey: String) async -> Bool
+    func matchingAuthorizationScope(manifest: FamiliarToolManifest, arguments: String, projectID: UUID?, targetKey: String) async -> FamiliarAuthorizationDuration?
     func issueAuthorization(duration: FamiliarAuthorizationDuration, manifest: FamiliarToolManifest, arguments: String, projectID: UUID?, targetKey: String, evidence: String) async throws
 }
 
@@ -22,7 +22,7 @@ final class FamiliarAuthorizationRuntime: FamiliarAuthorizationServicing {
         self.sessionID = sessionID
     }
 
-    func matchingAuthorization(manifest: FamiliarToolManifest, arguments: String, projectID: UUID?, targetKey: String) -> Bool {
+    func matchingAuthorizationScope(manifest: FamiliarToolManifest, arguments: String, projectID: UUID?, targetKey: String) -> FamiliarAuthorizationDuration? {
         let now = Date()
         let records = (try? context.fetch(FetchDescriptor<FamiliarAuthorizationRuleRecord>())) ?? []
         let argumentHash = FamiliarAuthorizationGrant.argumentsHash(arguments)
@@ -32,11 +32,11 @@ final class FamiliarAuthorizationRuntime: FamiliarAuthorizationServicing {
                 && $0.targetKey == targetKey
                 && $0.argumentsHash == argumentHash
                 && ($0.duration != .session || $0.sessionID == sessionID)
-        }) else { return false }
+        }) else { return nil }
         record.lastUsedAt = now
         if record.duration == .once { record.revokedAt = now }
         try? context.save()
-        return true
+        return record.duration
     }
 
     func issueAuthorization(duration: FamiliarAuthorizationDuration, manifest: FamiliarToolManifest, arguments: String, projectID: UUID?, targetKey: String, evidence: String) throws {

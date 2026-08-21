@@ -206,6 +206,7 @@ nonisolated enum FamiliarModelFinishReason: String, Sendable {
 
 nonisolated enum FamiliarModelStreamEvent: Sendable {
     case textDelta(String)
+    case reasoningSummaryDelta(String)
     case toolCallDelta(index: Int, id: String?, name: String?, arguments: String?)
     case completed(FamiliarModelFinishReason)
 }

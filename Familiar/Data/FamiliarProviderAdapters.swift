@@ -70,6 +70,12 @@ nonisolated struct AnthropicMessagesClient: FamiliarModelProvider, Sendable {
                                 ))
                             }
                         case "content_block_delta":
+                            if event.delta?.type == "thinking_delta",
+                               let thinking = event.delta?.thinking,
+                               !thinking.isEmpty {
+                                emittedContent = true
+                                continuation.yield(.reasoningSummaryDelta(thinking))
+                            }
                             if let text = event.delta?.text, !text.isEmpty {
                                 emittedContent = true
                                 continuation.yield(.textDelta(text))
@@ -266,12 +272,14 @@ private nonisolated extension AnthropicMessagesClient {
         }
 
         struct Delta: Decodable {
+            let type: String?
             let text: String?
+            let thinking: String?
             let partialJSON: String?
             let stopReason: String?
 
             enum CodingKeys: String, CodingKey {
-                case text
+                case type, text, thinking
                 case partialJSON = "partial_json"
                 case stopReason = "stop_reason"
             }
@@ -332,7 +340,11 @@ nonisolated struct GeminiGenerateContentClient: FamiliarModelProvider, Sendable 
                             for part in candidate.content?.parts ?? [] {
                                 if let text = part.text, !text.isEmpty {
                                     emittedContent = true
-                                    continuation.yield(.textDelta(text))
+                                    if part.thought == true {
+                                        continuation.yield(.reasoningSummaryDelta(text))
+                                    } else {
+                                        continuation.yield(.textDelta(text))
+                                    }
                                 }
                                 if let call = part.functionCall {
                                     emittedContent = true
@@ -509,6 +521,7 @@ private nonisolated extension GeminiGenerateContentClient {
 
         struct ResponsePart: Decodable {
             let text: String?
+            let thought: Bool?
             let functionCall: FunctionCall?
         }
 

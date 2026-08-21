@@ -10,7 +10,8 @@ nonisolated struct FamiliarCurrentDateTimeTool: FamiliarTool {
         parameters: FamiliarJSONSchema(type: .object, properties: [:], required: []),
         effect: .read,
         risk: .low,
-        requirements: []
+        requirements: [],
+        supportsParallelism: true
     )
 
     func execute(
@@ -40,10 +41,11 @@ nonisolated struct FamiliarCurrentDateTimeTool: FamiliarTool {
             timeZoneIdentifier: timeZone.identifier,
             secondsFromGMT: timeZone.secondsFromGMT(for: now)
         )
-        let data = try JSONEncoder().encode(payload)
         return .result(FamiliarToolExecutionResult(
-            modelContent: String(decoding: data, as: UTF8.self),
-            displayContent: payload.localDescription
+            envelope: try FamiliarToolResultEnvelope(
+                model: payload,
+                presentation: .scalar(.init(summary: payload.localDescription, label: "localDateTime", value: payload.localDescription))
+            )
         ))
     }
 
@@ -66,7 +68,8 @@ nonisolated struct FamiliarAppInformationTool: FamiliarTool {
         parameters: FamiliarJSONSchema(type: .object, properties: [:], required: []),
         effect: .read,
         risk: .low,
-        requirements: []
+        requirements: [],
+        supportsParallelism: true
     )
 
     func execute(
@@ -80,10 +83,11 @@ nonisolated struct FamiliarAppInformationTool: FamiliarTool {
         let version = (bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "未知"
         let build = (bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "未知"
         let payload = Output(name: name, version: version, build: build)
-        let data = try JSONEncoder().encode(payload)
         return .result(FamiliarToolExecutionResult(
-            modelContent: String(decoding: data, as: UTF8.self),
-            displayContent: "\(name) \(version) (\(build))"
+            envelope: try FamiliarToolResultEnvelope(
+                model: payload,
+                presentation: .scalar(.init(summary: "\(name) \(version) (\(build))", label: "appVersion", value: "\(version) (\(build))"))
+            )
         ))
     }
 
