@@ -67,6 +67,7 @@ enum FamiliarSchemaV3: VersionedSchema {
         var statusRawValue: String
         var startedAt: Date
         var finishedAt: Date?
+        var firstTokenAt: Date?
         var finishReason: String?
         var responseMessageID: UUID?
         var responseBlockID: UUID?

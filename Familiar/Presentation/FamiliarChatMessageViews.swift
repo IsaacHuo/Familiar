@@ -2,6 +2,29 @@ import Charts
 import SwiftUI
 import UIKit
 
+private struct FamiliarReplyMetrics: Equatable {
+    let startedAt: Date?
+    let finishedAt: Date?
+    let firstTokenAt: Date?
+    let characters: Int
+
+    var duration: TimeInterval? {
+        guard let startedAt, let finishedAt else { return nil }
+        return max(0, finishedAt.timeIntervalSince(startedAt))
+    }
+    var timeToFirstToken: TimeInterval? {
+        guard let startedAt, let firstTokenAt else { return nil }
+        return max(0, firstTokenAt.timeIntervalSince(startedAt))
+    }
+    var charactersPerSecond: Double? {
+        guard let duration, duration > 0 else { return nil }
+        return Double(characters) / duration
+    }
+    var tokensPerSecond: Double? {
+        charactersPerSecond.map { $0 / 4 }
+    }
+}
+
 struct FamiliarMessageTimeline: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let messages: [FamiliarMessageSnapshot]
@@ -292,7 +315,7 @@ private struct FamiliarAssistantTurn: View {
     let onRetryRecovery: (String) -> Void
     var onRetryMessage: (() -> Void)? = nil
 
-    @State private var reasoningExpanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var runID: String? { run?.id ?? surfaces.first?.runID }
     private var status: FamiliarSurfaceDescriptor? { surfaces.first { $0.kind == .runStatus } }
@@ -313,30 +336,179 @@ private struct FamiliarAssistantTurn: View {
         return value.isEmpty ? nil : value
     }
 
+    private var searchSurfaces: [FamiliarSurfaceDescriptor] { surfaces.filter { $0.kind == .search } }
+    private var toolSurfaces: [FamiliarSurfaceDescriptor] {
+        surfaces.filter {
+            ($0.kind == .toolSummary || $0.kind == .activityTrace)
+                && ($0.placement == .trace || $0.toolName != nil)
+        }
+    }
+    private var taskSurfaces: [FamiliarSurfaceDescriptor] { surfaces.filter { $0.kind == .taskList } }
+    private var hasThinkingContent: Bool {
+        reasoningSummary != nil || !searchSurfaces.isEmpty || !toolSurfaces.isEmpty || !taskSurfaces.isEmpty
+    }
+
+    private func thinkingContent(status: FamiliarSurfaceDescriptor) -> FamiliarThinkingContent {
+        let isWorking = !status.phase.isTerminal
+        if let reasoning = reasoningSummary, !reasoning.isEmpty {
+            let lines = reasoning.components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            return FamiliarThinkingContent(
+                variant: .reasoning,
+                isWorking: isWorking,
+                header: status.title,
+                settledHeader: thoughtFor(status),
+                query: nil,
+                rows: lines.enumerated().map { index, line in
+                    FamiliarThinkingRow(
+                        id: "reasoning-\(index)",
+                        primary: line,
+                        secondary: nil,
+                        mono: false,
+                        add: nil,
+                        del: nil,
+                        href: nil,
+                        tone: .accent,
+                        phase: .succeeded
+                    )
+                },
+                truncatedCount: 0
+            )
+        }
+
+        if let search = searchSurfaces.first, let searchContent = searchPayload(search), !searchContent.results.isEmpty {
+            let shown = Array(searchContent.results.prefix(4))
+            let rows = shown.enumerated().map { index, result in
+                FamiliarThinkingRow(
+                    id: "search-\(result.id)-\(index)",
+                    primary: result.title,
+                    secondary: hostname(result.url),
+                    mono: false,
+                    add: nil,
+                    del: nil,
+                    href: result.url,
+                    tone: [FamiliarThinkingTone.accent, .orange, .green][index % 3],
+                    phase: .succeeded
+                )
+            }
+            return FamiliarThinkingContent(
+                variant: .search,
+                isWorking: isWorking,
+                header: status.title,
+                settledHeader: String(localized: "agent.status.searched_web", defaultValue: "Searched the web"),
+                query: searchContent.query,
+                rows: rows,
+                truncatedCount: max(0, searchContent.results.count - shown.count)
+            )
+        }
+
+        if !toolSurfaces.isEmpty {
+            return FamiliarThinkingContent(
+                variant: .coding,
+                isWorking: isWorking,
+                header: status.title,
+                settledHeader: String(format: String(localized: "agent.status.ran_tools", defaultValue: "Ran %lld tools"), toolSurfaces.count),
+                query: nil,
+                rows: toolSurfaces.map { activity in
+                    FamiliarThinkingRow(
+                        id: activity.id,
+                        primary: activity.title,
+                        secondary: activity.detail ?? activity.toolName,
+                        mono: true,
+                        add: nil,
+                        del: nil,
+                        href: nil,
+                        tone: .accent,
+                        phase: surfacePhase(activity.phase)
+                    )
+                },
+                truncatedCount: 0
+            )
+        }
+
+        return FamiliarThinkingContent(
+            variant: .steps,
+            isWorking: isWorking,
+            header: status.title,
+            settledHeader: thoughtFor(status),
+            query: nil,
+            rows: taskSurfaces.flatMap(taskRows),
+            truncatedCount: 0
+        )
+    }
+
+    private func thoughtFor(_ surface: FamiliarSurfaceDescriptor) -> String {
+        String(format: String(localized: "agent.status.thought_for", defaultValue: "Thought for %.1f s"), duration(surface))
+    }
+
+    private func duration(_ surface: FamiliarSurfaceDescriptor) -> Double {
+        guard let start = surface.startedAt else { return 0 }
+        let end = surface.finishedAt ?? surface.startedAt.map { _ in Date() } ?? start
+        return max(0, end.timeIntervalSince(start))
+    }
+
+    private func surfacePhase(_ phase: FamiliarSurfacePhase) -> FamiliarSurfacePhase {
+        switch phase {
+        case .queued, .planning, .running, .awaitingApproval, .awaitingClarification: phase
+        default: .succeeded
+        }
+    }
+
+    private func taskRows(_ surface: FamiliarSurfaceDescriptor) -> [FamiliarThinkingRow] {
+        guard case .taskList(let list)? = surface.resultEnvelope?.presentation.content else { return [] }
+        return list.tasks.map { task in
+            FamiliarThinkingRow(
+                id: task.id,
+                primary: task.title,
+                secondary: task.detail,
+                mono: false,
+                add: nil,
+                del: nil,
+                href: nil,
+                tone: .accent,
+                phase: taskPhase(task.status)
+            )
+        }
+    }
+
+    private func taskPhase(_ status: FamiliarToolPresentationPayload.TaskStatus) -> FamiliarSurfacePhase {
+        switch status {
+        case .completed: .succeeded
+        case .running: .running
+        case .pending, .failed: .queued
+        }
+    }
+
+    private func searchPayload(_ surface: FamiliarSurfaceDescriptor) -> FamiliarToolPresentationPayload.SearchResults? {
+        if case .searchResults(let search)? = surface.resultEnvelope?.presentation.content { return search }
+        return nil
+    }
+
+    private func hostname(_ url: String) -> String {
+        guard let components = URLComponents(string: url), let host = components.host else { return url }
+        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    }
+
+    private var replyMetrics: FamiliarReplyMetrics? {
+        guard let startedAt = run?.startedAt ?? status?.startedAt else { return nil }
+        let characters = message?.content.count ?? (streamingText.count + streamingReasoningSummary.count)
+        return FamiliarReplyMetrics(
+            startedAt: startedAt,
+            finishedAt: run?.finishedAt ?? status?.finishedAt,
+            firstTokenAt: run?.firstTokenAt,
+            characters: characters
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceM) {
-            if let status, !status.phase.isTerminal {
-                FamiliarThinkingRail(surface: status)
-            }
-
-            if let reasoningSummary {
-                DisclosureGroup(isExpanded: $reasoningExpanded) {
-                    Text(reasoningSummary)
-                        .font(.callout)
-                        .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, FamiliarAISurfaceMetric.spaceXS)
-                        .padding(.leading, FamiliarAISurfaceMetric.traceIndent)
-                } label: {
-                    Label(
-                        String(localized: "response.reasoning_summary", defaultValue: "Reasoning summary"),
-                        systemImage: "sparkles"
-                    )
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
-                }
-                .tint(FamiliarAISurfaceColor.inkSecondary)
+            if let status, (!status.phase.isTerminal || hasThinkingContent) {
+                FamiliarThinkingState(
+                    content: thinkingContent(status: status),
+                    onSettled: nil,
+                    reduceMotion: reduceMotion
+                )
             }
 
             ForEach(interventionItems) { surface in
@@ -381,7 +553,8 @@ private struct FamiliarAssistantTurn: View {
                 FamiliarActivityTrace(
                     surface: trace,
                     items: traceItems,
-                    finishedAt: run?.finishedAt
+                    finishedAt: run?.finishedAt,
+                    metrics: replyMetrics
                 )
             }
 
@@ -554,6 +727,291 @@ private struct FamiliarShimmerLabel: View {
                         )
                     )
             }
+        }
+    }
+}
+
+enum FamiliarThinkingVariant: Equatable {
+    case steps, reasoning, search, coding
+}
+
+enum FamiliarThinkingTone {
+    case accent, orange, green
+}
+
+struct FamiliarThinkingRow: Identifiable {
+    let id: String
+    let primary: String
+    let secondary: String?
+    let mono: Bool
+    let add: Int?
+    let del: Int?
+    let href: String?
+    let tone: FamiliarThinkingTone
+    let phase: FamiliarSurfacePhase
+}
+
+struct FamiliarThinkingContent {
+    let variant: FamiliarThinkingVariant
+    let isWorking: Bool
+    let header: String
+    let settledHeader: String
+    let query: String?
+    let rows: [FamiliarThinkingRow]
+    let truncatedCount: Int
+}
+
+private struct FamiliarThinkingState: View {
+    let content: FamiliarThinkingContent
+    let onSettled: (() -> Void)?
+    let reduceMotion: Bool
+
+    @State private var manualExpanded: Bool?
+    @State private var hasSettled = false
+
+    private var autoExpanded: Bool { content.isWorking }
+    private var expanded: Bool { manualExpanded ?? autoExpanded }
+    private var settled: Bool { !content.isWorking }
+
+    var body: some View {
+        DisclosureGroup(isExpanded: Binding(
+            get: { expanded },
+            set: { manualExpanded = $0 }
+        )) {
+            traceBody
+                .padding(.top, FamiliarAISurfaceMetric.spaceXS)
+                .padding(.leading, FamiliarAISurfaceMetric.traceIndent)
+        } label: {
+            header
+        }
+        .tint(FamiliarAISurfaceColor.inkSecondary)
+        .onChange(of: content.isWorking) { _, working in
+            if !working, !hasSettled {
+                hasSettled = true
+                onSettled?()
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(settled ? FamiliarAISurfaceColor.inkTertiary : FamiliarAISurfaceColor.ink)
+            if settled {
+                Text(content.settledHeader)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+            } else {
+                FamiliarShimmerLabel(text: content.header, reduceMotion: reduceMotion)
+            }
+            Image(systemName: "chevron.down")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
+                .rotationEffect(.degrees(expanded ? 180 : 0))
+                .animation(FamiliarMotion.micro, value: expanded)
+        }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(content.isWorking ? content.header : content.settledHeader)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+    }
+
+    @ViewBuilder
+    private var traceBody: some View {
+        VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceS) {
+            if let query = content.query { queryRow(query) }
+            ForEach(Array(content.rows.enumerated()), id: \.element.id) { index, row in
+                rowView(row, index: index)
+            }
+            if content.truncatedCount > 0 {
+                Text(String(format: String(localized: "search.more", defaultValue: "+%lld more"), content.truncatedCount))
+                    .font(.caption)
+                    .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
+                    .transition(.opacity)
+            }
+        }
+        .padding(.vertical, FamiliarAISurfaceMetric.spaceXS)
+    }
+
+    private func queryRow(_ query: String) -> some View {
+        HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
+            Text(query)
+                .font(.caption)
+                .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+                .lineLimit(1)
+        }
+        .frame(minHeight: 24)
+    }
+
+    @ViewBuilder
+    private func rowView(_ row: FamiliarThinkingRow, index: Int) -> some View {
+        switch content.variant {
+        case .reasoning:
+            FamiliarThinkingRowView(row: row, index: index) { _ in
+                Text(row.primary)
+                    .font(.callout)
+                    .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+                    .lineSpacing(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        case .search:
+            FamiliarThinkingRowView(row: row, index: index, isLink: row.href != nil) { _ in
+                FamiliarThinkingDot(color: toneColor(row.tone))
+                Text(row.primary)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(FamiliarAISurfaceColor.ink)
+                    .lineLimit(1)
+                if let secondary = row.secondary {
+                    Text(secondary)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
+                        .lineLimit(1)
+                }
+            }
+        case .steps:
+            FamiliarThinkingRowView(row: row, index: index) { _ in
+                if row.phase == .succeeded {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
+                        .frame(width: 14, height: 14)
+                } else {
+                    FamiliarThinkingSpinner(reduceMotion: reduceMotion)
+                }
+                Text(row.primary)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(FamiliarAISurfaceColor.ink)
+                    .lineLimit(1)
+                if let secondary = row.secondary {
+                    Text(secondary)
+                        .font(.caption2)
+                        .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
+                        .lineLimit(1)
+                }
+            }
+        case .coding:
+            FamiliarThinkingRowView(row: row, index: index, selectable: true) { _ in
+                Text(row.primary)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(FamiliarAISurfaceColor.ink)
+                    .lineLimit(1)
+                if let secondary = row.secondary {
+                    Text(secondary)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+                        .lineLimit(1)
+                }
+                if row.add != nil || row.del != nil {
+                    Text((row.add.map { "+\($0)" } ?? "") + " " + (row.del.map { "−\($0)" } ?? ""))
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(row.add != nil ? FamiliarAISurfaceColor.success : FamiliarAISurfaceColor.inkTertiary)
+                        .lineLimit(1)
+                }
+            }
+        }
+    }
+
+    private func toneColor(_ tone: FamiliarThinkingTone) -> Color {
+        switch tone {
+        case .accent: FamiliarAISurfaceColor.accent
+        case .orange: FamiliarAISurfaceColor.warning
+        case .green: FamiliarAISurfaceColor.success
+        }
+    }
+}
+
+private struct FamiliarThinkingRowView<Content: View>: View {
+    let row: FamiliarThinkingRow
+    let index: Int
+    var isLink = false
+    var selectable = false
+    private let buildContent: (Int) -> Content
+
+    init(
+        row: FamiliarThinkingRow,
+        index: Int,
+        isLink: Bool = false,
+        selectable: Bool = false,
+        @ViewBuilder content: @escaping (Int) -> Content
+    ) {
+        self.row = row
+        self.index = index
+        self.isLink = isLink
+        self.selectable = selectable
+        self.buildContent = content
+    }
+
+    @Environment(\.openURL) private var openURL
+    @State private var selected = false
+    @State private var visible = false
+
+    var body: some View {
+        Group {
+            if let href = row.href, isLink {
+                Button { if let url = URL(string: href) { openURL(url) } } label: { rowLabel }
+                    .buttonStyle(.plain)
+            } else if selectable {
+                Button { selected.toggle() } label: { rowLabel }
+                    .buttonStyle(.plain)
+            } else {
+                rowLabel
+            }
+        }
+        .opacity(visible ? 1 : 0)
+        .offset(y: visible ? 0 : 5)
+        .animation(FamiliarMotion.reveal.delay(min(Double(index) * 0.1, 0.4)), value: visible)
+        .onAppear { visible = true }
+    }
+
+    private var rowLabel: some View {
+        HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
+            buildContent(index)
+        }
+        .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
+        .padding(.horizontal, FamiliarAISurfaceMetric.spaceS)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(selected ? FamiliarAISurfaceColor.inset : .clear)
+        )
+    }
+}
+
+private struct FamiliarThinkingSpinner: View {
+    let reduceMotion: Bool
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(FamiliarAISurfaceColor.lineStrong, lineWidth: 1.5)
+                .frame(width: 14, height: 14)
+            if !reduceMotion {
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+                    Circle()
+                        .trim(from: 0, to: 0.68)
+                        .stroke(FamiliarAISurfaceColor.inkSecondary, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                        .frame(width: 14, height: 14)
+                        .rotationEffect(.degrees(context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 0.7) / 0.7 * 360))
+                }
+            }
+        }
+        .frame(width: 14, height: 14)
+    }
+}
+
+private struct FamiliarThinkingDot: View {
+    let color: Color
+
+    var body: some View {
+        ZStack {
+            Circle().fill(color).frame(width: 14, height: 14)
+            Image(systemName: "globe")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(.white)
         }
     }
 }
@@ -1714,6 +2172,7 @@ private struct FamiliarActivityTrace: View {
     let surface: FamiliarSurfaceDescriptor
     let items: [FamiliarSurfaceDescriptor]
     let finishedAt: Date?
+    let metrics: FamiliarReplyMetrics?
     @State private var expanded = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -1727,7 +2186,7 @@ private struct FamiliarActivityTrace: View {
     var body: some View {
         DisclosureGroup(isExpanded: $expanded) {
             VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceM) {
-                if let context = surface.context { FamiliarContextTrace(context: context) }
+                if let context = surface.context { FamiliarContextTrace(context: context, metrics: metrics) }
                 ForEach(items) { item in FamiliarTypedResult(surface: item, readURLs: readURLs) }
             }
             .padding(.top, FamiliarAISurfaceMetric.spaceS)
@@ -1755,6 +2214,7 @@ private struct FamiliarActivityTrace: View {
 
 private struct FamiliarContextTrace: View {
     let context: FamiliarRunContextSummary
+    let metrics: FamiliarReplyMetrics?
 
     var body: some View {
         VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceS) {
@@ -1762,8 +2222,20 @@ private struct FamiliarContextTrace: View {
             if let project = context.projectName { traceRow("folder", String(localized: "run.context.project", defaultValue: "Project"), project) }
             ForEach(context.resources) { traceRow("doc.text", String(localized: "run.context.resource", defaultValue: "Resource"), "\($0.filename) · v\($0.version)") }
             ForEach(context.skills) { traceRow("wand.and.stars", String(localized: "run.context.skill", defaultValue: "Skill"), "\($0.name) · \($0.version)") }
-            if !context.toolNames.isEmpty { traceRow("wrench.and.screwdriver", String(localized: "run.context.tools", defaultValue: "Available Tools"), context.toolNames.joined(separator: ", ")) }
+            if let metrics {
+                if let duration = metrics.duration {
+                    traceRow("clock", String(localized: "run.context.reply_time", defaultValue: "Reply time"), format(duration))
+                }
+                traceRow("bolt.horizontal", String(localized: "run.context.first_token", defaultValue: "First token"), metrics.timeToFirstToken.map(format) ?? "—")
+                if let tps = metrics.tokensPerSecond {
+                    traceRow("speedometer", String(localized: "run.context.throughput", defaultValue: "Throughput"), String(format: "%.1f tok/s", tps))
+                }
+            }
         }
+    }
+
+    private func format(_ interval: TimeInterval) -> String {
+        interval < 60 ? String(format: "%.1fs", interval) : String(format: "%dm %.1fs", Int(interval / 60), interval.truncatingRemainder(dividingBy: 60))
     }
 
     private func traceRow(_ symbol: String, _ title: String, _ detail: String) -> some View {

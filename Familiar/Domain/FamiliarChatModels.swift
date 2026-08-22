@@ -145,6 +145,7 @@ nonisolated struct FamiliarAgentRunSnapshot: Identifiable, Equatable, Sendable {
     let status: FamiliarAgentRunStatus
     let startedAt: Date
     let finishedAt: Date?
+    let firstTokenAt: Date?
     let context: FamiliarRunContextSummary?
     let activities: [FamiliarActivitySnapshot]
     let approvals: [FamiliarApprovalSnapshot]
@@ -158,6 +159,7 @@ nonisolated struct FamiliarAgentRunSnapshot: Identifiable, Equatable, Sendable {
         status: FamiliarAgentRunStatus,
         startedAt: Date,
         finishedAt: Date?,
+        firstTokenAt: Date? = nil,
         context: FamiliarRunContextSummary? = nil,
         activities: [FamiliarActivitySnapshot] = [],
         approvals: [FamiliarApprovalSnapshot] = [],
@@ -170,6 +172,7 @@ nonisolated struct FamiliarAgentRunSnapshot: Identifiable, Equatable, Sendable {
         self.status = status
         self.startedAt = startedAt
         self.finishedAt = finishedAt
+        self.firstTokenAt = firstTokenAt
         self.context = context
         self.activities = activities
         self.approvals = approvals

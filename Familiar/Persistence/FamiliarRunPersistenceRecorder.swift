@@ -343,6 +343,12 @@ final class FamiliarRunPersistenceRecorder {
         }
     }
 
+    func updateRunFirstToken(runtimeID: String, date: Date, context: ModelContext) {
+        guard let run = fetchRun(runtimeID: runtimeID, in: context), run.firstTokenAt == nil else { return }
+        run.firstTokenAt = date
+        try? context.save()
+    }
+
     func finishRun(
         runtimeID: String,
         outcome: FamiliarRunOutcome,

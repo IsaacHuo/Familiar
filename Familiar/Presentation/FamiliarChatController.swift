@@ -18,6 +18,7 @@ final class FamiliarChatController {
     var draftAttachments: [FamiliarAttachmentDraft] = []
     var streamingText = ""
     var streamingReasoningSummary = ""
+    private var replyFirstTokenAt: Date?
     var streamingMessageID: UUID?
     var surfaces = FamiliarSurfaceStore()
     var availableUndoKeys: Set<String> = []
@@ -763,6 +764,7 @@ final class FamiliarChatController {
                     status: run.status,
                     startedAt: run.startedAt,
                     finishedAt: run.finishedAt,
+                    firstTokenAt: run.firstTokenAt,
                     context: contextSummary,
                     activities: activityRecords
                         .filter { $0.runtimeID == run.runtimeID }
@@ -948,8 +950,10 @@ final class FamiliarChatController {
                 case .runPhaseChanged, .assistantTurnStarted:
                     break
                 case .responseTextDelta(let delta):
+                    noteFirstToken(runtimeID: event.runID, timestamp: event.timestamp, context: context)
                     streamingText += delta
                 case .reasoningSummaryDelta(let delta):
+                    noteFirstToken(runtimeID: event.runID, timestamp: event.timestamp, context: context)
                     if separatesNextReasoningSummary, !streamingReasoningSummary.isEmpty {
                         streamingReasoningSummary += "\n\n"
                         separatesNextReasoningSummary = false
@@ -1231,10 +1235,17 @@ final class FamiliarChatController {
     private func resetTransientRunState() {
         streamingText = ""
         streamingReasoningSummary = ""
+        replyFirstTokenAt = nil
         streamingMessageID = nil
         surfaces = FamiliarSurfaceStore()
         pendingConfirmations = []
         pendingClarifications = []
+    }
+
+    private func noteFirstToken(runtimeID: String, timestamp: Date, context: ModelContext) {
+        guard replyFirstTokenAt == nil else { return }
+        replyFirstTokenAt = timestamp
+        runRecorder.updateRunFirstToken(runtimeID: runtimeID, date: timestamp, context: context)
     }
 
     var hasTransientActivity: Bool {

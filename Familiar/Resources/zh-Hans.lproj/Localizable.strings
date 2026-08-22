@@ -717,3 +717,11 @@
 "local_vision.error.integrity" = "FastVLM 压缩包完整性校验失败。";
 "local_vision.error.timeout" = "FastVLM 已超过 60 秒运行上限。";
 "local_vision.error.benchmark_required" = "请先运行设备基准，再使用 FastVLM。";
+
+"agent.status.thought_for" = "思考 %.1f 秒";
+"agent.status.searched_web" = "已搜索网页";
+"agent.status.ran_tools" = "执行了 %lld 个工具";
+"search.more" = "还有 %lld 条";
+"run.context.reply_time" = "回复时长";
+"run.context.first_token" = "首 token";
+"run.context.throughput" = "吞吐";

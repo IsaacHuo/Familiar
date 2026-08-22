@@ -717,3 +717,11 @@
 "local_vision.error.integrity" = "The FastVLM archive failed integrity verification.";
 "local_vision.error.timeout" = "FastVLM exceeded the 60 second limit.";
 "local_vision.error.benchmark_required" = "Run the device benchmark before using FastVLM.";
+
+"agent.status.thought_for" = "Thought for %.1f s";
+"agent.status.searched_web" = "Searched the web";
+"agent.status.ran_tools" = "Ran %lld tools";
+"search.more" = "+%lld more";
+"run.context.reply_time" = "Reply time";
+"run.context.first_token" = "First token";
+"run.context.throughput" = "Throughput";
