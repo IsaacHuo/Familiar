@@ -831,6 +831,7 @@ private struct FamiliarPrivacySettingsView: View {
             Section {
                 Label(String(localized: "settings.privacy.no_account"), systemImage: "person.crop.circle.badge.xmark")
                 Label(String(localized: "settings.privacy.permission_tools"), systemImage: "hand.raised")
+                Label(String(localized: "settings.privacy.native_private_data", defaultValue: "Contacts, one-time location, and clipboard data are used only by explicitly requested tools"), systemImage: "iphone.and.arrow.forward")
                 Label(String(localized: "settings.privacy.local_history"), systemImage: "internaldrive")
                 Label(String(localized: "settings.privacy.local_documents"), systemImage: "doc.text.magnifyingglass")
                 Label(String(localized: "settings.privacy.remote_images"), systemImage: "photo.badge.exclamationmark")
@@ -923,9 +924,13 @@ private struct FamiliarAboutView: View {
     }
 
     private var thirdPartyNotices: String {
-        guard let url = Bundle.main.url(forResource: "ThirdPartyNotices", withExtension: "txt"),
-              let value = try? String(contentsOf: url, encoding: .utf8)
-        else { return String(localized: "settings.about.notices.unavailable", defaultValue: "Notices are unavailable.") }
-        return value
+        let names = ["ThirdPartyNotices", "AnyDocRustDependencies"]
+        let values = names.compactMap { name -> String? in
+            guard let url = Bundle.main.url(forResource: name, withExtension: "txt") else { return nil }
+            return try? String(contentsOf: url, encoding: .utf8)
+        }
+        return values.isEmpty
+            ? String(localized: "settings.about.notices.unavailable", defaultValue: "Notices are unavailable.")
+            : values.joined(separator: "\n\n\n")
     }
 }

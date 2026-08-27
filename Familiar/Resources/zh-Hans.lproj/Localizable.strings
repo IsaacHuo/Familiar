@@ -59,8 +59,9 @@
 "settings.privacy.no_account" = "无需登录或 Familiar 账号";
 "settings.privacy.local_history" = "会话历史仅保存在本机";
 "settings.privacy.local_documents" = "文档由 AnyDoc 在本机转换，仅随消息发送转换后的文字";
-"settings.privacy.remote_images" = "Markdown 远程图片不会自动加载，仅在你点击来源链接后打开";
-"settings.privacy.web_tools" = "网页搜索会把搜索词直接发送给所选搜索服务；网页读取会另行访问所选公开 HTTPS 站点。搜索结果和抽取文字可能发送给模型 Provider";
+"settings.privacy.remote_images" = "添加的图片留在本机；Apple Vision 生成的有限证据文字可能发送给 DeepSeek";
+"settings.privacy.web_tools" = "网页搜索会把搜索词发送给 DuckDuckGo；搜索结果和公开网页抽取文字可能发送给 DeepSeek";
+"settings.privacy.native_private_data" = "联系人、单次位置和剪贴板数据只用于你明确请求的工具";
 "settings.error.title" = "设置失败";
 "settings.onboarding.restart" = "重新查看首启";
 "settings.onboarding.restart.footer" = "你可以随时重新查看首启说明，本地数据和 API Key 会保留。";
@@ -500,7 +501,7 @@
 "settings.model.refresh" = "刷新模型";
 "settings.model.curated_footer" = "此服务商没有可靠的模型列表接口。可选择精选模型，或手动填写官方模型 ID。";
 "settings.model.refresh_footer" = "从服务商官方模型列表接口刷新；也可以随时手动填写模型 ID。";
-"settings.privacy.permission_tools" = "仅在授权后、仅为你请求的工具访问日历和提醒事项";
+"settings.privacy.permission_tools" = "仅在授权后、仅为你请求的工具访问系统数据";
 "model.switched_marker" = "已切换到 %1$@ · %2$@";
 "error.provider.invalid_configuration" = "%@ 配置无效。";
 "error.message.context_too_large" = "这条消息超过所选模型的本地上下文安全限制。";
