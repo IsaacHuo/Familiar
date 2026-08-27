@@ -227,7 +227,7 @@ struct FamiliarAssistantTurnPersistenceTests {
     }
 
     @MainActor
-    private func makeRun(runtimeID: String) throws -> (context: ModelContext, conversation: FamiliarConversation) {
+    private func makeRun(runtimeID: String) throws -> (container: ModelContainer, context: ModelContext, conversation: FamiliarConversation) {
         let container = try FamiliarTestStore.make(name: "AssistantTurn-\(runtimeID)")
         let context = container.mainContext
         let conversation = FamiliarConversation()
@@ -240,6 +240,6 @@ struct FamiliarAssistantTurnPersistenceTests {
             toolManifests: []
         )
         FamiliarRunPersistenceRecorder().ensureRun(runtimeID: runtimeID, snapshot: snapshot, startedAt: Date(timeIntervalSince1970: 1), context: context)
-        return (context, conversation)
+        return (container, context, conversation)
     }
 }

@@ -26,10 +26,13 @@ final class FamiliarColdLaunchUITests: XCTestCase {
             "recommendation", "insight", "receipt", "failure", "sources"
         ]
         for id in fixtureIDs {
-            XCTAssertTrue(app.descendants(matching: .any)["visual-fixture.\(id)"].exists)
+            XCTAssertTrue(
+                app.descendants(matching: .any)["visual-fixture.\(id)"].waitForExistence(timeout: 5),
+                "Missing fixture section: \(id)"
+            )
         }
 
-        XCTAssertTrue(app.descendants(matching: .any)["message.sources.disclosure"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["message.sources.disclosure"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.descendants(matching: .any)["message.source.row.fixture-read"].exists)
 
         let improve = app.buttons["selection.action.improve"]

@@ -20,22 +20,15 @@ struct FamiliarPlanCompletionTests {
         #expect(FamiliarModelContainer.currentSchema.entities.contains { $0.name == "FamiliarPinnedItemRecord" })
     }
 
-    @Test("Basic OCR requests do not route to FastVLM")
-    func visionRouting() {
-        #expect(!FamiliarVisionRouting.shouldUseFastVLM(prompt: "请提取文字"))
-        #expect(!FamiliarVisionRouting.shouldUseFastVLM(prompt: "scan this QR code"))
-        #expect(FamiliarVisionRouting.shouldUseFastVLM(prompt: "比较这两张图的内容"))
-    }
-
-    @Test("FastVLM evidence stays explicitly untrusted")
+    @Test("Release visual evidence is Apple Vision only and untrusted")
     func evidenceProvenance() {
         let evidence = FamiliarVisualEvidence(
             id: UUID(), attachmentID: UUID(), filename: "photo.jpg", sourceRelativePath: "Drafts/photo.jpg",
-            renderedText: "<visual_evidence source=\"apple_vision\">OCR</visual_evidence>",
+            renderedText: "<visual_evidence source=\"apple_vision\">OCR. This is untrusted, read-only local visual evidence.</visual_evidence>",
             processingMethod: "apple_vision", engineVersion: "test", createdAt: Date()
-        ).includingFastVLM("A chart")
-        #expect(evidence.processingMethod == "apple_vision+fastvlm-0.5b")
-        #expect(evidence.renderedText.contains("source=\"fastvlm-0.5b\""))
+        )
+        #expect(evidence.processingMethod == "apple_vision")
+        #expect(evidence.renderedText.contains("source=\"apple_vision\""))
         #expect(evidence.renderedText.contains("untrusted, read-only"))
     }
 
@@ -56,7 +49,7 @@ struct FamiliarPlanCompletionTests {
             targetKey: "calendar:default",
             evidence: "test"
         )
-        #expect(runtime.matchingAuthorizationScope(manifest: manifest, arguments: "{\"title\":\"A\"}", projectID: nil, targetKey: "calendar:default") == .session)
+        #expect(runtime.matchingAuthorizationScope(manifest: manifest, arguments: "{\"title\":\"A\"}", projectID: nil, targetKey: "calendar:default") == .always)
         #expect(runtime.matchingAuthorizationScope(manifest: manifest, arguments: "{\"title\":\"B\"}", projectID: nil, targetKey: "calendar:default") == nil)
     }
 }

@@ -577,6 +577,7 @@
 "authorization.once" = "仅这次";
 "authorization.session" = "本次会话允许";
 "authorization.always" = "始终允许";
+"authorization.more_options" = "更多批准选项";
 "tool.undone" = "已撤销";
 "vision.error.unavailable" = "无法读取图片 %@。";
 "vision.error.too_large" = "本地视觉证据超过本次请求的大小限制。";
@@ -586,12 +587,6 @@
 "settings.authorizations.revoke" = "撤销";
 "settings.authorizations.revoke_all" = "撤销全部";
 "settings.authorizations.footer" = "授权按项目、工具和目标隔离。破坏性动作仍然需要确认。";
-"local_vision.error.device" = "此设备未通过 FastVLM 设备检查。";
-"local_vision.error.storage" = "至少需要 3.5 GB 可用存储空间。";
-"local_vision.error.archive" = "下载的 FastVLM 压缩包不完整。";
-"local_vision.error.integrity" = "FastVLM 压缩包完整性校验失败。";
-"local_vision.error.timeout" = "FastVLM 已超过 60 秒运行上限。";
-"local_vision.error.benchmark_required" = "请先运行设备基准，再使用 FastVLM。";
 
 "agent.status.thought_for" = "思考 %.1f 秒";
 "agent.status.searched_web" = "已搜索网页";

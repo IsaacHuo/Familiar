@@ -37,11 +37,6 @@ struct FamiliarMessageTimeline: View {
     let onRetryRecovery: (String) -> Void
 
     @State private var isFollowingLatest = true
-    @AccessibilityFocusState private var focusedConfirmationID: UUID?
-
-    private var pendingApprovalIDs: [UUID] {
-        surfaces.compactMap { $0.phase == .awaitingApproval ? $0.approvalRequestID : nil }
-    }
 
     private var timelineItems: [FamiliarTimelineItem] {
         var items = messages.map(FamiliarTimelineItem.message)
@@ -141,9 +136,6 @@ struct FamiliarMessageTimeline: View {
                 .onChange(of: streamingText) { _, _ in scrollToLatest(proxy, animated: false) }
                 .onChange(of: streamingReasoningSummary) { _, _ in scrollToLatest(proxy, animated: false) }
                 .onChange(of: surfaces) { _, _ in scrollToLatest(proxy) }
-                .onChange(of: pendingApprovalIDs) { previous, current in
-                    focusedConfirmationID = current.first { !previous.contains($0) }
-                }
                 .overlay(alignment: .bottomTrailing) {
                     if !isFollowingLatest {
                         Button {
@@ -709,7 +701,7 @@ private struct FamiliarThinkingState: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
                 .rotationEffect(.degrees(expanded ? 180 : 0))
-                .animation(FamiliarMotion.micro, value: expanded)
+                .animation(reduceMotion ? nil : FamiliarMotion.micro, value: expanded)
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
@@ -847,6 +839,7 @@ private struct FamiliarThinkingRowView<Content: View>: View {
     }
 
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selected = false
     @State private var visible = false
 
@@ -863,8 +856,8 @@ private struct FamiliarThinkingRowView<Content: View>: View {
             }
         }
         .opacity(visible ? 1 : 0)
-        .offset(y: visible ? 0 : 5)
-        .animation(FamiliarMotion.reveal.delay(min(Double(index) * 0.1, 0.4)), value: visible)
+        .offset(y: reduceMotion || visible ? 0 : 5)
+        .animation(reduceMotion ? nil : FamiliarMotion.reveal.delay(min(Double(index) * 0.1, 0.4)), value: visible)
         .onAppear { visible = true }
     }
 
@@ -1924,6 +1917,7 @@ private struct FamiliarCompactToolSummary: View {
                     .font(.caption.weight(.semibold))
                     .buttonStyle(.plain)
                     .foregroundStyle(FamiliarAISurfaceColor.accentInk)
+                    .frame(minWidth: FamiliarControlSize.minimumHitTarget, minHeight: FamiliarControlSize.minimumHitTarget)
             }
         }
         .padding(.vertical, FamiliarAISurfaceMetric.spaceS)
@@ -1952,6 +1946,7 @@ private struct FamiliarCompactToolSummary: View {
 private struct FamiliarApprovalIntervention: View {
     let surface: FamiliarSurfaceDescriptor
     let onResolve: (UUID, FamiliarToolConfirmationDecision) -> Void
+    @AccessibilityFocusState private var isAccessibilityFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceM) {
@@ -1969,16 +1964,16 @@ private struct FamiliarApprovalIntervention: View {
 
             VStack(spacing: FamiliarAISurfaceMetric.spaceS) {
                 ForEach(surface.approvalFields) { field in
-                    HStack(alignment: .firstTextBaseline, spacing: FamiliarAISurfaceMetric.spaceM) {
-                        Text(field.label)
-                            .font(.caption)
-                            .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
-                            .frame(width: 86, alignment: .leading)
-                        Text(field.formattedValue)
-                            .font(.subheadline)
-                            .foregroundStyle(FamiliarAISurfaceColor.ink)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .textSelection(.enabled)
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .firstTextBaseline, spacing: FamiliarAISurfaceMetric.spaceM) {
+                            approvalFieldLabel(field.label)
+                                .frame(width: 86, alignment: .leading)
+                            approvalFieldValue(field.formattedValue)
+                        }
+                        VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
+                            approvalFieldLabel(field.label)
+                            approvalFieldValue(field.formattedValue)
+                        }
                     }
                 }
             }
@@ -1987,18 +1982,9 @@ private struct FamiliarApprovalIntervention: View {
                 Text(consequence).font(.caption).foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
             }
 
-            HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
-                Button(String(localized: "common.cancel")) { resolve(.cancelled) }
-                    .buttonStyle(.bordered)
-                Menu {
-                    Button(String(localized: "authorization.once", defaultValue: "Only Once")) { resolve(.confirmedOnce) }
-                    Button(String(localized: "authorization.always", defaultValue: "Always Allow")) { resolve(.confirmedAlways) }
-                } label: {
-                    Image(systemName: "ellipsis")
-                }
-                .buttonStyle(.bordered)
-                Button(String(localized: "authorization.session", defaultValue: "Allow This Session")) { resolve(.confirmed) }
-                    .buttonStyle(.borderedProminent)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: FamiliarAISurfaceMetric.spaceS) { approvalActions }
+                VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceS) { approvalActions }
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
@@ -2009,6 +1995,45 @@ private struct FamiliarApprovalIntervention: View {
                 .stroke(FamiliarAISurfaceColor.warning.opacity(0.3), lineWidth: FamiliarAISurfaceMetric.hairline)
         }
         .accessibilityElement(children: .contain)
+        .accessibilityFocused($isAccessibilityFocused)
+        .onAppear { isAccessibilityFocused = true }
+    }
+
+    private func approvalFieldLabel(_ label: String) -> some View {
+        Text(label)
+            .font(.caption)
+            .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+    }
+
+    private func approvalFieldValue(_ value: String) -> some View {
+        Text(value)
+            .font(.subheadline)
+            .foregroundStyle(FamiliarAISurfaceColor.ink)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .textSelection(.enabled)
+    }
+
+    @ViewBuilder
+    private var approvalActions: some View {
+        Button(String(localized: "common.cancel")) { resolve(.cancelled) }
+            .buttonStyle(.bordered)
+            .frame(minHeight: FamiliarControlSize.minimumHitTarget)
+        Menu {
+            Button(String(localized: "authorization.once", defaultValue: "Only Once")) { resolve(.confirmedOnce) }
+            Button(String(localized: "authorization.always", defaultValue: "Always Allow")) { resolve(.confirmedAlways) }
+        } label: {
+            Label(
+                String(localized: "authorization.more_options", defaultValue: "More approval options"),
+                systemImage: "ellipsis"
+            )
+            .labelStyle(.iconOnly)
+        }
+        .buttonStyle(.bordered)
+        .accessibilityLabel(String(localized: "authorization.more_options", defaultValue: "More approval options"))
+        .frame(minWidth: FamiliarControlSize.minimumHitTarget, minHeight: FamiliarControlSize.minimumHitTarget)
+        Button(String(localized: "authorization.session", defaultValue: "Allow This Session")) { resolve(.confirmed) }
+            .buttonStyle(.borderedProminent)
+            .frame(minHeight: FamiliarControlSize.minimumHitTarget)
     }
 
     private func resolve(_ decision: FamiliarToolConfirmationDecision) {
@@ -2051,6 +2076,7 @@ private struct FamiliarWriteReceipt: View {
                     if let url = FamiliarArtifactStore().url(relativePath: artifact.relativePath) {
                         ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
                             .accessibilityLabel(String(localized: "common.share"))
+                            .frame(minWidth: FamiliarControlSize.minimumHitTarget, minHeight: FamiliarControlSize.minimumHitTarget)
                     }
                 }
             }
@@ -2059,6 +2085,7 @@ private struct FamiliarWriteReceipt: View {
                 Button(String(localized: "common.undo"), action: onUndo)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(FamiliarAISurfaceColor.accentInk)
+                    .frame(minHeight: FamiliarControlSize.minimumHitTarget)
             }
         }
         .padding(FamiliarAISurfaceMetric.spaceM)
@@ -2096,6 +2123,7 @@ private struct FamiliarFailureRecovery: View {
                     Button(String(localized: "message.retry"), action: onRetry)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(FamiliarAISurfaceColor.failure)
+                        .frame(minHeight: FamiliarControlSize.minimumHitTarget)
                 }
             }
         }
@@ -2605,6 +2633,7 @@ struct FamiliarAssistantTurnVisualFixture: View {
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("visual-fixture.\(id)")
     }
 

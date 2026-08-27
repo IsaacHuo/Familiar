@@ -124,13 +124,14 @@ Share Extension（Notes/Safari/Files 来源、文件协调、签名环境）、D
 - Debug generic iOS、Release generic iOS、iOS 18 arm64 Simulator 均通过。
 - 当前 Xcode 稳定版 Swift 6 警告清零。
 - `build-for-testing` 只证明 App 与测试产物完成编译；只有实际执行 `test` 或 `test-without-building` 并记录结果，才能声明测试通过。
+- 先完成 `build-for-testing`，再运行 `Scripts/run-release-test-suites.sh <simulator-udid> <derived-data-path>`；脚本逐 suite 串行执行全部 Swift Testing 与 UI smoke，并保留每个 suite 的独立 xcresult。
 
 ### 数据
 
 - `FamiliarReleaseSchemaV1` 的 31 实体、Debug/Release store profile、文件 store 重开和 migration plan 测试通过。
 - 会话、附件和工具终态重启后可读取；删除会话后附件清理通过。
-- 开发阶段采用破坏性 schema 策略，测试 store 可重建；这不是未来公开版本的数据迁移策略。
-- 首次公开发布前建立版本化 schema 基线；公开发布后的每次 schema 变化都必须提供 migration stage、真实旧版本 store fixture、覆盖安装与磁盘迁移测试，且失败时不得静默删除用户数据。
+- 未公开的 Development store 不迁移到 Release store；任何破坏性恢复都只能在用户明确确认后执行，并保留 Keychain。
+- 公开发布后的每次 schema 变化都必须提供 migration stage、真实旧版本 store fixture、覆盖安装与磁盘迁移测试，且失败时不得静默删除用户数据。
 
 ### Agent
 
@@ -150,19 +151,19 @@ Share Extension（Notes/Safari/Files 来源、文件协调、签名环境）、D
 ### 隐私
 
 - API Key 不出现在日志和普通存储。
-- 图片 bytes 只进入当前多模态 Provider 或设备端视觉处理，不进入其他 Provider 或无关存储。
+- 图片 bytes 只进入设备端 Apple Vision 与本地附件存储，不进入 DeepSeek 或无关存储。
 - 视觉证据带 provenance，作为不可信只读输入，不能产生工具授权。
 - FastVLMRuntime/MLX 不在 Release 二进制或数据目的地中。
 - Speech 和 EventKit 用途说明与调用一致。
 - Markdown 远程图片不自动加载，策略在 App 与官网披露。
 
-### 个人实验交付
+### Release 交付
 
-- 不以 App Store 审核作为当前门槛。
 - 无账户、订阅、托管额度和无效入口。
 - Provider 模型 ID 失效时界面可恢复。
 - 所有者完成 DeepSeek 真机主路径验收。
-- 任何公开分发或商业使用前重新执行许可证、隐私与发布审查。
+- 所有者使用正式证书生成签名 Archive，检查 Organizer Privacy Report、entitlements、版本一致性与 App Store Connect 隐私问卷。
+- 先进入 Internal TestFlight；真实 Key、真机、隐私、许可证与签名 Archive 全部通过后，才可声明 App Store 1.0 ready。
 
 ## 5. 记录模板
 
