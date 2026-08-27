@@ -49,6 +49,7 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 
 ## Verification Evidence
 
+- 2026-08-28：最终发布验证使用独立 DerivedData 完成 Debug arm64 generic Simulator `build-for-testing`；24 个 Swift Testing suite 按 `Scripts/run-release-test-suites.sh` 的清单逐套串行执行并全部通过，随后 UI smoke 2/2 通过。修复了测试夹具未持有 SwiftData `ModelContainer`、过时的 `.always` 授权断言与 UI fixture 子元素暴露问题。Release generic iOS arm64 build 和无签名 Archive 成功；App/Share/Widget 版本均为 1.0 (1)，三个 bundle manifest、许可资源和 arm64 架构检查通过，包内扫描未发现 FastVLM/MLX、实验 DeepSeek 模型或 DEBUG fixture。签名 Archive、Organizer Privacy Report、真实 DeepSeek Key 与真机矩阵仍由所有者完成。
 - 2026-08-28：App、Share Extension、Widget/Control 分别加入 PrivacyInfo.xcprivacy；FastVLM/MLX 已确认不在 iOS target；AnyDoc Rust notices 由锁定 Cargo graph 与 crate 自带 license 文件生成，App About 同时展示主 notices 与 Rust 清单。网站与 App 内隐私说明更新为 DeepSeek、DuckDuckGo、Apple Vision、28 Tool、联系人、位置、剪贴板和 Workspace 的真实路径；Release fixture 已限制在 DEBUG。Debug arm64 Simulator `build-for-testing` 成功，产物中的三个 executable bundle 均包含各自 manifest，`FamiliarReleaseComplianceTests` 3/3 通过；Release Archive 留在最终发布验证任务执行。
 - 2026-08-28：SwiftData Release V1、单 schema migration plan、Debug/Release store profile 与无自动清理启动路径接线后，Debug arm64 generic iOS Simulator `build-for-testing` 和 Release arm64 generic iOS Simulator build 成功。iOS 26.5 Simulator 单独执行 `FamiliarPersistenceReleaseTests` 4/4：31 实体/版本、文件 store 重开与关系、Release 不删除 Development store、失败打开不删除目标均通过。
 - 2026-08-27：Action commit、Workspace 投影、联系人最小字段、Clipboard 边界、shareDraft 与 DuckDuckGo Release Surface 接线后，`Familiar` arm64 generic iOS Simulator `build-for-testing` 成功。iOS 26.5 Simulator 实际执行：Release tool hardening 4/4、Runtime 10/10、EventKit policy、Tool contract、Surface 与 8 场景 Benchmark suites 均通过。一次全量并发执行在 34 个用例通过后 test host 以 SIGTRAP 退出，其余 103 项被 Xcode 标为 crashed；该次不算全量通过，后续按 suite 串行补齐。未做 Simulator 视觉验收或真机验收。
@@ -67,7 +68,6 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 - 2026-08-21：website 隐私说明更新后 `npm run build` 成功（Vite 17 modules）。
 - 2026-08-21：`Familiar` scheme 的 Debug arm64 generic iOS Simulator `build` 成功，覆盖 App、Share Extension、Widgets 与 FastVLM/MLX 依赖。
 - 2026-08-21：同一 destination 的 `build-for-testing` 成功，`FamiliarTests` 与 `FamiliarUITests` 测试产物均已编译。构建只出现 Xcode 对无 App Intents 依赖 target 跳过 metadata extraction 的警告，没有 Swift 源码诊断。
-- 未启动或运行 Simulator，未执行 `test` 或 `test-without-building`，因此没有测试执行结果，也不声明 Simulator 行为或视觉验收通过。
 
 ## Known Problems
 
@@ -90,6 +90,6 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 
 1. 使用非生产 DeepSeek Key，在真机或所有者认可的真实运行环境执行 `deepseek-v4-flash` 主路径：连接验证、模型列表、文本流式、主动取消、无效 Key、无效模型和限流/网络错误。
 2. 用同一 DeepSeek Run 验证 `calendar_events`、`reminders`、`create_reminder`：读取零确认，写入先审批，取消零写入，成功只写一次，ToolResult 回填后模型继续生成最终回答。
-3. 重启 App 后验证 EventKit Undo、运行记录、Reasoning summary、错误恢复和 Keychain；同时执行现有 Swift Testing 与 Agent benchmark，不能只停留在 `build-for-testing`。
+3. 真机重启 App 后验证 EventKit Undo、运行记录、Reasoning summary、错误恢复和 Keychain；自动 Swift Testing、8 场景 Agent benchmark 与 UI smoke 已执行通过，后续改动继续用串行脚本回归。
 4. 修复真实冒烟暴露的问题后冻结当前“唯一启用 Provider 为 DeepSeek”的 iOS 实验基线；分别记录构建、测试执行和真机结论。Search、Share、系统入口和无障碍继续按风险逐项验收，FastVLM 不进入本轮。
 5. Core AI、iSH、Shell、MCP、自动 Memory 与后台执行保持在 iOS 1.0 范围之外；不在本轮恢复本地路由 UI。

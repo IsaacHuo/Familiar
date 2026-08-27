@@ -39,6 +39,9 @@ struct FamiliarReleaseComplianceTests {
         #expect(!project.contains("XCLocalSwiftPackageReference \"Vendor/ml-fastvlm\""))
         #expect(project.contains("LocalVision/FamiliarLocalVisionModelManager.swift"))
 
+        let visionProcessor = try source("Familiar/Vision/FamiliarVisionProcessor.swift")
+        #expect(!visionProcessor.localizedCaseInsensitiveContains("fastvlm"))
+
         let rootView = try source("Familiar/Presentation/FamiliarRootView.swift")
         let messageViews = try source("Familiar/Presentation/FamiliarChatMessageViews.swift")
         #expect(rootView.contains("#if DEBUG"))
