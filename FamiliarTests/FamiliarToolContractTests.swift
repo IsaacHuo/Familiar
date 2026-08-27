@@ -90,6 +90,7 @@ struct FamiliarToolContractTests {
         .taskList(.init(planID: "release", title: "Release", tasks: [.init(id: "verify", title: "Verify", status: .running, detail: "Build", progress: 0.5)])),
         .recommendation(.init(title: "Next step", explanation: "Verify first.", nextPrompt: "Verify the build", alternatives: [.init(id: "review", title: "Review", prompt: "Review the diff")], confidenceLevel: .needsReview)),
         .insight(.init(title: "Latency", explanation: "Latency improved.", metrics: [.init(label: "P95", value: 120, unit: "ms", change: -18)])),
-        .code(.init(summary: "Example", language: "swift", filename: "Example.swift", code: "let value = 1"))
+        .code(.init(summary: "Example", language: "swift", filename: "Example.swift", code: "let value = 1")),
+        .shareDraft(.init(summary: "Ready to share", title: "Draft", text: "Share this text"))
     ]
 }

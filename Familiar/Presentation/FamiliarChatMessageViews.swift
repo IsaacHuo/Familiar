@@ -944,6 +944,8 @@ private struct FamiliarTurnSurface: View {
                 FamiliarClarificationSurface(surface: surface, onResolve: onResolveClarification)
             case .code:
                 FamiliarCodeSurface(surface: surface)
+            case .share:
+                FamiliarShareDraftSurface(surface: surface)
             case .diff:
                 FamiliarDiffSurface(surface: surface)
             case .toolSummary:
@@ -960,6 +962,41 @@ private struct FamiliarTurnSurface: View {
         }
         .sensoryFeedback(trigger: surface.phase) { old, new in
             FamiliarHapticPolicy.feedback(from: old, to: new)
+        }
+    }
+}
+
+private struct FamiliarShareDraftSurface: View {
+    let surface: FamiliarSurfaceDescriptor
+
+    var body: some View {
+        if case .shareDraft(let draft) = surface.resultEnvelope?.presentation.content {
+            VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceM) {
+                HStack(alignment: .top, spacing: FamiliarAISurfaceMetric.spaceS) {
+                    Image(systemName: "square.and.arrow.up")
+                        .foregroundStyle(FamiliarAISurfaceColor.accentInk)
+                        .frame(width: FamiliarAISurfaceMetric.icon)
+                    VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
+                        Text(draft.title ?? String(localized: "common.share"))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(FamiliarAISurfaceColor.ink)
+                        Text(draft.text)
+                            .font(.caption)
+                            .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+                            .lineLimit(6)
+                            .textSelection(.enabled)
+                    }
+                }
+                ShareLink(item: draft.text) {
+                    Label(String(localized: "common.share"), systemImage: "square.and.arrow.up")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(minHeight: 44)
+                }
+                .accessibilityHint(String(localized: "share.draft.accessibility_hint", defaultValue: "Opens the system share sheet. Familiar does not send this automatically."))
+            }
+            .padding(FamiliarAISurfaceMetric.spaceM)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(FamiliarAISurfaceColor.accentTint, in: RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.card, style: .continuous))
         }
     }
 }
@@ -2036,7 +2073,7 @@ private struct FamiliarWriteReceipt: View {
         switch content {
         case .mutationReceipt(let receipt): return receipt.operation
         case .artifactMutation(let artifact): return "\(artifact.operation) · \(ByteCountFormatter.string(fromByteCount: artifact.byteSize, countStyle: .file))"
-        case .scalar, .searchResults, .document, .contextMatches, .recordCollection, .diff, .taskList, .recommendation, .insight, .code: return surface.detail
+        case .scalar, .searchResults, .document, .contextMatches, .recordCollection, .diff, .taskList, .recommendation, .insight, .code, .shareDraft: return surface.detail
         }
     }
 }
@@ -2196,7 +2233,7 @@ private struct FamiliarTypedResult: View {
             traceValue(label: receipt.operation, value: receipt.targetIdentifier ?? receipt.summary)
         case .artifactMutation(let artifact):
             traceValue(label: artifact.operation, value: artifact.title)
-        case .contextMatches, .recordCollection, .diff, .taskList, .recommendation, .insight, .code:
+        case .contextMatches, .recordCollection, .diff, .taskList, .recommendation, .insight, .code, .shareDraft:
             EmptyView()
         }
     }
@@ -2226,6 +2263,7 @@ private struct FamiliarTypedResult: View {
         case .insight: "chart.xyaxis.line"
         case .clarification: "bubble.left.and.bubble.right"
         case .code: "chevron.left.forwardslash.chevron.right"
+        case .share: "square.and.arrow.up"
         }
     }
 }

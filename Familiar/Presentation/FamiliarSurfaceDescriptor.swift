@@ -16,6 +16,7 @@ nonisolated enum FamiliarSurfaceKind: String, Sendable, Equatable {
     case insight
     case clarification
     case code
+    case share
     case failure
 }
 
@@ -599,12 +600,13 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         case .recommendation: .recommendation
         case .insight: .insight
         case .code: .code
+        case .shareDraft: .share
         }
     }
 
     private func isTopLevelPresentation(_ name: FamiliarToolPresentationPayload.Name) -> Bool {
         switch name {
-        case .contextMatches, .recordCollection, .diff, .taskList, .recommendation, .insight, .code: true
+        case .contextMatches, .recordCollection, .diff, .taskList, .recommendation, .insight, .code, .shareDraft: true
         case .scalar, .searchResults, .document, .mutationReceipt, .artifactMutation: false
         }
     }

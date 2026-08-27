@@ -39,7 +39,7 @@
 ### `Familiar/Agent/` — Agent 运行时
 | 文件 | 职责 |
 |---|---|
-| `FamiliarTool.swift` | `FamiliarTool` 协议（类型化 Input）、`FamiliarToolManifest`、effect/risk/requirement、`FamiliarToolResultEnvelope`（canonical model JSON + schema v2 typed scalar/search/document/context/records/mutation/artifact/diff/taskList/recommendation/insight/code payload；Context Match 含真实资源版本，typed Code 可带文件名）、有序 typed approval fields、`FamiliarActionProposal`（延迟写入 + execute/undo）、clarification proposal、`actor FamiliarToolRegistry` |
+| `FamiliarTool.swift` | `FamiliarTool` 协议（类型化 Input）、`FamiliarToolManifest`、effect/risk/requirement、`FamiliarToolResultEnvelope`（canonical model JSON + schema v3 typed scalar/search/document/context/records/mutation/artifact/diff/taskList/recommendation/insight/code/shareDraft payload）、有序 typed approval fields、纯预览 `FamiliarActionProposal` 与批准后 `FamiliarCommittedAction(result + undo)`、clarification proposal、`actor FamiliarToolRegistry` |
 | `FamiliarAgentLoop.swift` | `struct FamiliarAgentLoop`（nonisolated）：唯一 typed Runtime event 集、`FamiliarRunOutcome` 单终态、最多 6 轮工具循环、规范化幂等指纹、read 失败内部重试一次、首字节前 Provider 重试 notice、整段 `ContinuousClock` hard deadline、最多 2 路并行独立 read、真实授权查询/签发、独立 clarification 暂停/恢复、结构化 tool failure、`actor FamiliarUndoStore`、结果长度上限（48k） |
 | `FamiliarRuntimeError.swift` | `FamiliarRuntimeFailure.kind(for:)` 错误分类（auth/限流/5xx/网络/上下文/参数/结果/取消等）与 `isRetryable` 判定 |
 | `FamiliarModelProvider.swift` | 无 API Key 参数的 `FamiliarModelProvider.stream(request:)` 与默认 `generate(request:)`、统一 `FamiliarToolCall`、reasoning delta、消息/内容/Manifest、`localOnly/preferLocal/cloud` 值类型 |
@@ -49,7 +49,7 @@
 | `FamiliarClarificationCoordinator.swift` | `public actor`，独立于授权确认保存 pending clarification continuation；验证选项/自定义回答，支持按 Run 取消 |
 | `FamiliarPresentationTools.swift` | `task_plan`、`present_recommendation`、`present_insight`、`ask_user` 四个显式只读 model-facing manifest |
 | `FamiliarAuthorizationRuntime.swift` | `@MainActor` SwiftData 授权查询、单次消费、session/长期授权签发与撤销范围匹配 |
-| `FamiliarProjectContextAssembler.swift` | 从 Project seed + 消息快照 + 工具 manifest 组装不可变 `FamiliarContextSnapshot`；按 base→Project→本次显式选择的 Skill→安全策略注入，并以该 Skill 的 allowedTools 收窄 manifests；执行输入字符预算 |
+| `FamiliarProjectContextAssembler.swift` | 从 Project seed + 消息快照 + 工具 manifest 组装不可变 `FamiliarContextSnapshot`；除 Provider 输入外冻结去重后的 Attachment snapshot，供 Workspace 虚拟 Files 投影；按 base→Project→本次显式选择的 Skill→安全策略注入，并以该 Skill 的 allowedTools 收窄 manifests；执行输入字符预算 |
 | `FamiliarNativeTools.swift` | `current_date_time`、`app_information`（read/low） |
 
 ### `Familiar/App/` — 见 §2。
@@ -87,7 +87,7 @@
 
 ### `Familiar/Workspace/`、`Familiar/Native/`、`Familiar/Shell/`
 - `FamiliarWorkspaceStore.swift` — Project/Conversation Workspace，Shell-visible Files/Outputs/Runtime/Work，Metadata/Tasks/Checkpoints 不挂载；路径穿越、symlink、配额、checkpoint/diff/restore。
-- `FamiliarWorkspaceTools.swift` — Workspace list/read/search/write 与仅列用户导入图片的 image list。
+- `FamiliarWorkspaceTools.swift` — `Files/Resources/<id>/...` 与 `Files/Attachments/<id>/...` 是当前 ContextSnapshot 的虚拟只读投影；`Outputs`/`Runtime/Work` 来自 Workspace Store。write 只允许 `Outputs`，批准后保存目标文件级旧值，Undo 不触碰其他路径；image list 只列当前会话显式附件图片。
 - `FamiliarDeviceTools.swift` — Contacts 只读、单次前台 Location、Clipboard 双向确认/写入 undo、只准备 payload 的 Share；EventKit 继续独立 adapter，Spotlight 只查 Familiar 索引。
 - `FamiliarShellExecutor.swift` / `FamiliarShellPolicy.swift` / `FamiliarShellTool.swift` — 统一 Shell 事件/typed result/取消/限制、危险命令确认、禁网/host path/后台/循环/编码绕过、执行前 checkpoint 与执行后 diff。真实 executor 未就绪前 `shell_execute` 不注册。
 - `FamiliarISHShellExecutor.swift` — Workspace 三目录 allowlist、禁网 runtime config 和 iSH bridge contract；具体 GPL fork/bridge 尚未 vendored。
@@ -219,7 +219,7 @@ Composer
            → 写入工具：有序 typed fields + target/effect/risk/consequence/undo policy，经 confirmationCoordinator 等待确认
                → approvalResolved(once/session/always) → ToolInvocationRecord approved + scoped rule (session/always)
             → `ask_user`：clarificationRequested → 独立 coordinator 等待选项/自定义文本 → clarificationResolved → 回填模型继续同一 Run
-           → 确认后执行 FamiliarActionProposal.execute + undoStore 注册
+           → 确认后准备 capability → FamiliarActionProposal.commit → 注册 commit 返回的 undo
            → supportsParallelism 的连续独立 read 最多并发 2 个，模型 tool result 按原 call 顺序回填；write/approval 串行
            → 成功结果封装 canonical model JSON + versioned typed presentation payload；失败结果为 code/retryable/message
   → 事件回流 Controller

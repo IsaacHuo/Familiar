@@ -12,6 +12,7 @@
 "common.open_settings" = "Open Settings";
 "common.save" = "Save";
 "common.share" = "Share";
+"share.draft.accessibility_hint" = "Opens the system share sheet. Familiar does not send this automatically.";
 "common.before" = "Before";
 "common.after" = "After";
 

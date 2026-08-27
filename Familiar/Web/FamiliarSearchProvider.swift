@@ -58,6 +58,13 @@ nonisolated enum FamiliarSearchProviderCatalog {
         )
     ]
 
+    /// Providers exposed by the iOS 1.0 settings UI. Additional adapters stay
+    /// available for deterministic contract tests until their real-key release
+    /// smoke tests are complete.
+    static var releaseVisible: [FamiliarSearchProviderDescriptor] {
+        all.filter { $0.id == defaultProviderID }
+    }
+
     static func descriptor(for id: String) -> FamiliarSearchProviderDescriptor? {
         all.first { $0.id == id }
     }

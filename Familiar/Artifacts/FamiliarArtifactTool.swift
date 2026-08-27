@@ -23,12 +23,12 @@ nonisolated struct FamiliarArtifactWriteTool: FamiliarTool {
             .init(id: "title", label: "标题", type: .text, value: input.title),
             .init(id: "size", label: "大小", type: .number, value: String(data.count))
         ], target: identifier, effect: manifest.effect, risk: manifest.risk, consequence: "将在当前项目中写入新的 Artifact。", undoPolicy: .currentSession,
-            idempotencyKey: context.idempotencyKey, execute: {
+            idempotencyKey: context.idempotencyKey, commit: {
                 let stored = try store.write(data, projectID: projectID, artifactID: id, filename: filename)
                 let descriptor = FamiliarArtifactDescriptor(id: id, identifier: identifier, projectID: projectID, title: input.title,
                     format: format, relativePath: stored.path, byteSize: Int64(data.count), contentHash: stored.hash, source: .generated,
                     sourceURLString: nil, sourceResourceID: nil, sourceResourceVersionID: nil, sourceCaptureID: nil, createdByRunID: context.runID)
-                return .init(
+                let result = FamiliarToolExecutionResult(
                     envelope: try FamiliarToolResultEnvelope(
                         model: Output(artifactIdentifier: identifier, contentHash: stored.hash),
                         presentation: .artifactMutation(.init(summary: "已写入 \(input.title)", operation: "write", identifier: identifier, title: input.title, byteSize: Int64(data.count), contentHash: stored.hash))
@@ -36,12 +36,13 @@ nonisolated struct FamiliarArtifactWriteTool: FamiliarTool {
                     artifactIdentifier: identifier,
                     artifact: descriptor
                 )
-            }, undo: {
-                try store.remove(projectID: projectID, artifactID: id)
-                return .init(envelope: try FamiliarToolResultEnvelope(
-                    model: UndoOutput(undone: true, artifactIdentifier: identifier),
-                    presentation: .mutationReceipt(.init(summary: "已撤销写入 \(input.title)", operation: "undoArtifactWrite", targetIdentifier: identifier, succeeded: true, undoAvailable: false))
-                ))
+                return FamiliarCommittedAction(result: result) {
+                    try store.remove(projectID: projectID, artifactID: id)
+                    return .init(envelope: try FamiliarToolResultEnvelope(
+                        model: UndoOutput(undone: true, artifactIdentifier: identifier),
+                        presentation: .mutationReceipt(.init(summary: "已撤销写入 \(input.title)", operation: "undoArtifactWrite", targetIdentifier: identifier, succeeded: true, undoAvailable: false))
+                    ))
+                }
             }))
     }
 }
@@ -81,7 +82,7 @@ nonisolated struct FamiliarArtifactEditTool: FamiliarTool {
             consequence: "将替换此 Artifact 的完整内容。",
             undoPolicy: .currentSession,
             idempotencyKey: context.idempotencyKey,
-            execute: {
+            commit: {
                 let stored = try store.write(data, projectID: projectID, artifactID: artifactID, filename: filename)
                 if stored.path != original.relativePath { try? FileManager.default.removeItem(at: store.rootURL.appendingPathComponent(original.relativePath)) }
                 let descriptor = FamiliarArtifactDescriptor(
@@ -89,7 +90,7 @@ nonisolated struct FamiliarArtifactEditTool: FamiliarTool {
                     relativePath: stored.path, byteSize: Int64(data.count), contentHash: stored.hash, source: .generated,
                     sourceURLString: nil, sourceResourceID: nil, sourceResourceVersionID: nil, sourceCaptureID: nil, createdByRunID: context.runID
                 )
-                return .init(
+                let result = FamiliarToolExecutionResult(
                     envelope: try FamiliarToolResultEnvelope(
                         model: Output(artifactIdentifier: input.identifier, contentHash: stored.hash),
                         presentation: .artifactMutation(.init(summary: "已编辑 \(title)", operation: "edit", identifier: input.identifier, title: title, byteSize: Int64(data.count), contentHash: stored.hash))
@@ -97,26 +98,26 @@ nonisolated struct FamiliarArtifactEditTool: FamiliarTool {
                     artifactIdentifier: input.identifier,
                     artifact: descriptor
                 )
-            },
-            undo: {
-                let replacementPath = "Projects/\(projectID.uuidString)/Artifacts/\(artifactID.uuidString)/\(filename)"
-                if replacementPath != original.relativePath {
-                    try? FileManager.default.removeItem(at: store.rootURL.appendingPathComponent(replacementPath))
+                return FamiliarCommittedAction(result: result) {
+                    let replacementPath = "Projects/\(projectID.uuidString)/Artifacts/\(artifactID.uuidString)/\(filename)"
+                    if replacementPath != original.relativePath {
+                        try? FileManager.default.removeItem(at: store.rootURL.appendingPathComponent(replacementPath))
+                    }
+                    let stored = try store.write(original.data, projectID: projectID, artifactID: artifactID, filename: original.filename)
+                    let descriptor = FamiliarArtifactDescriptor(
+                        id: artifactID, identifier: input.identifier, projectID: projectID, title: originalTitle, format: format,
+                        relativePath: stored.path, byteSize: Int64(original.data.count), contentHash: stored.hash, source: .generated,
+                        sourceURLString: nil, sourceResourceID: nil, sourceResourceVersionID: nil, sourceCaptureID: nil, createdByRunID: context.runID
+                    )
+                    return .init(
+                        envelope: try FamiliarToolResultEnvelope(
+                            model: UndoOutput(undone: true, artifactIdentifier: input.identifier, contentHash: stored.hash),
+                            presentation: .artifactMutation(.init(summary: "已撤销编辑 \(originalTitle)", operation: "undoEdit", identifier: input.identifier, title: originalTitle, byteSize: Int64(original.data.count), contentHash: stored.hash))
+                        ),
+                        artifactIdentifier: input.identifier,
+                        artifact: descriptor
+                    )
                 }
-                let stored = try store.write(original.data, projectID: projectID, artifactID: artifactID, filename: original.filename)
-                let descriptor = FamiliarArtifactDescriptor(
-                    id: artifactID, identifier: input.identifier, projectID: projectID, title: originalTitle, format: format,
-                    relativePath: stored.path, byteSize: Int64(original.data.count), contentHash: stored.hash, source: .generated,
-                    sourceURLString: nil, sourceResourceID: nil, sourceResourceVersionID: nil, sourceCaptureID: nil, createdByRunID: context.runID
-                )
-                return .init(
-                    envelope: try FamiliarToolResultEnvelope(
-                        model: UndoOutput(undone: true, artifactIdentifier: input.identifier, contentHash: stored.hash),
-                        presentation: .artifactMutation(.init(summary: "已撤销编辑 \(originalTitle)", operation: "undoEdit", identifier: input.identifier, title: originalTitle, byteSize: Int64(original.data.count), contentHash: stored.hash))
-                    ),
-                    artifactIdentifier: input.identifier,
-                    artifact: descriptor
-                )
             }
         ))
     }

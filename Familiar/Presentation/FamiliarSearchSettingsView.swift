@@ -23,7 +23,7 @@ struct FamiliarSearchSettingsView: View {
         Form {
             Section {
                 Picker(String(localized: "settings.search.provider", defaultValue: "Search Provider"), selection: $providerID) {
-                    ForEach(FamiliarSearchProviderCatalog.all) { provider in
+                    ForEach(FamiliarSearchProviderCatalog.releaseVisible) { provider in
                         Text(provider.displayName).tag(provider.id)
                     }
                 }
@@ -111,7 +111,7 @@ struct FamiliarSearchSettingsView: View {
 
     private var descriptor: FamiliarSearchProviderDescriptor {
         FamiliarSearchProviderCatalog.descriptor(for: providerID)
-            ?? FamiliarSearchProviderCatalog.all[0]
+            ?? FamiliarSearchProviderCatalog.releaseVisible[0]
     }
 
     private var effectiveKey: String {

@@ -13,7 +13,7 @@ nonisolated public enum FamiliarToolRisk: String, Codable, Sendable {
 }
 
 nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
 
     public enum Name: String, Codable, Sendable {
         case scalar
@@ -28,6 +28,7 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         case recommendation
         case insight
         case code
+        case shareDraft
     }
 
     public struct Scalar: Codable, Equatable, Sendable {
@@ -302,6 +303,18 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         }
     }
 
+    public struct ShareDraft: Codable, Equatable, Sendable {
+        public let summary: String
+        public let title: String?
+        public let text: String
+
+        public init(summary: String, title: String? = nil, text: String) {
+            self.summary = summary
+            self.title = title
+            self.text = text
+        }
+    }
+
     public enum Content: Equatable, Sendable {
         case scalar(Scalar)
         case searchResults(SearchResults)
@@ -315,6 +328,7 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         case recommendation(Recommendation)
         case insight(Insight)
         case code(Code)
+        case shareDraft(ShareDraft)
     }
 
     public let schemaVersion: Int
@@ -333,6 +347,7 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
     public static func recommendation(_ value: Recommendation) -> Self { .init(name: .recommendation, content: .recommendation(value)) }
     public static func insight(_ value: Insight) -> Self { .init(name: .insight, content: .insight(value)) }
     public static func code(_ value: Code) -> Self { .init(name: .code, content: .code(value)) }
+    public static func shareDraft(_ value: ShareDraft) -> Self { .init(name: .shareDraft, content: .shareDraft(value)) }
 
     public var summary: String {
         switch content {
@@ -348,6 +363,7 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         case .recommendation(let value): value.title
         case .insight(let value): value.title
         case .code(let value): value.summary
+        case .shareDraft(let value): value.summary
         }
     }
 
@@ -385,6 +401,7 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         case .recommendation: .recommendation(try container.decode(Recommendation.self, forKey: .payload))
         case .insight: .insight(try container.decode(Insight.self, forKey: .payload))
         case .code: .code(try container.decode(Code.self, forKey: .payload))
+        case .shareDraft: .shareDraft(try container.decode(ShareDraft.self, forKey: .payload))
         }
     }
 
@@ -405,6 +422,7 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         case .recommendation(let value): try container.encode(value, forKey: .payload)
         case .insight(let value): try container.encode(value, forKey: .payload)
         case .code(let value): try container.encode(value, forKey: .payload)
+        case .shareDraft(let value): try container.encode(value, forKey: .payload)
         }
     }
 }
@@ -510,7 +528,18 @@ nonisolated struct FamiliarToolContext: Sendable {
         let displayName: String
         let filename: String
         let mimeType: String
+        let contentHash: String
         let extractedText: String
+    }
+
+    struct Attachment: Sendable {
+        let id: UUID
+        let kind: FamiliarAttachmentKind
+        let filename: String
+        let mimeType: String
+        let relativePath: String
+        let extractedText: String
+        let byteSize: Int64
     }
 
     let runID: String
@@ -519,6 +548,7 @@ nonisolated struct FamiliarToolContext: Sendable {
     let conversationID: UUID?
     let workspaceID: FamiliarWorkspaceID?
     let resources: [Resource]
+    let attachments: [Attachment]
 
     init(
         runID: String = "standalone",
@@ -526,7 +556,8 @@ nonisolated struct FamiliarToolContext: Sendable {
         projectID: UUID? = nil,
         conversationID: UUID? = nil,
         workspaceID: FamiliarWorkspaceID? = nil,
-        resources: [Resource] = []
+        resources: [Resource] = [],
+        attachments: [Attachment] = []
     ) {
         self.runID = runID
         self.toolCallID = toolCallID
@@ -534,6 +565,7 @@ nonisolated struct FamiliarToolContext: Sendable {
         self.conversationID = conversationID
         self.workspaceID = workspaceID
         self.resources = resources
+        self.attachments = attachments
     }
 
     var idempotencyKey: String { runID + ":" + toolCallID }
@@ -558,6 +590,18 @@ nonisolated struct FamiliarToolExecutionResult: Sendable {
     var summary: String { envelope.summary }
 }
 
+typealias FamiliarUndoAction = @Sendable () async throws -> FamiliarToolExecutionResult
+
+nonisolated struct FamiliarCommittedAction: Sendable {
+    let result: FamiliarToolExecutionResult
+    let undo: FamiliarUndoAction?
+
+    init(result: FamiliarToolExecutionResult, undo: FamiliarUndoAction? = nil) {
+        self.result = result
+        self.undo = undo
+    }
+}
+
 nonisolated struct FamiliarActionProposal: Sendable {
     let title: String
     let fields: [FamiliarApprovalField]
@@ -568,10 +612,9 @@ nonisolated struct FamiliarActionProposal: Sendable {
     let consequence: String
     let undoPolicy: FamiliarApprovalUndoPolicy
     let idempotencyKey: String
-    let execute: @Sendable () async throws -> FamiliarToolExecutionResult
-    let undo: (@Sendable () async throws -> FamiliarToolExecutionResult)?
+    let commit: @Sendable () async throws -> FamiliarCommittedAction
 
-    init(title: String, fields: [FamiliarApprovalField], target: String?, targetKey: String? = nil, effect: FamiliarToolEffect, risk: FamiliarToolRisk, consequence: String, undoPolicy: FamiliarApprovalUndoPolicy, idempotencyKey: String, execute: @escaping @Sendable () async throws -> FamiliarToolExecutionResult, undo: (@Sendable () async throws -> FamiliarToolExecutionResult)?) {
+    init(title: String, fields: [FamiliarApprovalField], target: String?, targetKey: String? = nil, effect: FamiliarToolEffect, risk: FamiliarToolRisk, consequence: String, undoPolicy: FamiliarApprovalUndoPolicy, idempotencyKey: String, commit: @escaping @Sendable () async throws -> FamiliarCommittedAction) {
         self.title = title
         self.fields = fields
         self.target = target
@@ -581,8 +624,7 @@ nonisolated struct FamiliarActionProposal: Sendable {
         self.consequence = consequence
         self.undoPolicy = undoPolicy
         self.idempotencyKey = idempotencyKey
-        self.execute = execute
-        self.undo = undo
+        self.commit = commit
     }
 }
 

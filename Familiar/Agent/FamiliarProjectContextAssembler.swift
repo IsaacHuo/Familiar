@@ -12,6 +12,16 @@ nonisolated struct FamiliarContextResource: Equatable, Sendable {
     let extractedTextHash: String
 }
 
+nonisolated struct FamiliarContextAttachment: Equatable, Sendable {
+    let id: UUID
+    let kind: FamiliarAttachmentKind
+    let filename: String
+    let mimeType: String
+    let relativePath: String
+    let extractedText: String
+    let byteSize: Int64
+}
+
 nonisolated struct FamiliarProjectContextSeed: Sendable {
     let projectID: UUID?
     let projectName: String?
@@ -51,6 +61,7 @@ nonisolated struct FamiliarContextSnapshot: Sendable {
     let maximumInputCharacters: Int
     let initialInputCharacters: Int
     let resources: [FamiliarContextResource]
+    let attachments: [FamiliarContextAttachment]
     let skills: [FamiliarSkillSnapshot]
     let visualEvidence: [FamiliarVisualEvidence]
     let visualEvidenceMessageID: UUID?
@@ -80,6 +91,19 @@ nonisolated enum FamiliarProjectContextAssembler {
                 return $0.resourceID.uuidString < $1.resourceID.uuidString
             }
             return $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
+        }
+        var seenAttachmentIDs = Set<UUID>()
+        let attachments = messages.flatMap(\.attachments).compactMap { attachment -> FamiliarContextAttachment? in
+            guard seenAttachmentIDs.insert(attachment.id).inserted else { return nil }
+            return FamiliarContextAttachment(
+                id: attachment.id,
+                kind: attachment.kind,
+                filename: attachment.filename,
+                mimeType: attachment.mimeType,
+                relativePath: attachment.relativePath,
+                extractedText: attachment.extractedText,
+                byteSize: attachment.byteSize
+            )
         }
         let instruction = seed.projectInstruction?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -150,6 +174,7 @@ nonisolated enum FamiliarProjectContextAssembler {
             maximumInputCharacters: maximum,
             initialInputCharacters: initial,
             resources: resources,
+            attachments: attachments,
             skills: skills,
             visualEvidence: visualEvidence,
             visualEvidenceMessageID: evidenceMessageID

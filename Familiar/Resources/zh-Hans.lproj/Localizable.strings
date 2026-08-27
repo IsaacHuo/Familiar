@@ -12,6 +12,7 @@
 "common.open_settings" = "打开设置";
 "common.save" = "保存";
 "common.share" = "分享";
+"share.draft.accessibility_hint" = "打开系统分享面板。Familiar 不会自动发送。";
 "common.before" = "修改前";
 "common.after" = "修改后";
 

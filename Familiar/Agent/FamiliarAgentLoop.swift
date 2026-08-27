@@ -462,7 +462,10 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                 }
             }
             let resources = contextSnapshot.resources.map {
-                FamiliarToolContext.Resource(id: $0.resourceID, versionID: $0.resourceVersionID, version: $0.version, displayName: $0.displayName, filename: $0.filename, mimeType: $0.mimeType, extractedText: $0.extractedText)
+                FamiliarToolContext.Resource(id: $0.resourceID, versionID: $0.resourceVersionID, version: $0.version, displayName: $0.displayName, filename: $0.filename, mimeType: $0.mimeType, contentHash: $0.contentHash, extractedText: $0.extractedText)
+            }
+            let attachments = contextSnapshot.attachments.map {
+                FamiliarToolContext.Attachment(id: $0.id, kind: $0.kind, filename: $0.filename, mimeType: $0.mimeType, relativePath: $0.relativePath, extractedText: $0.extractedText, byteSize: $0.byteSize)
             }
             let workspaceID: FamiliarWorkspaceID = contextSnapshot.projectID.map(FamiliarWorkspaceID.project)
                 ?? .conversation(contextSnapshot.conversationID)
@@ -472,7 +475,8 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                 projectID: contextSnapshot.projectID,
                 conversationID: contextSnapshot.conversationID,
                 workspaceID: workspaceID,
-                resources: resources
+                resources: resources,
+                attachments: attachments
             )
             let outcome = try await executeOutcome(
                 name: call.name,
@@ -509,12 +513,17 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                 if !hasGrant, let duration = approvalDecision.authorizationDuration, let authorizationRuntime {
                     try await authorizationRuntime.issueAuthorization(duration: duration, manifest: manifest, arguments: call.arguments, projectID: contextSnapshot.projectID, targetKey: proposal.targetKey, evidence: proposal.title)
                 }
-                let result = try await Self.withDeadline(deadline) { try await proposal.execute() }
-                if let undo = proposal.undo {
+                if manifest.effect != .read {
+                    try await Self.withDeadline(deadline) {
+                        try await registry.prepareCapabilities(for: manifest)
+                    }
+                }
+                let committed = try await Self.withDeadline(deadline) { try await proposal.commit() }
+                if let undo = committed.undo {
                     undoAvailable = true
                     await undoStore.register(key: proposal.idempotencyKey, action: undo)
                 }
-                resolved = (result, hasGrant ? .notRequired : .confirmed)
+                resolved = (committed.result, hasGrant ? .notRequired : .confirmed)
             case .clarification(let proposal):
                 let request = FamiliarClarificationRequest(
                     runID: runID,

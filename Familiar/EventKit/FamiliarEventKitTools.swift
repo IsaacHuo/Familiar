@@ -107,16 +107,17 @@ nonisolated struct FamiliarCreateCalendarEventTool: FamiliarTool {
             consequence: "将在 \(target) 中创建日历事件。",
             undoPolicy: .durable,
             idempotencyKey: context.idempotencyKey,
-            execute: {
-                try await service.request(.calendarFullAccess)
+            commit: {
                 let commit = try await service.commit(request, idempotencyKey: context.idempotencyKey)
-                return try FamiliarEventKitToolSupport.result(
+                let result = try FamiliarEventKitToolSupport.result(
                     commit,
                     presentation: .mutationReceipt(.init(summary: String(localized: "tool.write_succeeded"), operation: "createCalendarEvent", targetIdentifier: commit.identifier, succeeded: true, undoAvailable: true)),
                     artifactIdentifier: commit.identifier
                 )
-            },
-            undo: { try await service.undoCommit(idempotencyKey: context.idempotencyKey) }
+                return FamiliarCommittedAction(result: result) {
+                    try await service.undoCommit(idempotencyKey: context.idempotencyKey)
+                }
+            }
         ))
     }
 }
@@ -147,16 +148,17 @@ nonisolated struct FamiliarCreateReminderTool: FamiliarTool {
             consequence: "将在 \(target) 中创建提醒事项。",
             undoPolicy: .durable,
             idempotencyKey: context.idempotencyKey,
-            execute: {
-                try await service.request(.remindersFullAccess)
+            commit: {
                 let commit = try await service.commit(request, idempotencyKey: context.idempotencyKey)
-                return try FamiliarEventKitToolSupport.result(
+                let result = try FamiliarEventKitToolSupport.result(
                     commit,
                     presentation: .mutationReceipt(.init(summary: String(localized: "tool.write_succeeded"), operation: "createReminder", targetIdentifier: commit.identifier, succeeded: true, undoAvailable: true)),
                     artifactIdentifier: commit.identifier
                 )
-            },
-            undo: { try await service.undoCommit(idempotencyKey: context.idempotencyKey) }
+                return FamiliarCommittedAction(result: result) {
+                    try await service.undoCommit(idempotencyKey: context.idempotencyKey)
+                }
+            }
         ))
     }
 }

@@ -76,7 +76,20 @@ actor FamiliarContactsService: FamiliarContactsServicing {
 }
 
 nonisolated struct FamiliarContactsSearchTool: FamiliarTool {
-    struct Input: Decodable, Sendable { let query: String; let limit: Int? }
+    struct Input: Decodable, Sendable {
+        let query: String
+        let limit: Int?
+        let includePhoneNumbers: Bool?
+        let includeEmailAddresses: Bool?
+        let includeOrganization: Bool?
+    }
+    private struct OutputContact: Encodable {
+        let id: String
+        let displayName: String
+        let phoneNumbers: [String]?
+        let emailAddresses: [String]?
+        let organizationName: String?
+    }
     let service: any FamiliarContactsServicing
     let manifest = FamiliarToolManifest(
         name: "contacts_search",
@@ -84,7 +97,10 @@ nonisolated struct FamiliarContactsSearchTool: FamiliarTool {
         description: "在用户授权的联系人中按姓名搜索，最多返回 20 条及回答所需的最小字段。",
         parameters: .init(type: .object, properties: [
             "query": .init(type: .string, description: "联系人姓名"),
-            "limit": .init(type: .integer, description: "1 到 20")
+            "limit": .init(type: .integer, description: "1 到 20"),
+            "includePhoneNumbers": .init(type: .boolean, description: "只有回答确实需要电话号码时才设为 true"),
+            "includeEmailAddresses": .init(type: .boolean, description: "只有回答确实需要邮箱时才设为 true"),
+            "includeOrganization": .init(type: .boolean, description: "只有回答确实需要组织信息时才设为 true")
         ], required: ["query"]),
         effect: .read,
         risk: .sensitive,
@@ -97,16 +113,24 @@ nonisolated struct FamiliarContactsSearchTool: FamiliarTool {
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
         let values = try await service.search(query: input.query, limit: min(max(input.limit ?? 10, 1), 20))
-        let records = values.map { contact in
-            FamiliarToolPresentationPayload.Record(id: contact.id, fields: [
-                .init(name: "name", value: contact.displayName),
-                .init(name: "phones", value: contact.phoneNumbers.joined(separator: ", ")),
-                .init(name: "emails", value: contact.emailAddresses.joined(separator: ", ")),
-                .init(name: "organization", value: contact.organizationName ?? "")
-            ])
+        let output = values.map { contact in
+            OutputContact(
+                id: contact.id,
+                displayName: contact.displayName,
+                phoneNumbers: input.includePhoneNumbers == true ? contact.phoneNumbers : nil,
+                emailAddresses: input.includeEmailAddresses == true ? contact.emailAddresses : nil,
+                organizationName: input.includeOrganization == true ? contact.organizationName : nil
+            )
+        }
+        let records = output.map { contact in
+            var fields = [FamiliarToolPresentationPayload.RecordField(name: "name", value: contact.displayName)]
+            if let values = contact.phoneNumbers { fields.append(.init(name: "phones", value: values.joined(separator: ", "))) }
+            if let values = contact.emailAddresses { fields.append(.init(name: "emails", value: values.joined(separator: ", "))) }
+            if let value = contact.organizationName { fields.append(.init(name: "organization", value: value)) }
+            return FamiliarToolPresentationPayload.Record(id: contact.id, fields: fields)
         }
         return .result(.init(envelope: try FamiliarToolResultEnvelope(
-            model: values,
+            model: output,
             presentation: .recordCollection(.init(
                 summary: "找到 \(values.count) 位联系人。",
                 recordType: "contact",
@@ -303,9 +327,9 @@ nonisolated struct FamiliarClipboardReadTool: FamiliarTool {
             consequence: "剪贴板文本会进入当前 Agent Run 的模型上下文。",
             undoPolicy: .unavailable,
             idempotencyKey: context.idempotencyKey,
-            execute: {
+            commit: {
                 let text = await service.readText() ?? ""
-                return .init(envelope: try FamiliarToolResultEnvelope(
+                let result = FamiliarToolExecutionResult(envelope: try FamiliarToolResultEnvelope(
                     model: Output(text: text),
                     presentation: .document(.init(
                         summary: text.isEmpty ? "剪贴板中没有文本。" : "已读取剪贴板文本。",
@@ -314,8 +338,8 @@ nonisolated struct FamiliarClipboardReadTool: FamiliarTool {
                         mimeType: "text/plain"
                     ))
                 ))
-            },
-            undo: nil
+                return FamiliarCommittedAction(result: result)
+            }
         ))
     }
 }
@@ -341,7 +365,6 @@ nonisolated struct FamiliarClipboardWriteTool: FamiliarTool {
     )
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
-        let previous = await service.readText()
         return .action(FamiliarActionProposal(
             title: "写入剪贴板",
             fields: [.init(id: "text", label: "Text", type: .text, value: input.text)],
@@ -351,9 +374,10 @@ nonisolated struct FamiliarClipboardWriteTool: FamiliarTool {
             consequence: "将替换当前系统剪贴板文本。",
             undoPolicy: .currentSession,
             idempotencyKey: context.idempotencyKey,
-            execute: {
+            commit: {
+                let previous = await service.readText()
                 await service.writeText(input.text)
-                return .init(envelope: try FamiliarToolResultEnvelope(
+                let result = FamiliarToolExecutionResult(envelope: try FamiliarToolResultEnvelope(
                     model: Output(written: true, characterCount: input.text.count),
                     presentation: .mutationReceipt(.init(
                         summary: "已写入剪贴板。",
@@ -363,19 +387,19 @@ nonisolated struct FamiliarClipboardWriteTool: FamiliarTool {
                         undoAvailable: true
                     ))
                 ))
-            },
-            undo: {
-                await service.writeText(previous)
-                return .init(envelope: try FamiliarToolResultEnvelope(
-                    model: UndoOutput(restored: true),
-                    presentation: .mutationReceipt(.init(
-                        summary: "已恢复原剪贴板文本。",
-                        operation: "clipboardRestore",
-                        targetIdentifier: "clipboard",
-                        succeeded: true,
-                        undoAvailable: false
+                return FamiliarCommittedAction(result: result) {
+                    await service.writeText(previous)
+                    return .init(envelope: try FamiliarToolResultEnvelope(
+                        model: UndoOutput(restored: true),
+                        presentation: .mutationReceipt(.init(
+                            summary: "已恢复原剪贴板文本。",
+                            operation: "clipboardRestore",
+                            targetIdentifier: "clipboard",
+                            succeeded: true,
+                            undoAvailable: false
+                        ))
                     ))
-                ))
+                }
             }
         ))
     }
@@ -403,11 +427,10 @@ nonisolated struct FamiliarPrepareShareTool: FamiliarTool {
         let output = Output(title: input.title, text: input.text, requiresUserAction: true)
         return .result(.init(envelope: try FamiliarToolResultEnvelope(
             model: output,
-            presentation: .document(.init(
+            presentation: .shareDraft(.init(
                 summary: "分享内容已准备好，仍需用户主动打开系统分享。",
                 title: input.title ?? "Share",
-                text: input.text,
-                mimeType: "text/plain"
+                text: input.text
             ))
         )))
     }

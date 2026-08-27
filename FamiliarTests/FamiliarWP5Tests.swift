@@ -31,9 +31,9 @@ struct FamiliarWP5Tests {
         #expect(!FileManager.default.fileExists(atPath: root.path))
         let outcome = try await tool.execute(.init(title: "x", content: "body", format: .plainText), context: .init(projectID: UUID()))
         guard case .action(let proposal) = outcome else { Issue.record("expected approval action"); return }
-        let result = try await proposal.execute()
-        #expect(result.artifactIdentifier != nil)
-        #expect(result.artifact != nil)
+        let committed = try await proposal.commit()
+        #expect(committed.result.artifactIdentifier != nil)
+        #expect(committed.result.artifact != nil)
     }
 
     @Test("Artifact edit preserves the original file for same-session undo")
@@ -56,14 +56,14 @@ struct FamiliarWP5Tests {
             return
         }
 
-        let edited = try await proposal.execute()
-        let editedArtifact = try #require(edited.artifact)
-        #expect(edited.artifactIdentifier == identifier)
+        let committed = try await proposal.commit()
+        let editedArtifact = try #require(committed.result.artifact)
+        #expect(committed.result.artifactIdentifier == identifier)
         #expect(editedArtifact.title == "renamed")
         #expect(try store.read(relativePath: editedArtifact.relativePath) == Data("edited body".utf8))
         #expect(store.url(relativePath: original.path) == nil)
 
-        let undo = try #require(proposal.undo)
+        let undo = try #require(committed.undo)
         let restored = try await undo()
         let restoredArtifact = try #require(restored.artifact)
         #expect(restored.artifactIdentifier == identifier)

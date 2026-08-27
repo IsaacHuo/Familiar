@@ -46,12 +46,13 @@ struct FamiliarEventKitPolicyTests {
         let outcome = try await tool.execute(event, context: .init(runID: "run", toolCallID: "call"))
         guard case .action(let proposal) = outcome else { Issue.record("Expected action proposal"); return }
         #expect(proposal.target == "Test Calendar")
-        let first = try await proposal.execute()
-        let second = try await proposal.execute()
-        #expect(first.artifactIdentifier == "created-1")
-        #expect(second.artifactIdentifier == first.artifactIdentifier)
-        _ = try await proposal.undo?()
-        await #expect(throws: FamiliarEventKitError.self) { _ = try await proposal.undo?() }
+        let first = try await proposal.commit()
+        let second = try await proposal.commit()
+        #expect(first.result.artifactIdentifier == "created-1")
+        #expect(second.result.artifactIdentifier == first.result.artifactIdentifier)
+        let undo = try #require(first.undo)
+        _ = try await undo()
+        await #expect(throws: FamiliarEventKitError.self) { _ = try await undo() }
     }
 
     @Test("Denied capability and system save failure remain failures")
@@ -64,6 +65,6 @@ struct FamiliarEventKitPolicyTests {
         await failing.setFailsCommit()
         let outcome = try await FamiliarCreateCalendarEventTool(service: failing).execute(event, context: .init(runID: "run", toolCallID: "call"))
         guard case .action(let proposal) = outcome else { Issue.record("Expected action proposal"); return }
-        await #expect(throws: Error.self) { _ = try await proposal.execute() }
+        await #expect(throws: Error.self) { _ = try await proposal.commit() }
     }
 }

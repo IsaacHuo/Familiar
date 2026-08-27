@@ -116,7 +116,8 @@ struct FamiliarSurfaceTests {
             ("resource_search", .contextMatches(.init(summary: "Match", query: "body", matches: [.init(resourceID: UUID(), versionID: UUID(), version: 2, title: "Source", excerpt: "Body")])), .context, .topLevel),
             ("calendar_events", .recordCollection(.init(summary: "Events", recordType: "calendarEvent", records: [.init(id: "1", fields: [.init(name: "title", value: "Review")])])), .records, .topLevel),
             ("artifact_edit", .diff(.init(summary: "Changed", before: "old", after: "new")), .diff, .topLevel),
-            ("typed_code", .code(.init(summary: "Example", language: "swift", filename: "Example.swift", code: "let value = 1")), .code, .topLevel)
+            ("typed_code", .code(.init(summary: "Example", language: "swift", filename: "Example.swift", code: "let value = 1")), .code, .topLevel),
+            ("share_draft", .shareDraft(.init(summary: "Ready", title: "Draft", text: "Share this")), .share, .topLevel)
         ]
 
         var store = FamiliarSurfaceStore()

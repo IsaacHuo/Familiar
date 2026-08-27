@@ -79,7 +79,6 @@ nonisolated struct FamiliarShellTool: FamiliarTool {
         case .allow:
             return .result(try await run(command: command, timeoutSeconds: input.timeoutSeconds, context: context, workspaceID: workspaceID).result)
         case .requiresConfirmation(let reason):
-            let checkpoint = try workspaceStore.createCheckpoint(for: workspaceID)
             return .action(FamiliarActionProposal(
                 title: "确认运行 Shell 命令",
                 fields: [
@@ -94,29 +93,30 @@ nonisolated struct FamiliarShellTool: FamiliarTool {
                 consequence: reason,
                 undoPolicy: .currentSession,
                 idempotencyKey: context.idempotencyKey,
-                execute: {
-                    try await run(
+                commit: {
+                    let checkpoint = try workspaceStore.createCheckpoint(for: workspaceID)
+                    let result = try await run(
                         command: command,
                         timeoutSeconds: input.timeoutSeconds,
                         context: context,
                         workspaceID: workspaceID,
                         checkpoint: checkpoint
                     ).result
-                },
-                undo: {
-                    try workspaceStore.restore(checkpoint)
-                    return FamiliarToolExecutionResult(
-                        envelope: try FamiliarToolResultEnvelope(
-                            model: UndoOutput(restored: true, checkpointID: checkpoint.id),
-                            presentation: .mutationReceipt(.init(
-                                summary: "已恢复 Shell 执行前的 Workspace checkpoint。",
-                                operation: "restoreWorkspaceCheckpoint",
-                                targetIdentifier: checkpoint.id.uuidString,
-                                succeeded: true,
-                                undoAvailable: false
-                            ))
+                    return FamiliarCommittedAction(result: result) {
+                        try workspaceStore.restore(checkpoint)
+                        return FamiliarToolExecutionResult(
+                            envelope: try FamiliarToolResultEnvelope(
+                                model: UndoOutput(restored: true, checkpointID: checkpoint.id),
+                                presentation: .mutationReceipt(.init(
+                                    summary: "已恢复 Shell 执行前的 Workspace checkpoint。",
+                                    operation: "restoreWorkspaceCheckpoint",
+                                    targetIdentifier: checkpoint.id.uuidString,
+                                    succeeded: true,
+                                    undoAvailable: false
+                                ))
+                            )
                         )
-                    )
+                    }
                 }
             ))
         }

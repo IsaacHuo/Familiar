@@ -132,6 +132,17 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         return try Data(contentsOf: url)
     }
 
+    func contains(relativePath: String, in id: FamiliarWorkspaceID) throws -> Bool {
+        let url = try validatedURL(relativePath: relativePath, in: id)
+        return isRegularFile(url)
+    }
+
+    func remove(relativePath: String, in id: FamiliarWorkspaceID) throws {
+        let url = try validatedURL(relativePath: relativePath, in: id)
+        guard isRegularFile(url) else { throw FamiliarWorkspaceError.missingFile }
+        try fileManager.removeItem(at: url)
+    }
+
     @discardableResult
     func write(
         _ data: Data,

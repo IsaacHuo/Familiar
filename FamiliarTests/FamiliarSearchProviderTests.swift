@@ -12,6 +12,7 @@ struct FamiliarSearchProviderTests {
         let store = FamiliarSearchSettingsStore(defaults: defaults)
 
         #expect(FamiliarSearchProviderCatalog.all.map(\.id) == ["duckduckgo", "brave", "tavily", "exa"])
+        #expect(FamiliarSearchProviderCatalog.releaseVisible.map(\.id) == ["duckduckgo"])
         #expect(store.selectedProviderID == "duckduckgo")
         #expect(store.settings == .default)
         store.save(.init(providerID: "tavily"))
