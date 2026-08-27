@@ -7,7 +7,7 @@ private struct FamiliarFakeProvider: FamiliarModelProvider {
     let mode: Mode
     enum Mode: Sendable { case text, reasoning, toolThenText, repeatedTool }
 
-    func stream(request: FamiliarModelRequest, apiKey: String) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
+    func stream(request: FamiliarModelRequest) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let toolCount = request.messages.filter { $0.role == .tool }.count
             switch mode {
@@ -48,7 +48,7 @@ private struct FamiliarFlakyProvider: FamiliarModelProvider {
     let providerID = "fake"
     let counter: FamiliarAttemptCounter
 
-    func stream(request: FamiliarModelRequest, apiKey: String) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
+    func stream(request: FamiliarModelRequest) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 if await counter.next() == 1 {
@@ -65,7 +65,7 @@ private struct FamiliarFlakyProvider: FamiliarModelProvider {
 
 private struct FamiliarHangingProvider: FamiliarModelProvider {
     let providerID = "fake"
-    func stream(request: FamiliarModelRequest, apiKey: String) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
+    func stream(request: FamiliarModelRequest) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 try await Task.sleep(for: .seconds(10))
@@ -94,7 +94,7 @@ private actor FamiliarToolResultOrderRecorder {
 private struct FamiliarParallelProvider: FamiliarModelProvider {
     let providerID = "fake"
     let recorder: FamiliarToolResultOrderRecorder
-    func stream(request: FamiliarModelRequest, apiKey: String) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
+    func stream(request: FamiliarModelRequest) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let results = request.messages.filter { $0.role == .tool }.compactMap(\.networkText)
             if results.isEmpty {
@@ -131,7 +131,7 @@ private struct FamiliarCountingTool: FamiliarTool {
 
 private struct FamiliarBudgetProvider: FamiliarModelProvider {
     let providerID = "fake"
-    func stream(request: FamiliarModelRequest, apiKey: String) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
+    func stream(request: FamiliarModelRequest) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let count = request.messages.filter { $0.role == .tool }.count
             continuation.yield(.toolCallDelta(index: 0, id: "call-\(count)", name: "fake_count", arguments: #"{"n":\#(count)}"#))
@@ -263,7 +263,7 @@ struct FamiliarRuntimeTests {
     private func collect(_ loop: FamiliarAgentLoop, manifests: [FamiliarToolManifest] = []) async throws -> [FamiliarRuntimeEvent] {
         var events: [FamiliarRuntimeEvent] = []
         let snapshot = try familiarTestContextSnapshot(manifests: manifests)
-        for try await event in loop.stream(contextSnapshot: snapshot, apiKey: "key") { events.append(event) }
+        for try await event in loop.stream(contextSnapshot: snapshot) { events.append(event) }
         return events
     }
 }

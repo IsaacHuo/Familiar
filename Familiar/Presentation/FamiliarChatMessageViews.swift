@@ -6,7 +6,6 @@ private struct FamiliarReplyMetrics: Equatable {
     let startedAt: Date?
     let finishedAt: Date?
     let firstTokenAt: Date?
-    let characters: Int
 
     var duration: TimeInterval? {
         guard let startedAt, let finishedAt else { return nil }
@@ -15,13 +14,6 @@ private struct FamiliarReplyMetrics: Equatable {
     var timeToFirstToken: TimeInterval? {
         guard let startedAt, let firstTokenAt else { return nil }
         return max(0, firstTokenAt.timeIntervalSince(startedAt))
-    }
-    var charactersPerSecond: Double? {
-        guard let duration, duration > 0 else { return nil }
-        return Double(characters) / duration
-    }
-    var tokensPerSecond: Double? {
-        charactersPerSecond.map { $0 / 4 }
     }
 }
 
@@ -492,12 +484,10 @@ private struct FamiliarAssistantTurn: View {
 
     private var replyMetrics: FamiliarReplyMetrics? {
         guard let startedAt = run?.startedAt ?? status?.startedAt else { return nil }
-        let characters = message?.content.count ?? (streamingText.count + streamingReasoningSummary.count)
         return FamiliarReplyMetrics(
             startedAt: startedAt,
             finishedAt: run?.finishedAt ?? status?.finishedAt,
-            firstTokenAt: run?.firstTokenAt,
-            characters: characters
+            firstTokenAt: run?.firstTokenAt
         )
     }
 
@@ -612,96 +602,6 @@ private struct FamiliarAssistantTurn: View {
     private func sourceLabel(providerID: String, modelID: String) -> String {
         let provider = FamiliarProviderCatalog.descriptor(for: providerID)
         return "\(provider?.displayName ?? providerID) · \(provider?.model(for: modelID).displayName ?? modelID)"
-    }
-}
-
-private struct FamiliarThinkingRail: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let surface: FamiliarSurfaceDescriptor
-
-    var body: some View {
-        HStack(alignment: .top, spacing: FamiliarAISurfaceMetric.spaceM) {
-            VStack(spacing: 0) {
-                FamiliarPixelLoader(reduceMotion: reduceMotion)
-                    .frame(width: FamiliarAISurfaceMetric.icon, height: FamiliarAISurfaceMetric.icon)
-                Rectangle()
-                    .fill(FamiliarAISurfaceColor.accentTint)
-                    .frame(width: FamiliarAISurfaceMetric.hairline, height: FamiliarAISurfaceMetric.spaceXL)
-            }
-            VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
-                FamiliarShimmerLabel(text: surface.title, reduceMotion: reduceMotion)
-                if let startedAt = surface.startedAt {
-                    TimelineView(.periodic(from: startedAt, by: 0.2)) { context in
-                        Text(elapsed(startedAt, context.date))
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
-                    }
-                    .accessibilityHidden(true)
-                }
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(surface.title)
-        .accessibilityAddTraits(.updatesFrequently)
-    }
-
-    private func elapsed(_ start: Date, _ end: Date) -> String {
-        let interval = max(0, end.timeIntervalSince(start))
-        return interval < 60 ? String(format: "%.1fs", interval) : String(format: "%dm %.1fs", Int(interval / 60), interval.truncatingRemainder(dividingBy: 60))
-    }
-}
-
-private struct FamiliarPixelLoader: View {
-    enum Variant { case drive, dots, orbit }
-
-    var variant: Variant = .drive
-    let reduceMotion: Bool
-
-    private static let cellSize: CGFloat = 4
-    private static let gap: CGFloat = 1.5
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { context in
-            VStack(spacing: Self.gap) {
-                ForEach(0..<3, id: \.self) { row in
-                    HStack(spacing: Self.gap) {
-                        ForEach(0..<3, id: \.self) { column in
-                            cell(row: row, column: column, time: context.date.timeIntervalSinceReferenceDate)
-                        }
-                    }
-                }
-            }
-        }
-        .accessibilityHidden(true)
-    }
-
-    @ViewBuilder
-    private func cell(row: Int, column: Int, time: TimeInterval) -> some View {
-        RoundedRectangle(cornerRadius: variant == .dots ? Self.cellSize / 2 : 1, style: .continuous)
-            .fill(FamiliarAISurfaceColor.ink)
-            .frame(width: Self.cellSize, height: Self.cellSize)
-            .opacity(opacity(row: row, column: column, time: time))
-    }
-
-    private func opacity(row: Int, column: Int, time: TimeInterval) -> Double {
-        if reduceMotion { return delay(row: row, column: column) == nil ? 0.07 : 0.15 }
-        guard let delay = delay(row: row, column: column) else { return 0.07 }
-        let duration = variant == .orbit ? 950.0 : 650.0
-        let milliseconds = time * 1000
-        let phase = (milliseconds + delay).truncatingRemainder(dividingBy: duration) / duration
-        return 0.15 + 0.85 * sin(phase * .pi)
-    }
-
-    private func delay(row: Int, column: Int) -> Double? {
-        switch variant {
-        case .drive, .dots:
-            return Double((column + abs(row - 1)) * 90)
-        case .orbit:
-            let order = [0, 1, 2, 5, 8, 7, 6, 3]
-            let index = row * 3 + column
-            guard let position = order.firstIndex(of: index) else { return nil }
-            return Double(position * 110)
-        }
     }
 }
 
@@ -2227,9 +2127,6 @@ private struct FamiliarContextTrace: View {
                     traceRow("clock", String(localized: "run.context.reply_time", defaultValue: "Reply time"), format(duration))
                 }
                 traceRow("bolt.horizontal", String(localized: "run.context.first_token", defaultValue: "First token"), metrics.timeToFirstToken.map(format) ?? "—")
-                if let tps = metrics.tokensPerSecond {
-                    traceRow("speedometer", String(localized: "run.context.throughput", defaultValue: "Throughput"), String(format: "%.1f tok/s", tps))
-                }
             }
         }
     }
@@ -2577,14 +2474,31 @@ private struct FamiliarModelSwitchRow: View {
 }
 
 struct FamiliarAssistantTurnVisualFixture: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var draft = ""
     @State private var sendCount = 0
+
+    private var loadingThinkingContent: FamiliarThinkingContent {
+        FamiliarThinkingContent(
+            variant: .steps,
+            isWorking: true,
+            header: Self.loadingSurface.title,
+            settledHeader: Self.loadingSurface.title,
+            query: nil,
+            rows: [],
+            truncatedCount: 0
+        )
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXL) {
                 fixtureSection(String(localized: "visual.fixture.loading", defaultValue: "Loading"), id: "loading") {
-                    FamiliarThinkingRail(surface: Self.loadingSurface)
+                    FamiliarThinkingState(
+                        content: loadingThinkingContent,
+                        onSettled: nil,
+                        reduceMotion: reduceMotion
+                    )
                 }
                 fixtureSection(String(localized: "visual.fixture.reasoning", defaultValue: "Reasoning"), id: "reasoning") {
                     DisclosureGroup {

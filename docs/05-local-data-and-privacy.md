@@ -11,8 +11,8 @@
 - 文档原文件复制到 App 私有目录。
 - 文档转换和 PDF OCR 在设备内执行。
 - 流式 token 和等待用户决策的 continuation 只存在于内存；工具 invocation 的 requested / approved / terminal 检查点保存在 SwiftData。
-- 图片原文件保存在 App 私有附件目录，不写入 SwiftData；图片字节只进入当前多模态 Provider 请求或设备端 Vision/FastVLM 处理，不发送到其他 Provider。
-- 本地视觉结果以有限证据文本和 provenance 持久化；删除本地模型不删除历史证据。
+- 图片原文件保存在 App 私有附件目录，不写入 SwiftData；图片字节只进入当前选中的 DeepSeek 实验视觉模型请求或设备端 Apple Vision 处理。
+- Apple Vision 结果以有限证据文本和 provenance 持久化。
 - App 不创建原始录音文件。
 - App 不读取学术系统或其他 App 的私有数据。
 - App 不使用 Familiar 账户、业务后端或云端数据库。
@@ -43,9 +43,8 @@
 | 流式 token | Provider | 内存 | 不作二次上传 | 回答终态或任务结束 |
 | 文档原文件 | 文件选择器 | App Support | 不上传 | 附件、消息或会话删除 |
 | 文档抽取文本 | AnyDoc/OCR | SwiftData | 对应 Provider | 附件、消息或会话删除 |
-| 图片数据 | 相机或相册 | App 私有草稿/消息附件目录；SwiftData 只保存引用和元数据 | 当前多模态 Provider，或设备端 Vision/FastVLM | 随草稿、消息、附件或会话删除 |
-| 视觉证据 | Apple Vision 或本地视觉模型 | SwiftData；引用 App 私有图片附件 | 作为只读上下文进入当前 Provider | 随消息/附件删除；删除模型不删除历史证据 |
-| 本地视觉模型 | 用户主动下载 | 独立受保护模型目录 | 固定 Apple 模型下载地址；推理不联网 | 用户删除模型或卸载 App |
+| 图片数据 | 相机或相册 | App 私有草稿/消息附件目录；SwiftData 只保存引用和元数据 | 当前选中的 DeepSeek 实验视觉模型，或设备端 Apple Vision | 随草稿、消息、附件或会话删除 |
+| 视觉证据 | Apple Vision | SwiftData；引用 App 私有图片附件 | 作为只读上下文进入当前文本模型 | 随消息/附件删除 |
 | 语音转写 | Apple Speech | 输入草稿 | 发送后进入 Provider | 用户编辑或清空草稿 |
 | 原始录音 | 麦克风输入 | 不落盘 | Speech framework 按系统能力处理 | audio buffer 生命周期 |
 | 日历/提醒数据 | EventKit | 查询结果进入内存和工具记录摘要 | 可能作为工具结果进入 Provider | 运行结束和历史记录生命周期 |
@@ -209,8 +208,8 @@ CSP 主要限制：
 ### 照片
 
 - 使用 `PhotosPicker`，不请求完整照片库权限。
-- 用户选定的图片复制到 App 私有草稿目录；发送时图片字节只进入当前多模态 Provider，或在设备端由 Vision/FastVLM 处理。
-- 当前模型不支持图片时，图片在设备内由 Apple Vision 或已安装的 FastVLM 处理，原始字节不因此发送到其他 Provider。
+- 用户选定的图片复制到 App 私有草稿目录；选中实验视觉模型时图片字节进入当前 DeepSeek 请求，否则只由 Apple Vision 在设备端处理。
+- 当前文本模型不支持图片时，原始字节不发送到模型；FastVLM 当前不参与处理。
 
 ### 语音
 
@@ -316,9 +315,9 @@ App 容器中的 SwiftData、UserDefaults、附件、项目资源和 Artifact �
 - 拒绝 EventKit 权限时零读取和零写入。
 - 取消写入确认时零写入。
 - 授权范围越界、目标变化或 grant 过期时零写入并重新询问。
-- 验证图片在纯文本模型路径中只由设备端 Vision/FastVLM 处理，未经选择不上传到其他 Provider。
+- 验证图片在纯文本模型路径中只由 Apple Vision 处理，未经选择不发送到实验视觉模型。
 - 验证视觉证据记录包含方法、版本和原图引用，且不能产生工具授权。
-- 验证 FastVLM 下载固定版本与哈希、失败可恢复、删除模型后历史视觉证据仍可读取。
+- 验证设置和 Chat 中没有 FastVLM 用户入口或自动路由。
 - 删除会话后附件目录无对应文件。
 - 停止语音后无录音文件。
 - 验证 Markdown CSP 不允许 HTTP/HTTPS 图片，且远程图片只呈现为用户主动打开的来源链接。

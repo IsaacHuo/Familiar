@@ -8,9 +8,9 @@ let package = Package(
         .library(name: "FastVLMRuntime", targets: ["FastVLMRuntime"])
     ],
     dependencies: [
-        .package(url: "https://github.com/ml-explore/mlx-swift.git", exact: "0.21.2"),
-        .package(url: "https://github.com/ml-explore/mlx-swift-examples.git", exact: "2.21.2"),
-        .package(url: "https://github.com/huggingface/swift-transformers.git", exact: "0.1.18"),
+        .package(url: "https://github.com/ml-explore/mlx-swift.git", exact: "0.31.3"),
+        .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", exact: "2.31.3"),
+        .package(url: "https://github.com/huggingface/swift-transformers.git", exact: "1.2.0"),
         .package(url: "https://github.com/weichsel/ZIPFoundation.git", exact: "0.9.19")
     ],
     targets: [
@@ -20,8 +20,8 @@ let package = Package(
                 .product(name: "MLX", package: "mlx-swift"),
                 .product(name: "MLXNN", package: "mlx-swift"),
                 .product(name: "MLXFast", package: "mlx-swift"),
-                .product(name: "MLXLMCommon", package: "mlx-swift-examples"),
-                .product(name: "MLXVLM", package: "mlx-swift-examples"),
+                .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
+                .product(name: "MLXVLM", package: "mlx-swift-lm"),
                 .product(name: "Transformers", package: "swift-transformers"),
                 .product(name: "ZIPFoundation", package: "ZIPFoundation")
             ],

@@ -2,12 +2,15 @@ import Foundation
 
 nonisolated enum FamiliarProviderConnectionError: LocalizedError, Sendable {
     case invalidResponse
+    case modelUnavailable(String)
     case rejected(statusCode: Int, message: String)
 
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
             String(localized: "provider.validation.invalid_response")
+        case .modelUnavailable(let modelID):
+            String(format: String(localized: "provider.validation.model_unavailable"), modelID)
         case .rejected(let statusCode, let message):
             String(format: String(localized: "provider.validation.rejected"), statusCode, message)
         }
@@ -21,11 +24,14 @@ nonisolated enum FamiliarProviderConnectionValidator {
         apiKey: String
     ) async throws {
         if descriptor.modelsPath != nil {
-            _ = try await FamiliarModelCatalogService.models(for: descriptor, apiKey: apiKey)
+            let models = try await FamiliarModelCatalogService.models(for: descriptor, apiKey: apiKey)
+            guard models.contains(where: { $0.id == modelID }) else {
+                throw FamiliarProviderConnectionError.modelUnavailable(modelID)
+            }
             return
         }
 
-        let provider = FamiliarProviderFactory.makeProvider(for: descriptor)
+        let provider = FamiliarProviderFactory.makeProvider(for: descriptor, apiKey: apiKey)
         let request = FamiliarModelRequest(
             model: modelID,
             messages: [
@@ -35,7 +41,7 @@ nonisolated enum FamiliarProviderConnectionValidator {
             tools: []
         )
         var receivedContent = false
-        for try await event in provider.stream(request: request, apiKey: apiKey) {
+        for try await event in provider.stream(request: request) {
             switch event {
             case .textDelta(let text):
                 if !text.isEmpty { receivedContent = true }

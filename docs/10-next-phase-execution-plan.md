@@ -1,84 +1,147 @@
 # Familiar 下一阶段执行计划
 
-> 本文描述已确认的未来工作顺序。当前实现状态见 `state/CURRENT.md`；未交付能力不得从本文推断为已实现。
+> 本文记录当前收尾后的工作顺序。实际实现和验证证据以 `state/CURRENT.md`、`state/ARCHITECTURE.md` 为准。
 
-## 1. 阶段目标
+## 1. 当前阶段结论
 
-下一阶段优先验证普通 iPhone 用户能否让 Familiar 安全、清晰地执行真实动作：
+Familiar 保留 Native-First、Local-First 的长期方向：
 
-> 使用 DeepSeek 完成文本对话和基础图片识读，查询日历与提醒，按用户授权创建动作，在同一回合检查多张动作卡，并在 App 重启后撤销已执行动作。
+```text
+Core AI + Qwen local model
+        ↓
+iOS 27 正式可用后的默认本地大脑
 
-Chat 是主要交互与执行 Surface，Project 是长期 Context Workspace。普通聊天与 Project Conversation 共享同一套 Chat Surface、Runtime、视觉证据、授权和动作 Surface；Project 不再以功能 Dashboard 形式扩张。
+Native iOS Tools
+        ↓
+通过 Apple frameworks 访问设备能力
 
-## 2. 执行原则
+iSH / Containerization
+        ↓
+运行时资产准备完成后的受控本地计算
 
-1. 所有方向保留在路线图中，但按可工作的层次依次交付，不并行铺开孤立菜单。
-2. 当前真实 Provider 验收以 DeepSeek 为主，默认主模型为 `deepseek-v4-flash`；其他 Provider 暂不阻塞本阶段。
-3. 信息性运行事件使用轻量状态行；只有写动作使用卡片。
-4. 模型不能产生自己的授权。首次授权由用户明确产生，有效 grant 范围内可以免重复询问。
-5. 图片能力按当前模型路由；本地 fallback 不产生新的网络目的地。
-6. 后台承接不得绕过现有恢复、幂等、授权和审计边界。
-7. 每一层完成自动化验证和真机验收后再进入下一层。
-8. Memory、Remote MCP 和后台执行在端到端接入 Runtime、Policy、恢复与删除语义前保持隐藏或 Labs。
+通用 ModelProvider
+        ↓
+当前唯一启用的云 Provider descriptor 是 DeepSeek
+```
 
-## 3. 执行起点
+DeepSeek 不进入 Agent Runtime 的特殊分支。当前网络实现是通用 OpenAI-compatible adapter；DeepSeek 只是目前唯一启用的 descriptor、模型目录和 BYOK 配置。ModelRouter、Tool Call、SSE、ToolResult 和错误合同均保持供应商无关。
 
-动作 Surface、持久授权、跨重启 Undo、Apple Vision fallback、FastVLM 0.5B、统一 Chat/Project Workspace 和 Composer 单次 Skill 选择均已进入当前实现。本文不再重复其实现方案；准确边界和最新验证证据以 `state/CURRENT.md` 与 `state/ARCHITECTURE.md` 为准。
+Core AI 当前不具备真实实施条件。开发环境仍是 Xcode 26.6/iOS 26 SDK，计划依赖的 iOS 27 Core AI API、Apple 支持的 Qwen bundle 和 specialization 资产不可用。本阶段不把完全本地对话作为交付门槛，也不使用 MLX 文本模型或其他 Runtime 冒充 Core AI。
 
-下一阶段只处理尚未完成的真机验收、缺陷硬化、Runtime 能力与发布准备。
+新安装默认路由临时为 `.cloud`。`localOnly`、`preferLocal`、ModelManager、Core AI adapter 和云升级确认合同继续保留；等 iOS 27 正式工具链与模型资产可用后，再恢复 `preferLocal` 默认策略。
 
-## 4. 第一层：真机验证与缺陷硬化
+FastVLM 当前暂停提供。仓库内研究实现暂留，但设置入口、依赖注入和 Chat 自动路由已断开，不属于当前能力或验收范围。
 
-### 4.1 Provider、动作与恢复
+## 2. 当前模型基线
 
-- 使用 DeepSeek 真 Key 完成认证、文本流式、取消、错误处理、读工具和写工具闭环。
-- 在真机验证 EventKit 权限、零授权零写入、授权范围匹配、重复调用幂等、App 重启后 Undo，以及系统对象被外部修改或删除时的失败呈现。
-- 验证进程在系统保存后立即终止等边界；发现数据或授权不一致时优先修复，不扩展新动作类型。
+当前 catalog 只属于 DeepSeek：
 
-### 4.2 Surface 与无障碍
+- `deepseek-v4-flash`：默认文本与 Agent 测试模型。
+- `deepseek-v4-pro`：复杂推理补充测试。
+- `deepseek-v4-flash-vision-exp`：实验图片识别入口，和文本模型使用同一通用 Provider adapter。
 
-- 在真机检查读取状态、单卡、多卡 pager、部分成功、失败重试和已撤销终态，确认长回答滚动与草稿切换稳定。
-- 完成 VoiceOver、极端 Dynamic Type、Reduce Motion、Reduce Transparency、触觉关闭、中英文和明暗模式验收。
+前两个模型 ID 已由 DeepSeek 官方的[模型与价格](https://api-docs.deepseek.com/quick_start/pricing/)和[`GET /models`](https://api-docs.deepseek.com/api/list-models/)文档确认。视觉实验 ID 是当前产品明确保留的接口，需要用真实账户单独验证 `/models`、图片请求格式、流式、Tool Call 能力和错误语义；不可用时应明确报错，不静默切换成另一个模型。
 
-### 4.3 视觉路径
+不支持图片的模型继续使用 Apple Vision 生成设备端 OCR、条码和基础分类证据。FastVLM 不参与当前路由。
 
-- 验证 Apple Vision OCR、条码、分类、证据 provenance、失败恢复和不跨 Provider 上传。
-- 在目标真机验证 FastVLM 下载恢复、哈希、空间不足、Core ML 编译、自动路由、60 秒降级、内存与热表现；根据真实失败硬化，不扩大模型矩阵。
-- 记录中文描述、比较和图表问答质量，不根据模型基座预先声明支持程度。
+## 3. 收尾目标
 
-### 4.4 现有能力闭环
+使用真实 DeepSeek 测试 Key 跑通一条可重复、可审计的 iOS 主路径：
 
-- 验证 Web/Artifact、文档/OCR、Speech、Share、Deep Link、通知、Spotlight、App Intents 和 Widget/Control 的真机主路径与失败恢复。
-- 验证 Composer 选择的 Skill 只影响下一次 Run，immutable snapshot 和 tool scope 与审计记录一致。
-- 只有验收暴露的缺陷进入本层；Skill 导入、分发和 Project binding 属于后续能力。
+```text
+用户请求
+  → FamiliarModelProvider
+  → 当前 DeepSeek descriptor
+  → stream / FamiliarToolCall
+  → ToolRegistry
+  → Native Tool
+  → 写操作审批
+  → FamiliarToolResult
+  → 同一 Provider 继续同一 Run
+  → 最终回答与本地持久化
+```
 
-### 4.5 完成条件
+## 4. 实施顺序
 
-- 实际执行单元测试和 8 场景 Agent benchmark；仅编译测试产物不算测试通过。
-- 所有者完成 DeepSeek、EventKit、视觉、Surface 与系统入口真机验收。
-- 发现的问题修复后重新执行对应的最窄验证，并把最新证据写入 `state/CURRENT.md`。
+### Phase A：静态收敛
 
-## 5. 第二层：未完成的 Runtime 能力
+- Catalog 只启用 DeepSeek，adapter 保持通用 OpenAI-compatible 命名和实现。
+- API Key 只存在于 Keychain 和 Provider 实例，Agent Runtime 不接收 Key。
+- FastVLM 不显示设置入口，不参与 DI 或图片自动路由。
+- Chat 保持唯一执行 Surface，Project 只提供长期 Workspace/Context。
+- 执行 arm64 `build-for-testing`、macOS build、本地化检查和 `git diff --check`。
 
-按以下顺序交付，每项都必须贯通 Runtime、Policy、审计、恢复与删除语义：
+完成标准：源代码和测试产物可编译；文档不把 Core AI、FastVLM、iSH、Container VM 或 FamiliarMac shell 描述成当前已验收能力。
 
-1. instruction-only Skill 导入、预览、安装、卸载与 Project binding；继续保持显式调用和 tool scope 收窄。
-2. global/project/conversation scoped Memory；先提供显式读写与删除，自动写入默认关闭。
-3. Remote HTTPS Streamable HTTP MCP Client；所有工具继续经过 Familiar Policy，不引入本机 Server 或任意代码执行。
-4. iOS 26+ 后台承接；iOS 18–25 明确降级，不承诺可靠 cron，恢复与幂等验证先于扩大入口。
+### Phase B：DeepSeek 文本 API 冒烟
 
-## 6. 第三层：Provider 与发布准备
+1. 保存非生产测试 Key，执行连接验证和 `GET /models`。
+2. 使用 `deepseek-v4-flash` 完成普通文本流式回答。
+3. 主动取消长请求，确认网络任务终止、Composer 恢复、没有伪终态消息。
+4. 使用无效 Key、无效模型 ID、断网和服务端错误，确认错误有限、可恢复且不泄露 Key。
+5. 验证 reasoning delta、正常 stop、长度终止和空响应处理。
+6. 对 `deepseek-v4-pro` 重复最小文本/Tool Call 冒烟。
 
-- DeepSeek 主路径稳定后，按协议族扩展真实 Provider 兼容矩阵，不用模拟结果代替真实认证、流式和工具冒烟。
-- 开发阶段继续使用可破坏性重建的 `FamiliarDevelopment.store`；首次公开发布前冻结版本化 schema，之后每次 schema 变化都提供旧版本 fixture、覆盖安装、磁盘迁移和失败恢复测试。
-- 公开分发前完成许可证、隐私披露、数据删除、API Key、模型下载来源与哈希审查。
-- 将 Debug、Release、Simulator、实际测试执行和真机验收分别记录，不用其中一项替代另一项。
+完成标准：认证、模型列表、流式、取消和错误五类结果均有真实运行证据。
 
-## 7. 暂不进入当前层
+### Phase C：DeepSeek 图片 API 冒烟
 
-- 多 Agent、Subagent、Agent Graph。
-- Shell、任意代码执行或本机 MCP Server。
-- 自动把私密图片切换发送到另一 Provider。
-- Familiar 托管视觉服务或托管额度。
-- FastVLM 1.5B/7B、多模型自动下载和未经验证的动态最新版。
-- 公开市场分发或商业使用；用途变化时重新审查全部许可证和隐私边界。
+1. 确认 `/models` 是否返回 `deepseek-v4-flash-vision-exp`。
+2. 使用一张无隐私测试图片验证请求编码、流式回答和取消。
+3. 验证多图、过大图片、不支持的 MIME、错误模型和服务端拒绝。
+4. 确认视觉模型不可用时显示真实错误，不改用 FastVLM，也不把基础 Apple Vision 结果包装成视觉模型回答。
+5. 如果模型支持 Tool Call，再验证图片上下文后的只读 Tool；写操作仍经过同一审批链。
+
+完成标准：能够确认这个实验 ID在当前账户中的真实可用边界，并将结果记录到 `state/CURRENT.md`。
+
+### Phase D：Native Tool 闭环
+
+优先使用提醒事项场景：
+
+1. “明天下午有什么提醒？”验证 `reminders` 读取。
+2. “提醒我明天下午三点复习”验证 `create_reminder` Tool Call。
+3. 在审批前取消，确认 EventKit 零写入。
+4. 批准后确认只创建一条提醒，并返回 typed ToolResult。
+5. Provider 接收 ToolResult 后在同一 Run 生成最终回答。
+6. 重启 App 后执行 Undo，确认系统对象删除、记录进入已撤销状态。
+
+完成标准：模型不能自授权；取消零写入；成功最多一次；重启后仍可撤销。
+
+### Phase E：测试执行与缺陷硬化
+
+- 实际执行 Swift Testing 和 Agent benchmark；`build-for-testing` 不等于测试通过。
+- 覆盖 Router、OpenAI-compatible SSE、Tool Call 增量、ToolResult 回填、取消和错误分类。
+- 在真机验证 EventKit、Apple Vision、DeepSeek 图片模型、文档、Share、Spotlight/App Intents 与 Keychain。
+- 只修复真实验收暴露的问题，不在收尾阶段扩展 Provider、Shell 或本地模型矩阵。
+
+## 5. 本轮不阻塞的工作
+
+- Core AI/Qwen 本地文本模型。
+- FastVLM 下载、基准与本地推理。
+- iSH fork、Alpine rootfs 和 Familiar bridge。
+- macOS kernel/init/rootfs/container runtime assets。
+- FamiliarMac 与共享 SwiftData/Agent Runtime 的完整接线。
+- Attachment、Resource、Artifact 的 Workspace 物理归并。
+- Memory Runtime、Remote MCP、后台可靠执行和多 Agent。
+
+这些能力不得出现在当前可用功能说明中。已有 adapter、policy、研究代码或 UI shell 只代表结构准备。
+
+## 6. Core AI 重启条件
+
+1. iOS 27 与 Xcode 27 正式版可用于目标设备和 CI。
+2. Apple 发布或确认可用的 Qwen 小模型 Core AI 资产、版本、大小和 SHA-256。
+3. `CoreAILanguageModel`、specialization 与 `LanguageModelSession` API 可在正式 SDK 编译。
+4. 目标 iPhone 的内存、首 token、持续 token/s、温度、电量和 Tool Call 基准已定义。
+5. 断网流式、权重复用、取消、删除和失败恢复可在真机验收。
+
+满足后按顺序实施：ModelManifest → ModelManager 下载/校验 → prepare/specialization → runtime actor 复用权重 → 每 Run session → ModelRouter 恢复 `preferLocal` 默认值。
+
+## 7. 阶段完成定义
+
+- 当前唯一启用 Provider descriptor 是 DeepSeek，但底层 adapter 保持通用。
+- `deepseek-v4-flash` 真实文本流式通过。
+- `deepseek-v4-flash-vision-exp` 的可用或不可用边界有真实证据。
+- 无效 Key、取消和至少一种网络/服务端错误通过。
+- Reminder read/write/approval/ToolResult/final response/Undo 通过。
+- 自动测试实际执行并记录，不只有编译证据。
+- Core AI、FastVLM、iSH、Containerization 和 FamiliarMac 未完成能力保持不可执行或明确 unavailable。

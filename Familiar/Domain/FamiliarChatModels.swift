@@ -317,12 +317,14 @@ nonisolated struct FamiliarModelSwitchSnapshot: Identifiable, Equatable, Sendabl
 nonisolated struct FamiliarSettings: Codable, Equatable, Sendable {
     var providerID: String
     var modelID: String
+    var modelRoutePolicy: FamiliarModelRoutePolicy
     var systemPrompt: String
     var providerConfigurations: [String: FamiliarProviderConfiguration]
 
     static let defaultValue = FamiliarSettings(
         providerID: FamiliarProviderCatalog.deepSeek.id,
         modelID: FamiliarProviderCatalog.deepSeek.defaultModel.id,
+        modelRoutePolicy: .cloud,
         systemPrompt: String(localized: "settings.system_prompt.default"),
         providerConfigurations: [:]
     )
@@ -367,6 +369,8 @@ enum FamiliarSettingsStore {
         guard let data = UserDefaults.standard.data(forKey: key),
               var settings = try? JSONDecoder().decode(FamiliarSettings.self, from: data)
         else { return .defaultValue }
+        settings.providerID = FamiliarProviderCatalog.deepSeek.id
+        settings.modelRoutePolicy = .cloud
         settings.modelID = FamiliarProviderCatalog.normalizedModelID(settings.modelID, providerID: settings.providerID)
         return settings
     }

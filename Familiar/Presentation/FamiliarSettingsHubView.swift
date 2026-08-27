@@ -9,7 +9,6 @@ import UniformTypeIdentifiers
 enum FamiliarSettingsRoute: String, Hashable {
     case modelService
     case searchService
-    case localVision
     case appearance
     case tools
     case authorizations
@@ -63,13 +62,6 @@ struct FamiliarSettingsView: View {
                         subtitle: "\(settings.selectedProvider.displayName) · \(settings.selectedModel.displayName)",
                         symbol: "key.horizontal.fill",
                         color: FamiliarTheme.accent
-                    )
-                    settingsLink(
-                        .localVision,
-                        title: String(localized: "settings.local_vision.title", defaultValue: "Local Vision"),
-                        subtitle: String(localized: "settings.local_vision.detail", defaultValue: "FastVLM 0.5B model and device benchmark"),
-                        symbol: "eye.fill",
-                        color: .teal
                     )
                 }
 
@@ -233,8 +225,6 @@ struct FamiliarSettingsView: View {
             )
         case .searchService:
             FamiliarSearchSettingsView(searchService: searchService)
-        case .localVision:
-            FamiliarLocalVisionSettingsView()
         case .appearance:
             FamiliarAppearanceSettingsView()
         case .tools:
@@ -445,73 +435,6 @@ private struct FamiliarSkillCreatorView: View {
             .split { !$0.isLetter && !$0.isNumber }
             .map(String.init)
             .joined(separator: "-")
-    }
-}
-
-private struct FamiliarLocalVisionSettingsView: View {
-    @State private var manager = FamiliarLocalVisionModelManager.shared
-
-    var body: some View {
-        List {
-            Section {
-                LabeledContent(String(localized: "settings.local_vision.model", defaultValue: "Model"), value: "FastVLM-0.5B")
-                LabeledContent(String(localized: "settings.local_vision.download", defaultValue: "Download"), value: ByteCountFormatter.string(fromByteCount: FamiliarLocalVisionModelManager.archiveSize, countStyle: .file))
-                LabeledContent(String(localized: "settings.local_vision.status", defaultValue: "Status"), value: statusText)
-                if manager.state == .downloading {
-                    ProgressView(value: manager.progress)
-                }
-                if let duration = manager.lastBenchmarkDuration {
-                    LabeledContent(String(localized: "settings.local_vision.benchmark", defaultValue: "Last benchmark"), value: duration.formatted(.number.precision(.fractionLength(1))) + " s")
-                }
-            } footer: {
-                Text(String(localized: "settings.local_vision.license", defaultValue: "Apple FastVLM model weights are licensed only for non-commercial research and academic development. The model runs on this device."))
-            }
-
-            Section {
-                switch manager.state {
-                case .notInstalled, .failed:
-                    Button(String(localized: "settings.local_vision.install", defaultValue: "Download and Install")) { manager.install() }
-                case .unavailable:
-                    Button(String(localized: "settings.local_vision.run_benchmark", defaultValue: "Run Device Benchmark")) {
-                        Task {
-                            manager.markInstalledForRetry()
-                            await manager.benchmark()
-                        }
-                    }
-                    Button(String(localized: "settings.local_vision.delete", defaultValue: "Delete Model"), role: .destructive) {
-                        Task { await manager.deleteModel() }
-                    }
-                case .downloading:
-                    Button(String(localized: "settings.local_vision.pause", defaultValue: "Pause Download")) { manager.cancelInstall() }
-                    Button(String(localized: "common.cancel"), role: .destructive) { manager.discardDownload() }
-                case .paused:
-                    Button(String(localized: "settings.local_vision.resume", defaultValue: "Resume Download")) { manager.install() }
-                    Button(String(localized: "common.cancel"), role: .destructive) { manager.discardDownload() }
-                case .installing:
-                    ProgressView()
-                case .installed:
-                    Button(String(localized: "settings.local_vision.run_benchmark", defaultValue: "Run Device Benchmark")) {
-                        Task { await manager.benchmark() }
-                    }
-                    Button(String(localized: "settings.local_vision.delete", defaultValue: "Delete Model"), role: .destructive) {
-                        Task { await manager.deleteModel() }
-                    }
-                }
-            }
-        }
-        .navigationTitle(String(localized: "settings.local_vision.title", defaultValue: "Local Vision"))
-        .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private var statusText: String {
-        switch manager.state {
-        case .notInstalled: String(localized: "settings.local_vision.not_installed", defaultValue: "Not installed")
-        case .downloading: String(localized: "settings.local_vision.downloading", defaultValue: "Downloading")
-        case .paused: String(localized: "settings.local_vision.paused", defaultValue: "Paused")
-        case .installing: String(localized: "settings.local_vision.installing", defaultValue: "Installing")
-        case .installed: String(localized: "settings.local_vision.installed", defaultValue: "Installed")
-        case .unavailable(let reason), .failed(let reason): reason
-        }
     }
 }
 

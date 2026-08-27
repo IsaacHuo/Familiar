@@ -20,14 +20,6 @@ struct FamiliarPlanCompletionTests {
         #expect(FamiliarModelContainer.currentSchema.entities.contains { $0.name == "FamiliarPinnedItemRecord" })
     }
 
-    @Test("FastVLM manifest is pinned to the verified Apple archive")
-    @MainActor
-    func fastVLMManifest() {
-        #expect(FamiliarLocalVisionModelManager.archiveSize == 1_232_152_649)
-        #expect(FamiliarLocalVisionModelManager.archiveSHA256 == "661506b66e9101463165b2834a99c89868b0d65fe7b1debbd46bdbd3b4f98d13")
-        #expect(FamiliarLocalVisionModelManager.downloadURL.host == "ml-site.cdn-apple.com")
-    }
-
     @Test("Basic OCR requests do not route to FastVLM")
     func visionRouting() {
         #expect(!FamiliarVisionRouting.shouldUseFastVLM(prompt: "请提取文字"))

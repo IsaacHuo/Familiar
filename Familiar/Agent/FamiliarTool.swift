@@ -492,6 +492,8 @@ nonisolated public enum FamiliarApprovalUndoPolicy: String, Codable, Sendable {
 nonisolated enum FamiliarCapabilityRequirement: String, Codable, Hashable, Sendable {
     case calendarFullAccess
     case remindersFullAccess
+    case contactsRead
+    case locationWhenInUse
 }
 
 nonisolated enum FamiliarCapabilityAvailability: Equatable, Sendable {
@@ -514,12 +516,23 @@ nonisolated struct FamiliarToolContext: Sendable {
     let runID: String
     let toolCallID: String
     let projectID: UUID?
+    let conversationID: UUID?
+    let workspaceID: FamiliarWorkspaceID?
     let resources: [Resource]
 
-    init(runID: String = "standalone", toolCallID: String = UUID().uuidString, projectID: UUID? = nil, resources: [Resource] = []) {
+    init(
+        runID: String = "standalone",
+        toolCallID: String = UUID().uuidString,
+        projectID: UUID? = nil,
+        conversationID: UUID? = nil,
+        workspaceID: FamiliarWorkspaceID? = nil,
+        resources: [Resource] = []
+    ) {
         self.runID = runID
         self.toolCallID = toolCallID
         self.projectID = projectID
+        self.conversationID = conversationID
+        self.workspaceID = workspaceID
         self.resources = resources
     }
 
@@ -686,7 +699,12 @@ actor FamiliarToolRegistry {
     }
 
     func snapshot() -> [FamiliarToolManifest] {
-        toolsByName.values.map(\.manifest).sorted { $0.name < $1.name }
+        toolsByName.values.map(\.manifest).sorted {
+            if $0.executionClass.preferenceRank != $1.executionClass.preferenceRank {
+                return $0.executionClass.preferenceRank < $1.executionClass.preferenceRank
+            }
+            return $0.name < $1.name
+        }
     }
 
     func manifest(named name: String) throws -> FamiliarToolManifest {

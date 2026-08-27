@@ -13,8 +13,12 @@
 		D10000000000000000000002 /* FamiliarWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = D10000000000000000000001 /* FamiliarWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		D10000000000000000000006 /* FamiliarControlIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000005 /* FamiliarControlIntent.swift */; };
 		E10000000000000000000001 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = E10000000000000000000002 /* SwiftSoup */; };
-		E20000000000000000000001 /* FastVLMRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = E20000000000000000000002 /* FastVLMRuntime */; };
 		F20000000000000000000001 /* AnyDocBridge.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = F20000000000000000000002 /* AnyDocBridge.xcframework */; };
+		M20000000000000000000001 /* Containerization in Frameworks */ = {isa = PBXBuildFile; productRef = M20000000000000000000002 /* Containerization */; };
+		M20000000000000000000011 /* FamiliarWorkspaceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20000000000000000000021 /* FamiliarWorkspaceStore.swift */; };
+		M20000000000000000000012 /* FamiliarShellExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20000000000000000000022 /* FamiliarShellExecutor.swift */; };
+		M20000000000000000000013 /* FamiliarShellPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20000000000000000000023 /* FamiliarShellPolicy.swift */; };
+		M20000000000000000000014 /* FamiliarContainerShellExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20000000000000000000024 /* FamiliarContainerShellExecutor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -71,6 +75,11 @@
 		D10000000000000000000001 /* FamiliarWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FamiliarWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		D10000000000000000000005 /* FamiliarControlIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FamiliarControlIntent.swift; sourceTree = "<group>"; };
 		F10000000000000000000001 /* Familiar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Familiar.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		M10000000000000000000001 /* FamiliarMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FamiliarMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		M20000000000000000000021 /* FamiliarWorkspaceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Familiar/Workspace/FamiliarWorkspaceStore.swift; sourceTree = SOURCE_ROOT; };
+		M20000000000000000000022 /* FamiliarShellExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Familiar/Shell/FamiliarShellExecutor.swift; sourceTree = SOURCE_ROOT; };
+		M20000000000000000000023 /* FamiliarShellPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Familiar/Shell/FamiliarShellPolicy.swift; sourceTree = SOURCE_ROOT; };
+		M20000000000000000000024 /* FamiliarContainerShellExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Familiar/Shell/FamiliarContainerShellExecutor.swift; sourceTree = SOURCE_ROOT; };
 		F20000000000000000000002 /* AnyDocBridge.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = AnyDocBridge.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -92,9 +101,17 @@
 		F10000000000000000000002 /* Exceptions for "Familiar" folder in "Familiar" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				LocalVision/FamiliarLocalVisionModelManager.swift,
 				Resources/Info.plist,
 			);
 			target = F10000000000000000000010 /* Familiar */;
+		};
+		M10000000000000000000008 /* Exceptions for "FamiliarMac" folder in "FamiliarMac" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = M10000000000000000000010 /* FamiliarMac */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -133,6 +150,14 @@
 			path = Familiar;
 			sourceTree = "<group>";
 		};
+		M10000000000000000000003 /* FamiliarMac */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				M10000000000000000000008 /* Exceptions for "FamiliarMac" folder in "FamiliarMac" target */,
+			);
+			path = FamiliarMac;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -168,9 +193,16 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E20000000000000000000001 /* FastVLMRuntime in Frameworks */,
 				E10000000000000000000001 /* SwiftSoup in Frameworks */,
 				F20000000000000000000001 /* AnyDocBridge.xcframework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		M10000000000000000000011 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				M20000000000000000000001 /* Containerization in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -190,12 +222,14 @@
 			isa = PBXGroup;
 			children = (
 				F10000000000000000000003 /* Familiar */,
+				M10000000000000000000003 /* FamiliarMac */,
 				C10000000000000000000003 /* FamiliarShareExtension */,
 				D10000000000000000000003 /* FamiliarWidgets */,
 				C10000000000000000000004 /* Shared */,
 				A10000000000000000000002 /* FamiliarTests */,
 				B10000000000000000000002 /* FamiliarUITests */,
 				F20000000000000000000003 /* Vendor */,
+				M20000000000000000000020 /* FamiliarMac Shared Sources */,
 				F10000000000000000000005 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -204,6 +238,7 @@
 			isa = PBXGroup;
 			children = (
 				F10000000000000000000001 /* Familiar.app */,
+				M10000000000000000000001 /* FamiliarMac.app */,
 				A10000000000000000000001 /* FamiliarTests.xctest */,
 				B10000000000000000000001 /* FamiliarUITests.xctest */,
 				C10000000000000000000001 /* FamiliarShareExtension.appex */,
@@ -218,6 +253,17 @@
 				F20000000000000000000002 /* AnyDocBridge.xcframework */,
 			);
 			path = Vendor;
+			sourceTree = "<group>";
+		};
+		M20000000000000000000020 /* FamiliarMac Shared Sources */ = {
+			isa = PBXGroup;
+			children = (
+				M20000000000000000000021 /* FamiliarWorkspaceStore.swift */,
+				M20000000000000000000022 /* FamiliarShellExecutor.swift */,
+				M20000000000000000000023 /* FamiliarShellPolicy.swift */,
+				M20000000000000000000024 /* FamiliarContainerShellExecutor.swift */,
+			);
+			name = "FamiliarMac Shared Sources";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -333,11 +379,33 @@
 			);
 			name = Familiar;
 			packageProductDependencies = (
-				E20000000000000000000002 /* FastVLMRuntime */,
 				E10000000000000000000002 /* SwiftSoup */,
 			);
 			productName = Familiar;
 			productReference = F10000000000000000000001 /* Familiar.app */;
+			productType = "com.apple.product-type.application";
+		};
+		M10000000000000000000010 /* FamiliarMac */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = M10000000000000000000020 /* Build configuration list for PBXNativeTarget "FamiliarMac" */;
+			buildPhases = (
+				M10000000000000000000012 /* Sources */,
+				M10000000000000000000011 /* Frameworks */,
+				M10000000000000000000013 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				M10000000000000000000003 /* FamiliarMac */,
+			);
+			name = FamiliarMac;
+			packageProductDependencies = (
+				M20000000000000000000002 /* Containerization */,
+			);
+			productName = FamiliarMac;
+			productReference = M10000000000000000000001 /* FamiliarMac.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -367,6 +435,9 @@
 					F10000000000000000000010 = {
 						CreatedOnToolsVersion = 26.6;
 					};
+					M10000000000000000000010 = {
+						CreatedOnToolsVersion = 26.6;
+					};
 				};
 			};
 			buildConfigurationList = F10000000000000000000031 /* Build configuration list for PBXProject "familiar" */;
@@ -380,8 +451,8 @@
 			mainGroup = F10000000000000000000004;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				E20000000000000000000003 /* XCLocalSwiftPackageReference "Vendor/ml-fastvlm" */,
 				E10000000000000000000003 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
+				M20000000000000000000003 /* XCRemoteSwiftPackageReference "containerization" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F10000000000000000000005 /* Products */;
@@ -389,6 +460,7 @@
 			projectRoot = "";
 			targets = (
 				F10000000000000000000010 /* Familiar */,
+				M10000000000000000000010 /* FamiliarMac */,
 				A10000000000000000000010 /* FamiliarTests */,
 				B10000000000000000000010 /* FamiliarUITests */,
 				C10000000000000000000010 /* FamiliarShareExtension */,
@@ -433,6 +505,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		M10000000000000000000013 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -471,6 +550,17 @@
 			buildActionMask = 2147483647;
 			files = (
 				C10000000000000000000006 /* FamiliarSharedInbox.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		M10000000000000000000012 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				M20000000000000000000011 /* FamiliarWorkspaceStore.swift in Sources */,
+				M20000000000000000000012 /* FamiliarShellExecutor.swift in Sources */,
+				M20000000000000000000013 /* FamiliarShellPolicy.swift in Sources */,
+				M20000000000000000000014 /* FamiliarContainerShellExecutor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -782,6 +872,61 @@
 			};
 			name = Release;
 		};
+		M10000000000000000000021 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = FamiliarMac/FamiliarMac.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G229WP43HH;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FamiliarMac/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.isaachuo.familiar.mac;
+				PRODUCT_NAME = Familiar;
+				SDKROOT = macosx;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		M10000000000000000000022 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = FamiliarMac/FamiliarMac.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G229WP43HH;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FamiliarMac/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.isaachuo.familiar.mac;
+				PRODUCT_NAME = Familiar;
+				SDKROOT = macosx;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -839,14 +984,16 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-/* End XCConfigurationList section */
-
-/* Begin XCLocalSwiftPackageReference section */
-		E20000000000000000000003 /* XCLocalSwiftPackageReference "Vendor/ml-fastvlm" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = "Vendor/ml-fastvlm";
+		M10000000000000000000020 /* Build configuration list for PBXNativeTarget "FamiliarMac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				M10000000000000000000021 /* Debug */,
+				M10000000000000000000022 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
-/* End XCLocalSwiftPackageReference section */
+/* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
 		E10000000000000000000003 /* XCRemoteSwiftPackageReference "SwiftSoup" */ = {
@@ -857,6 +1004,14 @@
 				version = 2.13.7;
 			};
 		};
+		M20000000000000000000003 /* XCRemoteSwiftPackageReference "containerization" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/containerization.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.33.4;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -865,9 +1020,10 @@
 			package = E10000000000000000000003 /* XCRemoteSwiftPackageReference "SwiftSoup" */;
 			productName = SwiftSoup;
 		};
-		E20000000000000000000002 /* FastVLMRuntime */ = {
+		M20000000000000000000002 /* Containerization */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = FastVLMRuntime;
+			package = M20000000000000000000003 /* XCRemoteSwiftPackageReference "containerization" */;
+			productName = Containerization;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

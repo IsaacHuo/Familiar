@@ -66,7 +66,7 @@ Familiar 为普通 iPhone 用户提供统一的移动问答与 Agent 执行入�
 
 ### 4.1 配置模型服务
 
-用户可以在首启流程中选择 Provider、填写 API Key、选择或输入模型 ID，并执行连接验证。API Key 写入设备 Keychain，Provider 配置和偏好写入本地设置。用户也可以先跳过配置浏览聊天壳层、本地历史和设置；在真正发送模型请求前，仍必须完成 BYOK 配置。
+用户可以在首启流程中配置当前启用的 DeepSeek 服务、填写 API Key、选择或输入模型 ID，并执行连接验证。API Key 写入设备 Keychain，Provider 配置和偏好写入本地设置。底层仍使用通用 ModelProvider/OpenAI-compatible adapter，不把 Agent Runtime 绑定到 DeepSeek。
 
 ### 4.2 连续对话
 
@@ -86,9 +86,9 @@ Familiar 为普通 iPhone 用户提供统一的移动问答与 Agent 执行入�
 
 ### 4.6 使用图片
 
-模型原生支持图片时，图片字节只发往用户当前选择的 Provider。模型不支持图片时，Familiar 在设备上提供基础视觉 fallback：使用 Apple Vision 提取 OCR、条码和基础分类证据，再将带来源、方法和可信度说明的只读证据交给当前文本模型。基础结果不足时应明确能力边界，并建议用户切换到已经配置的多模态 Provider。
+选择 `deepseek-v4-flash-vision-exp` 时，图片字节只发往当前 DeepSeek endpoint；该实验 ID 的真实可用边界必须通过账户冒烟确认。选择文本模型时，Familiar 使用 Apple Vision 提取 OCR、条码和基础分类证据，再将带来源、方法和可信度说明的只读证据交给当前模型。不会自动切换到实验视觉模型。
 
-设备满足芯片、存储和运行时基准时，用户可以在设置中主动安装固定版本的 `FastVLM-0.5B`，用于描述、比较、图表解释和开放式图片问答。该能力仅用于当前个人非商业实验；模型删除后保留历史视觉证据。
+FastVLM 当前暂停提供，不显示安装入口，也不参与图片自动路由。Core AI/Qwen 是 iOS 27 正式可用后的本地文本模型方向。
 
 ### 4.7 使用语音输入
 
@@ -165,18 +165,21 @@ Provider 原生能力、设备端预处理和可选本地模型是不同的数�
 ### 7.1 包含
 
 - 文本聊天与本地会话管理。
-- 12 个内置 Provider + 自定义 OpenAI-compatible Provider。
-- OpenAI Chat、Anthropic Messages、Gemini Generate Content 三类协议适配。
+- 当前唯一启用的 Provider descriptor 是 DeepSeek；底层 Provider/Agent 接口保持通用。
+- 通用 OpenAI-compatible Chat Completions SSE adapter。
 - 日历事件与提醒事项的查询与创建；精确授权、动作卡审计和跨重启 Undo 记录已接入，真机验收仍待完成。
 - 只读 `web_search`、`web_fetch` 与回答来源记录。
 - PDF、Office、OpenDocument、RTF、EPUB、CSV、TXT、Markdown 等文档导入；AnyDoc 本地转换、PDFKit 文本层检查与 Vision OCR。
-- 图片选择、拍照和预览；原生多模态发送、Apple Vision 基础视觉 fallback，以及用户主动安装的 FastVLM 高级本地视觉包。
+- 图片选择、拍照和预览；DeepSeek 实验视觉模型发送，以及文本模型的 Apple Vision 基础证据 fallback。
 - Apple Speech 转写。
 - Project / Resource / Artifact / ContextSnapshot 主链路。
 - Composer 显式选择、仅作用于下一次 Run 的 instruction-only Skill。
 - 简体中文和英文界面。
 
 ### 7.2 当前排除
+
+- FastVLM 下载、设置入口和自动推理路由。
+- iOS 27 正式发布前的 Core AI/Qwen 真实 Runtime。
 
 - iPad 专用界面。
 - 账户、登录、云端会话同步。
@@ -225,7 +228,7 @@ Provider 原生能力、设备端预处理和可选本地模型是不同的数�
 6. API Key 只进入 Keychain 和对应 Provider 请求。
 7. 隐私用途说明与实际调用一致。
 8. 内置模型 ID 失效时允许用户输入有效模型 ID，界面保持可恢复。
-9. SwiftData 启动路径能够打开 `FamiliarDevelopment.store` 的当前 27 实体 Schema，并以破坏性开发 store 轮换处理旧测试数据，不依赖迁移链。
+9. SwiftData 启动路径能够打开 `FamiliarDevelopment.store` 的当前 31 实体 Schema，并以破坏性开发 store 轮换处理旧测试数据，不依赖迁移链。
 10. EventKit、相机、Apple Vision、Speech 和安全作用域文件完成真机验收。
 11. 通知权限只在用户明确开启时请求；关闭后不再安排 Familiar 通知，并清理待处理与已投递通知。
 12. Spotlight 结果只暴露受保护的本地会话标题和 UUID，点击后能回到存在的本地会话；删除会话后对应结果被清理。

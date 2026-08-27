@@ -11,7 +11,8 @@ nonisolated struct FamiliarCurrentDateTimeTool: FamiliarTool {
         effect: .read,
         risk: .low,
         requirements: [],
-        supportsParallelism: true
+        supportsParallelism: true,
+        executionClass: .native
     )
 
     func execute(
@@ -69,7 +70,8 @@ nonisolated struct FamiliarAppInformationTool: FamiliarTool {
         effect: .read,
         risk: .low,
         requirements: [],
-        supportsParallelism: true
+        supportsParallelism: true,
+        executionClass: .native
     )
 
     func execute(

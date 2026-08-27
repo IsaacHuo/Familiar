@@ -56,36 +56,19 @@ struct FamiliarOnboardingView: View {
             subtitle: String(localized: "onboarding.provider.subtitle")
         ) {
             VStack(spacing: 14) {
-                Picker(String(localized: "settings.provider"), selection: $settings.providerID) {
-                    ForEach(FamiliarProviderCatalog.builtIn) { provider in
-                        Text(provider.displayName).tag(provider.id)
-                    }
-                    Text(String(localized: "settings.custom.provider"))
-                        .tag(FamiliarProviderCatalog.customProviderID)
-                }
-                .pickerStyle(.menu)
+                LabeledContent(String(localized: "settings.provider"), value: FamiliarProviderCatalog.deepSeek.displayName)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
                 .frame(height: 52)
                 .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .onChange(of: settings.providerID) { oldID, newID in
-                    settings.providerConfigurations[oldID] = configuration
-                    configuration = settings.providerConfigurations[newID] ?? .empty
-                    settings.modelID = newID == FamiliarProviderCatalog.customProviderID
-                        ? ""
-                        : currentDescriptor?.defaultModel.id ?? ""
-                    apiKey = ""
-                }
 
-                if settings.providerID == FamiliarProviderCatalog.customProviderID {
-                    TextField(String(localized: "settings.custom.name"), text: $configuration.displayName)
-                        .onboardingField()
-                    TextField("https://example.com/v1", text: $configuration.baseURL)
-                        .textInputAutocapitalization(.never)
-                        .keyboardType(.URL)
-                        .autocorrectionDisabled()
-                        .onboardingField()
+                Picker(String(localized: "settings.model"), selection: $settings.modelID) {
+                    ForEach(FamiliarProviderCatalog.deepSeek.curatedModels) { model in
+                        Text(model.displayName).tag(model.id)
+                    }
                 }
+                .pickerStyle(.menu)
+                .onboardingField()
 
                 SecureField(currentDescriptor?.apiKeyPlaceholder ?? "sk-…", text: $apiKey)
                     .textInputAutocapitalization(.never)
@@ -93,10 +76,6 @@ struct FamiliarOnboardingView: View {
                     .focused($isKeyFocused)
                     .onboardingField()
 
-                TextField(String(localized: "settings.model.manual"), text: $settings.modelID)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .onboardingField()
             }
         }
     }
@@ -221,6 +200,8 @@ struct FamiliarOnboardingView: View {
                     apiKey: key
                 )
                 settings.modelID = modelID
+                settings.providerID = FamiliarProviderCatalog.deepSeek.id
+                settings.modelRoutePolicy = .cloud
                 settings.providerConfigurations[settings.providerID] = configuration
                 try FamiliarKeychainStore.save(key, for: settings.providerID)
                 try FamiliarSettingsStore.save(settings)

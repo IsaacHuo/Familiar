@@ -6,19 +6,28 @@ struct FamiliarAppDependencies {
     let policy: FamiliarExecutionPolicy
     let confirmationCoordinator: FamiliarToolConfirmationCoordinator
     let clarificationCoordinator: FamiliarClarificationCoordinator
+    let modelEscalationCoordinator: FamiliarModelEscalationCoordinator
     let undoStore: FamiliarUndoStore
     let eventKit: FamiliarEventKitService
+    let contacts: FamiliarContactsService
+    let location: FamiliarLocationService
+    let clipboard: FamiliarClipboardService
     let searchService: FamiliarWebSearchService
+    let workspaceStore: FamiliarWorkspaceStore
     let visionProcessor = FamiliarVisionProcessor()
-    let localVision = FamiliarLocalVisionModelManager.shared
     let sessionID = UUID().uuidString
 
     init() {
         eventKit = FamiliarEventKitService()
+        contacts = FamiliarContactsService()
+        location = FamiliarLocationService()
+        clipboard = FamiliarClipboardService()
         let web = FamiliarWebContentService()
         searchService = FamiliarWebSearchService()
+        workspaceStore = FamiliarWorkspaceStore()
         confirmationCoordinator = FamiliarToolConfirmationCoordinator()
         clarificationCoordinator = FamiliarClarificationCoordinator()
+        modelEscalationCoordinator = FamiliarModelEscalationCoordinator()
         policy = FamiliarExecutionPolicy()
         undoStore = FamiliarUndoStore()
         do {
@@ -31,6 +40,17 @@ struct FamiliarAppDependencies {
                     AnyFamiliarTool(FamiliarResourceListTool()),
                     AnyFamiliarTool(FamiliarResourceReadTool()),
                     AnyFamiliarTool(FamiliarResourceSearchTool()),
+                    AnyFamiliarTool(FamiliarWorkspaceListTool(store: workspaceStore)),
+                    AnyFamiliarTool(FamiliarWorkspaceReadTool(store: workspaceStore)),
+                    AnyFamiliarTool(FamiliarWorkspaceSearchTool(store: workspaceStore)),
+                    AnyFamiliarTool(FamiliarWorkspaceWriteTool(store: workspaceStore)),
+                    AnyFamiliarTool(FamiliarWorkspaceImageListTool(store: workspaceStore)),
+                    AnyFamiliarTool(FamiliarSpotlightSearchTool(indexer: .shared)),
+                    AnyFamiliarTool(FamiliarContactsSearchTool(service: contacts)),
+                    AnyFamiliarTool(FamiliarCurrentLocationTool(service: location)),
+                    AnyFamiliarTool(FamiliarClipboardReadTool(service: clipboard)),
+                    AnyFamiliarTool(FamiliarClipboardWriteTool(service: clipboard)),
+                    AnyFamiliarTool(FamiliarPrepareShareTool()),
                     AnyFamiliarTool(FamiliarTaskPlanTool()),
                     AnyFamiliarTool(FamiliarPresentRecommendationTool()),
                     AnyFamiliarTool(FamiliarPresentInsightTool()),
@@ -42,16 +62,33 @@ struct FamiliarAppDependencies {
                     AnyFamiliarTool(FamiliarRemindersTool(service: eventKit)),
                     AnyFamiliarTool(FamiliarCreateReminderTool(service: eventKit))
                 ],
-                capabilities: eventKit
+                capabilities: FamiliarDeviceCapabilityProvider(
+                    eventKit: eventKit,
+                    contacts: contacts,
+                    location: location
+                )
             )
         } catch {
             preconditionFailure("无法创建工具注册表：\(error.localizedDescription)")
         }
     }
 
-    func makeRuntime(for descriptor: FamiliarProviderDescriptor, authorizationRuntime: (any FamiliarAuthorizationServicing)? = nil) -> FamiliarAgentLoop {
-        FamiliarAgentLoop(
-            provider: FamiliarProviderFactory.makeProvider(for: descriptor),
+    func makeRuntime(
+        for descriptor: FamiliarProviderDescriptor,
+        apiKey: String,
+        routePolicy: FamiliarModelRoutePolicy,
+        authorizationRuntime: (any FamiliarAuthorizationServicing)? = nil
+    ) -> FamiliarAgentLoop {
+        let cloudProvider = FamiliarProviderFactory.makeProvider(for: descriptor, apiKey: apiKey)
+        let router = FamiliarModelRouter(
+            policy: routePolicy,
+            cloudProvider: cloudProvider,
+            authorizeCloudEscalation: { request in
+                await modelEscalationCoordinator.requestApproval(request)
+            }
+        )
+        return FamiliarAgentLoop(
+            provider: router,
             registry: registry,
             policy: policy,
             confirmationCoordinator: confirmationCoordinator,

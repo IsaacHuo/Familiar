@@ -14,14 +14,16 @@
 | 日历/提醒 | EventKit full access（iOS 17+ API） |
 | 文档转换 | AnyDoc Rust 引擎（`Vendor/AnyDocBridge.xcframework`，iOS arm64 + Simulator arm64） |
 | PDF | PDFKit 文本层检查 + Vision OCR |
-| 图片 | PhotosPicker、AVFoundation、UIKit、Vision；可选 FastVLM 0.5B（MLX + Core ML） |
+| 图片 | PhotosPicker、AVFoundation、UIKit、Vision；Apple Vision 生成本地只读证据，生产模型不接收图片 bytes |
+| 本地文本模型 | Core AI adapter contract + ModelManager；真实 Xcode 27 Runtime/Qwen bundle 尚未接入 |
+| 受控计算 | iOS iSH bridge contract；macOS Apple Containerization 0.33.4 direct Swift API |
 | 语音 | Speech、AVAudioEngine |
 | 网页解析 | SwiftSoup（SPM 2.13.7，仅 app target 链接） |
 
-- 最低部署目标 iOS 18；FastVLM 安装路径额外要求 iOS 18.2+；`TARGETED_DEVICE_FAMILY = 1`（iPhone only）。
+- iOS App 最低部署目标仍为 iOS 18；FastVLMRuntime/MLX 不在 iOS target 或 Package graph 中，研究源码仅保留在 `Vendor/`。`TARGETED_DEVICE_FAMILY = 1`（iPhone only）。
 - Swift 6，`SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`。
 - 唯一 entitlement：App Group `group.com.isaachuo.familiar`。
-- Target：`Familiar`（app）、`FamiliarTests`（Swift Testing）、`FamiliarUITests`、`FamiliarShareExtension`（appex）、`FamiliarWidgets`（appex）。
+- Target：`Familiar`（iOS app）、`FamiliarMac`（原生 macOS app）、`FamiliarTests`（Swift Testing）、`FamiliarUITests`、`FamiliarShareExtension`（appex）、`FamiliarWidgets`（appex）。
 
 ## 2. App 入口与依赖注入
 
@@ -30,7 +32,7 @@
   - store 文件名 `FamiliarDevelopment.store`。
   - 新 store 首次创建时清理旧开发 store（`FamiliarAgentV2.store`、`FamiliarAgentV1.store`、`default.store`）与失去元数据的附件、项目资源和 Artifact 目录。
   - 容器创建失败显示 `FamiliarStoreRecoveryView`，用户确认后删除当前 store、附件、项目资源与 Artifact，保留 Keychain。
-  - **`Familiar/App/FamiliarAppDependencies.swift`** — `@MainActor` DI 根。持有：`FamiliarToolRegistry`、`FamiliarExecutionPolicy`、`FamiliarToolConfirmationCoordinator`、独立 `FamiliarClarificationCoordinator`、`FamiliarUndoStore`、`FamiliarWebSearchService`、`FamiliarVisionProcessor`、`FamiliarLocalVisionModelManager`。`makeRuntime(for:)` 组装带 `FamiliarAuthorizationRuntime` 的 `FamiliarAgentLoop`。
+  - **`Familiar/App/FamiliarAppDependencies.swift`** — `@MainActor` DI 根。持有 ToolRegistry、执行/审批/clarification/model-escalation coordinator、Workspace、原生 capability services、Web 与 Apple Vision。`makeRuntime(for:)` 以 `ModelRouter` 组合当前 descriptor 与将来的 Core AI Provider，再注入单一 `FamiliarAgentLoop`。当前 descriptor catalog 只有 DeepSeek；Runtime 不做供应商类型判断。
 
 ## 3. 模块清单
 
@@ -40,7 +42,7 @@
 | `FamiliarTool.swift` | `FamiliarTool` 协议（类型化 Input）、`FamiliarToolManifest`、effect/risk/requirement、`FamiliarToolResultEnvelope`（canonical model JSON + schema v2 typed scalar/search/document/context/records/mutation/artifact/diff/taskList/recommendation/insight/code payload；Context Match 含真实资源版本，typed Code 可带文件名）、有序 typed approval fields、`FamiliarActionProposal`（延迟写入 + execute/undo）、clarification proposal、`actor FamiliarToolRegistry` |
 | `FamiliarAgentLoop.swift` | `struct FamiliarAgentLoop`（nonisolated）：唯一 typed Runtime event 集、`FamiliarRunOutcome` 单终态、最多 6 轮工具循环、规范化幂等指纹、read 失败内部重试一次、首字节前 Provider 重试 notice、整段 `ContinuousClock` hard deadline、最多 2 路并行独立 read、真实授权查询/签发、独立 clarification 暂停/恢复、结构化 tool failure、`actor FamiliarUndoStore`、结果长度上限（48k） |
 | `FamiliarRuntimeError.swift` | `FamiliarRuntimeFailure.kind(for:)` 错误分类（auth/限流/5xx/网络/上下文/参数/结果/取消等）与 `isRetryable` 判定 |
-| `FamiliarModelProvider.swift` | `FamiliarModelProvider` 协议（`stream(request:apiKey:)`）、独立 `reasoningSummaryDelta`、消息/内容/工具调用/Manifest 值类型 |
+| `FamiliarModelProvider.swift` | 无 API Key 参数的 `FamiliarModelProvider.stream(request:)` 与默认 `generate(request:)`、统一 `FamiliarToolCall`、reasoning delta、消息/内容/Manifest、`localOnly/preferLocal/cloud` 值类型 |
 | `FamiliarExecutionPolicy.swift` | `FamiliarExecutionPolicy.decide(...)`：read 自动、destructive/high risk 确认、有效授权可执行；实际规则由 `FamiliarAuthorizationRuntime` 以 Project/工具版本/目标/精确参数 hash/期限匹配 |
 | `FamiliarCapabilityContract.swift` | Manifest v2 字段、`FamiliarCapabilityCatalog/Resolver/Binding`、`FamiliarAuthorizationGrant`（共享规范化 arguments hash、single-use、expiry）；Capability snapshot/catalog 仍是契约层，实际免重复授权由 `FamiliarAuthorizationRuntime` 接线 |
 | `FamiliarToolConfirmationCoordinator.swift` | `public actor`，`runID + toolCallID` 幂等确认，checked continuation 暂停 Agent Loop |
@@ -51,6 +53,12 @@
 | `FamiliarNativeTools.swift` | `current_date_time`、`app_information`（read/low） |
 
 ### `Familiar/App/` — 见 §2。
+
+### `Familiar/AI/Models/` — 模型生命周期与路由
+- `FamiliarModelRouter.swift` — 三种路由策略；`preferLocal` 只在本地首字节前失败或不可用时请求云升级，拒绝不 fallback，已产生本地内容后不切 Provider。
+- `FamiliarModelEscalationCoordinator.swift` — 与 Tool authorization 分离的 DeepSeek 出站确认 continuation 和 UI 更新流。
+- `FamiliarModelManager.swift` — manifest、可恢复下载、大小/SHA-256 校验、runtime-specific prepare、原子版本目录、状态流与删除。
+- `FamiliarCoreAIModelProvider.swift` — Core AI runtime adapter；当前仅有显式 unavailable adapter，真实 Xcode 27 `CoreAILanguageModel`/`LanguageModelSession` 尚未接入。
 
 ### `Familiar/Artifacts/`
 - `FamiliarArtifactService.swift` — `FamiliarArtifactStore`（`<Application Support>/Familiar/Artifacts`，原子写入 + SHA-256）与 `@MainActor FamiliarArtifactService`（SwiftData `FamiliarArtifact` 事务 + 文件为真相源）。
@@ -64,19 +72,30 @@
 - `FamiliarSharedDraftImportService.swift` — 从共享收件箱取下一项导入为附件草稿。
 
 ### `Familiar/Data/` — Provider 与密钥
-- `OpenAICompatibleClient.swift` — `OpenAICompatibleClient`（Chat Completions SSE）、`FamiliarProviderFactory`（协议分发）、`FamiliarProviderHTTP`（授权 URL/header/query、错误正文读取）。
-- `FamiliarProviderAdapters.swift` — `AnthropicMessagesClient`、`GeminiGenerateContentClient`、`FamiliarJSONValue`。
+- `OpenAICompatibleClient.swift` — 通用 `FamiliarOpenAICompatibleModelProvider`（Chat Completions SSE）；当前 catalog/factory 只传入 DeepSeek descriptor，但 adapter、Tool Call、SSE 和错误合同不含 DeepSeek 专用分支。API Key 由 Provider 实例持有，不进入 Agent Runtime 合同。
 - `FamiliarSSEParser.swift` — 仅测试 fixture 使用。
 - `FamiliarKeychainStore.swift` — service `com.isaachuo.familiar.provider-api-keys.v2`，account = providerID，空 Key 删除。
 - `FamiliarSearchKeychainStore.swift` — 独立 Search Provider service `com.isaachuo.familiar.search-provider-api-keys.v1`，account = Search Provider ID，不与模型 Key 共用。
-- `FamiliarModelCatalogService.swift` — 模型列表拉取（30s）+ curated fallback。
-- `FamiliarProviderConnectionValidator.swift` — Key/模型连接验证。
+- `FamiliarModelCatalogService.swift` — 模型列表拉取（30s），只返回正式 curated ID 与实时 `/models` 的交集；空交集明确失败。
+- `FamiliarProviderConnectionValidator.swift` — Key/模型连接验证，要求所选模型真实出现在 `/models`。
 
 ### `Familiar/Domain/` — 共享值类型
 - `FamiliarChatModels.swift` — 消息/附件/来源与只含 activities/approvals/toolResults/responseBlocks/context 的 Run 快照、设置（UserDefaults `familiar.chat.settings.v2`）。
 - `FamiliarConversationMetadata.swift` — `FamiliarModelSwitchRecord`。
 - `FamiliarDeepLink.swift` — `familiar://new?text=`、`familiar://conversation/<UUID>`、`familiar://run/<UUID>`。
-- `FamiliarProviderCatalog.swift` — 12 内置 Provider + `custom-openai`，descriptor（endpoint/headers/auth/model catalog）。
+- `FamiliarProviderCatalog.swift` — 对外只暴露 DeepSeek；旧第三方 Provider descriptor/fixture 已删除。
+
+### `Familiar/Workspace/`、`Familiar/Native/`、`Familiar/Shell/`
+- `FamiliarWorkspaceStore.swift` — Project/Conversation Workspace，Shell-visible Files/Outputs/Runtime/Work，Metadata/Tasks/Checkpoints 不挂载；路径穿越、symlink、配额、checkpoint/diff/restore。
+- `FamiliarWorkspaceTools.swift` — Workspace list/read/search/write 与仅列用户导入图片的 image list。
+- `FamiliarDeviceTools.swift` — Contacts 只读、单次前台 Location、Clipboard 双向确认/写入 undo、只准备 payload 的 Share；EventKit 继续独立 adapter，Spotlight 只查 Familiar 索引。
+- `FamiliarShellExecutor.swift` / `FamiliarShellPolicy.swift` / `FamiliarShellTool.swift` — 统一 Shell 事件/typed result/取消/限制、危险命令确认、禁网/host path/后台/循环/编码绕过、执行前 checkpoint 与执行后 diff。真实 executor 未就绪前 `shell_execute` 不注册。
+- `FamiliarISHShellExecutor.swift` — Workspace 三目录 allowlist、禁网 runtime config 和 iSH bridge contract；具体 GPL fork/bridge 尚未 vendored。
+- `FamiliarContainerShellExecutor.swift` — 直接使用 LinuxContainer/exec/process API；无网络接口、三目录 VirtioFS、persistent writable layer 输入、2 vCPU/4 GiB、全局串行、取消与 idle stop。kernel/init/rootfs 下载准备尚未实现。
+
+### `FamiliarMac/`
+- `FamiliarMacApp.swift` — 原生 SwiftUI `WindowGroup + NavigationSplitView + inspector + Commands + Settings`；当前为 Codex 式桌面 shell，尚未接入共享 SwiftData/Agent Runtime。
+- `FamiliarMac.entitlements` — App Sandbox、用户选择文件、Hardened Runtime 构建设置与 Virtualization entitlement。
 
 ### `Familiar/EventKit/`
 - `FamiliarEventKitService.swift` — `public actor`，权限状态/请求、查询（limit 1–200）、幂等 commit、按持久 EventKit identifier undo，符合 `FamiliarCapabilityProviding`。
@@ -84,7 +103,7 @@
 
 ### `Familiar/Persistence/` — SwiftData
 - `FamiliarModels.swift` — 当前模型 typealias 与 `FamiliarModelContainer`；生产和测试容器直接打开单一当前 schema，不配置 migration plan。
-- `FamiliarSchema.swift` — 当前 30 个实体集合与项目/会话统一置顶记录。
+- `FamiliarSchema.swift` — 当前 31 个实体集合与项目/会话统一置顶记录。
 - `FamiliarProjectService.swift` — `@MainActor`，项目 CRUD（名称去除首尾空白并截断至 80 字符；创建/编辑时跨活跃与归档项目做不区分大小写的全局唯一检查）、指令（8k 上限）、归档、删除（运行中 Run 保护 + 资源/Artifact staged 删除/回滚；保留并解除 Conversation/Run，清理项目 Memory/授权）。
 - `FamiliarRunPersistenceRecorder.swift` — `@MainActor`，**已接线**：ensureRun + ContextSnapshot/VisualEvidence、Activity/ToolResult/Approval/Clarification/ResponseBlock 持久化；tool/approval/clarification/result 在 Runtime 事件边界 upsert，task plan 按稳定 identity 更新 latest revision，最终回复一次写 block，失败/取消且无助手消息时写可重放 runtime notice recovery，text delta 不写 SwiftData。没有 AgentStep/checkpoint 投影。
 - `FamiliarRunRecoveryService.swift` — `@MainActor`，capability/grant/cursor/tool-invocation 持久化 + `recoverInterruptedRuns`（启动时把遗留 running Run 终结为 failed、取消在途 invocation）；CapabilitySnapshot 与 RunResumeCursor 已接入，grant 创建/消费与字节级中断续跑仍未接入。
@@ -103,10 +122,9 @@
 - `FamiliarMarkdownWebView.swift` — 非持久化 WKWebView 渲染 + 高度回传 + 首帧回退文本；终态通过 `selectionChanged` bridge 回传最多 4000 字符纯文本，流式状态禁用并清空选择；长 Mermaid 通过 `previewMermaid` bridge 打开全屏，并复用同一 bundled renderer、非持久化 data store 与禁止远程连接的 CSP。
 - `FamiliarCameraView.swift`、`FamiliarAttachmentQuickLookView.swift`、`FamiliarMarkdownNormalizer.swift`。
 
-### `Familiar/Vision/` 与 `Familiar/LocalVision/`
+### `Familiar/Vision/` 与暂不提供的 `Familiar/LocalVision/`
 - `FamiliarVisionProcessor.swift` — Apple Vision OCR、条码、图像分类，生成标记为不可信只读内容的 `FamiliarVisualEvidence`。
-- `FamiliarLocalVisionModelManager.swift` — FastVLM 0.5B 的固定 manifest、设备准入、可恢复下载、SHA-256、ZIP 安全解包、Core ML 编译、基准、删除和 60 秒超时。
-- `Vendor/ml-fastvlm` — Apple 官方源码的本地 Swift Package wrapper，动态从用户下载目录加载 Core ML visual encoder 与 MLX 权重。
+- `FamiliarLocalVisionModelManager.swift` / `Vendor/ml-fastvlm` — FastVLM 研究实现暂留，但设置入口、DI 和 Chat 自动路由已断开；当前产品不提供下载或推理入口。是否删除残留依赖另行清理。
 
 ### `Familiar/Skills/`、`Familiar/Memory/`
 - `FamiliarSkillService.swift` — 严格 JSON instruction-only Skill parser、安装/更新/卸载、首次进入 Chat 时经 UserDefaults gate 一次性加入可删除示例，以及按安装 UUID 冻结确定性 Run snapshot；Composer 在普通或项目聊天中最多显式选择一个 Skill，只作用于下一次 Run，并收窄该次 Run 的工具范围。当前没有 `SkillBinding` 模型或项目自动注入路径。
@@ -145,31 +163,20 @@
 ### `FamiliarWidgets/`、`FamiliarShareExtension/`
 - Widget bundle（launcher + control）、`SLComposeServiceViewController` 分享面板（最多 3 文件、25 MiB）。
 
-## 4. 启动时注册的工具（17 个）
+## 4. 启动时注册的工具（28 个）
 
-注册位置：`FamiliarAppDependencies.init()`（`Familiar/App/FamiliarAppDependencies.swift:18`）。
+注册位置：`FamiliarAppDependencies.init()`。ToolRegistry 按 manifest 的 `.native / .specializedLocal / .shell` 分类保存；Agent Runtime 不硬编码具体工具。
 
-| # | 工具名 | effect | risk | 权限要求 | 说明 |
-|---|---|---|---|---|---|
-| 1 | `current_date_time` | read | low | — | 本机时间 |
-| 2 | `app_information` | read | low | — | App 信息 |
-| 3 | `web_search` | read | sensitive | — | 按独立设置路由到 DuckDuckGo / Brave / Tavily / Exa |
-| 4 | `web_fetch` | read | sensitive | — | 受限 HTTPS 抓取，可落为项目资源 |
-| 5 | `resource_list` | read | low | 项目作用域 | 列出 Run 启动时冻结的 Resource |
-| 6 | `resource_read` | read | low | 项目作用域 | 读取冻结 Resource 版本 |
-| 7 | `resource_search` | read | low | 项目作用域 | 搜索冻结 Resource 文本 |
-| 8 | `artifact_write` | reversibleWrite | low | 项目作用域 | 写入项目 Artifact，逐次确认 |
-| 9 | `artifact_edit` | reversibleWrite | low | 项目作用域 | 编辑项目 Artifact，逐次确认，可在当前会话撤销 |
-| 10 | `calendar_events` | read | sensitive | calendarFullAccess | 日历查询 |
-| 11 | `create_calendar_event` | reversibleWrite | sensitive | calendarFullAccess | 创建事件，确认后执行 + 跨重启 EventKit undo |
-| 12 | `reminders` | read | sensitive | remindersFullAccess | 提醒查询 |
-| 13 | `create_reminder` | reversibleWrite | sensitive | remindersFullAccess | 创建提醒，确认后执行 + 跨重启 EventKit undo |
-| 14 | `task_plan` | read | low | — | 展示或按稳定 planID 更新有序任务计划 |
-| 15 | `present_recommendation` | read | low | — | 展示建议与只填 Composer 的下一步 prompts |
-| 16 | `present_insight` | read | low | — | 展示说明与模型明确声明的具名 metrics |
-| 17 | `ask_user` | read | low | — | 发起独立 clarification，暂停并在回答后恢复 Run |
+| 分类 | 工具 |
+|---|---|
+| 设备原生 | `current_date_time`、`app_information`、`contacts_search`、`current_location`、`clipboard_read`、`clipboard_write`、`prepare_share`、`familiar_search` |
+| EventKit | `calendar_events`、`create_calendar_event`、`reminders`、`create_reminder` |
+| Workspace | `workspace_list`、`workspace_read`、`workspace_search`、`workspace_write`、`workspace_image_list` |
+| Project/Artifact | `resource_list`、`resource_read`、`resource_search`、`artifact_write`、`artifact_edit` |
+| Web | `web_search`、`web_fetch` |
+| Presentation/interaction | `task_plan`、`present_recommendation`、`present_insight`、`ask_user` |
 
-> 旧文档中的 8、9 或 12 个工具是加入 Resource 与 `artifact_edit` 前的历史口径。当前实际名称使用下划线形式 `resource_list/read/search`，仅 tool-capable 模型收到 manifest。
+`shell_execute` 已实现 manifest、policy、checkpoint 和 executor contract，但在 iSH/Container runtime 资产与隔离完成验收前刻意不注册。App Intents 是系统入口，不作为模型可调用 Tool 注册。
 
 ## 5. SwiftData Schema
 
@@ -237,7 +244,9 @@ MainActor 容器：`FamiliarChatController`、`FamiliarRunPersistenceRecorder`�
 | 附件 | `<Application Support>/Familiar/Attachments/{Drafts,Messages}/` |
 | 项目资源 | `<Application Support>/Familiar/ProjectResources/Projects/<projectID>/...` |
 | Artifact | `<Application Support>/Familiar/Artifacts` |
-| FastVLM | `<Application Support>/Familiar/LocalModels/FastVLM/installed/` |
+| FastVLM 残留研究资产 | `<Application Support>/Familiar/LocalModels/FastVLM/installed/`；当前无 UI/DI/自动路由入口 |
+| Core AI 模型 | `<Application Support>/Familiar/Models/{Downloads,Installed,Staging}/`（当前无已配置 Qwen manifest asset） |
+| Workspace | `<Application Support>/Familiar/Workspaces/{project-,conversation-}<UUID>/` |
 | 模型 API Key | Keychain（service `com.isaachuo.familiar.provider-api-keys.v2`） |
 | Search API Key | Keychain（service `com.isaachuo.familiar.search-provider-api-keys.v1`） |
 | Provider 设置/Search Provider 选择/通知开关 | UserDefaults |
@@ -245,8 +254,14 @@ MainActor 容器：`FamiliarChatController`、`FamiliarRunPersistenceRecorder`�
 
 ## 8. 已知缺口与未验证边界
 
+- iOS 1.0 设置与 Onboarding 固定 `.cloud`，只显示 DeepSeek Flash/Pro；内部 `ModelRouter` 合同保留，但本地路由不进入生产 UI。
+- 当前没有生产视觉模型。图片在本机经 Apple Vision 转成有限证据文本，原始 bytes 不发送到 DeepSeek。
+- 当前开发机是 Xcode 26.6 / iOS 26.5 SDK；计划中的 Xcode 27 Core AI API、Qwen3-0.6B Core AI bundle、specialization 与真机断网流式对话尚不可编译/验收。`FamiliarCoreAIModelProvider` 目前只完成 SDK-neutral adapter contract。
+- iSH 具体 GPL fork、固定上游 commit、Alpine rootfs 与 Familiar bridge 尚未加入仓库；iOS executor contract 已存在但返回 unavailable，Shell Tool 因此未注册。
+- macOS 已直接编译链接 Containerization 0.33.4，并有可构造 networkless LinuxContainer 的 session/factory；Familiar runtime kernel/init/rootfs/persistent disk 的下载校验器与真实 VM 启动尚未完成。FamiliarMac 当前是原生 Codex 式 UI shell，未接入共享 SwiftData/Agent Runtime。
+- Workspace Store/Tools 已接入新文件路径，但现有 Attachment、Project Resource 与 Artifact 仍使用原目录；尚未完成统一物理迁移。旧 development store 不做兼容读取。
 - ToolInvocation/cursor、授权创建/消费均已接入；字节级中断续跑仍未实现。
 - 通用 Project Capability Binding UI 未实现；Skill 使用 Composer 一次性显式调用，当前没有 Project Skill binding 或 Skill 导入 UI；Remote MCP 与 Memory Runtime 工具未实现。
 - 后台承接（`BGContinuedProcessingTask`，iOS 26+）未实现；当前无后台 Run 保证。
-- FastVLM、DeepSeek、Search Provider、EventKit 跨重启 Undo 与 Surface 视觉/无障碍仍缺真机验收；当前没有真实 Provider 冒烟结论。
+- DeepSeek、Search Provider、EventKit 跨重启 Undo 与 Surface 视觉/无障碍仍缺真机验收；当前没有真实 Provider 冒烟结论。FastVLM 不进入当前验收范围。
 - Skills 已完成显式一次性 Context 注入、工具收窄与 Run 审计快照；不支持 scripts/references/assets。Memory Runtime tools、Remote MCP 与可靠后台承接仍未实现。

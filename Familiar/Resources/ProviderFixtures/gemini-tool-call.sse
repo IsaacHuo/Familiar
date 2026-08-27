@@ -1,3 +1,0 @@
-data: {"candidates":[{"content":{"role":"model","parts":[{"text":"I’ll check that."}]},"finishReason":null,"index":0}]}
-
-data: {"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"calendar_query","args":{"start":"2026-08-11T00:00:00Z"}}}]},"finishReason":"STOP","index":0}]}

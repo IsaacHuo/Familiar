@@ -219,8 +219,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
     }
 
     func stream(
-        contextSnapshot: FamiliarContextSnapshot,
-        apiKey: String
+        contextSnapshot: FamiliarContextSnapshot
     ) -> AsyncThrowingStream<FamiliarRuntimeEvent, Error> {
         let runID = UUID().uuidString
         return AsyncThrowingStream { continuation in
@@ -233,7 +232,6 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                     try await run(
                         runID: runID,
                         contextSnapshot: contextSnapshot,
-                        apiKey: apiKey,
                         emitter: emitter,
                         deadline: deadline
                     )
@@ -256,7 +254,6 @@ nonisolated struct FamiliarAgentLoop: Sendable {
     private func run(
         runID: String,
         contextSnapshot: FamiliarContextSnapshot,
-        apiKey: String,
         emitter: FamiliarRuntimeEventEmitter,
         deadline: ContinuousClock.Instant
     ) async throws {
@@ -281,7 +278,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
             await emitter.beginAssistantTurn(assistantTurnID)
             await emitter.emit(.assistantTurnStarted(id: assistantTurnID, index: iteration))
             let request = FamiliarModelRequest(model: contextSnapshot.modelID, messages: messages, tools: manifests)
-            let round = try await streamRound(request: request, apiKey: apiKey, emitter: emitter, deadline: deadline)
+            let round = try await streamRound(request: request, emitter: emitter, deadline: deadline)
             visibleResponse += round.text
             if round.finishReason == .length || round.finishReason == .unknown { throw FamiliarAgentError.incompleteResponse }
             let calls = try round.pendingCalls.sorted { $0.key < $1.key }.map { try $0.value.completed() }
@@ -359,7 +356,6 @@ nonisolated struct FamiliarAgentLoop: Sendable {
 
     private func streamRound(
         request: FamiliarModelRequest,
-        apiKey: String,
         emitter: FamiliarRuntimeEventEmitter,
         deadline: ContinuousClock.Instant
     ) async throws -> RoundResult {
@@ -375,7 +371,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                     var roundIsResponding = false
                     var finishReason: FamiliarModelFinishReason?
                     do {
-                        for try await event in provider.stream(request: request, apiKey: apiKey) {
+                        for try await event in provider.stream(request: request) {
                             try Task.checkCancellation()
                             switch event {
                             case .textDelta(let value):
@@ -468,7 +464,16 @@ nonisolated struct FamiliarAgentLoop: Sendable {
             let resources = contextSnapshot.resources.map {
                 FamiliarToolContext.Resource(id: $0.resourceID, versionID: $0.resourceVersionID, version: $0.version, displayName: $0.displayName, filename: $0.filename, mimeType: $0.mimeType, extractedText: $0.extractedText)
             }
-            let toolContext = FamiliarToolContext(runID: runID, toolCallID: call.id, projectID: contextSnapshot.projectID, resources: resources)
+            let workspaceID: FamiliarWorkspaceID = contextSnapshot.projectID.map(FamiliarWorkspaceID.project)
+                ?? .conversation(contextSnapshot.conversationID)
+            let toolContext = FamiliarToolContext(
+                runID: runID,
+                toolCallID: call.id,
+                projectID: contextSnapshot.projectID,
+                conversationID: contextSnapshot.conversationID,
+                workspaceID: workspaceID,
+                resources: resources
+            )
             let outcome = try await executeOutcome(
                 name: call.name,
                 arguments: call.arguments,
@@ -589,7 +594,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         }
     }
 
-    private func approve(runID: String, call: FamiliarProviderToolCall, effect: FamiliarToolEffect, risk: FamiliarToolRisk, title: String, fields: [FamiliarApprovalField], target: String?, consequence: String, undoPolicy: FamiliarApprovalUndoPolicy, emitter: FamiliarRuntimeEventEmitter, deadline: ContinuousClock.Instant) async throws -> FamiliarToolConfirmationDecision {
+    private func approve(runID: String, call: FamiliarToolCall, effect: FamiliarToolEffect, risk: FamiliarToolRisk, title: String, fields: [FamiliarApprovalField], target: String?, consequence: String, undoPolicy: FamiliarApprovalUndoPolicy, emitter: FamiliarRuntimeEventEmitter, deadline: ContinuousClock.Instant) async throws -> FamiliarToolConfirmationDecision {
         let request = FamiliarToolConfirmationRequest(runID: runID, toolCallID: call.id, toolName: call.name, effect: effect, risk: risk, title: title, fields: fields, target: target, consequence: consequence, undoPolicy: undoPolicy)
         await emitter.emit(.runPhaseChanged(.awaitingApproval))
         await emitter.emit(.approvalRequested(request))
@@ -601,7 +606,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         return decision
     }
 
-    private func activityCompletion(runID: String, call: FamiliarProviderToolCall, manifest: FamiliarToolManifest, assistantTurnID: String, detail: String, confirmation: FamiliarPersistedConfirmationResult, status: FamiliarToolRunTerminalStatus, startedAt: Date, finishedAt: Date = Date(), artifactIdentifier: String? = nil, undoAvailable: Bool = false, automaticApprovalRequest: FamiliarToolConfirmationRequest? = nil) -> FamiliarRuntimeActivityCompletion {
+    private func activityCompletion(runID: String, call: FamiliarToolCall, manifest: FamiliarToolManifest, assistantTurnID: String, detail: String, confirmation: FamiliarPersistedConfirmationResult, status: FamiliarToolRunTerminalStatus, startedAt: Date, finishedAt: Date = Date(), artifactIdentifier: String? = nil, undoAvailable: Bool = false, automaticApprovalRequest: FamiliarToolConfirmationRequest? = nil) -> FamiliarRuntimeActivityCompletion {
         .init(runID: runID, toolCallID: call.id, toolName: call.name, effect: manifest.effect, assistantTurnID: assistantTurnID, detail: detail, confirmation: confirmation, status: status, startedAt: startedAt, finishedAt: finishedAt, artifactIdentifier: artifactIdentifier, undoAvailable: undoAvailable, automaticApprovalRequest: automaticApprovalRequest)
     }
 
@@ -668,7 +673,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
 
     private struct PreparedToolCall: Sendable {
         let index: Int
-        let call: FamiliarProviderToolCall
+        let call: FamiliarToolCall
         let manifest: FamiliarToolManifest
         let startedAt: Date
     }
@@ -693,7 +698,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
 
     private struct PendingToolCall: Sendable {
         var id = "", name = "", arguments = ""
-        func completed() throws -> FamiliarProviderToolCall {
+        func completed() throws -> FamiliarToolCall {
             guard !id.isEmpty, !name.isEmpty else { throw FamiliarAgentError.invalidToolCall }
             guard arguments.count <= 16_000 else { throw FamiliarAgentError.toolArgumentsTooLarge }
             return .init(id: id, name: name, arguments: arguments)

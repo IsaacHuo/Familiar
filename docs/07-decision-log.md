@@ -447,15 +447,15 @@
 
 ## D-042 纯文本模型使用设备端视觉 fallback
 
-- 状态：已实现；真实图片与真机性能尚未验收
-- 决策：支持图片的当前模型直接接收图片；DeepSeek 等纯文本模型由 Familiar 先生成设备端视觉证据。默认使用 Apple Vision 的 OCR、条码和基础分类；高级任务在安装 FastVLM 后自动路由。未经用户选择，不自动把图片发送到另一个 Provider。
+- 状态：部分被 D-048 替代；Apple Vision 文本模型 fallback 继续生效，FastVLM 自动路由停止
+- 决策：支持图片的当前模型直接接收图片；纯文本模型由 Familiar 先生成设备端视觉证据。当前只使用 Apple Vision 的 OCR、条码和基础分类，不自动调用 FastVLM，也不自动切换到 DeepSeek 实验视觉模型。
 - 依据：当前主要测试模型为 DeepSeek，用户仍需要基础图片识读；本地处理无需第二个 API Key，也不增加网络数据目的地。
 - 影响：视觉结果作为带 provenance 的不可信只读证据交给主模型；基础结果不足时明确能力边界并建议切换已配置的多模态 Provider。Provider adapter 不承担 fallback。
 - 复审条件：Apple Vision 覆盖不足、FastVLM 设备性能不可接受，或出现可合法分发且更可靠的本地视觉模型。
 
 ## D-043 FastVLM 作为可选高级本地视觉包
 
-- 状态：已实现；真机下载、编译、推理与资源表现尚未验收
+- 状态：暂停；被 D-048 的当前交付边界替代，研究代码暂留但无设置入口或自动路由
 - 决策：个人非商业实验第一版只提供固定版本 `FastVLM-0.5B`。用户在设置中主动下载；安装检查芯片、至少约 3.5 GB 可用空间和安装后短基准。模型失败或 60 秒超时自动退回 Apple Vision。
 - 依据：FastVLM 有 Apple 官方 iOS 18.2+ Demo 和移动端推理路径；0.5B 官方预转换下载约 1.23 GB。官方未公布统一设备内存门槛或中文质量，因此必须以真机基准为准。
 - 影响：固定下载 URL、大小和 SHA-256，不自动跟随上游；支持断点续传、失败重试和删除；许可证与归属在设置中可见。删除模型不删除历史视觉证据。该权重不得在未重新取得许可的商业或公开分发场景使用。
@@ -502,6 +502,20 @@
   - 旧 Project Skill binding 不保留兼容读取或迁移。未显式选择 Skill 的 Run 不注入 Skill；发送提交后清空选择，后续 Run 不继承。
   - 置顶会话在抽屉置顶区作为顶层条目显示，不在项目或普通最近列表重复出现；置顶项目仍可在置顶区展开其未置顶会话。
 - 复审条件：准备公开发布、需要保留已发布数据、真实使用证明一次性 Skill 不足，或工作区恢复与抽屉分区在真机可用性测试中产生阻塞。
+
+## D-048 当前只启用 DeepSeek，Provider 接口保持通用
+
+- 日期：2026-08-27
+- 状态：生效；覆盖 D-042 的 FastVLM 自动视觉路由和 D-043 的当前提供状态
+- 决策：
+  - 当前唯一启用的模型 Provider descriptor 是 DeepSeek，新安装默认路由临时为 `.cloud`，优先完成真实 API、Tool Call 与 EventKit 闭环测试。
+  - DeepSeek 不成为 Agent Runtime 特殊类型。网络实现使用通用 `FamiliarOpenAICompatibleModelProvider`；ModelRouter、Tool Call、ToolResult、SSE、错误和取消合同保持供应商无关。
+  - Catalog 保留 `deepseek-v4-flash`、`deepseek-v4-pro` 与实验图片入口 `deepseek-v4-flash-vision-exp`。实验视觉 ID 必须用真实账户确认，失败时明确报错，不静默 fallback。
+  - Core AI/Qwen 方向继续保留，但在 iOS 27/Xcode 27 正式 SDK 和模型资产可用前不作为当前交付门槛。届时再恢复 `.preferLocal` 默认值。
+  - FastVLM 暂停对用户提供。设置入口、DI 和 Chat 自动路由断开；仓库内研究代码与依赖是否删除另行清理。
+- 依据：当前需要先验证一条真实、稳定、可审计的模型与工具主路径。只启用一个 Provider 能减少未验证兼容面；保持通用接口则避免把当前产品选择固化为 Agent Runtime 架构依赖。
+- 影响：当前验收集中于 DeepSeek 文本、实验图片、取消、错误、Tool Call、ToolResult 和 Native Tool；Core AI、FastVLM、iSH 与 Containerization 不阻塞本轮。产品说明必须区分“唯一启用 Provider”和“Provider 接口只能支持 DeepSeek”。
+- 复审条件：iOS 27/Core AI 正式可用、需要启用第二个云 Provider、实验视觉模型不可用，或 DeepSeek 协议差异无法继续由 descriptor/capabilities 表达。
 
 ## 决策维护
 

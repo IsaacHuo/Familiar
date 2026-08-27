@@ -5,7 +5,7 @@ import Testing
 private struct FamiliarClarificationProvider: FamiliarModelProvider {
     let providerID = "clarification-fixture"
 
-    func stream(request: FamiliarModelRequest, apiKey: String) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
+    func stream(request: FamiliarModelRequest) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             if request.messages.contains(where: { $0.role == .tool }) {
                 continuation.yield(.textDelta("Resolved"))
@@ -22,7 +22,7 @@ private struct FamiliarClarificationProvider: FamiliarModelProvider {
 private struct FamiliarRecommendationProvider: FamiliarModelProvider {
     let providerID = "recommendation-fixture"
 
-    func stream(request: FamiliarModelRequest, apiKey: String) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
+    func stream(request: FamiliarModelRequest) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             if request.messages.contains(where: { $0.role == .tool }) {
                 continuation.yield(.textDelta("Choose when ready."))
@@ -62,7 +62,7 @@ struct FamiliarBeautifulUIRuntimeTests {
         let snapshot = try familiarTestContextSnapshot(manifests: await registry.manifests())
         let collector = Task {
             var events: [FamiliarRuntimeEvent] = []
-            for try await event in loop.stream(contextSnapshot: snapshot, apiKey: "key") { events.append(event) }
+            for try await event in loop.stream(contextSnapshot: snapshot) { events.append(event) }
             return events
         }
 
@@ -85,7 +85,7 @@ struct FamiliarBeautifulUIRuntimeTests {
         let loop = FamiliarAgentLoop(provider: FamiliarClarificationProvider(), registry: registry, policy: .init(), confirmationCoordinator: .init(), clarificationCoordinator: coordinator, undoStore: .init())
         let snapshot = try familiarTestContextSnapshot(manifests: await registry.manifests())
         let collector = Task {
-            for try await _ in loop.stream(contextSnapshot: snapshot, apiKey: "key") {}
+            for try await _ in loop.stream(contextSnapshot: snapshot) {}
         }
 
         _ = try await pendingRequest(in: coordinator)
@@ -98,7 +98,7 @@ struct FamiliarBeautifulUIRuntimeTests {
     private func collect(_ loop: FamiliarAgentLoop, manifests: [FamiliarToolManifest]) async throws -> [FamiliarRuntimeEvent] {
         let snapshot = try familiarTestContextSnapshot(manifests: manifests)
         var events: [FamiliarRuntimeEvent] = []
-        for try await event in loop.stream(contextSnapshot: snapshot, apiKey: "key") { events.append(event) }
+        for try await event in loop.stream(contextSnapshot: snapshot) { events.append(event) }
         return events
     }
 

@@ -19,7 +19,6 @@ struct FamiliarModelServiceSettingsView: View {
     @State private var isRefreshingModels = false
     @State private var validationSucceeded = false
     @State private var errorMessage: String?
-    @State private var configuredProviderIDs: Set<String>
     @State private var asksToRestartOnboarding = false
     @State private var runNotificationsEnabled: Bool
     @State private var notificationAuthorization: FamiliarNotificationAuthorizationState = .unknown
@@ -37,9 +36,6 @@ struct FamiliarModelServiceSettingsView: View {
         _configuration = State(initialValue: initialSettings.providerConfiguration)
         _models = State(initialValue: initialSettings.selectedProvider.curatedModels)
         _hasAPIKey = State(initialValue: FamiliarKeychainStore.isConfigured(for: initialSettings.providerID))
-        _configuredProviderIDs = State(initialValue: FamiliarKeychainStore.configuredProviderIDs(
-            in: FamiliarProviderCatalog.allProviderIDs
-        ))
         _runNotificationsEnabled = State(initialValue: FamiliarNotificationPreference.isEnabled)
     }
 
@@ -76,56 +72,11 @@ struct FamiliarModelServiceSettingsView: View {
 
     private var providerSection: some View {
         Section {
-            Picker(String(localized: "settings.provider"), selection: $settings.providerID) {
-                ForEach(providerChoices, id: \.id) { provider in
-                    Text(provider.displayName).tag(provider.id)
-                }
-            }
-            .onChange(of: settings.providerID) { oldID, newID in
-                switchProvider(from: oldID, to: newID)
-            }
-
-            if settings.providerID == "openai" {
-                TextField(String(localized: "settings.openai.organization"), text: $configuration.organizationID)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                TextField(String(localized: "settings.openai.project"), text: $configuration.projectID)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-            }
-
-            if settings.providerID == "qwen" {
-                Picker(String(localized: "settings.qwen.region"), selection: $configuration.region) {
-                    Text(String(localized: "settings.qwen.region.china")).tag(FamiliarProviderRegion.china)
-                    Text(String(localized: "settings.qwen.region.international")).tag(FamiliarProviderRegion.international)
-                }
-            }
-
-            if settings.providerID == FamiliarProviderCatalog.customProviderID {
-                TextField(String(localized: "settings.custom.name"), text: $configuration.displayName)
-                TextField("https://example.com/v1", text: $configuration.baseURL)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.URL)
-                    .autocorrectionDisabled()
-                TextField(String(localized: "settings.custom.models_path"), text: $configuration.modelsPath)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-            }
+            LabeledContent(String(localized: "settings.provider"), value: FamiliarProviderCatalog.deepSeek.displayName)
         } header: {
-            HStack {
-                Text(String(localized: "settings.provider"))
-                Spacer()
-                Text(String(
-                    format: String(localized: "settings.provider.configured_count"),
-                    configuredProviderIDs.count
-                ))
-                .textCase(nil)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel(String(
-                    format: String(localized: "settings.provider.configured_count.accessibility"),
-                    configuredProviderIDs.count
-                ))
-            }
+            Text(String(localized: "settings.provider"))
+        } footer: {
+            Text("DeepSeek 是 Familiar 1.0 唯一提供的模型服务。请求从这台 iPhone 直接发送，并使用你自己的 API Key。")
         }
     }
 
@@ -138,10 +89,6 @@ struct FamiliarModelServiceSettingsView: View {
                     }
                 }
             }
-
-            TextField(String(localized: "settings.model.manual"), text: $settings.modelID)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
 
             Button {
                 refreshModels()
@@ -278,42 +225,13 @@ struct FamiliarModelServiceSettingsView: View {
         }
     }
 
-    private var providerChoices: [FamiliarProviderDescriptor] {
-        FamiliarProviderCatalog.builtIn + [customChoice]
-    }
-
-    private var customChoice: FamiliarProviderDescriptor {
-        FamiliarProviderCatalog.descriptor(
-            for: FamiliarProviderCatalog.customProviderID,
-            configuration: configurationForCustomChoice
-        ) ?? FamiliarProviderDescriptor(
-            id: FamiliarProviderCatalog.customProviderID,
-            displayName: String(localized: "settings.custom.provider"),
-            protocolKind: .openAIChat,
-            baseURL: URL(string: "https://example.com/v1")!,
-            chatPath: "/chat/completions",
-            modelsPath: nil,
-            authStyle: .bearer,
-            additionalHeaders: [:],
-            curatedModels: [],
-            openAIChat: .init(),
-            isCustom: true
-        )
-    }
-
-    private var configurationForCustomChoice: FamiliarProviderConfiguration {
-        if settings.providerID == FamiliarProviderCatalog.customProviderID { return configuration }
-        return settings.providerConfigurations[FamiliarProviderCatalog.customProviderID] ?? .empty
-    }
-
     private var currentDescriptor: FamiliarProviderDescriptor? {
         FamiliarProviderCatalog.descriptor(for: settings.providerID, configuration: configuration)
     }
 
     private var providerDisplayName: String {
         currentDescriptor?.displayName
-            ?? FamiliarProviderCatalog.builtIn.first(where: { $0.id == settings.providerID })?.displayName
-            ?? String(localized: "settings.custom.provider")
+            ?? FamiliarProviderCatalog.deepSeek.displayName
     }
 
     private var normalizedModelID: String {
@@ -353,42 +271,45 @@ struct FamiliarModelServiceSettingsView: View {
         }
     }
 
-    private func switchProvider(from oldID: String, to newID: String) {
-        settings.providerConfigurations[oldID] = configuration
-        configuration = settings.providerConfigurations[newID] ?? .empty
-        let descriptor = FamiliarProviderCatalog.descriptor(for: newID, configuration: configuration)
-        models = descriptor?.curatedModels ?? []
-        settings.modelID = newID == FamiliarProviderCatalog.customProviderID
-            ? ""
-            : descriptor?.defaultModel.id ?? ""
-        apiKey = ""
-        hasAPIKey = configuredProviderIDs.contains(newID)
-        validationSucceeded = false
-    }
-
     private func settingsForSave() -> FamiliarSettings {
         var value = settings
+        value.providerID = FamiliarProviderCatalog.deepSeek.id
+        value.modelRoutePolicy = .cloud
         value.modelID = normalizedModelID
         value.providerConfigurations[value.providerID] = configuration
         return value
     }
 
     private func save() {
-        do {
-            let value = settingsForSave()
-            guard value.resolvedProvider != nil, !value.modelID.isEmpty else {
-                errorMessage = String(localized: "error.provider.invalid_custom_configuration")
-                return
-            }
-            let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmedKey.isEmpty {
-                try FamiliarKeychainStore.save(trimmedKey, for: value.providerID)
-                configuredProviderIDs.insert(value.providerID)
-            }
+        let value = settingsForSave()
+        guard let descriptor = value.resolvedProvider, !value.modelID.isEmpty else {
+            errorMessage = String(localized: "error.provider.invalid_custom_configuration")
+            return
+        }
+        let replacementKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !replacementKey.isEmpty else {
             onSaveSettings(value)
             dismiss()
-        } catch {
-            errorMessage = error.localizedDescription
+            return
+        }
+        isValidating = true
+        Task {
+            do {
+                try await FamiliarProviderConnectionValidator.validate(
+                    descriptor: descriptor,
+                    modelID: value.modelID,
+                    apiKey: replacementKey
+                )
+                try FamiliarKeychainStore.save(replacementKey, for: value.providerID)
+                hasAPIKey = true
+                validationSucceeded = true
+                isValidating = false
+                onSaveSettings(value)
+                dismiss()
+            } catch {
+                isValidating = false
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -422,7 +343,10 @@ struct FamiliarModelServiceSettingsView: View {
             do {
                 let refreshed = try await FamiliarModelCatalogService.models(for: descriptor, apiKey: key)
                 models = refreshed
-                if settings.modelID.isEmpty, let first = refreshed.first { settings.modelID = first.id }
+                if !refreshed.contains(where: { $0.id == settings.modelID }),
+                   let first = refreshed.first {
+                    settings.modelID = first.id
+                }
                 isRefreshingModels = false
             } catch {
                 isRefreshingModels = false
@@ -436,7 +360,6 @@ struct FamiliarModelServiceSettingsView: View {
             try FamiliarKeychainStore.delete(for: settings.providerID)
             apiKey = ""
             hasAPIKey = false
-            configuredProviderIDs.remove(settings.providerID)
             validationSucceeded = false
         } catch {
             errorMessage = error.localizedDescription

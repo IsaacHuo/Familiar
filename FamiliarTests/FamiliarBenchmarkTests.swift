@@ -7,7 +7,7 @@ import UIKit
 enum FamiliarBenchmarkScenario: String, CaseIterable, Sendable {
     case calendarRead = "calendar-read"
     case reminderWrite = "reminder-write"
-    case posterImageGate = "poster-image-gate"
+    case posterImagePreflight = "poster-image-preflight"
     case documentQuestion = "document-question"
     case documentCalendar = "document-calendar"
     case weatherCapabilityGate = "weather-capability-gate"
@@ -21,7 +21,7 @@ enum FamiliarBenchmarkScenario: String, CaseIterable, Sendable {
         case .documentCalendar: ["calendar_events", "create_calendar_event"]
         case .webReminder: ["web_search", "web_fetch", "create_reminder"]
         case .toolFailureRecovery: ["failing_tool"]
-        case .posterImageGate, .documentQuestion, .weatherCapabilityGate: []
+        case .posterImagePreflight, .documentQuestion, .weatherCapabilityGate: []
         }
     }
 
@@ -52,10 +52,7 @@ private struct FamiliarBenchmarkProvider: FamiliarModelProvider {
     let scenario: FamiliarBenchmarkScenario
     let recorder: FamiliarBenchmarkRequestRecorder
 
-    func stream(
-        request: FamiliarModelRequest,
-        apiKey: String
-    ) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
+    func stream(request: FamiliarModelRequest) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 await recorder.append(request)
@@ -146,7 +143,7 @@ private struct FamiliarBenchmarkProvider: FamiliarModelProvider {
                         emitText("工具失败了，请提供可用的数据源后再试。", into: continuation)
                     }
 
-                case .posterImageGate:
+                case .posterImagePreflight:
                     continuation.finish(throwing: FamiliarBenchmarkError.providerMustNotRun)
                 }
             }
@@ -384,8 +381,8 @@ struct FamiliarBenchmarkTests {
 
     @MainActor
     private func run(_ scenario: FamiliarBenchmarkScenario) async throws -> FamiliarBenchmarkResult {
-        if scenario == .posterImageGate {
-            return try imageGateResult()
+        if scenario == .posterImagePreflight {
+            return try imagePreflightResult()
         }
 
         let startedAt = Date()
@@ -414,10 +411,7 @@ struct FamiliarBenchmarkTests {
             manifests: await registry.manifests()
         )
         var events: [FamiliarRuntimeEvent] = []
-        for try await event in loop.stream(
-            contextSnapshot: snapshot,
-            apiKey: "fixture-key"
-        ) {
+        for try await event in loop.stream(contextSnapshot: snapshot) {
             events.append(event)
             if case .approvalRequested(let request) = event.payload {
                 await confirm(request, with: confirmationCoordinator)
@@ -503,7 +497,7 @@ struct FamiliarBenchmarkTests {
                 failures.append("provider did not recover by asking for input")
             }
 
-        case .posterImageGate:
+        case .posterImagePreflight:
             break
         }
 
@@ -519,7 +513,7 @@ struct FamiliarBenchmarkTests {
     }
 
     @MainActor
-    private func imageGateResult() throws -> FamiliarBenchmarkResult {
+    private func imagePreflightResult() throws -> FamiliarBenchmarkResult {
         let startedAt = Date()
         let container = try FamiliarTestStore.make()
         let controller = FamiliarChatController(dependencies: FamiliarAppDependencies())
@@ -528,21 +522,20 @@ struct FamiliarBenchmarkTests {
         controller.startSending(in: container.mainContext)
 
         var failures: [String] = []
-        if controller.errorMessage != String(localized: "attachment.error.model_images_unsupported") {
-            failures.append("image capability gate did not show the expected error")
-        }
-        if controller.isSending { failures.append("image capability gate started a run") }
-        if !controller.messages.isEmpty { failures.append("image capability gate created a message") }
-        if controller.draftImages.isEmpty { failures.append("image capability gate discarded the draft image") }
+        if controller.errorMessage != nil { failures.append("image preflight reported an immediate error") }
+        if !controller.isSending { failures.append("image preflight did not start") }
+        if !controller.messages.isEmpty { failures.append("image preflight created a message before evidence was ready") }
+        if controller.draftImages.isEmpty { failures.append("image preflight discarded the draft image") }
         let conversations = try container.mainContext.fetch(FetchDescriptor<FamiliarConversation>())
-        if !conversations.isEmpty { failures.append("image capability gate created a conversation") }
+        if !conversations.isEmpty { failures.append("image preflight created a conversation before evidence was ready") }
+        controller.cancelSending(in: container.mainContext)
 
         return FamiliarBenchmarkResult(
-            scenario: .posterImageGate,
+            scenario: .posterImagePreflight,
             modelRounds: 0,
             toolSequence: [],
             approvalSequence: [],
-            terminalStatuses: ["capability-gate"],
+            terminalStatuses: ["vision-preflight"],
             durationMilliseconds: Int(Date().timeIntervalSince(startedAt) * 1_000),
             failures: failures
         )
@@ -581,7 +574,7 @@ struct FamiliarBenchmarkTests {
         case .toolFailureRecovery:
             content = "读取不可用的数据源"
             attachments = []
-        case .posterImageGate:
+        case .posterImagePreflight:
             content = "把海报加到日历"
             attachments = []
         }

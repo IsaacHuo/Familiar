@@ -41,7 +41,7 @@ App 采用 BYOK 模式：用户使用自己的模型 API Key，模型请求从�
 ## 核心特性
 
 - **iPhone 原生 Agent Runtime** — 单一主 Agent 通过 Tool 规划，并由 iOS 原生 Framework 执行；无 Linux 环境，无 Apple Intelligence 依赖。
-- **Tool 是最核心的抽象** — 17 个类型化工具覆盖本机信息、受限 Web、冻结的 Project Resource、Project Artifact、EventKit 与结构化展示；每个 Tool 小而可检查，并统一经过策略控制。
+- **Tool 是最核心的抽象** — 28 个类型化工具覆盖原生设备能力、Workspace、受限 Web、Project Resource、Artifact、EventKit 与结构化展示；每个 Tool 小而可检查，并统一经过策略控制。
 - **Native First** — 复用 EventKit、Vision、PDFKit、Photos 与 Foundation 承接原生能力和本地预处理，不重复实现系统服务。
 - **统一 Chat Workspace** — 普通聊天与 Project 对话共用一个 Surface。顶栏切换工作区和模型，左侧抽屉提供搜索、持久置顶、可展开的项目历史与普通最近会话。
 - **Project Workspace** — 项目指令和版本化本地资源可跨项目对话共享；资源使用受保护目录，并在 Run 中保存不可变引用。Markdown/纯文本 Artifact 支持受控新建和编辑，规范化后的项目名称全局唯一。
@@ -49,7 +49,7 @@ App 采用 BYOK 模式：用户使用自己的模型 API Key，模型请求从�
 - **代码强制授权** — 可用读取自动执行；可逆写入需要结构化审批，除非存在精确匹配且有效的仅一次/本会话/长期规则。EventKit Undo 可跨重启恢复，Artifact Undo 保留在当前会话。
 - **Runtime Event 驱动的 UI** — 时间线渲染 Agent 事件（模型思考、工具进度、审批、成功与失败），而不是每个工具自造一套 UI。
 - **本地优先与 BYOK** — API Key 按 Provider 分别保存在 iOS Keychain；请求不经过 Familiar 服务器。
-- **完整 Provider Catalog** — OpenAI、Anthropic、Gemini、DeepSeek、Groq、xAI、OpenRouter、Qwen、Kimi、GLM、MiniMax、SiliconFlow，以及自定义 OpenAI-compatible endpoint。
+- **通用 Provider 接口，当前只启用 DeepSeek** — OpenAI-compatible adapter、ModelRouter 与 Agent Runtime 保持通用；当前 catalog 只启用 DeepSeek descriptor。
 - **本地文档转换** — AnyDoc 在设备上将 Office、OpenDocument、RTF、EPUB、CSV 与 PDF 转换为 Markdown；扫描 PDF 使用 Vision OCR。
 - **系统入口** — Share Extension 将文本、网页链接或文档保存到 App Group 收件箱；Deep Link 与 Spotlight 恢复本地上下文；Siri/快捷指令提供 `Ask Familiar`、`Process with Familiar`、`Open Familiar`，另有本地 Run 通知、启动 Widget 与 Control。
 - **富文本回答渲染** — 本地 Markdown、代码高亮、表格、引用、Mermaid、KaTeX、代码复制和安全外链。
@@ -96,7 +96,7 @@ flowchart TB
     subgraph Runtime["Agent Runtime"]
         Loop[FamiliarAgentLoop]
         Assembly[Context Assembly]
-        Registry[Tool Registry · 17 个工具]
+        Registry[Tool Registry · 28 个工具]
         Policy[Execution Policy]
         Auth[Authorization Runtime]
         Clarify[Clarification Coordinator]
@@ -105,15 +105,15 @@ flowchart TB
 
     subgraph Models["模型 Provider · BYOK"]
         direction LR
-        OpenAI[OpenAI-compatible]
-        Anthropic[Anthropic]
-        Gemini[Gemini]
+        Provider[通用 OpenAI-compatible adapter]
+        DeepSeek[当前 DeepSeek descriptor]
+        CoreAI[未来 Core AI / Qwen]
     end
 
     subgraph Native["原生能力适配器"]
         direction LR
         EventKit[EventKit]
-        Vision[Vision / FastVLM]
+        Vision[Apple Vision / DeepSeek Vision Exp]
         Docs[PDFKit / AnyDoc]
         Speech[Speech]
         Photos[Photos]
@@ -194,7 +194,7 @@ Familiar 正在向六层架构演进。下图包含规划能力，不是当前�
 
 当前普通聊天与 Project 对话共用同一个 Chat Surface 和有限 Agent Loop。启动注册表包含 17 个工具：2 个本机信息、2 个受限 Web、3 个 Project Resource、2 个 Project Artifact、4 个 EventKit 和 4 个结构化展示工具。Runtime 还支持作用域授权规则、跨重启 EventKit Undo、不可变 Context/Capability/Skill 快照、Invocation 与 Resume Cursor 记录、视觉证据、项目/会话持久置顶和显式单次 Run Skill。Memory Runtime、MCP Runtime、可靠后台承接与字节级续跑尚未实现。
 
-本地持久化使用 `FamiliarDevelopment.store` 中单一当前 27 实体 SwiftData Schema。开发阶段遇到不兼容 Schema 变化时会使用新 Store，不迁移测试数据；公开发布前必须另行确定兼容与迁移策略。
+本地持久化使用 `FamiliarDevelopment.store` 中单一当前 31 实体 SwiftData Schema。开发阶段遇到不兼容 Schema 变化时会使用新 Store，不迁移测试数据；公开发布前必须另行确定兼容与迁移策略。
 
 ```mermaid
 flowchart TD
@@ -333,15 +333,9 @@ Familiar 内部借鉴 MCP 的思想但不把它当作内核，用原生 Swift �
 
 ## Provider 支持
 
-| 协议 | Provider |
-| --- | --- |
-| OpenAI Chat | OpenAI, DeepSeek, Groq, xAI, OpenRouter, Qwen, Kimi, GLM, MiniMax, SiliconFlow, custom OpenAI-compatible |
-| Anthropic Messages | Anthropic |
-| Gemini generateContent | Gemini |
+当前唯一启用的 Provider descriptor 是 DeepSeek，使用通用 OpenAI-compatible Chat Completions adapter。`FamiliarModelProvider`、ModelRouter、Tool Call、SSE 和 Agent Runtime 均不包含 DeepSeek 专用分支；只是当前没有启用第二家 Provider。
 
-每个 Provider 拥有独立 Keychain 项、端点配置、Header 和模型目录策略。模型能力按 `providerID + modelID` 标记；未知自定义模型默认仅文本。
-
-模型层使用 `FamiliarModelProvider` 抽象，当前包含 OpenAI Chat、Anthropic Messages 与 Gemini Adapter。确定性 Agent Benchmark 已存在，真实 Key Provider 冒烟仍未完成。可选本地 FastVLM 用于补充视觉预处理，不替代 BYOK 语言模型。
+Catalog 包含 `deepseek-v4-flash`、`deepseek-v4-pro` 和实验图片入口 `deepseek-v4-flash-vision-exp`。Core AI/Qwen 保留为 iOS 27 后的本地方向。FastVLM 当前不提供设置入口或自动路由。
 
 ## 文档处理链路
 
@@ -360,7 +354,7 @@ Familiar 内部借鉴 MCP 的思想但不把它当作内核，用原生 Swift �
 
 只有转换后的 Markdown 和文件名会进入模型请求。原始文档字节、本地路径和 security-scoped URL 不会发送给 Firecrawl 或所选模型 Provider。
 
-支持图片的 Provider 会直接接收图片内容。对于纯文本模型，Controller 自动执行 Apple Vision OCR、条码和分类预处理，并可在路由允许时使用已安装的 FastVLM 补充；结果以带来源信息的不可信视觉证据持久化。
+`deepseek-v4-flash-vision-exp` 会直接接收用户本次选择的图片。对于文本模型，Controller 执行 Apple Vision OCR、条码和分类预处理；结果以带来源信息的不可信视觉证据持久化。当前不调用 FastVLM。
 
 ## 富文本渲染
 
@@ -406,7 +400,7 @@ Familiar/
 ├── Data/           Provider 适配器、Keychain 与模型目录服务
 ├── Domain/         Provider、消息与能力模型
 ├── EventKit/       日历与提醒事项服务/工具
-├── LocalVision/    可选 FastVLM 安装与视觉预处理
+├── LocalVision/    暂停提供的 FastVLM 研究实现
 ├── Memory/         作用域 Memory 数据/服务基础（Runtime 未启用）
 ├── Persistence/    当前 SwiftData Schema 与本地服务
 ├── Presentation/   SwiftUI 页面、输入器与消息渲染

@@ -20,14 +20,14 @@ nonisolated enum FamiliarProviderRequestError: LocalizedError, Sendable {
     }
 }
 
-nonisolated struct OpenAICompatibleClient: FamiliarModelProvider, Sendable {
+nonisolated struct FamiliarOpenAICompatibleModelProvider: FamiliarModelProvider, Sendable {
     let descriptor: FamiliarProviderDescriptor
+    let apiKey: String
 
     var providerID: String { descriptor.id }
 
     func stream(
-        request modelRequest: FamiliarModelRequest,
-        apiKey: String
+        request modelRequest: FamiliarModelRequest
     ) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -55,7 +55,7 @@ nonisolated struct OpenAICompatibleClient: FamiliarModelProvider, Sendable {
                         )
                     )
 
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    let (bytes, response) = try await FamiliarProviderHTTP.session.bytes(for: request)
                     guard let http = response as? HTTPURLResponse else {
                         throw FamiliarProviderRequestError.invalidResponse(provider: descriptor.displayName)
                     }
@@ -76,9 +76,15 @@ nonisolated struct OpenAICompatibleClient: FamiliarModelProvider, Sendable {
                         guard line.hasPrefix(dataPrefix) else { continue }
                         let payload = line.dropFirst(dataPrefix.count).trimmingCharacters(in: .whitespaces)
                         if payload == doneToken { break }
-                        guard let data = payload.data(using: .utf8),
-                              let event = try? JSONDecoder().decode(StreamPayload.self, from: data)
-                        else { continue }
+                        guard let data = payload.data(using: .utf8) else {
+                            throw FamiliarProviderRequestError.invalidResponse(provider: descriptor.displayName)
+                        }
+                        let event: StreamPayload
+                        do {
+                            event = try JSONDecoder().decode(StreamPayload.self, from: data)
+                        } catch {
+                            throw FamiliarProviderRequestError.invalidResponse(provider: descriptor.displayName)
+                        }
 
                         for choice in event.choices {
                             if let reasoning = choice.delta.reasoningContent, !reasoning.isEmpty {
@@ -108,9 +114,11 @@ nonisolated struct OpenAICompatibleClient: FamiliarModelProvider, Sendable {
                     guard emittedContent else {
                         throw FamiliarProviderRequestError.emptyResponse(provider: descriptor.displayName)
                     }
-                    if !emittedCompletion { continuation.yield(.completed(.stop)) }
+                    if !emittedCompletion { continuation.yield(.completed(.unknown)) }
                     continuation.finish()
                 } catch is CancellationError {
+                    continuation.finish(throwing: CancellationError())
+                } catch let error as URLError where error.code == .cancelled {
                     continuation.finish(throwing: CancellationError())
                 } catch {
                     continuation.finish(throwing: error)
@@ -130,7 +138,7 @@ nonisolated struct OpenAICompatibleClient: FamiliarModelProvider, Sendable {
     }
 }
 
-private nonisolated extension OpenAICompatibleClient {
+private nonisolated extension FamiliarOpenAICompatibleModelProvider {
     struct RequestBody: Encodable {
         let model: String
         let messages: [RequestMessage]
@@ -227,7 +235,7 @@ private nonisolated extension OpenAICompatibleClient {
         let type = "function"
         let function: Function
 
-        init(_ call: FamiliarProviderToolCall) {
+        init(_ call: FamiliarToolCall) {
             id = call.id
             function = Function(name: call.name, arguments: call.arguments)
         }
@@ -304,6 +312,17 @@ private nonisolated extension OpenAICompatibleClient {
 }
 
 nonisolated enum FamiliarProviderHTTP {
+    static let session: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        configuration.urlCache = nil
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.timeoutIntervalForRequest = 120
+        configuration.timeoutIntervalForResource = 180
+        return URLSession(configuration: configuration)
+    }()
+
     static func authorizedURL(
         descriptor: FamiliarProviderDescriptor,
         path: String,
@@ -313,21 +332,10 @@ nonisolated enum FamiliarProviderHTTP {
         let resolvedPath = path.replacingOccurrences(of: "{model}", with: model ?? "")
         let base = descriptor.baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let relative = resolvedPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard let combinedURL = URL(string: base + "/" + relative),
-              var components = URLComponents(url: combinedURL, resolvingAgainstBaseURL: false)
-        else {
+        guard let combinedURL = URL(string: base + "/" + relative) else {
             throw FamiliarProviderRequestError.invalidConfiguration(provider: descriptor.displayName)
         }
-        if case .apiKeyQuery(let name) = descriptor.authStyle {
-            var queryItems = components.queryItems ?? []
-            queryItems.removeAll { $0.name == name }
-            queryItems.append(URLQueryItem(name: name, value: apiKey))
-            components.queryItems = queryItems
-        }
-        guard let url = components.url else {
-            throw FamiliarProviderRequestError.invalidConfiguration(provider: descriptor.displayName)
-        }
-        return url
+        return combinedURL
     }
 
     static func applyHeaders(
@@ -335,14 +343,7 @@ nonisolated enum FamiliarProviderHTTP {
         descriptor: FamiliarProviderDescriptor,
         apiKey: String
     ) {
-        switch descriptor.authStyle {
-        case .bearer:
-            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        case .apiKeyHeader(let name):
-            request.setValue(apiKey, forHTTPHeaderField: name)
-        case .apiKeyQuery:
-            break
-        }
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         descriptor.additionalHeaders.forEach {
             request.setValue($1, forHTTPHeaderField: $0)
         }
@@ -354,14 +355,27 @@ nonisolated enum FamiliarProviderHTTP {
             guard data.count < 64_000 else { break }
             data.append(byte)
         }
+        return errorMessage(from: data)
+    }
+
+    static func errorMessage(from data: Data) -> String {
         if let envelope = try? JSONDecoder().decode(ErrorEnvelope.self, from: data),
            !envelope.error.message.isEmpty {
-            return String(envelope.error.message.prefix(500))
+            return sanitizedMessage(envelope.error.message)
         }
         let value = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
         return value?.isEmpty == false
-            ? String(value!.prefix(500))
+            ? sanitizedMessage(value!)
             : String(localized: "error.provider.unknown_server")
+    }
+
+    private static func sanitizedMessage(_ value: String) -> String {
+        let bounded = String(value.prefix(500))
+        return bounded.replacingOccurrences(
+            of: #"(?i)bearer\s+[a-z0-9._-]+|sk-[a-z0-9_-]+"#,
+            with: "[REDACTED]",
+            options: .regularExpression
+        )
     }
 
     private struct ErrorEnvelope: Decodable {
@@ -371,14 +385,10 @@ nonisolated enum FamiliarProviderHTTP {
 }
 
 nonisolated enum FamiliarProviderFactory {
-    static func makeProvider(for descriptor: FamiliarProviderDescriptor) -> any FamiliarModelProvider {
-        switch descriptor.protocolKind {
-        case .openAIChat:
-            OpenAICompatibleClient(descriptor: descriptor)
-        case .anthropicMessages:
-            AnthropicMessagesClient(descriptor: descriptor)
-        case .geminiGenerateContent:
-            GeminiGenerateContentClient(descriptor: descriptor)
-        }
+    static func makeProvider(
+        for descriptor: FamiliarProviderDescriptor,
+        apiKey: String
+    ) -> any FamiliarModelProvider {
+        FamiliarOpenAICompatibleModelProvider(descriptor: descriptor, apiKey: apiKey)
     }
 }

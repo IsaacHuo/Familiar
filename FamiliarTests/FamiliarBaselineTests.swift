@@ -6,7 +6,7 @@ import Testing
 
 @Suite("Familiar baseline")
 struct FamiliarBaselineTests {
-    @Test("App dependencies register the current seventeen tools")
+    @Test("App dependencies register native tools before specialized tools")
     @MainActor
     func registeredToolNames() async {
         let dependencies = FamiliarAppDependencies()
@@ -14,16 +14,27 @@ struct FamiliarBaselineTests {
         let names = manifests.map(\.name)
         #expect(names == [
             "app_information",
-            "artifact_edit",
-            "artifact_write",
-            "ask_user",
             "calendar_events",
+            "clipboard_read",
+            "clipboard_write",
+            "contacts_search",
             "create_calendar_event",
             "create_reminder",
             "current_date_time",
+            "current_location",
+            "familiar_search",
+            "prepare_share",
+            "reminders",
+            "workspace_image_list",
+            "workspace_list",
+            "workspace_read",
+            "workspace_search",
+            "workspace_write",
+            "artifact_edit",
+            "artifact_write",
+            "ask_user",
             "present_insight",
             "present_recommendation",
-            "reminders",
             "resource_list",
             "resource_read",
             "resource_search",
@@ -36,9 +47,34 @@ struct FamiliarBaselineTests {
     @Test("Provider catalog has stable unique identifiers")
     func providerCatalogIdentifiersAreUnique() {
         let identifiers = FamiliarProviderCatalog.builtIn.map(\.id)
-        #expect(identifiers.count == 12)
+        #expect(identifiers.count == 1)
         #expect(Set(identifiers).count == identifiers.count)
-        #expect(!identifiers.contains(FamiliarProviderCatalog.customProviderID))
+        #expect(identifiers == ["deepseek"])
+        #expect(FamiliarProviderCatalog.deepSeek.curatedModels.map(\.id) == [
+            "deepseek-v4-flash",
+            "deepseek-v4-pro"
+        ])
+        #expect(FamiliarProviderCatalog.normalizedModelID("deepseek-chat", providerID: "deepseek") == "deepseek-v4-flash")
+        #expect(FamiliarProviderCatalog.normalizedModelID("unknown", providerID: "deepseek") == "deepseek-v4-flash")
+    }
+
+    @Test("Current DeepSeek descriptor uses the generic OpenAI-compatible adapter")
+    func providerAdapterRemainsGeneric() {
+        let provider = FamiliarProviderFactory.makeProvider(
+            for: FamiliarProviderCatalog.deepSeek,
+            apiKey: "fixture"
+        )
+        #expect(provider.providerID == "deepseek")
+        #expect(provider is FamiliarOpenAICompatibleModelProvider)
+    }
+
+    @Test("Provider error text redacts bearer tokens and API keys")
+    func providerErrorsRedactSecrets() {
+        let data = Data(#"{"error":{"message":"Authorization: Bearer secret.token and sk-privatekey"}}"#.utf8)
+        let message = FamiliarProviderHTTP.errorMessage(from: data)
+        #expect(!message.contains("secret.token"))
+        #expect(!message.contains("sk-privatekey"))
+        #expect(message.contains("[REDACTED]"))
     }
 
     @Test("Unknown models use the safe text-only capability fallback")
@@ -281,14 +317,10 @@ struct FamiliarBaselineTests {
         #expect(try FamiliarSharedInbox.pendingItems(rootURL: root).isEmpty)
     }
 
-    @Test("SSE fixtures preserve OpenAI, Anthropic and Gemini framing")
+    @Test("SSE parser preserves DeepSeek chat-completions framing")
     func sseFixtures() {
-        let openAI = FamiliarSSEParser.events(in: "data: {\"choices\":[]}\n\ndata: [DONE]\n\n")
-        let anthropic = FamiliarSSEParser.events(in: "event: content_block_delta\ndata: {\"delta\":{\"text\":\"Hi\"}}\n\n")
-        let gemini = FamiliarSSEParser.events(in: "data: {\"candidates\":[]}\n\n")
-        #expect(openAI.map(\.data) == ["{\"choices\":[]}", "[DONE]"])
-        #expect(anthropic.first?.name == "content_block_delta")
-        #expect(gemini.first?.data == "{\"candidates\":[]}")
+        let deepSeek = FamiliarSSEParser.events(in: "data: {\"choices\":[]}\n\ndata: [DONE]\n\n")
+        #expect(deepSeek.map(\.data) == ["{\"choices\":[]}", "[DONE]"])
     }
 
     @Test("Attachment boundaries reject traversal")

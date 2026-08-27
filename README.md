@@ -60,7 +60,7 @@ The app is BYOK-only: users bring their own model API Key, model requests go dir
 ## Highlights
 
 - **iPhone-native Agent Runtime** — a single primary Agent that plans with tools and executes through native iOS frameworks; no Linux environment, no Apple Intelligence dependency.
-- **Tools as the core abstraction** — 17 typed tools cover local information, restricted Web, frozen Project resources, Project artifacts, EventKit and structured presentation; each tool is small, inspectable and policy-controlled.
+- **Tools as the core abstraction** — 28 typed tools cover native device capabilities, Workspace, restricted Web, Project resources, artifacts, EventKit, and structured presentation; each tool is small, inspectable and policy-controlled.
 - **Native First** — reuse EventKit, Vision, PDFKit, Photos and Foundation for native capabilities and local preprocessing instead of rebuilding system services.
 - **Unified Chat workspace** — ordinary and Project chats share one surface. The top bar switches workspace and model; the left drawer provides search, persistent pins, expandable Project history and recent ordinary chats.
 - **Project workspace** — projects share an instruction and versioned local resources across chats; resources use protected storage and immutable Run references. Markdown/text artifacts support controlled write and edit operations, and Project names are globally unique after normalization.
@@ -68,7 +68,7 @@ The app is BYOK-only: users bring their own model API Key, model requests go dir
 - **Code-enforced authorization** — available reads run automatically; reversible writes require structured approval unless an exact active once/session/always rule matches. EventKit Undo survives restarts, while Artifact Undo remains session-local.
 - **Runtime-event-driven UI** — the timeline renders Agent events (model thinking, tool progress, approval, success and failure) instead of each tool owning its own UI.
 - **Local-first and BYOK** — API Keys are stored per Provider in the iOS Keychain; requests never pass through Familiar servers.
-- **Multi-provider catalog** — OpenAI, Anthropic, Gemini, DeepSeek, Groq, xAI, OpenRouter, Qwen, Kimi, GLM, MiniMax, SiliconFlow, and custom OpenAI-compatible endpoints.
+- **Generic Provider interface, currently DeepSeek only** — the OpenAI-compatible adapter, ModelRouter, and Agent Runtime remain generic; only the DeepSeek descriptor is enabled today.
 - **Local document conversion** — AnyDoc converts Office, OpenDocument, RTF, EPUB, CSV and PDF files to Markdown on the device; scanned PDFs use Vision OCR.
 - **System entry** — Share selected text, web links or documents into an App Group inbox; typed Deep Links restore local context; optional local notifications return to completed or failed Runs; protected on-device Spotlight results reopen local conversations; Siri and Shortcuts expose `Ask Familiar`, `Process with Familiar` and `Open Familiar`.
 - **Rich answer rendering** — local Markdown, syntax highlighting, tables, block quotes, Mermaid, KaTeX, code copying and safe external links.
@@ -103,7 +103,7 @@ flowchart TB
     subgraph Runtime["Agent Runtime"]
         Loop[FamiliarAgentLoop]
         Assembly[Context Assembly]
-        Registry[Tool Registry · 17 tools]
+        Registry[Tool Registry · 28 tools]
         Policy[Execution Policy]
         Auth[Authorization Runtime]
         Clarify[Clarification Coordinator]
@@ -112,15 +112,15 @@ flowchart TB
 
     subgraph Models["Model Providers · BYOK"]
         direction LR
-        OpenAI[OpenAI-compatible]
-        Anthropic[Anthropic]
-        Gemini[Gemini]
+        Provider[Generic OpenAI-compatible adapter]
+        DeepSeek[Current DeepSeek descriptor]
+        CoreAI[Future Core AI / Qwen]
     end
 
     subgraph Native["Native Capability Adapters"]
         direction LR
         EventKit[EventKit]
-        Vision[Vision / FastVLM]
+        Vision[Apple Vision / DeepSeek Vision Exp]
         Docs[PDFKit / AnyDoc]
         Speech[Speech]
         Photos[Photos]
@@ -201,7 +201,7 @@ Familiar is evolving toward six layers. The diagram includes planned capabilitie
 
 Current implementation: ordinary and Project chats share one Chat surface and bounded Agent loop. The startup Registry contains 17 tools: two local-information, two restricted Web, three Project Resource, two Project Artifact, four EventKit and four structured-presentation tools. The runtime also supports scoped authorization rules, durable EventKit Undo, immutable Context/Capability/Skill snapshots, invocation and resume-cursor records, visual evidence, persistent project/conversation pins and explicit one-Run Skills. Memory Runtime behavior, MCP Runtime, reliable background continuation and byte-level Run resumption are not implemented.
 
-Local persistence uses one current 27-entity SwiftData schema in `FamiliarDevelopment.store`. During development, incompatible schema changes intentionally rotate to a fresh store instead of migrating test data; a public release requires an explicit compatibility and migration policy.
+Local persistence uses one current 31-entity SwiftData schema in `FamiliarDevelopment.store`. During development, incompatible schema changes intentionally rotate to a fresh store instead of migrating test data; a public release requires an explicit compatibility and migration policy.
 
 ```mermaid
 flowchart TD
@@ -340,15 +340,9 @@ Remembered authorization is enforced in Swift and matches Project, capability ID
 
 ## Provider support
 
-| Protocol | Providers |
-| --- | --- |
-| OpenAI Chat | OpenAI, DeepSeek, Groq, xAI, OpenRouter, Qwen, Kimi, GLM, MiniMax, SiliconFlow, custom OpenAI-compatible |
-| Anthropic Messages | Anthropic |
-| Gemini generateContent | Gemini |
+The only currently enabled Provider descriptor is DeepSeek, using a generic OpenAI-compatible Chat Completions adapter. `FamiliarModelProvider`, ModelRouter, tool calls, SSE, and Agent Runtime contain no DeepSeek-specific branch; no second Provider is enabled yet.
 
-Each Provider has its own Keychain item, endpoint configuration, headers and model-catalog policy. Model capabilities are marked by `providerID + modelID`; unknown custom models are text-only by default.
-
-The model layer uses a `FamiliarModelProvider` abstraction with OpenAI Chat, Anthropic Messages and Gemini adapters. Deterministic Agent benchmarks exist; real-Key Provider smoke testing remains incomplete. An optional local FastVLM package augments visual preflight without replacing the BYOK language model.
+The catalog contains `deepseek-v4-flash`, `deepseek-v4-pro`, and the experimental image entry `deepseek-v4-flash-vision-exp`. Core AI/Qwen remains the post-iOS 27 local direction. FastVLM currently has no settings entry or automatic route.
 
 ## Document pipeline
 
@@ -367,7 +361,7 @@ All documents are first copied to the App's private directory and then converted
 
 Only the converted Markdown and filename enter the model request. Original document bytes, local paths and security-scoped URLs are never sent to Firecrawl or the selected model Provider.
 
-Image-capable Providers receive image content directly. For text-only models, the Controller runs Apple Vision OCR/barcode/classification preflight and can optionally augment it with installed FastVLM; the resulting untrusted visual evidence is persisted with provenance.
+`deepseek-v4-flash-vision-exp` receives the images selected for the current request. Text models use Apple Vision OCR/barcode/classification preflight, and the resulting untrusted visual evidence is persisted with provenance. FastVLM is not called in the current product path.
 
 ## Rendering
 
@@ -415,7 +409,7 @@ Familiar/
 ├── Data/           Provider adapters, Keychain and model catalog services
 ├── Domain/         Provider, message and capability models
 ├── EventKit/       Calendar and reminder services/tools
-├── LocalVision/    Optional FastVLM installation and visual preflight
+├── LocalVision/    Dormant FastVLM research implementation
 ├── Memory/         Scoped Memory data/service foundation (Runtime not active)
 ├── Persistence/    Current SwiftData schema and local services
 ├── Presentation/   SwiftUI screens, composer and message rendering

@@ -52,7 +52,7 @@ nonisolated struct FamiliarCalendarEventsTool: FamiliarTool {
         name: "calendar_events", title: String(localized: "tool.calendar_query"),
         description: "按严格 ISO8601 时间范围读取日历事件；结果最多 200 条，超限直接失败。",
         parameters: FamiliarEventKitToolSupport.object(["startISO8601": FamiliarEventKitToolSupport.string("包含起点，严格 ISO8601"), "endISO8601": FamiliarEventKitToolSupport.string("不晚于终点，严格 ISO8601"), "limit": FamiliarEventKitToolSupport.integer("1-200")], required: ["startISO8601", "endISO8601", "limit"]),
-        effect: .read, risk: .sensitive, requirements: [.calendarFullAccess], supportsParallelism: true
+        effect: .read, risk: .sensitive, requirements: [.calendarFullAccess], supportsParallelism: true, executionClass: .native
     )
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
         let events = try await service.events(from: input.startISO8601, to: input.endISO8601, limit: input.limit)
@@ -71,7 +71,7 @@ nonisolated struct FamiliarRemindersTool: FamiliarTool {
         name: "reminders", title: String(localized: "tool.reminders_query"),
         description: "按严格 ISO8601 截止时间范围和标题/备注文字查询提醒事项；结果最多 200 条。",
         parameters: FamiliarEventKitToolSupport.object(["startISO8601": FamiliarEventKitToolSupport.string("可选，严格 ISO8601"), "endISO8601": FamiliarEventKitToolSupport.string("可选，严格 ISO8601"), "text": FamiliarEventKitToolSupport.string("可选，匹配标题或备注"), "limit": FamiliarEventKitToolSupport.integer("1-200")], required: ["limit"]),
-        effect: .read, risk: .sensitive, requirements: [.remindersFullAccess], supportsParallelism: true
+        effect: .read, risk: .sensitive, requirements: [.remindersFullAccess], supportsParallelism: true, executionClass: .native
     )
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
         let reminders = try await service.reminders(from: input.startISO8601, to: input.endISO8601, text: input.text, limit: input.limit)
@@ -90,7 +90,7 @@ nonisolated struct FamiliarCreateCalendarEventTool: FamiliarTool {
         name: "create_calendar_event", title: String(localized: "tool.calendar_create"),
         description: "创建日历事件。执行前由 Familiar 展示结构化预览并逐次确认。",
         parameters: FamiliarEventKitToolSupport.object(["title": FamiliarEventKitToolSupport.string("非空标题"), "startISO8601": FamiliarEventKitToolSupport.string("严格 ISO8601"), "endISO8601": FamiliarEventKitToolSupport.string("严格 ISO8601"), "isAllDay": FamiliarEventKitToolSupport.bool("是否全天"), "location": FamiliarEventKitToolSupport.string("可选地点"), "notes": FamiliarEventKitToolSupport.string("可选备注"), "urlString": FamiliarEventKitToolSupport.string("可选 URL"), "calendarIdentifier": FamiliarEventKitToolSupport.string("可选日历 identifier")], required: ["title", "startISO8601", "endISO8601", "isAllDay"]),
-        effect: .reversibleWrite, risk: .sensitive, requirements: [.calendarFullAccess]
+        effect: .reversibleWrite, risk: .sensitive, requirements: [.calendarFullAccess], executionClass: .native
     )
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
         try Task.checkCancellation()
@@ -129,7 +129,7 @@ nonisolated struct FamiliarCreateReminderTool: FamiliarTool {
         name: "create_reminder", title: String(localized: "tool.reminder_create"),
         description: "创建提醒事项。执行前由 Familiar 展示结构化预览并逐次确认。",
         parameters: FamiliarEventKitToolSupport.object(["title": FamiliarEventKitToolSupport.string("非空标题"), "dueISO8601": FamiliarEventKitToolSupport.string("可选截止时间，严格 ISO8601"), "listIdentifier": FamiliarEventKitToolSupport.string("可选提醒列表 identifier"), "priority": FamiliarEventKitToolSupport.integer("0-9"), "notes": FamiliarEventKitToolSupport.string("可选备注")], required: ["title", "priority"]),
-        effect: .reversibleWrite, risk: .sensitive, requirements: [.remindersFullAccess]
+        effect: .reversibleWrite, risk: .sensitive, requirements: [.remindersFullAccess], executionClass: .native
     )
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
         try Task.checkCancellation()

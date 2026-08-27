@@ -104,7 +104,7 @@ OpenMinis 当前公开产品把本机 Linux、浏览器自动化、Skills、持�
 | Web | 浏览与交互自动化 | 只读 `web_search` / `web_fetch`，可保存为 Resource | 受限只读 Web + Safari 用户交互 | Native alternative | 保持只读，不加入浏览器自动化 |
 | System Integration | Health、Calendar、Reminders、Contacts、HomeKit 等工具 | EventKit、Speech、Vision、系统入口与类型化 Tool Runtime | Apple Framework adapters + Swift Policy | Native alternative | 真实任务驱动逐项加入，不做 parity |
 | Files | Linux 文件系统与 mounted workspaces | 私有附件、版本化 Resources、Artifacts、Quick Look | Files picker + sandboxed stores + native preview | Native alternative | 强化 Workspace 呈现，不加入通用文件系统 |
-| Media | Shell/native offload 处理多媒体 | Photos、Camera、Vision、可选 FastVLM、Speech | Apple media frameworks 与受控本地模型 | Already covered | 保持当前边界 |
+| Media | Shell/native offload 处理多媒体 | Photos、Camera、Apple Vision、DeepSeek 实验视觉入口、Speech | Apple media frameworks 与当前模型 Provider | Updated by D-048 | FastVLM 暂停提供 |
 | Background Tasks | 可由系统入口和 Agent 工作流承接 | 只有终态通知；可靠后台执行未实现 | 可恢复 AgentRun 后再接 iOS background APIs | Valuable future capability | 不在本轮实现，不承诺可靠续跑 |
 | Automation | Shell、Shortcuts 与浏览器可组成自动化 | App Intents/Shortcuts 只进入现有 Runtime；无定时自动化 | 明确系统入口 + 授权 Policy | Valuable future capability | 等 resumable runtime 与真实需求 |
 | Agent Execution | 模型 + Linux shell + native tools | 单 Agent Runtime + typed tools + Policy + Runtime Events | 单 Agent Native Runtime | Already covered | 保持内核稳定 |

@@ -13,7 +13,7 @@ nonisolated enum FamiliarProviderContent: Equatable, Sendable {
     case image(data: Data, mimeType: String)
 }
 
-nonisolated struct FamiliarProviderToolCall: Equatable, Sendable {
+nonisolated struct FamiliarToolCall: Equatable, Sendable {
     let id: String
     let name: String
     let arguments: String
@@ -22,14 +22,14 @@ nonisolated struct FamiliarProviderToolCall: Equatable, Sendable {
 nonisolated struct FamiliarProviderMessage: Sendable {
     let role: FamiliarProviderMessageRole
     let contentParts: [FamiliarProviderContent]
-    let toolCalls: [FamiliarProviderToolCall]
+    let toolCalls: [FamiliarToolCall]
     let toolCallID: String?
     let name: String?
 
     init(
         role: FamiliarProviderMessageRole,
         contentParts: [FamiliarProviderContent] = [],
-        toolCalls: [FamiliarProviderToolCall] = [],
+        toolCalls: [FamiliarToolCall] = [],
         toolCallID: String? = nil,
         name: String? = nil
     ) {
@@ -52,7 +52,7 @@ nonisolated struct FamiliarProviderMessage: Sendable {
         .init(role: .user, contentParts: parts)
     }
 
-    static func assistant(_ content: String?, toolCalls: [FamiliarProviderToolCall] = []) -> Self {
+    static func assistant(_ content: String?, toolCalls: [FamiliarToolCall] = []) -> Self {
         .init(
             role: .assistant,
             contentParts: content.map { [.text($0)] } ?? [],
@@ -147,6 +147,7 @@ nonisolated struct FamiliarToolManifest: Codable, Equatable, Sendable {
     let supportsRecovery: Bool
     let supportsParallelism: Bool
     let requiredScopes: [String]
+    let executionClass: FamiliarToolExecutionClass
 
     init(
         id: String? = nil,
@@ -167,7 +168,8 @@ nonisolated struct FamiliarToolManifest: Codable, Equatable, Sendable {
         supportsCancellation: Bool = true,
         supportsRecovery: Bool = false,
         supportsParallelism: Bool = false,
-        requiredScopes: [String] = []
+        requiredScopes: [String] = [],
+        executionClass: FamiliarToolExecutionClass = .specializedLocal
     ) {
         self.id = id ?? name
         self.version = version
@@ -188,6 +190,21 @@ nonisolated struct FamiliarToolManifest: Codable, Equatable, Sendable {
         self.supportsRecovery = supportsRecovery
         self.supportsParallelism = supportsParallelism
         self.requiredScopes = requiredScopes.sorted()
+        self.executionClass = executionClass
+    }
+}
+
+nonisolated enum FamiliarToolExecutionClass: String, Codable, Sendable {
+    case native
+    case specializedLocal
+    case shell
+
+    var preferenceRank: Int {
+        switch self {
+        case .native: 0
+        case .specializedLocal: 1
+        case .shell: 2
+        }
     }
 }
 
@@ -211,11 +228,72 @@ nonisolated enum FamiliarModelStreamEvent: Sendable {
     case completed(FamiliarModelFinishReason)
 }
 
+nonisolated struct FamiliarModelResponse: Sendable {
+    let text: String
+    let reasoningSummary: String
+    let toolCalls: [FamiliarToolCall]
+    let finishReason: FamiliarModelFinishReason
+}
+
+nonisolated enum FamiliarModelRoutePolicy: String, CaseIterable, Codable, Identifiable, Sendable {
+    case localOnly
+    case preferLocal
+    case cloud
+
+    var id: String { rawValue }
+}
+
 nonisolated protocol FamiliarModelProvider: Sendable {
     var providerID: String { get }
 
     func stream(
-        request: FamiliarModelRequest,
-        apiKey: String
+        request: FamiliarModelRequest
     ) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error>
+}
+
+nonisolated extension FamiliarModelProvider {
+    func generate(request: FamiliarModelRequest) async throws -> FamiliarModelResponse {
+        var text = ""
+        var reasoning = ""
+        var pendingCalls: [Int: FamiliarPendingModelToolCall] = [:]
+        var finishReason: FamiliarModelFinishReason = .unknown
+
+        for try await event in stream(request: request) {
+            switch event {
+            case .textDelta(let delta):
+                text += delta
+            case .reasoningSummaryDelta(let delta):
+                reasoning += delta
+            case .toolCallDelta(let index, let id, let name, let arguments):
+                var call = pendingCalls[index] ?? FamiliarPendingModelToolCall()
+                if let id { call.id += id }
+                if let name { call.name += name }
+                if let arguments { call.arguments += arguments }
+                pendingCalls[index] = call
+            case .completed(let reason):
+                finishReason = reason
+            }
+        }
+
+        let calls = pendingCalls.keys.sorted().compactMap { index -> FamiliarToolCall? in
+            guard let call = pendingCalls[index], !call.name.isEmpty else { return nil }
+            return FamiliarToolCall(
+                id: call.id.isEmpty ? UUID().uuidString : call.id,
+                name: call.name,
+                arguments: call.arguments.isEmpty ? "{}" : call.arguments
+            )
+        }
+        return FamiliarModelResponse(
+            text: text,
+            reasoningSummary: reasoning,
+            toolCalls: calls,
+            finishReason: finishReason
+        )
+    }
+}
+
+private nonisolated struct FamiliarPendingModelToolCall {
+    var id = ""
+    var name = ""
+    var arguments = ""
 }

@@ -190,22 +190,6 @@ nonisolated enum AppSpacing {
     static let control = FamiliarControlSize.minimumHitTarget
 }
 
-struct FamiliarIconButtonStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .frame(
-                minWidth: FamiliarControlSize.minimumHitTarget,
-                minHeight: FamiliarControlSize.minimumHitTarget
-            )
-            .contentShape(Rectangle())
-            .opacity(configuration.isPressed ? 0.72 : 1)
-            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
-            .animation(FamiliarMotion.micro, value: configuration.isPressed)
-    }
-}
-
 struct FamiliarPillButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let prominence: Prominence

@@ -15,7 +15,7 @@ private struct FamiliarProjectCapturingProvider: FamiliarModelProvider {
     let providerID = "project-capture"
     let capture: FamiliarProjectRequestCapture
 
-    func stream(request: FamiliarModelRequest, apiKey: String) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
+    func stream(request: FamiliarModelRequest) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 await capture.record(request)
@@ -241,7 +241,7 @@ struct FamiliarProjectTests {
         let instruction = String(repeating: "P", count: FamiliarProjectService.maximumInstructionLength)
 
         let snapshot = try familiarTestContextSnapshot(projectID: UUID(), projectInstruction: instruction)
-        for try await _ in loop.stream(contextSnapshot: snapshot, apiKey: "key") {}
+        for try await _ in loop.stream(contextSnapshot: snapshot) {}
 
         let systemPrompt = try #require(await capture.systemPrompt)
         #expect(systemPrompt.contains(instruction))

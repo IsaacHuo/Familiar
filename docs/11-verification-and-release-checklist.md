@@ -6,7 +6,7 @@
 
 ## 1. 真实 Provider 冒烟
 
-当前阶段只把 DeepSeek 作为阻塞验收 Provider，默认主路径为 `deepseek-v4-flash`；真实 Key 和真机验收由所有者执行。其他内置 Provider 保留在后续兼容性矩阵，不阻塞当前工作层交付。
+当前阶段唯一启用的 Provider descriptor 是 DeepSeek，默认主路径为 `deepseek-v4-flash`。底层仍使用通用 `FamiliarModelProvider` 与 OpenAI-compatible adapter，不把 DeepSeek 写入 Agent Runtime 分支。真实 Key 和真机验收由所有者执行。
 
 ### 1.1 通用前置
 
@@ -17,32 +17,26 @@
 
 ### 1.2 当前主路径：DeepSeek
 
-使用 `deepseek-v4-flash` 完成认证、文本流式、错误 Key、模型列表、取消、工具调用、Apple Vision 证据注入以及日历/提醒闭环。`deepseek-v4-pro` 与 `deepseek-v4-flash-vision-exp` 保留为可选验证，不作为当前阻塞项。
+使用 `deepseek-v4-flash` 完成认证、文本流式、错误 Key、模型列表、取消、工具调用、Apple Vision 证据注入以及日历/提醒闭环。对 `deepseek-v4-pro` 执行最小文本与 Tool Call 冒烟。
 
-### 1.3 后续 Provider 兼容矩阵
+`deepseek-v4-flash-vision-exp` 是当前保留的实验图片入口。必须用真实账户确认 `/models`、图片 content parts、流式、取消、错误和 Tool Call 能力；不可用时明确失败，不自动切换 FastVLM。
 
-内置 Provider：OpenAI、Anthropic、Gemini、DeepSeek、Groq、xAI、OpenRouter、Qwen、Kimi、GLM、MiniMax、SiliconFlow。
+### 1.3 通用 Provider 合同
 
 | 场景 | 操作 | 通过标准 |
 |---|---|---|
 | 认证成功 | 保存有效 Key，执行连接验证 | 明确成功，不泄露 Key |
 | 文本流式 | 发送简短非私密问题 | 收到增量文本和正常 stop，不出现空响应 |
 | 错误 Key | 替换为无效 Key | 显示认证失败，不显示虚假回答 |
-| 模型列表 | 刷新模型列表，或验证 curated fallback | 有 endpoint 时解析列表；无 endpoint 时保留可编辑模型 ID |
+| 模型列表 | 刷新 DeepSeek `/models`，与 curated catalog 对照 | 文本模型差异明确；实验视觉模型是否可用有记录 |
 | 超时/取消 | 发送长请求并主动停止 | 请求终止，UI 回到可发送状态，不保存虚假助手终态 |
 | Provider 错误 | 使用无效模型 ID | 显示有限长度错误，草稿和历史可恢复 |
 
-### 1.4 协议族
-
-**OpenAI Chat**：验证 `data:` SSE、`[DONE]`、文本 delta 和 `finish_reason`；对至少一个支持工具的模型验证增量 `tool_calls` 参数、tool result 回填和最终 stop；验证兼容 Provider 的 endpoint、headers 和 stream option 差异没有被统一假设覆盖。
-
-**Anthropic Messages**：验证 `content_block_start`、`content_block_delta`、`message_delta` 和 `message_stop`；验证 `tool_use` ID、`partial_json` 参数增量和 tool result block 回填。
-
-**Gemini Generate Content**：验证 `streamGenerateContent?alt=sse`、candidate 文本增量和终止原因；验证 function call 缺少服务端 ID 时，本地调用 ID 在当前 Run 内保持一致。
+验证 `data:` SSE、`[DONE]`、文本/reasoning delta、`finish_reason`、增量 `tool_calls` 参数、ToolResult 回填和最终 stop。测试断言针对通用 adapter 合同，不使用 DeepSeek 类型判断；DeepSeek 专有差异只允许放在 descriptor/model capabilities 中。
 
 ### 1.5 工具闭环
 
-当前阶段使用 DeepSeek 执行以下主路径；后续扩展 Provider 兼容矩阵时，再为每个协议族选择至少一个真实工具模型重复执行：
+当前阶段使用 DeepSeek descriptor 执行以下主路径：
 
 1. "明天下午有什么安排？"验证 EventKit read Tool Call。
 2. "明天下午三点提醒我测试 Familiar"验证首次结构化授权，默认选择“本次会话”。
@@ -72,7 +66,7 @@ full access 允许 / 拒绝 / restricted；查询时间范围与文字条件；�
 
 - 验证统一 Chat 顶栏的设置、工作区、模型和新对话入口；普通/项目工作区恢复各自最近会话，抽屉按置顶、可折叠项目和普通最近会话分区。
 - 抽屉、设置、Run timeline 与工具清单在中英文、VoiceOver 和极端 Dynamic Type 下可操作。
-- 当前开发存储只验证单一 27 实体 schema 的 `FamiliarDevelopment.store` 首次创建、重启读取和用户确认后的破坏性恢复；没有 active V1→V9 migration chain，也不把旧开发 store 保留作为当前门槛。
+- 当前开发存储只验证单一 31 实体 schema 的 `FamiliarDevelopment.store` 首次创建、重启读取和用户确认后的破坏性恢复；没有 active V1→V9 migration chain，也不把旧开发 store 保留作为当前门槛。
 - 创建/编辑/归档项目并拒绝重复项目名称；创建普通与项目聊天，确认项目指令只进入项目聊天；历史 Run 项目归属符合启动时快照。
 - 从 Composer 显式选择 Skill，确认只影响下一次 Run，工具范围按 snapshot 收窄，后续 Run 不自动继承；当前不验收 Project binding 自动注入或 Skill 导入 UI，因为两者尚未实现。
 - 导入文本 PDF、扫描 PDF 和至少一种 Office 文档，确认进度、OCR、Quick Look、文件保护、两条项目聊天共享资料及超预算提示。
@@ -82,18 +76,17 @@ full access 允许 / 拒绝 / restricted；查询时间范围与文字条件；�
 ### 2.4 相机与图片
 
 - 相机权限、前后镜头、闪光灯和 PhotosPicker 多选。
-- 多模态模型只把图片发送到当前 Provider。
-- DeepSeek 路径使用 Apple Vision 完成 OCR、条码和基础分类，并在折叠运行过程记录方法、版本和原图引用。
-- 基础结果不足时说明限制；已配置多模态 Provider 时只建议切换，不自动上传。
+- `deepseek-v4-flash-vision-exp` 只向当前 DeepSeek endpoint 发送用户本次选择的图片；实验模型不可用时显示真实错误。
+- `deepseek-v4-flash` / `deepseek-v4-pro` 等文本模型使用 Apple Vision 完成 OCR、条码和基础分类，并在折叠运行过程记录方法、版本和原图引用。
+- 基础结果不足时说明限制；不自动切换到实验视觉模型，不调用 FastVLM。
 - 所有视觉路径失败时文字和图片草稿保持。
 
-### 2.5 FastVLM 本地模型
+### 2.5 FastVLM 暂停提供
 
-- 仅在满足准入条件的 iOS 18.2+ 真机测试固定版本 0.5B。
-- 显示约 1.23 GB 下载大小、非商业研究许可证和设备要求。
-- 验证下载暂停/恢复、断网、空间不足、SHA-256 失败、删除和重新安装。
-- 验证安装后短基准、描述/比较/图表问答自动路由和 60 秒超时降级。
-- 验证删除模型后历史视觉证据仍可读取。
+- 设置中不显示 FastVLM 安装、下载、基准或删除入口。
+- Chat 不自动调用 FastVLM；未安装和历史残留模型均不改变当前路由。
+- 当前图片主路径验证 DeepSeek 实验视觉模型；文本模型只使用 Apple Vision 基础证据。
+- 仓库内 FastVLM 研究代码和依赖是否彻底删除作为单独清理，不阻塞 DeepSeek 验收。
 
 ### 2.6 Speech
 
@@ -135,7 +128,7 @@ Share Extension（Notes/Safari/Files 来源、文件协调、签名环境）、D
 
 ### 数据
 
-- 当前单一 27 实体 schema 的 `FamiliarDevelopment.store` 首次创建和重启通过。
+- 当前单一 31 实体 schema 的 `FamiliarDevelopment.store` 首次创建和重启通过。
 - 会话、附件和工具终态重启后可读取；删除会话后附件清理通过。
 - 开发阶段采用破坏性 schema 策略，测试 store 可重建；这不是未来公开版本的数据迁移策略。
 - 首次公开发布前建立版本化 schema 基线；公开发布后的每次 schema 变化都必须提供 migration stage、真实旧版本 store fixture、覆盖安装与磁盘迁移测试，且失败时不得静默删除用户数据。
@@ -151,16 +144,16 @@ Share Extension（Notes/Safari/Files 来源、文件协调、签名环境）、D
 
 ### Provider
 
-- 当前阶段 DeepSeek 至少完成一次真实文本流式、错误和工具闭环冒烟。
-- 其他内置 Provider 的真实冒烟属于后续兼容性工作，不阻塞当前实验层。
-- 自定义 Base URL 行为符合设置说明。
+- 当前 DeepSeek descriptor 至少完成一次真实文本流式、错误和工具闭环冒烟。
+- `deepseek-v4-flash-vision-exp` 的真实可用或不可用边界有脱敏记录。
+- Provider/Agent 测试确认 adapter 和 AgentLoop 没有 DeepSeek 类型判断；当前只启用 DeepSeek 不等于接口绑定 DeepSeek。
 
 ### 隐私
 
 - API Key 不出现在日志和普通存储。
 - 图片 bytes 只进入当前多模态 Provider 或设备端视觉处理，不进入其他 Provider 或无关存储。
 - 视觉证据带 provenance，作为不可信只读输入，不能产生工具授权。
-- FastVLM 模型下载固定版本、来源和哈希，许可证与归属可见。
+- FastVLM 当前没有用户入口和自动路由，不作为当前数据目的地。
 - Speech 和 EventKit 用途说明与调用一致。
 - Markdown 远程图片不自动加载，策略在 App 与官网披露。
 

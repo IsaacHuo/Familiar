@@ -213,7 +213,7 @@ private enum Language {
                 fatalError("one of inputs or inputEmbedding must be non-nil")
             }
 
-            let mask = createAttentionMask(h: h, cache: cache)
+            let mask: MLXArray? = createAttentionMask(h: h, cache: cache)
 
             for (i, layer) in layers.enumerated() {
                 h = layer(h, mask: mask, cache: cache?[i])
@@ -341,7 +341,7 @@ private enum Vision {
 /// FastVLM `UserInputProcessor`.
 ///
 /// This is meant to be used with ``FastVLM`` and is typically created by ``VLMModelFactory``.
-public class FastVLMProcessor: UserInputProcessor {
+public final class FastVLMProcessor: UserInputProcessor, @unchecked Sendable {
 
     private let config: FastVLMProcessorConfiguration
     private let imageProcessingConfig: FastVLMPreProcessorConfiguration
@@ -376,7 +376,7 @@ public class FastVLMProcessor: UserInputProcessor {
     }
 
     public func prepare(prompt: UserInput.Prompt, imageTHW: THW?) -> String {
-        var messages = prompt.asMessages()
+        var messages = [["role": "user", "content": prompt.description]]
         if messages[0]["role"] != "system" {
             messages.insert(["role": "system", "content": "You are a helpful assistant."], at: 0)
         }
@@ -426,7 +426,7 @@ public class FastVLMProcessor: UserInputProcessor {
 
         let (pixels, thw) = try preprocess(
             image: input.images[0].asCIImage(), processing: input.processing)
-        let image = LMInput.ProcessedImage(pixels: pixels, imageGridThw: [thw])
+        let image = LMInput.ProcessedImage(pixels: pixels, frames: [thw])
 
         let prompt = prepare(prompt: input.prompt, imageTHW: thw)
         let promptTokens = tokenizer.encode(text: prompt)
@@ -479,16 +479,16 @@ public class FastVLM: Module, VLMModel, KVCacheDimensionProvider {
         return ModelConfiguration(directory: url)
     }
 
-    static public func register(modelFactory: VLMModelFactory) {
-        modelFactory.typeRegistry.registerModelType("llava_qwen2") { url in
+    static public func register(modelFactory: VLMModelFactory, modelDirectory: URL) async {
+        await modelFactory.typeRegistry.registerModelType("llava_qwen2") { data in
             let configuration = try JSONDecoder().decode(
-                FastVLMConfiguration.self, from: Data(contentsOf: url))
-            return FastVLM(configuration, modelDirectory: url.deletingLastPathComponent())
+                FastVLMConfiguration.self, from: data)
+            return FastVLM(configuration, modelDirectory: modelDirectory)
         }
 
-        modelFactory.processorRegistry.registerProcessorType("LlavaProcessor") { url, tokenizer in
+        await modelFactory.processorRegistry.registerProcessorType("LlavaProcessor") { data, tokenizer in
             let configuration = try JSONDecoder().decode(
-                FastVLMPreProcessorConfiguration.self, from: Data(contentsOf: url))
+                FastVLMPreProcessorConfiguration.self, from: data)
             return FastVLMProcessor(configuration, tokenizer: tokenizer)
         }
     }
@@ -503,8 +503,12 @@ public class FastVLM: Module, VLMModel, KVCacheDimensionProvider {
     public var vocabularySize: Int { config.baseConfiguration.vocabularySize }
     public var kvHeads: [Int] { languageModel.kvHeads }
 
-    public func loraLinearLayers() -> MLXLMCommon.LoRALinearLayers {
-        languageModel.model.layers.map { ($0.attention, ["q_proj", "v_proj"]) }
+    public var loraLayers: [Module] {
+        languageModel.model.layers
+    }
+
+    public var loraDefaultKeys: [String] {
+        ["self_attn.q_proj", "self_attn.v_proj"]
     }
 
     public init(_ config: FastVLMConfiguration, modelDirectory: URL) {
@@ -552,7 +556,7 @@ public class FastVLM: Module, VLMModel, KVCacheDimensionProvider {
     public func prepare(_ input: LMInput, cache: [any KVCache], windowSize: Int?) throws
         -> PrepareResult
     {
-        let gridThw = input.image?.imageGridThw
+        let gridThw = input.image?.frames
 
         let dtype = DType.float32
         let pixels = input.image?.pixels.asType(dtype)

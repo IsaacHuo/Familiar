@@ -32,17 +32,10 @@
 "onboarding.browse_without_setup" = "暂不配置，先浏览 Familiar";
 "onboarding.validation_failed" = "连接失败";
 
-"provider.deepseek.detail" = "兼顾速度与推理能力";
-"provider.groq.detail" = "高速运行开放模型";
 "provider.validation.invalid_response" = "服务商返回了无法识别的响应。";
+"provider.validation.model_unavailable" = "当前 API Key 无法使用所选模型：%@";
 "provider.validation.rejected" = "%1$@ 验证失败（%2$ld）。请检查 API Key 和网络连接。";
 
-"model.detail.fast" = "快速回答日常问题";
-"model.detail.reasoning" = "更适合复杂推理";
-"model.detail.quality_tools" = "高质量回答与工具调用";
-"model.detail.speed_tools" = "轻量、快速并支持工具";
-"model.detail.light_tools" = "轻量开放模型";
-"model.detail.strong_tools" = "更强的开放模型";
 "model.current" = "当前模型：%1$@，%2$@";
 
 "settings.provider" = "模型服务";
@@ -63,16 +56,12 @@
 "settings.system_prompt.footer" = "系统提示最多使用前 3,000 个字符，仅影响之后的新问题。";
 "settings.privacy.title" = "隐私与数据";
 "settings.privacy.no_account" = "无需登录或 Familiar 账号";
-"settings.privacy.no_other_apps" = "不会读取其他 App 的数据";
 "settings.privacy.local_history" = "会话历史仅保存在本机";
 "settings.privacy.local_documents" = "文档由 AnyDoc 在本机转换，仅随消息发送转换后的文字";
 "settings.privacy.remote_images" = "Markdown 远程图片不会自动加载，仅在你点击来源链接后打开";
 "settings.privacy.web_tools" = "网页搜索会把搜索词直接发送给所选搜索服务；网页读取会另行访问所选公开 HTTPS 站点。搜索结果和抽取文字可能发送给模型 Provider";
 "settings.error.title" = "设置失败";
 "settings.onboarding.restart" = "重新查看首启";
-"settings.onboarding.restart.title" = "重新查看首启？";
-"settings.onboarding.restart.detail" = "这会返回首启流程，不会删除会话、设置或已保存的 API Key。";
-"settings.onboarding.restart.confirm" = "查看首启";
 "settings.onboarding.restart.footer" = "你可以随时重新查看首启说明，本地数据和 API Key 会保留。";
 
 "common.done" = "完成";
@@ -93,8 +82,6 @@
 "settings.hub.tools.detail" = "Agent Runtime 当前注册的能力";
 "settings.hub.soul" = "灵魂";
 "settings.hub.soul.detail" = "人格与回答风格";
-"settings.hub.memory" = "长期记忆";
-"settings.hub.mcp" = "MCP 连接";
 "settings.hub.app" = "App";
 "settings.hub.appearance" = "外观";
 "settings.hub.storage" = "本地存储";
@@ -107,18 +94,11 @@
 "settings.hub.privacy.detail" = "了解 Familiar 如何处理数据";
 "settings.hub.about" = "关于 Familiar";
 "error.web.search_api_key_missing" = "请先在网页搜索设置中添加 %@ API Key。";
-"settings.status.planned" = "规划中";
-"settings.status.preview" = "预览";
-"settings.preview.accessibility" = "预览，当前不可用";
-"settings.preview.unavailable.title" = "规划中的功能";
-
 "settings.soul.editor" = "人格提示词";
 "settings.soul.personality" = "人格";
 "settings.soul.footer" = "这里会改变 Familiar 的语气和回答风格。工具权限与安全规则始终由 App 强制执行。";
 "settings.soul.characters" = "字符数";
 "settings.soul.restore" = "恢复 Familiar 默认设置";
-"settings.tools.native" = "原生工具";
-"settings.tools.native.footer" = "Familiar 只会向支持工具的模型暴露当前设备和 iOS 权限允许的能力。";
 "settings.tools.registered" = "已注册工具";
 "settings.tools.registered.footer" = "此只读列表来自 Familiar Agent Runtime 的工具注册表。仅当运行实际使用工具时，Familiar 才会检查可用性。";
 "settings.skills.title" = "技能";
@@ -129,15 +109,9 @@
 "settings.skills.footer" = "Skill 只包含指令，不能授权操作或扩大系统权限，并且只在用户明确选择时生效。";
 "settings.skills.delete" = "删除";
 "settings.skills.name" = "名称";
-"settings.skills.version" = "版本";
 "settings.skills.identifier" = "标识符";
 "settings.skills.description" = "说明";
 "settings.skills.instructions" = "指令";
-"settings.skills.allowed_tools" = "允许的工具";
-"settings.skills.no_tools" = "不使用工具";
-"settings.skills.preview.title" = "预览技能";
-"settings.skills.install" = "安装";
-"settings.skills.update" = "更新";
 "settings.skills.create.title" = "新建技能";
 "settings.skills.create.identifier_hint" = "斜杠命令：/%@";
 "settings.skills.create.no_tools" = "新建技能只包含指令，默认不使用任何工具。";
@@ -153,34 +127,6 @@
 "error.skill.invalid_stored_allowed_tools" = "已安装技能 %@ 的工具范围无效，请重新安装。";
 "error.skill.already_installed" = "已存在使用该标识符的 Skill。";
 "error.skill.unavailable" = "这个 Skill 已不再安装。";
-
-"settings.memory.preview.title" = "长期记忆预览";
-"settings.memory.preview.detail" = "当前版本的长期记忆尚未连接会话或模型上下文。";
-"settings.memory.enable" = "新会话默认启用";
-"settings.memory.add" = "添加记忆";
-"settings.memory.empty.title" = "没有长期记忆";
-"settings.memory.empty.detail" = "后续版本中的记忆都可以在这里查看、编辑和删除。";
-"settings.memory.search" = "搜索记忆";
-"settings.memory.category" = "分类";
-"settings.memory.category.preference" = "偏好";
-"settings.memory.category.detail" = "个人信息";
-"settings.memory.category.instruction" = "指令";
-"settings.memory.new" = "新记忆";
-"settings.memory.save.unavailable" = "记忆存储与上下文注入尚未开放，没有保存任何内容。";
-
-"settings.mcp.preview.title" = "MCP 预览";
-"settings.mcp.preview.detail" = "当前版本的 MCP 连接尚未注册到 Familiar 的工具运行时。";
-"settings.mcp.empty.title" = "没有 MCP 服务器";
-"settings.mcp.empty.detail" = "MCP 支持开放后，远程 HTTPS 服务器会显示在这里。";
-"settings.mcp.add" = "添加 MCP 服务器";
-"settings.mcp.name" = "服务器名称";
-"settings.mcp.auth" = "认证方式";
-"settings.mcp.auth.none" = "无";
-"settings.mcp.auth.bearer" = "Bearer Token";
-"settings.mcp.security" = "后续版本中的凭据将限定于当前服务器并保存在钥匙串。MCP 工具仍须经过 Familiar 的权限策略。";
-"settings.mcp.new" = "新 MCP 服务器";
-"settings.mcp.connect" = "连接";
-"settings.mcp.connect.unavailable" = "MCP 网络连接和工具发现尚未开放，没有保存服务器或凭据。";
 
 "settings.appearance.system" = "跟随系统";
 "settings.appearance.light" = "浅色";
@@ -223,7 +169,6 @@
 "settings.about.feedback" = "反馈问题";
 "settings.about.notices" = "第三方软件声明";
 "settings.about.notices.unavailable" = "无法读取第三方软件声明。";
-"chat.actions" = "会话操作";
 "slash.palette" = "Skill";
 "slash.open" = "选择 Skill";
 "slash.remove" = "移除 Skill";
@@ -232,7 +177,6 @@
 
 "drawer.open" = "打开会话列表";
 "drawer.search" = "搜索项目与对话";
-"drawer.search.close" = "关闭搜索";
 "drawer.search.scope" = "搜索范围";
 "drawer.search.scope.all" = "全部内容";
 "drawer.search.scope.ordinary" = "项目外对话";
@@ -250,14 +194,11 @@
 "draft.discard.detail" = "切换前会移除尚未发送的文字、图片和文件。";
 "conversation.delete.title" = "要删除这个对话吗？";
 "conversation.delete.detail" = "这个对话中的消息、附件和运行记录会从此 iPhone 删除。";
-"conversation.project_context" = "项目：%@";
-"conversation.project_context.hint" = "打开这个项目的上下文";
 "conversation.ordinary" = "日常对话";
 "run.context.model" = "模型";
 "run.context.project" = "项目";
 "run.context.resource" = "使用的资料";
 "run.context.skill" = "使用的技能";
-"run.context.tools" = "可用工具";
 
 "project.projects" = "项目";
 "project.all" = "全部项目";
@@ -271,13 +212,11 @@
 "project.instruction" = "项目指令";
 "project.instruction.empty" = "暂无项目指令";
 "project.conversations" = "对话";
-"project.conversations.empty" = "还没有项目对话";
 "project.conversations.context_detail" = "共享这个项目上下文的对话";
 "project.new_chat" = "新建项目对话";
 "project.archive" = "归档项目";
 "project.unarchive" = "取消归档";
 "project.delete" = "永久删除项目";
-"project.delete.footer" = "对话、附件和历史 Run 会保留并解除项目归属。项目指令、资料、生成结果、技能与连接绑定、项目记忆和项目授权会被删除。仅在 Run 运行时无法删除。";
 "project.empty.title" = "还没有项目";
 "project.empty.detail" = "创建项目，把相关对话、指令和资料放在一起。";
 "project.unavailable" = "项目不可用";
@@ -285,7 +224,6 @@
 "project.context" = "项目上下文";
 "project.actions" = "项目操作";
 "project.runs" = "运行记录";
-"project.runs.empty" = "还没有运行记录";
 "project.runs.context_detail" = "查看执行记录和当时使用的上下文";
 "project.run" = "运行详情";
 "project.run.execution" = "执行";
@@ -302,16 +240,6 @@
 "project.run.status.completed" = "已完成";
 "project.run.status.cancelled" = "已取消";
 "project.run.status.failed" = "失败";
-"project.skills.enabled" = "已启用的技能";
-"project.skills.final_scope" = "最终工具范围";
-"project.skills.unrestricted" = "没有 Skill 限制，保留当前设备可用工具。";
-"project.skills.no_tools" = "最终工具范围：不使用工具";
-"project.skills.final_tools" = "最终工具范围：%@";
-"project.skills.scope_footer" = "启用的技能只能缩小一次运行可见的工具范围；多个技能的允许工具会合并。";
-"project.skills.installed" = "已安装的技能";
-"project.skills.none_installed" = "还没有安装技能。";
-
-"settings.skills" = "技能";
 "common.unknown" = "未知";
 "common.view_all" = "查看全部";
 "resource.empty" = "还没有资料";
@@ -328,7 +256,6 @@
 "artifact.delete.title" = "要删除这个生成结果吗？";
 "project.error.empty_name" = "请输入项目名称。";
 "project.error.duplicate_name" = "已存在同名项目。";
-"project.error.not_empty" = "请先移动或删除项目内的所有对话，再永久删除项目。";
 "project.error.running" = "请等待运行中的任务结束，再永久删除项目。";
 "project.expand" = "展开项目";
 "project.collapse" = "收起项目";
@@ -361,7 +288,6 @@
 "composer.placeholder" = "问问 Familiar";
 "message.send" = "发送";
 "message.stop" = "停止生成";
-"message.responding" = "正在回答";
 "message.retry" = "重新生成";
 "message.edit_and_resend" = "编辑并重新发送";
 "message.operation.title" = "重新开始这段对话？";
@@ -445,21 +371,13 @@
 "empty.prompt.10" = "帮我在一段信息里找出关键事实";
 "empty.configure" = "配置 API Key";
 
-"capability.coming_soon.title" = "暂不可用";
-"capability.attachments.detail" = "Word、PowerPoint、Excel、OpenDocument、RTF、EPUB、CSV、PDF、TXT 和 Markdown 均在本机转换。图片可在支持视觉的模型上直接发送。";
-"capability.speech.detail" = "语音转写使用 Apple 语音识别，不会保留录音。";
-
 "attachment.choose_photos" = "选择照片";
 "attachment.close_photos" = "关闭照片选择";
 "attachment.all_photos" = "全部照片";
 "attachment.add_photos_count" = "添加 %ld 张照片";
 "attachment.remove_image" = "移除图片";
 "attachment.remove_file" = "移除文件";
-"attachment.image_encoding_failed" = "无法处理这张照片，请重新选择。";
-"attachment.file_send_blocked_title" = "当前模型不支持文档";
-"attachment.file_send_blocked_detail" = "请选择支持文档的模型，或移除文件后只发送文字。";
 "attachment.file_import_failed_title" = "无法添加文件";
-"attachment.file_import_failed" = "无法添加所选文件。";
 "attachment.processing" = "正在使用 AnyDoc 转换…";
 "attachment.preview" = "预览 %@";
 "attachment.unavailable.title" = "附件不可用";
@@ -473,7 +391,6 @@
 "attachment.error.invalid_path" = "附件路径无效。";
 "attachment.error.copy_failed" = "无法把附件复制到 Familiar 的私有存储。";
 "attachment.error.model_unsupported" = "当前模型不支持文档上下文。请选择其他模型或移除文件。";
-"attachment.error.model_images_unsupported" = "当前模型不支持图片。请选择支持图片的模型，或移除图片后只发送文字。";
 "anydoc.error.unsupported" = "AnyDoc 不支持此文档，或无法识别它的格式。";
 "anydoc.error.malformed" = "AnyDoc 无法从该文档中恢复出有效内容。";
 "anydoc.error.encrypted" = "该文档已加密或受密码保护，请解除保护后再添加。";
@@ -582,19 +499,9 @@
 "settings.model.refresh" = "刷新模型";
 "settings.model.curated_footer" = "此服务商没有可靠的模型列表接口。可选择精选模型，或手动填写官方模型 ID。";
 "settings.model.refresh_footer" = "从服务商官方模型列表接口刷新；也可以随时手动填写模型 ID。";
-"settings.openai.organization" = "Organization ID（可选）";
-"settings.openai.project" = "Project ID（可选）";
-"settings.qwen.region" = "Qwen 区域";
-"settings.qwen.region.china" = "中国";
-"settings.qwen.region.international" = "国际";
-"settings.custom.provider" = "自定义 OpenAI-compatible";
-"settings.custom.name" = "配置名称";
-"settings.custom.models_path" = "模型列表路径（可选，例如 /models）";
 "settings.privacy.permission_tools" = "仅在授权后、仅为你请求的工具访问日历和提醒事项";
 "model.switched_marker" = "已切换到 %1$@ · %2$@";
-"message.generated_by" = "由 %@ 生成";
 "error.provider.invalid_configuration" = "%@ 配置无效。";
-"error.provider.invalid_custom_configuration" = "请先完整填写自定义服务商名称、Base URL 和模型 ID。";
 "error.message.context_too_large" = "这条消息超过所选模型的本地上下文安全限制。";
 
 "common.yes" = "是";
@@ -606,12 +513,6 @@
 "camera.capturing" = "正在拍照";
 "composer.disabled.importing" = "文件仍在导入。";
 "composer.disabled.empty" = "请输入消息或添加文档。";
-"accessibility.confirmation.required" = "需要确认";
-"accessibility.tool.status.running" = "正在执行";
-"accessibility.tool.status.succeeded" = "已成功";
-"accessibility.tool.status.cancelled" = "已取消";
-"accessibility.tool.status.failed" = "执行失败";
-"tool.undo.hint" = "仅撤销这次操作创建的系统项目";
 "tool.calendar_query" = "查询日历事件";
 "tool.calendar_create" = "添加日历事件";
 "tool.reminders_query" = "查询提醒事项";
@@ -639,8 +540,6 @@
 "share.error.write_failed" = "无法保存共享内容。";
 "eventkit.default_calendar" = "默认日历";
 "eventkit.default_reminder_list" = "默认提醒事项列表";
-"eventkit.target" = "目标：%@";
-"eventkit.confirm_add" = "确认添加";
 "eventkit.field.title" = "标题";
 "eventkit.field.start" = "开始";
 "eventkit.field.end" = "结束";
@@ -649,13 +548,6 @@
 "eventkit.field.notes" = "备注";
 "eventkit.field.due" = "截止";
 "eventkit.field.priority" = "优先级";
-"eventkit.disclosure.events.title" = "允许查询日历吗？";
-"eventkit.disclosure.reminders.title" = "允许查询提醒事项吗？";
-"eventkit.disclosure.data" = "数据";
-"eventkit.disclosure.flow" = "数据流向";
-"eventkit.disclosure.events.data" = "仅查询回答本次问题所需时间范围内的事件";
-"eventkit.disclosure.reminders.data" = "仅查询本次问题指定时间或文字条件匹配的提醒事项";
-"eventkit.disclosure.flow.value" = "在本机读取，仅为本次回答发送给你选择的模型服务商";
 "error.system_entry.draft_pending" = "已保留当前草稿。请先发送或清空草稿，再运行其他系统操作。";
 "Ask Familiar" = "询问 Familiar";
 "Process with Familiar" = "用 Familiar 处理文本";
@@ -683,9 +575,7 @@
 "authorization.once" = "仅这次";
 "authorization.session" = "本次会话允许";
 "authorization.always" = "始终允许";
-"authorization.options" = "授权选项";
 "tool.undone" = "已撤销";
-"vision.status.recognizing" = "正在识别图片";
 "vision.error.unavailable" = "无法读取图片 %@。";
 "vision.error.too_large" = "本地视觉证据超过本次请求的大小限制。";
 "settings.hub.authorizations" = "Agent 授权";
@@ -694,23 +584,6 @@
 "settings.authorizations.revoke" = "撤销";
 "settings.authorizations.revoke_all" = "撤销全部";
 "settings.authorizations.footer" = "授权按项目、工具和目标隔离。破坏性动作仍然需要确认。";
-"settings.local_vision.title" = "本地视觉";
-"settings.local_vision.detail" = "FastVLM 0.5B 模型与设备基准";
-"settings.local_vision.model" = "模型";
-"settings.local_vision.download" = "下载大小";
-"settings.local_vision.status" = "状态";
-"settings.local_vision.benchmark" = "最近基准";
-"settings.local_vision.license" = "Apple FastVLM 模型权重仅限非商业研究和学术开发。模型在本机运行。";
-"settings.local_vision.install" = "下载并安装";
-"settings.local_vision.run_benchmark" = "运行设备基准";
-"settings.local_vision.delete" = "删除模型";
-"settings.local_vision.not_installed" = "未安装";
-"settings.local_vision.downloading" = "正在下载";
-"settings.local_vision.paused" = "已暂停";
-"settings.local_vision.pause" = "暂停下载";
-"settings.local_vision.resume" = "继续下载";
-"settings.local_vision.installing" = "正在安装";
-"settings.local_vision.installed" = "已安装";
 "local_vision.error.device" = "此设备未通过 FastVLM 设备检查。";
 "local_vision.error.storage" = "至少需要 3.5 GB 可用存储空间。";
 "local_vision.error.archive" = "下载的 FastVLM 压缩包不完整。";
@@ -724,4 +597,3 @@
 "search.more" = "还有 %lld 条";
 "run.context.reply_time" = "回复时长";
 "run.context.first_token" = "首 token";
-"run.context.throughput" = "吞吐";

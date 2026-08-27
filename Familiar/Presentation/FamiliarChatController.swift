@@ -13,6 +13,7 @@ final class FamiliarChatController {
     var agentRuns: [FamiliarAgentRunSnapshot] = []
     var pendingConfirmations: [FamiliarToolConfirmationRequest] = []
     var pendingClarifications: [FamiliarClarificationRequest] = []
+    var pendingModelEscalations: [FamiliarModelEscalationApproval] = []
     var draft = ""
     var draftImages: [FamiliarDraftImage] = []
     var draftAttachments: [FamiliarAttachmentDraft] = []
@@ -30,6 +31,7 @@ final class FamiliarChatController {
     private let dependencies: FamiliarAppDependencies
     private let confirmationCoordinator: FamiliarToolConfirmationCoordinator
     private let clarificationCoordinator: FamiliarClarificationCoordinator
+    private let modelEscalationCoordinator: FamiliarModelEscalationCoordinator
     private let runRecorder: FamiliarRunPersistenceRecorder
     private let runRecovery: FamiliarRunRecoveryService
     private var runningTask: Task<Void, Never>?
@@ -38,8 +40,14 @@ final class FamiliarChatController {
         self.dependencies = dependencies
         confirmationCoordinator = dependencies.confirmationCoordinator
         clarificationCoordinator = dependencies.clarificationCoordinator
+        modelEscalationCoordinator = dependencies.modelEscalationCoordinator
         runRecorder = FamiliarRunPersistenceRecorder()
         runRecovery = FamiliarRunRecoveryService()
+        Task { [weak self, modelEscalationCoordinator] in
+            for await approvals in await modelEscalationCoordinator.updates() {
+                self?.pendingModelEscalations = approvals
+            }
+        }
     }
 
     func select(_ id: UUID?, in context: ModelContext) {
@@ -214,7 +222,10 @@ final class FamiliarChatController {
         guard !prompt.isEmpty || !combinedAttachments.isEmpty else { return }
         let requestSettings = settings
         guard let descriptor = requestSettings.resolvedProvider else {
-            errorMessage = String(localized: "error.provider.invalid_custom_configuration")
+            errorMessage = String(
+                format: String(localized: "error.provider.invalid_configuration"),
+                FamiliarProviderCatalog.deepSeek.displayName
+            )
             return
         }
         let imageAttachments = combinedAttachments.filter { $0.kind == .image }
@@ -231,24 +242,7 @@ final class FamiliarChatController {
             runningTask = Task { [weak self] in
                 guard let self else { return }
                 do {
-                    var evidence = try await dependencies.visionProcessor.process(imageAttachments)
-                    if dependencies.localVision.isInstalled,
-                       FamiliarVisionRouting.shouldUseFastVLM(prompt: prompt) {
-                        for index in evidence.indices {
-                            guard let image = imageAttachments.first(where: { $0.id == evidence[index].attachmentID }),
-                                  let imageURL = FamiliarAttachmentStore.url(for: image.relativePath)
-                            else { continue }
-                            do {
-                                let answer = try await dependencies.localVision.answer(
-                                    imageURL: imageURL,
-                                    prompt: prompt.isEmpty ? "Describe this image briefly and factually." : prompt
-                                )
-                                evidence[index] = evidence[index].includingFastVLM(answer)
-                            } catch {
-                                // Apple Vision evidence remains available when advanced local inference fails.
-                            }
-                        }
-                    }
+                    let evidence = try await dependencies.visionProcessor.process(imageAttachments)
                     isSending = false
                     runningTask = nil
                     resetTransientRunState()
@@ -413,9 +407,11 @@ final class FamiliarChatController {
     func cancelSending(in _: ModelContext) {
         pendingConfirmations = []
         pendingClarifications = []
+        pendingModelEscalations = []
         runningTask?.cancel()
         Task { await confirmationCoordinator.cancelAll() }
         Task { await clarificationCoordinator.cancelAll() }
+        Task { await modelEscalationCoordinator.cancelAll() }
     }
 
     func resolveConfirmation(
@@ -431,6 +427,10 @@ final class FamiliarChatController {
         Task {
             _ = await clarificationCoordinator.resolve(requestID: requestID, resolution: resolution)
         }
+    }
+
+    func resolveModelEscalation(id: UUID, approved: Bool) {
+        Task { await modelEscalationCoordinator.resolve(id: id, approved: approved) }
     }
 
     func updateSettings(_ value: FamiliarSettings, in context: ModelContext) {
@@ -926,12 +926,13 @@ final class FamiliarChatController {
             )
             let agentLoop = dependencies.makeRuntime(
                 for: descriptor,
+                apiKey: apiKey,
+                routePolicy: settings.modelRoutePolicy,
                 authorizationRuntime: FamiliarAuthorizationRuntime(context: context, sessionID: dependencies.sessionID)
             )
             var completedResponse: FamiliarCompletedResponse?
             for try await event in agentLoop.stream(
-                contextSnapshot: contextSnapshot,
-                apiKey: apiKey
+                contextSnapshot: contextSnapshot
             ) {
                 if activeRuntimeID == nil {
                     activeRuntimeID = event.runID

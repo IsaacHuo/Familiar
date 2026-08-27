@@ -217,6 +217,32 @@ struct FamiliarChatView: View {
             Text(controller.errorMessage ?? String(localized: "error.unknown"))
         }
         .confirmationDialog(
+            "切换到 DeepSeek？",
+            isPresented: Binding(
+                get: { !controller.pendingModelEscalations.isEmpty },
+                set: { isPresented in
+                    if !isPresented,
+                       let approval = controller.pendingModelEscalations.first {
+                        controller.resolveModelEscalation(id: approval.id, approved: false)
+                    }
+                }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let approval = controller.pendingModelEscalations.first {
+                Button("继续使用 DeepSeek") {
+                    controller.resolveModelEscalation(id: approval.id, approved: true)
+                }
+                Button(String(localized: "common.cancel"), role: .cancel) {
+                    controller.resolveModelEscalation(id: approval.id, approved: false)
+                }
+            }
+        } message: {
+            if let approval = controller.pendingModelEscalations.first {
+                Text(modelEscalationDescription(approval.request))
+            }
+        }
+        .confirmationDialog(
             String(localized: "message.operation.title"),
             isPresented: Binding(
                 get: { pendingMessageOperation != nil },
@@ -331,6 +357,15 @@ struct FamiliarChatView: View {
                 updatedAt: conversation.updatedAt
             )
         }
+    }
+
+    private func modelEscalationDescription(
+        _ request: FamiliarModelEscalationRequest
+    ) -> String {
+        var scopes = ["\(request.messageCount) 条消息"]
+        if request.includesDocuments { scopes.append("文档内容") }
+        if request.includesImages { scopes.append("图片") }
+        return "本地模型当前无法完成这项任务。确认后，Familiar 会将\(scopes.joined(separator: "、"))发送给 DeepSeek；拒绝后不会静默切换。"
     }
 
     private var installedSkillIDs: [UUID] {
@@ -606,14 +641,7 @@ struct FamiliarChatView: View {
     private var topBar: some View {
         let selectedProvider = controller.settings.selectedProvider
         let project = selectedProject
-        var providers = FamiliarProviderCatalog.builtIn.filter { configuredProviderIDs.contains($0.id) }
-        if configuredProviderIDs.contains(FamiliarProviderCatalog.customProviderID),
-           let customProvider = FamiliarProviderCatalog.descriptor(
-               for: FamiliarProviderCatalog.customProviderID,
-               configuration: controller.settings.providerConfigurations[FamiliarProviderCatalog.customProviderID] ?? .empty
-           ) {
-            providers.append(customProvider)
-        }
+        let providers = FamiliarProviderCatalog.builtIn.filter { configuredProviderIDs.contains($0.id) }
         return FamiliarChatTopBar(
             provider: selectedProvider,
             model: controller.settings.selectedModel,

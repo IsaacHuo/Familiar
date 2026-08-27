@@ -32,17 +32,10 @@
 "onboarding.browse_without_setup" = "Browse Familiar without setup";
 "onboarding.validation_failed" = "Connection Failed";
 
-"provider.deepseek.detail" = "Balanced speed and reasoning";
-"provider.groq.detail" = "Fast open-model inference";
 "provider.validation.invalid_response" = "The provider returned an unrecognized response.";
+"provider.validation.model_unavailable" = "The selected model is not available for this API key: %@";
 "provider.validation.rejected" = "%1$@ verification failed (%2$ld). Check your API key and network connection.";
 
-"model.detail.fast" = "Fast answers for everyday questions";
-"model.detail.reasoning" = "Better suited to complex reasoning";
-"model.detail.quality_tools" = "High-quality answers and tool use";
-"model.detail.speed_tools" = "Fast, lightweight, and tool capable";
-"model.detail.light_tools" = "Lightweight open model";
-"model.detail.strong_tools" = "More capable open model";
 "model.current" = "Current model: %1$@, %2$@";
 
 "settings.provider" = "Model Provider";
@@ -63,16 +56,12 @@
 "settings.system_prompt.footer" = "The first 3,000 characters are used for future questions only.";
 "settings.privacy.title" = "Privacy and Data";
 "settings.privacy.no_account" = "No sign-in or Familiar account";
-"settings.privacy.no_other_apps" = "Does not read data from other apps";
 "settings.privacy.local_history" = "Conversation history stays on this device";
 "settings.privacy.local_documents" = "Documents are converted locally with AnyDoc; only the resulting text is sent with your message";
 "settings.privacy.remote_images" = "Remote Markdown images never load automatically; source links open only when you choose";
 "settings.privacy.web_tools" = "Web search sends queries directly to your selected search provider; web fetch separately contacts the selected public HTTPS site. Search results and extracted text may be sent to your model provider";
 "settings.error.title" = "Couldn't Save Settings";
 "settings.onboarding.restart" = "Review setup";
-"settings.onboarding.restart.title" = "Review setup again?";
-"settings.onboarding.restart.detail" = "This returns to onboarding without deleting conversations, settings, or saved API keys.";
-"settings.onboarding.restart.confirm" = "Review Setup";
 "settings.onboarding.restart.footer" = "You can revisit onboarding at any time. Your local data and API keys stay in place.";
 
 "common.done" = "Done";
@@ -93,8 +82,6 @@
 "settings.hub.tools.detail" = "Capabilities registered with the Agent Runtime";
 "settings.hub.soul" = "Soul";
 "settings.hub.soul.detail" = "Personality and response style";
-"settings.hub.memory" = "Long-term Memory";
-"settings.hub.mcp" = "MCP Connections";
 "settings.hub.app" = "App";
 "settings.hub.appearance" = "Appearance";
 "settings.hub.storage" = "Local Storage";
@@ -107,18 +94,11 @@
 "settings.hub.privacy.detail" = "How Familiar handles your data";
 "settings.hub.about" = "About Familiar";
 "error.web.search_api_key_missing" = "Add a %@ API key in Web Search settings first.";
-"settings.status.planned" = "Planned";
-"settings.status.preview" = "Preview";
-"settings.preview.accessibility" = "Preview, unavailable";
-"settings.preview.unavailable.title" = "Planned Feature";
-
 "settings.soul.editor" = "Personality prompt";
 "settings.soul.personality" = "Personality";
 "settings.soul.footer" = "This changes Familiar's tone and response style. Tool permissions and safety rules remain enforced by the app.";
 "settings.soul.characters" = "Characters";
 "settings.soul.restore" = "Restore Familiar Default";
-"settings.tools.native" = "Native Tools";
-"settings.tools.native.footer" = "Familiar exposes only tools supported by the selected model and current iOS permissions.";
 "settings.tools.registered" = "Registered Tools";
 "settings.tools.registered.footer" = "This read-only list reflects the tools registered with Familiar's Agent Runtime. Availability is checked only when a run uses a tool.";
 "settings.skills.title" = "Skills";
@@ -129,15 +109,9 @@
 "settings.skills.footer" = "Skills contain instructions only. They cannot authorize actions or expand system access, and apply only when explicitly selected.";
 "settings.skills.delete" = "Delete";
 "settings.skills.name" = "Name";
-"settings.skills.version" = "Version";
 "settings.skills.identifier" = "Identifier";
 "settings.skills.description" = "Description";
 "settings.skills.instructions" = "Instructions";
-"settings.skills.allowed_tools" = "Allowed Tools";
-"settings.skills.no_tools" = "No tools";
-"settings.skills.preview.title" = "Preview Skill";
-"settings.skills.install" = "Install";
-"settings.skills.update" = "Update";
 "settings.skills.create.title" = "New Skill";
 "settings.skills.create.identifier_hint" = "Slash command: /%@";
 "settings.skills.create.no_tools" = "New Skills contain instructions only and start with no tool access.";
@@ -153,34 +127,6 @@
 "error.skill.invalid_stored_allowed_tools" = "The installed skill %@ has an invalid tool scope. Reinstall it to continue.";
 "error.skill.already_installed" = "A Skill with this identifier already exists.";
 "error.skill.unavailable" = "This Skill is no longer installed.";
-
-"settings.memory.preview.title" = "Memory Preview";
-"settings.memory.preview.detail" = "Long-term memory is not connected to conversations or model context in this version.";
-"settings.memory.enable" = "Enable for New Conversations";
-"settings.memory.add" = "Add Memory";
-"settings.memory.empty.title" = "No long-term memories";
-"settings.memory.empty.detail" = "Future memories will be reviewable, editable, and removable here.";
-"settings.memory.search" = "Search memories";
-"settings.memory.category" = "Category";
-"settings.memory.category.preference" = "Preference";
-"settings.memory.category.detail" = "Personal Detail";
-"settings.memory.category.instruction" = "Instruction";
-"settings.memory.new" = "New Memory";
-"settings.memory.save.unavailable" = "Memory storage and context injection are not available yet. Nothing was saved.";
-
-"settings.mcp.preview.title" = "MCP Preview";
-"settings.mcp.preview.detail" = "MCP connections are not registered with Familiar's tool runtime in this version.";
-"settings.mcp.empty.title" = "No MCP servers";
-"settings.mcp.empty.detail" = "Remote HTTPS servers will appear here after MCP support is released.";
-"settings.mcp.add" = "Add MCP Server";
-"settings.mcp.name" = "Server Name";
-"settings.mcp.auth" = "Authentication";
-"settings.mcp.auth.none" = "None";
-"settings.mcp.auth.bearer" = "Bearer Token";
-"settings.mcp.security" = "Future credentials will be scoped to this server and stored in Keychain. MCP tools will still pass through Familiar's permission policy.";
-"settings.mcp.new" = "New MCP Server";
-"settings.mcp.connect" = "Connect";
-"settings.mcp.connect.unavailable" = "MCP networking and tool discovery are not available yet. No server or credential was saved.";
 
 "settings.appearance.system" = "System";
 "settings.appearance.light" = "Light";
@@ -223,7 +169,6 @@
 "settings.about.feedback" = "Report an Issue";
 "settings.about.notices" = "Third-Party Notices";
 "settings.about.notices.unavailable" = "Notices are unavailable.";
-"chat.actions" = "Conversation actions";
 "slash.palette" = "Skills";
 "slash.open" = "Choose a Skill";
 "slash.remove" = "Remove Skill";
@@ -232,7 +177,6 @@
 
 "drawer.open" = "Open conversations";
 "drawer.search" = "Search projects and chats";
-"drawer.search.close" = "Close search";
 "drawer.search.scope" = "Search Scope";
 "drawer.search.scope.all" = "Everything";
 "drawer.search.scope.ordinary" = "Chats Outside Projects";
@@ -250,14 +194,11 @@
 "draft.discard.detail" = "Your unsent text, images, and files will be removed before switching.";
 "conversation.delete.title" = "Delete this chat?";
 "conversation.delete.detail" = "Messages, attachments, and saved run history in this chat will be deleted from this iPhone.";
-"conversation.project_context" = "Project: %@";
-"conversation.project_context.hint" = "Opens this project's context";
 "conversation.ordinary" = "Daily Chat";
 "run.context.model" = "Model";
 "run.context.project" = "Project";
 "run.context.resource" = "Resource Used";
 "run.context.skill" = "Skill Used";
-"run.context.tools" = "Available Tools";
 
 "project.projects" = "Projects";
 "project.all" = "All Projects";
@@ -271,13 +212,11 @@
 "project.instruction" = "Project Instruction";
 "project.instruction.empty" = "No project instruction";
 "project.conversations" = "Chats";
-"project.conversations.empty" = "No project chats yet";
 "project.conversations.context_detail" = "Chats that share this project's context";
 "project.new_chat" = "New Project Chat";
 "project.archive" = "Archive Project";
 "project.unarchive" = "Unarchive Project";
 "project.delete" = "Delete Project Permanently";
-"project.delete.footer" = "Chats, attachments, and historical runs are kept and detached. Instructions, resources, artifacts, Skill and connection bindings, project Memory, and project authorizations are deleted. Deletion is unavailable while a run is active.";
 "project.empty.title" = "No projects yet";
 "project.empty.detail" = "Create a project to keep related chats, instructions, and resources together.";
 "project.unavailable" = "Project unavailable";
@@ -285,7 +224,6 @@
 "project.context" = "Project Context";
 "project.actions" = "Project Actions";
 "project.runs" = "Runs";
-"project.runs.empty" = "No runs yet";
 "project.runs.context_detail" = "Execution history and frozen context";
 "project.run" = "Run";
 "project.run.execution" = "Execution";
@@ -302,16 +240,6 @@
 "project.run.status.completed" = "Completed";
 "project.run.status.cancelled" = "Cancelled";
 "project.run.status.failed" = "Failed";
-"project.skills.enabled" = "Enabled Skills";
-"project.skills.final_scope" = "Final Tool Scope";
-"project.skills.unrestricted" = "No Skill restriction; current device tools remain available.";
-"project.skills.no_tools" = "Final tool scope: no tools";
-"project.skills.final_tools" = "Final tool scope: %@";
-"project.skills.scope_footer" = "Enabled Skills can only reduce the tools visible to a run. Their allowed tool lists are combined.";
-"project.skills.installed" = "Installed Skills";
-"project.skills.none_installed" = "No Skills are installed.";
-
-"settings.skills" = "Skills";
 "common.unknown" = "Unknown";
 "common.view_all" = "View All";
 "resource.empty" = "No resources yet";
@@ -328,7 +256,6 @@
 "artifact.delete.title" = "Delete this artifact?";
 "project.error.empty_name" = "Enter a project name.";
 "project.error.duplicate_name" = "A project with this name already exists.";
-"project.error.not_empty" = "Move or delete every project chat before permanently deleting this project.";
 "project.error.running" = "Wait for running tasks to finish before permanently deleting this project.";
 "project.expand" = "Expand Project";
 "project.collapse" = "Collapse Project";
@@ -361,7 +288,6 @@
 "composer.placeholder" = "Message Familiar";
 "message.send" = "Send";
 "message.stop" = "Stop generating";
-"message.responding" = "Responding";
 "message.retry" = "Regenerate";
 "message.edit_and_resend" = "Edit and Resend";
 "message.operation.title" = "Restart from this message?";
@@ -445,21 +371,13 @@
 "empty.prompt.10" = "Pull the key facts out of this information";
 "empty.configure" = "Configure API Key";
 
-"capability.coming_soon.title" = "Unavailable";
-"capability.attachments.detail" = "Word, PowerPoint, Excel, OpenDocument, RTF, EPUB, CSV, PDF, TXT, and Markdown are converted locally. Photos can be sent directly with vision-capable models.";
-"capability.speech.detail" = "Voice transcription uses Apple Speech and does not keep an audio recording.";
-
 "attachment.choose_photos" = "Choose Photos";
 "attachment.close_photos" = "Close photo picker";
 "attachment.all_photos" = "All Photos";
 "attachment.add_photos_count" = "Add %ld Photos";
 "attachment.remove_image" = "Remove image";
 "attachment.remove_file" = "Remove file";
-"attachment.image_encoding_failed" = "The photo could not be processed. Please choose it again.";
-"attachment.file_send_blocked_title" = "This model doesn't support documents";
-"attachment.file_send_blocked_detail" = "Choose a model that supports documents, or remove the files to send only the text.";
 "attachment.file_import_failed_title" = "Couldn't add files";
-"attachment.file_import_failed" = "Couldn't add the selected files.";
 "attachment.processing" = "Converting with AnyDoc…";
 "attachment.preview" = "Preview %@";
 "attachment.unavailable.title" = "Attachment unavailable";
@@ -473,7 +391,6 @@
 "attachment.error.invalid_path" = "The attachment path is invalid.";
 "attachment.error.copy_failed" = "The attachment could not be copied into Familiar's private storage.";
 "attachment.error.model_unsupported" = "The selected model does not support document context. Choose another model or remove the files.";
-"attachment.error.model_images_unsupported" = "The selected model does not support images. Choose a model that supports images, or remove the photos to send only the text.";
 "anydoc.error.unsupported" = "AnyDoc doesn't support this document or couldn't identify its format.";
 "anydoc.error.malformed" = "AnyDoc couldn't recover meaningful content from this document.";
 "anydoc.error.encrypted" = "This document is encrypted or password-protected. Remove its protection before adding it.";
@@ -582,19 +499,9 @@
 "settings.model.refresh" = "Refresh Models";
 "settings.model.curated_footer" = "This provider has no reliable model-list endpoint. Choose a curated model or enter an official model ID manually.";
 "settings.model.refresh_footer" = "Refreshes from the provider's official model-list endpoint. You can always enter a model ID manually.";
-"settings.openai.organization" = "Organization ID (optional)";
-"settings.openai.project" = "Project ID (optional)";
-"settings.qwen.region" = "Qwen Region";
-"settings.qwen.region.china" = "China";
-"settings.qwen.region.international" = "International";
-"settings.custom.provider" = "Custom OpenAI-compatible";
-"settings.custom.name" = "Configuration name";
-"settings.custom.models_path" = "Models path (optional, e.g. /models)";
 "settings.privacy.permission_tools" = "Calendar and reminder data is accessed only after permission and only for requested tools";
 "model.switched_marker" = "Switched to %1$@ · %2$@";
-"message.generated_by" = "Generated by %@";
 "error.provider.invalid_configuration" = "%@ configuration is invalid.";
-"error.provider.invalid_custom_configuration" = "Complete the custom provider name, Base URL, and model ID first.";
 "error.message.context_too_large" = "This message exceeds the selected model's local context safety limit.";
 
 "common.yes" = "Yes";
@@ -606,12 +513,6 @@
 "camera.capturing" = "Taking photo";
 "composer.disabled.importing" = "A document is still being imported.";
 "composer.disabled.empty" = "Enter a message or add a document.";
-"accessibility.confirmation.required" = "Confirmation required";
-"accessibility.tool.status.running" = "In progress";
-"accessibility.tool.status.succeeded" = "Succeeded";
-"accessibility.tool.status.cancelled" = "Cancelled";
-"accessibility.tool.status.failed" = "Failed";
-"tool.undo.hint" = "Only reverses the system item created by this action";
 "tool.calendar_query" = "Calendar events";
 "tool.calendar_create" = "Add calendar event";
 "tool.reminders_query" = "Reminders";
@@ -639,8 +540,6 @@
 "share.error.write_failed" = "The shared item could not be saved.";
 "eventkit.default_calendar" = "Default calendar";
 "eventkit.default_reminder_list" = "Default reminder list";
-"eventkit.target" = "Target: %@";
-"eventkit.confirm_add" = "Confirm Add";
 "eventkit.field.title" = "Title";
 "eventkit.field.start" = "Starts";
 "eventkit.field.end" = "Ends";
@@ -649,13 +548,6 @@
 "eventkit.field.notes" = "Notes";
 "eventkit.field.due" = "Due";
 "eventkit.field.priority" = "Priority";
-"eventkit.disclosure.events.title" = "Allow calendar lookup?";
-"eventkit.disclosure.reminders.title" = "Allow reminder lookup?";
-"eventkit.disclosure.data" = "Data";
-"eventkit.disclosure.flow" = "Data flow";
-"eventkit.disclosure.events.data" = "Events only in the time range needed for this question";
-"eventkit.disclosure.reminders.data" = "Reminders matching the time or text requested in this question";
-"eventkit.disclosure.flow.value" = "Read on this iPhone, sent only to your selected model provider for this answer";
 "error.system_entry.draft_pending" = "Your current draft was kept. Clear or send it before running another system action.";
 "Ask Familiar" = "Ask Familiar";
 "Process with Familiar" = "Process with Familiar";
@@ -683,9 +575,7 @@
 "authorization.once" = "Only Once";
 "authorization.session" = "Allow This Session";
 "authorization.always" = "Always Allow";
-"authorization.options" = "Authorization options";
 "tool.undone" = "Undone";
-"vision.status.recognizing" = "Recognizing image";
 "vision.error.unavailable" = "Could not read image %@.";
 "vision.error.too_large" = "The local visual evidence is too large for this request.";
 "settings.hub.authorizations" = "Authorizations";
@@ -694,23 +584,6 @@
 "settings.authorizations.revoke" = "Revoke";
 "settings.authorizations.revoke_all" = "Revoke All";
 "settings.authorizations.footer" = "Authorizations are scoped to a project, tool, and target. Destructive actions still require confirmation.";
-"settings.local_vision.title" = "Local Vision";
-"settings.local_vision.detail" = "FastVLM 0.5B model and device benchmark";
-"settings.local_vision.model" = "Model";
-"settings.local_vision.download" = "Download";
-"settings.local_vision.status" = "Status";
-"settings.local_vision.benchmark" = "Last benchmark";
-"settings.local_vision.license" = "Apple FastVLM model weights are licensed only for non-commercial research and academic development. The model runs on this device.";
-"settings.local_vision.install" = "Download and Install";
-"settings.local_vision.run_benchmark" = "Run Device Benchmark";
-"settings.local_vision.delete" = "Delete Model";
-"settings.local_vision.not_installed" = "Not installed";
-"settings.local_vision.downloading" = "Downloading";
-"settings.local_vision.paused" = "Paused";
-"settings.local_vision.pause" = "Pause Download";
-"settings.local_vision.resume" = "Resume Download";
-"settings.local_vision.installing" = "Installing";
-"settings.local_vision.installed" = "Installed";
 "local_vision.error.device" = "This device did not pass the FastVLM device check.";
 "local_vision.error.storage" = "At least 3.5 GB of free storage is required.";
 "local_vision.error.archive" = "The downloaded FastVLM archive is incomplete.";
@@ -724,4 +597,3 @@
 "search.more" = "+%lld more";
 "run.context.reply_time" = "Reply time";
 "run.context.first_token" = "First token";
-"run.context.throughput" = "Throughput";
