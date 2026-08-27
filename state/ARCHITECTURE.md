@@ -7,7 +7,7 @@
 | 领域 | 技术 |
 |---|---|
 | UI | SwiftUI |
-| 数据模型 | SwiftData（单一当前 schema；开发阶段破坏性更新） |
+| 数据模型 | SwiftData（`FamiliarReleaseSchemaV1` 31 实体 + `FamiliarReleaseMigrationPlan`） |
 | 网络 | URLSession + SSE（模型请求）；Network.framework 自研 HTTP/1.1（Web fetch） |
 | 富文本 | WKWebView 非持久化 + 内置 Markdown-It、highlight.js、KaTeX、Mermaid、DOMPurify |
 | 密钥 | Security.framework Keychain，`kSecAttrAccessibleWhenUnlockedThisDeviceOnly` |
@@ -29,8 +29,8 @@
 
 - **`Familiar/App/FamiliarApp.swift`** — `@main`。创建 `FamiliarAppDependencies`，经 `FamiliarModelContainer` 构建 `ModelContainer`：
   - store 目录 `<Application Support>/Familiar/Persistence/`（`.completeUntilFirstUserAuthentication`）。
-  - store 文件名 `FamiliarDevelopment.store`。
-  - 新 store 首次创建时清理旧开发 store（`FamiliarAgentV2.store`、`FamiliarAgentV1.store`、`default.store`）与失去元数据的附件、项目资源和 Artifact 目录。
+  - Debug store 文件名 `FamiliarDevelopment.store`；Release store 文件名 `Familiar.store`。
+  - 首次创建任何 store 都不自动清理旧 store 或文件目录。
   - 容器创建失败显示 `FamiliarStoreRecoveryView`，用户确认后删除当前 store、附件、项目资源与 Artifact，保留 Keychain。
   - **`Familiar/App/FamiliarAppDependencies.swift`** — `@MainActor` DI 根。持有 ToolRegistry、执行/审批/clarification/model-escalation coordinator、Workspace、原生 capability services、Web 与 Apple Vision。`makeRuntime(for:)` 以 `ModelRouter` 组合当前 descriptor 与将来的 Core AI Provider，再注入单一 `FamiliarAgentLoop`。当前 descriptor catalog 只有 DeepSeek；Runtime 不做供应商类型判断。
 
@@ -180,7 +180,7 @@
 
 ## 5. SwiftData Schema
 
-store：`FamiliarDevelopment.store`。当前 31 个实体；开发阶段 schema 变化使用全新 store，不迁移测试数据：
+schema：`FamiliarReleaseSchemaV1`（version `1.0.0`），当前 31 个实体；`FamiliarReleaseMigrationPlan` 仅包含 V1，首版没有 migration stage：
 
 | 实体 | 运行时是否写入 |
 |---|---|
@@ -240,7 +240,7 @@ MainActor 容器：`FamiliarChatController`、`FamiliarRunPersistenceRecorder`�
 
 | 数据 | 位置 |
 |---|---|
-| SwiftData store | `<Application Support>/Familiar/Persistence/FamiliarDevelopment.store` |
+| SwiftData store | Debug：`<Application Support>/Familiar/Persistence/FamiliarDevelopment.store`；Release：`.../Familiar.store` |
 | 附件 | `<Application Support>/Familiar/Attachments/{Drafts,Messages}/` |
 | 项目资源 | `<Application Support>/Familiar/ProjectResources/Projects/<projectID>/...` |
 | Artifact | `<Application Support>/Familiar/Artifacts` |
@@ -259,7 +259,7 @@ MainActor 容器：`FamiliarChatController`、`FamiliarRunPersistenceRecorder`�
 - 当前开发机是 Xcode 26.6 / iOS 26.5 SDK；计划中的 Xcode 27 Core AI API、Qwen3-0.6B Core AI bundle、specialization 与真机断网流式对话尚不可编译/验收。`FamiliarCoreAIModelProvider` 目前只完成 SDK-neutral adapter contract。
 - iSH 具体 GPL fork、固定上游 commit、Alpine rootfs 与 Familiar bridge 尚未加入仓库；iOS executor contract 已存在但返回 unavailable，Shell Tool 因此未注册。
 - macOS 已直接编译链接 Containerization 0.33.4，并有可构造 networkless LinuxContainer 的 session/factory；Familiar runtime kernel/init/rootfs/persistent disk 的下载校验器与真实 VM 启动尚未完成。FamiliarMac 当前是原生 Codex 式 UI shell，未接入共享 SwiftData/Agent Runtime。
-- Workspace Store/Tools 已接入新文件路径，但现有 Attachment、Project Resource 与 Artifact 仍使用原目录；尚未完成统一物理迁移。旧 development store 不做兼容读取。
+- Workspace 的 Files 以 Attachment/Project Resource ContextSnapshot 虚拟投影，Outputs/Runtime 保持独立目录；不做重复物理迁移。未公开的 development store 不迁入首个 Release store，也不会被自动删除。
 - ToolInvocation/cursor、授权创建/消费均已接入；字节级中断续跑仍未实现。
 - 通用 Project Capability Binding UI 未实现；Skill 使用 Composer 一次性显式调用，当前没有 Project Skill binding 或 Skill 导入 UI；Remote MCP 与 Memory Runtime 工具未实现。
 - 后台承接（`BGContinuedProcessingTask`，iOS 26+）未实现；当前无后台 Run 保证。

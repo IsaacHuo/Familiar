@@ -66,7 +66,7 @@ full access 允许 / 拒绝 / restricted；查询时间范围与文字条件；�
 
 - 验证统一 Chat 顶栏的设置、工作区、模型和新对话入口；普通/项目工作区恢复各自最近会话，抽屉按置顶、可折叠项目和普通最近会话分区。
 - 抽屉、设置、Run timeline 与工具清单在中英文、VoiceOver 和极端 Dynamic Type 下可操作。
-- 当前开发存储只验证单一 31 实体 schema 的 `FamiliarDevelopment.store` 首次创建、重启读取和用户确认后的破坏性恢复；没有 active V1→V9 migration chain，也不把旧开发 store 保留作为当前门槛。
+- 验证 `FamiliarReleaseSchemaV1` 的 31 实体、正式 migration plan、Debug/Release store 分离、文件 store 重开，以及用户确认后的显式恢复；首次公开版只有 V1，不构造未发布历史 migration chain。
 - 创建/编辑/归档项目并拒绝重复项目名称；创建普通与项目聊天，确认项目指令只进入项目聊天；历史 Run 项目归属符合启动时快照。
 - 从 Composer 显式选择 Skill，确认只影响下一次 Run，工具范围按 snapshot 收窄，后续 Run 不自动继承；当前不验收 Project binding 自动注入或 Skill 导入 UI，因为两者尚未实现。
 - 导入文本 PDF、扫描 PDF 和至少一种 Office 文档，确认进度、OCR、Quick Look、文件保护、两条项目聊天共享资料及超预算提示。
@@ -98,8 +98,8 @@ Share Extension（Notes/Safari/Files 来源、文件协调、签名环境）、D
 
 ### 2.8 SwiftData 恢复
 
-- **当前开发阶段**：验证 `FamiliarDevelopment.store` 首次创建、当前 schema 重启读取，以及损坏 store、权限异常、磁盘空间不足时的启动行为；用户确认破坏性重建后 Keychain 保留。开发 schema 变化允许清除测试数据，不要求迁移旧开发 store。
-- **未来公开发布**：首次公开发布前冻结版本化 schema；之后每次不兼容 schema 变化都必须从所有受支持的已发布版本执行覆盖安装和磁盘迁移测试。迁移失败必须提供不静默删除用户数据的恢复路径。
+- **Familiar 1.0**：Debug `FamiliarDevelopment.store` 与 Release `Familiar.store` 共享 `FamiliarReleaseSchemaV1`；验证首次创建、重启读取、损坏/权限/磁盘异常，任何失败都不得自动删除数据。用户确认重建后 Keychain 保留。
+- **1.0 之后**：每次 schema 变化新增 VersionedSchema 和 MigrationStage，并从所有受支持的已发布版本执行覆盖安装和磁盘迁移测试。
 
 ## 3. UI 验证矩阵
 
@@ -128,7 +128,7 @@ Share Extension（Notes/Safari/Files 来源、文件协调、签名环境）、D
 
 ### 数据
 
-- 当前单一 31 实体 schema 的 `FamiliarDevelopment.store` 首次创建和重启通过。
+- `FamiliarReleaseSchemaV1` 的 31 实体、Debug/Release store profile、文件 store 重开和 migration plan 测试通过。
 - 会话、附件和工具终态重启后可读取；删除会话后附件清理通过。
 - 开发阶段采用破坏性 schema 策略，测试 store 可重建；这不是未来公开版本的数据迁移策略。
 - 首次公开发布前建立版本化 schema 基线；公开发布后的每次 schema 变化都必须提供 migration stage、真实旧版本 store fixture、覆盖安装与磁盘迁移测试，且失败时不得静默删除用户数据。

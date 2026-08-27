@@ -32,7 +32,7 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 - **Assistant Turn Surface（前端 P0）**：`FamiliarSurfaceDescriptor`/`FamiliarSurfaceStore` 将实时事件与历史 `FamiliarAgentRunSnapshot` 归一投影为 runStatus/activityTrace/toolSummary/approval/search/context/records/mutationReceipt/artifact/failure。时间线采用无背景正文、Loading/Thinking rail、inline source list、typed approval、write receipt 与 failure recovery；无横向 pager、卡中卡或旧 snapshot 分支。UI 只使用 `FamiliarAISurfaceColor/Radius/Metric` 与 `FamiliarMotion` tokens；真机视觉/VoiceOver/Dynamic Type 验收仍待所有者完成。
 
 - **WP0 可验证内核**：8 场景 fake-provider Benchmark（`FamiliarBenchmarkTests`）+ `Scripts/run-agent-benchmarks.sh` + arm64 Simulator iOS CI（`.github/workflows/ios.yml`）。
-- **SwiftData 开发存储**：当前 31 个实体使用单一 schema 和 `FamiliarDevelopment.store`，生产与测试容器不配置 migration plan；开发阶段不迁移旧 store。首次创建当前 store 会清理旧开发 store、附件、项目资源和 Artifact 目录；用户确认恢复重建时清理当前 store 与这三类内容，保留 Keychain。
+- **SwiftData 1.0 Release baseline**：`FamiliarReleaseSchemaV1` 以 `1.0.0` 冻结当前 31 个实体，`FamiliarReleaseMigrationPlan` 已接入 ModelContainer，首版暂无 migration stage。Debug 使用 `FamiliarDevelopment.store`，Release 使用稳定 `Familiar.store`，两者共享同一 V1 schema。首次打开不再自动删除任何旧 store、附件、资源或 Artifact；只有用户在恢复页明确确认后才重建当前 profile 的 store 与本地内容，Keychain 保留。
 - **Project 最小纵切**：Project/ProjectInstruction 已接入，对话可选归属项目，支持项目指令注入、抽屉/项目列表/编辑/归档/删除。项目名称去除首尾空白后全局唯一，创建与编辑均不区分大小写，归档项目也参与冲突检查。
 - **Resource + ContextSnapshot**：Resource/ResourceVersion/ContextSnapshotRecord/ContextResourceReference 已接入；项目资源独立受保护目录；`FamiliarProjectContextAssembler` 生成确定性不可变上下文，超出输入预算明确拒绝。
 - **Artifact + Web 项目闭环**：Artifact 与受控 `artifact_write` 工具已接入；`web_fetch` 正文可经 `importFetchedWebText` 落为 Project Resource（不二次 refetch，记录 URL/时间/hash/truncated/source lineage）。
@@ -49,6 +49,7 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 
 ## Verification Evidence
 
+- 2026-08-28：SwiftData Release V1、单 schema migration plan、Debug/Release store profile 与无自动清理启动路径接线后，Debug arm64 generic iOS Simulator `build-for-testing` 和 Release arm64 generic iOS Simulator build 成功。iOS 26.5 Simulator 单独执行 `FamiliarPersistenceReleaseTests` 4/4：31 实体/版本、文件 store 重开与关系、Release 不删除 Development store、失败打开不删除目标均通过。
 - 2026-08-27：Action commit、Workspace 投影、联系人最小字段、Clipboard 边界、shareDraft 与 DuckDuckGo Release Surface 接线后，`Familiar` arm64 generic iOS Simulator `build-for-testing` 成功。iOS 26.5 Simulator 实际执行：Release tool hardening 4/4、Runtime 10/10、EventKit policy、Tool contract、Surface 与 8 场景 Benchmark suites 均通过。一次全量并发执行在 34 个用例通过后 test host 以 SIGTRAP 退出，其余 103 项被 Xcode 标为 crashed；该次不算全量通过，后续按 suite 串行补齐。未做 Simulator 视觉验收或真机验收。
 - 2026-08-27：DeepSeek 1.0 catalog 收敛为 Flash/Pro，设置移除本地路由和手填模型，模型列表/Key 验证与 SSE 中断语义加固；FastVLMRuntime/MLX 从 iOS target 移除。`Familiar` Debug arm64 generic iOS Simulator build 成功，目标图从 49 个降为 App/Extensions/SwiftSoup 共 5 个；未启动 Simulator，未执行测试或真实 DeepSeek/真机验收。
 - 2026-08-27：当前默认路由切为 `.cloud`；DeepSeek 继续作为唯一启用 descriptor，但网络 Provider 重命名并验证为通用 `FamiliarOpenAICompatibleModelProvider`；恢复 `deepseek-v4-flash-vision-exp` 实验图片入口；FastVLM 设置入口、DI 和 Chat 自动路由已断开。`Familiar` arm64 generic iOS Simulator `build-for-testing` 与 `FamiliarMac` macOS arm64 Debug build 成功；中英 strings plist/parity 与 `git diff --check` 通过。未启动 Simulator，未执行测试、真实 DeepSeek API、真机图片或 EventKit 验收。

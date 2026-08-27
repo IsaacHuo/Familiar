@@ -39,19 +39,7 @@ struct FamiliarApp: App {
         let persistence = support.appendingPathComponent("Familiar/Persistence", isDirectory: true)
         try fileManager.createDirectory(at: persistence, withIntermediateDirectories: true, attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
         let storeURL = persistence.appendingPathComponent(FamiliarModelContainer.storeFilename)
-        let isNew = !fileManager.fileExists(atPath: storeURL.path)
-        let container = try FamiliarModelContainer.make(at: storeURL)
-        if isNew {
-            removeStore(named: "FamiliarAgentV2", in: persistence, fileManager: fileManager)
-            removeStore(named: "FamiliarAgentV1", in: persistence, fileManager: fileManager)
-            removeStore(named: "default", in: support, fileManager: fileManager)
-            for directory in ["Attachments", "ProjectResources", "Artifacts"] {
-                try? fileManager.removeItem(
-                    at: support.appendingPathComponent("Familiar/\(directory)", isDirectory: true)
-                )
-            }
-        }
-        return container
+        return try FamiliarModelContainer.make(at: storeURL)
     }
 
     static func resetStore() throws {

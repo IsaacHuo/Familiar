@@ -58,7 +58,7 @@
 
 ## 3. SwiftData 与 store 策略
 
-当前使用 `FamiliarDevelopment.store` 中的单一 27 实体 SwiftData Schema，生产和测试容器都不配置 migration plan。完整实体模型与 store 地址见 `state/ARCHITECTURE.md` 第 5 节。数据模型设计约束：
+当前使用 `FamiliarReleaseSchemaV1` 冻结 31 个 SwiftData 实体，并由 `FamiliarReleaseMigrationPlan` 接入 ModelContainer。Debug 使用 `FamiliarDevelopment.store`，Release 使用 `Familiar.store`；完整实体模型与 store 地址见 `state/ARCHITECTURE.md` 第 5 节。数据模型设计约束：
 
 - 关系删除规则使用 cascade；附件 / 项目资源 / Artifact 文件由控制器显式清理。
 - Project 名称在本地 store 中全局唯一，比较时不区分大小写。
@@ -261,7 +261,7 @@ CSP 主要限制：
 | 远程 prompt injection | Web 内容标记为不可信，不授予工具权限；来源单独保存 |
 | 未来 MCP server annotation 伪造风险 | annotation 不作为授权依据，凭据按 server identity 隔离并继续通过 Familiar Policy |
 | 流式 token 触发广泛持久化 | 内存状态和终态保存分离 |
-| 旧 Schema 启动崩溃 | 当前开发期使用独立 `FamiliarDevelopment.store` 与破坏性 store 轮换，不迁移测试数据；历史方案见 `logs/swiftdata-store-migration-134110.md` |
+| Schema 启动失败 | 显示恢复页，不自动删除 store；只有用户明确确认后重建当前 Debug/Release store 与相关本地内容，Keychain 保留 |
 
 ## 13. 删除语义
 

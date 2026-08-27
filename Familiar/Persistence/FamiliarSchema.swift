@@ -29,7 +29,7 @@ final class FamiliarPinnedItemRecord {
     }
 }
 
-enum FamiliarModelSchema {
+nonisolated enum FamiliarModelSchema {
     static let models: [any PersistentModel.Type] = FamiliarSchemaV3.models + [
         FamiliarArtifact.self,
         FamiliarCapabilitySnapshotRecord.self,
@@ -53,4 +53,16 @@ enum FamiliarModelSchema {
     ]
 
     static var schema: Schema { Schema(models) }
+}
+
+/// The first public, stable Familiar schema. The earlier FamiliarSchemaV3...
+/// V10 types are source-organization history, not released migration steps.
+enum FamiliarReleaseSchemaV1: VersionedSchema {
+    static let versionIdentifier = Schema.Version(1, 0, 0)
+    static var models: [any PersistentModel.Type] { FamiliarModelSchema.models }
+}
+
+enum FamiliarReleaseMigrationPlan: SchemaMigrationPlan {
+    static var schemas: [any VersionedSchema.Type] { [FamiliarReleaseSchemaV1.self] }
+    static var stages: [MigrationStage] { [] }
 }

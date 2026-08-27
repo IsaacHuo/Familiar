@@ -488,7 +488,7 @@
 ## D-047 开发存储、聊天工作区与显式 Skills 收敛
 
 - 日期：2026-08-21
-- 状态：生效；替代 D-019、D-039 的当前存储与迁移政策、D-036 的旧侧栏与 Binding/Skills 路径、D-038 的 Skills 隐藏/Labs 限制，以及 D-046 的 Project Skills 归属与顶栏/工作区路径
+- 状态：存储策略被 D-049 替代；Chat 工作区与显式 Skills 决策继续生效
 - 决策：
   - 当前 SwiftData 使用单一 27 实体 `FamiliarModelSchema`，生产和测试容器均不配置 migration plan；开发持久化文件固定为 `FamiliarDevelopment.store`。开发阶段不迁移旧测试数据，schema 不兼容时允许用户确认后破坏性重建；公开发布前必须另行冻结版本化 schema 并建立迁移路径。
   - 删除 Project `SkillBinding` 实体、项目 Skill 开关和自动注入。instruction-only Skill 全局安装，由用户在普通聊天或项目聊天的 Composer 中显式选择，最多选择一个且只作用于下一次 Run；Run 启动时冻结 ID、版本、内容 hash 和 allowedTools，Skill 只能收窄工具范围，不能授权。
@@ -510,12 +510,25 @@
 - 决策：
   - 当前唯一启用的模型 Provider descriptor 是 DeepSeek，新安装默认路由临时为 `.cloud`，优先完成真实 API、Tool Call 与 EventKit 闭环测试。
   - DeepSeek 不成为 Agent Runtime 特殊类型。网络实现使用通用 `FamiliarOpenAICompatibleModelProvider`；ModelRouter、Tool Call、ToolResult、SSE、错误和取消合同保持供应商无关。
-  - Catalog 保留 `deepseek-v4-flash`、`deepseek-v4-pro` 与实验图片入口 `deepseek-v4-flash-vision-exp`。实验视觉 ID 必须用真实账户确认，失败时明确报错，不静默 fallback。
+  - iOS 1.0 Catalog 只保留 `deepseek-v4-flash` 与 `deepseek-v4-pro`；实验视觉 ID 不进入生产 Surface，图片使用 Apple Vision 生成有限只读证据。
   - Core AI/Qwen 方向继续保留，但在 iOS 27/Xcode 27 正式 SDK 和模型资产可用前不作为当前交付门槛。届时再恢复 `.preferLocal` 默认值。
-  - FastVLM 暂停对用户提供。设置入口、DI 和 Chat 自动路由断开；仓库内研究代码与依赖是否删除另行清理。
+  - FastVLM 不进入 iOS 1.0。研究源码保留在 `Vendor/`，FastVLMRuntime/MLX 已从 iOS target 与 Package graph 移除。
 - 依据：当前需要先验证一条真实、稳定、可审计的模型与工具主路径。只启用一个 Provider 能减少未验证兼容面；保持通用接口则避免把当前产品选择固化为 Agent Runtime 架构依赖。
-- 影响：当前验收集中于 DeepSeek 文本、实验图片、取消、错误、Tool Call、ToolResult 和 Native Tool；Core AI、FastVLM、iSH 与 Containerization 不阻塞本轮。产品说明必须区分“唯一启用 Provider”和“Provider 接口只能支持 DeepSeek”。
-- 复审条件：iOS 27/Core AI 正式可用、需要启用第二个云 Provider、实验视觉模型不可用，或 DeepSeek 协议差异无法继续由 descriptor/capabilities 表达。
+- 影响：当前验收集中于 DeepSeek 文本、Apple Vision 证据、取消、错误、Tool Call、ToolResult 和 Native Tool；Core AI、FastVLM、iSH 与 Containerization 不阻塞本轮。
+- 复审条件：iOS 27/Core AI 正式可用、需要启用第二个云 Provider、出现官方可验证视觉模型，或 DeepSeek 协议差异无法继续由 descriptor/capabilities 表达。
+
+## D-049 Familiar 1.0 冻结首个公开 SwiftData Schema
+
+- 日期：2026-08-28
+- 状态：生效；替代 D-047 的开发存储与破坏性首次启动策略
+- 决策：
+  - `FamiliarReleaseSchemaV1` 以 `1.0.0` 冻结当前 31 个实体；`FamiliarReleaseMigrationPlan` 从 V1 开始，首版没有 migration stage。
+  - Debug 使用 `FamiliarDevelopment.store`，Release 使用稳定 `Familiar.store`，两者必须共享同一 VersionedSchema 与 migration plan。
+  - 首次打开 store 不自动删除任何旧数据库、附件、Project Resource 或 Artifact。容器创建失败只显示恢复页；只有用户明确确认后才重建当前 profile 的 store 与相关本地内容，Keychain 保留。
+  - 未公开的 development store 不迁入首个 Release store，也不自动删除。从 1.0 之后，每次 schema 变化必须新增 VersionedSchema 与 MigrationStage。
+- 依据：公开版本需要一个明确、可测试的数据起点；开发时期的自动清理会在 store 初始化或失败边界静默丢失用户内容。
+- 影响：Release 首装从空 `Familiar.store` 开始；文件型测试覆盖创建、重开、关系读取、Debug/Release 分离与失败不删库。后续发布必须保留所有仍受支持的已发布 schema。
+- 复审条件：仅在支持版本政策变化或需要淘汰已停止支持的公开 schema 时复审。
 
 ## 决策维护
 

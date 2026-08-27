@@ -36,26 +36,54 @@ typealias FamiliarApprovalRecord = FamiliarSchemaV10.FamiliarApprovalRecord
 typealias FamiliarResponseBlockRecord = FamiliarSchemaV10.FamiliarResponseBlockRecord
 typealias FamiliarClarificationRecord = FamiliarSchemaV10.FamiliarClarificationRecord
 
+nonisolated enum FamiliarStoreProfile: Sendable {
+    case development
+    case release
+
+    static var current: FamiliarStoreProfile {
+#if DEBUG
+        .development
+#else
+        .release
+#endif
+    }
+
+    var storeName: String {
+        switch self {
+        case .development: "FamiliarDevelopment"
+        case .release: "Familiar"
+        }
+    }
+}
+
 enum FamiliarModelContainer {
-    static let storeName = "FamiliarDevelopment"
-    static let storeFilename = storeName + ".store"
+    static var storeName: String { FamiliarStoreProfile.current.storeName }
+    static var storeFilename: String { storeName + ".store" }
 
-    static var currentSchema: Schema { FamiliarModelSchema.schema }
+    static var currentSchema: Schema { Schema(versionedSchema: FamiliarReleaseSchemaV1.self) }
 
-    static func make(at storeURL: URL) throws -> ModelContainer {
+    static func make(at storeURL: URL, configurationName: String = storeName) throws -> ModelContainer {
         let schema = currentSchema
         let configuration = ModelConfiguration(
-            storeName,
+            configurationName,
             schema: schema,
             url: storeURL,
             cloudKitDatabase: .none
         )
-        return try ModelContainer(for: schema, configurations: [configuration])
+        return try ModelContainer(
+            for: schema,
+            migrationPlan: FamiliarReleaseMigrationPlan.self,
+            configurations: [configuration]
+        )
     }
 
     static func makeInMemory(name: String = "FamiliarTests") throws -> ModelContainer {
         let schema = currentSchema
         let configuration = ModelConfiguration(name, schema: schema, isStoredInMemoryOnly: true)
-        return try ModelContainer(for: schema, configurations: [configuration])
+        return try ModelContainer(
+            for: schema,
+            migrationPlan: FamiliarReleaseMigrationPlan.self,
+            configurations: [configuration]
+        )
     }
 }
