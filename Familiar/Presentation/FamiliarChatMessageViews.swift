@@ -2511,6 +2511,7 @@ private struct FamiliarModelSwitchRow: View {
     }
 }
 
+#if DEBUG
 struct FamiliarAssistantTurnVisualFixture: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var draft = ""
@@ -2766,6 +2767,7 @@ struct FamiliarAssistantTurnVisualFixture: View {
     NavigationStack { FamiliarAssistantTurnVisualFixture() }
         .preferredColorScheme(.dark)
 }
+#endif
 
 private struct FamiliarBottomPositionPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = .greatestFiniteMagnitude

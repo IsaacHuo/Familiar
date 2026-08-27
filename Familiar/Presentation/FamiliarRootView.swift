@@ -12,22 +12,7 @@ struct FamiliarRootView: View {
     var body: some View {
         ZStack {
             Color(uiColor: .systemBackground).ignoresSafeArea()
-
-            if ProcessInfo.processInfo.arguments.contains("-familiar.visual-fixture") {
-                NavigationStack { FamiliarAssistantTurnVisualFixture() }
-            } else if hasCompletedOnboarding {
-                FamiliarChatView(
-                    dependencies: dependencies,
-                    onRestartOnboarding: { setOnboardingCompleted(false) },
-                    pendingSystemEntry: $pendingSystemEntry
-                )
-                    .transition(.opacity)
-            } else {
-                FamiliarOnboardingView {
-                    setOnboardingCompleted(true)
-                }
-                .transition(.opacity)
-            }
+            rootContent
         }
         .preferredColorScheme(FamiliarAppearancePreference(rawValue: appearance)?.colorScheme)
         .onAppear { handlePendingAppIntent() }
@@ -41,6 +26,36 @@ struct FamiliarRootView: View {
             guard let deepLink = FamiliarSpotlightIndexer.deepLink(from: userActivity) else { return }
             pendingSystemEntry = .deepLink(deepLink)
             setOnboardingCompleted(true)
+        }
+    }
+
+    @ViewBuilder
+    private var rootContent: some View {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-familiar.visual-fixture") {
+            NavigationStack { FamiliarAssistantTurnVisualFixture() }
+        } else {
+            standardContent
+        }
+#else
+        standardContent
+#endif
+    }
+
+    @ViewBuilder
+    private var standardContent: some View {
+        if hasCompletedOnboarding {
+            FamiliarChatView(
+                dependencies: dependencies,
+                onRestartOnboarding: { setOnboardingCompleted(false) },
+                pendingSystemEntry: $pendingSystemEntry
+            )
+            .transition(.opacity)
+        } else {
+            FamiliarOnboardingView {
+                setOnboardingCompleted(true)
+            }
+            .transition(.opacity)
         }
     }
 

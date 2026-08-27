@@ -124,7 +124,7 @@
 
 ### `Familiar/Vision/` 与暂不提供的 `Familiar/LocalVision/`
 - `FamiliarVisionProcessor.swift` — Apple Vision OCR、条码、图像分类，生成标记为不可信只读内容的 `FamiliarVisualEvidence`。
-- `FamiliarLocalVisionModelManager.swift` / `Vendor/ml-fastvlm` — FastVLM 研究实现暂留，但设置入口、DI 和 Chat 自动路由已断开；当前产品不提供下载或推理入口。是否删除残留依赖另行清理。
+- `FamiliarLocalVisionModelManager.swift` / `Vendor/ml-fastvlm` — FastVLM 研究源码暂留，但该文件被 iOS target 排除，FastVLMRuntime/MLX package product 不再链接；当前产品无下载或推理入口。
 
 ### `Familiar/Skills/`、`Familiar/Memory/`
 - `FamiliarSkillService.swift` — 严格 JSON instruction-only Skill parser、安装/更新/卸载、首次进入 Chat 时经 UserDefaults gate 一次性加入可删除示例，以及按安装 UUID 冻结确定性 Run snapshot；Composer 在普通或项目聊天中最多显式选择一个 Skill，只作用于下一次 Run，并收窄该次 Run 的工具范围。当前没有 `SkillBinding` 模型或项目自动注入路径。

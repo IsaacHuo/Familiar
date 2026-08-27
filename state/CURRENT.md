@@ -21,7 +21,7 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 - **Provider reasoning summary**：DeepSeek Chat Completions 只读取明确的 `reasoning_content`；Controller 只在内存流式展示，完成后一次写入 `reasoningSummary` ResponseBlock，不从正文猜测或逐 delta 持久化。
 - **唯一 Assistant Turn 持久化投影**：SwiftData 只以 Activity、ToolResult、Approval、ResponseBlock 与 Context 记录 Run 展示事实；AgentStep/旧 tool snapshot/checkpoint 时间线已删除。Runtime 在 tool/approval/result 边界增量 upsert，最终助手消息一次写入 markdown block，失败/取消且无助手消息的 Run 写入可重放 runtime notice recovery，text delta 仍只保留在内存。
 - **结构化 Tool Result 与 typed Approval**：所有产生结果的内置工具统一返回 `FamiliarToolResultEnvelope`，canonical model JSON 与带稳定 `schemaVersion/name` 的 typed presentation payload 同封装；Runtime/Surface 以 envelope 为瞬态 UI 主数据，现有 detail 只从 payload summary 派生。审批字段改为有序 typed `FamiliarApprovalField`，确认请求携带 manifest effect/risk、target、consequence 与 undo policy。工具失败返回 `code/retryable/message`，Web failure 保留具体稳定 code；模型工具参数不包含 trusted UI command。
-- **独立 BYOK Search Provider**：`web_search` 保持原工具名，运行时按独立 UserDefaults 选择动态路由到 DuckDuckGo、Brave、Tavily 或 Exa；DuckDuckGo 复用现有 HTML/Lite 解析，其他服务使用独立搜索 Keychain service。Search adapter 只访问固定 HTTPS host，使用无 Cookie/缓存、禁止重定向、带超时和响应大小限制的 ephemeral URLSession；所选服务缺 Key 或失败时不静默 fallback。设置 Hub 已加入网页搜索页，可选择服务、保存/删除 Key、做最小连接验证并查看隐私与费用提示。`web_fetch` 继续使用原有受限抓取链路。
+- **独立 Web Search**：`web_search` 保持独立于模型 Provider。iOS 1.0 设置只显示 DuckDuckGo，无需 Key；Brave/Tavily/Exa adapter 及独立 Search Keychain contract 保留在源码和确定性测试中，但真实 Key 验收前不进入 Release UI。所有 adapter 只访问固定 HTTPS host，使用无 Cookie/缓存、禁止重定向、带超时和响应大小限制的 ephemeral URLSession；失败不静默 fallback。`web_fetch` 继续使用受限抓取链路。
 - **Chat 工作区与抽屉重构**：顶栏抽屉按钮替换为设置，新增圆形文件夹工作区菜单；切换作用域恢复最近会话并延迟到首次发送才创建新会话。抽屉移除新对话和设置入口，按置顶、项目、最近分区，项目历史可折叠，项目与普通最近会话按 20 条逐批展开。`FamiliarPinnedItemRecord` 统一持久化项目/会话置顶。
 
 - **显式 Skill 调用**：全局持久化严格 instruction-only Skill；首次进入 Chat 时通过 UserDefaults gate 一次性加入一个可删除的 Clear Writing 示例，单独重建 SwiftData store 不会再次加入。技能页只从右上角加号打开带默认 instructions 模板的创建表单，没有导入行，新建 Skill 默认无工具访问。Composer 聚焦时提供 Slash 按钮；空白输入框点击会写入 `/` 并打开最多四行的可滚动面板，继续输入字符会按标识符、名称和说明实时筛选。最多选择一个 Skill，只注入下一次 Run，并由 `FamiliarRunSkillSnapshotRecord` 冻结 ID/版本/hash/allowedTools。Project `SkillBinding`、自动注入与项目 Skill 开关已移除。
@@ -49,6 +49,7 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 
 ## Verification Evidence
 
+- 2026-08-28：App、Share Extension、Widget/Control 分别加入 PrivacyInfo.xcprivacy；FastVLM/MLX 已确认不在 iOS target；AnyDoc Rust notices 由锁定 Cargo graph 与 crate 自带 license 文件生成，App About 同时展示主 notices 与 Rust 清单。网站与 App 内隐私说明更新为 DeepSeek、DuckDuckGo、Apple Vision、28 Tool、联系人、位置、剪贴板和 Workspace 的真实路径；Release fixture 已限制在 DEBUG。Debug arm64 Simulator `build-for-testing` 成功，产物中的三个 executable bundle 均包含各自 manifest，`FamiliarReleaseComplianceTests` 3/3 通过；Release Archive 留在最终发布验证任务执行。
 - 2026-08-28：SwiftData Release V1、单 schema migration plan、Debug/Release store profile 与无自动清理启动路径接线后，Debug arm64 generic iOS Simulator `build-for-testing` 和 Release arm64 generic iOS Simulator build 成功。iOS 26.5 Simulator 单独执行 `FamiliarPersistenceReleaseTests` 4/4：31 实体/版本、文件 store 重开与关系、Release 不删除 Development store、失败打开不删除目标均通过。
 - 2026-08-27：Action commit、Workspace 投影、联系人最小字段、Clipboard 边界、shareDraft 与 DuckDuckGo Release Surface 接线后，`Familiar` arm64 generic iOS Simulator `build-for-testing` 成功。iOS 26.5 Simulator 实际执行：Release tool hardening 4/4、Runtime 10/10、EventKit policy、Tool contract、Surface 与 8 场景 Benchmark suites 均通过。一次全量并发执行在 34 个用例通过后 test host 以 SIGTRAP 退出，其余 103 项被 Xcode 标为 crashed；该次不算全量通过，后续按 suite 串行补齐。未做 Simulator 视觉验收或真机验收。
 - 2026-08-27：DeepSeek 1.0 catalog 收敛为 Flash/Pro，设置移除本地路由和手填模型，模型列表/Key 验证与 SSE 中断语义加固；FastVLMRuntime/MLX 从 iOS target 移除。`Familiar` Debug arm64 generic iOS Simulator build 成功，目标图从 49 个降为 App/Extensions/SwiftSoup 共 5 个；未启动 Simulator，未执行测试或真实 DeepSeek/真机验收。
@@ -75,14 +76,14 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 - Core AI 当前只有 ModelManager、Provider adapter 和路由合同。iOS 27/Xcode 27 正式 SDK、Qwen Core AI bundle、specialization、设备适配、流式和 Tool Call 尚未实现，不阻塞当前 DeepSeek 收尾。
 - iSH bridge 与 macOS Containerization session 仍是不可执行纵切：Shell Tool 未注册，iSH fork/Alpine 和 macOS kernel/init/rootfs/runtime assets 尚未接入，不属于本轮 DeepSeek 验收范围。
 - FamiliarMac 只有可编译的 Codex 式原生 UI shell 与 Containerization adapter，尚未接入共享 SwiftData 和 Agent Runtime，不作为本轮 iOS 收尾完成项。
-- Brave、Tavily、Exa Search adapter 尚未使用真实账户与 Key 冒烟；DuckDuckGo 搜索也未做本轮真实网络验收。
+- Brave、Tavily、Exa Search adapter 尚未使用真实账户与 Key 冒烟，因此不在 Release UI；DuckDuckGo 仍需真实网络验收。
 - 真机验收未完成：EventKit 权限、真实文档/OCR、相机、Speech、Share/Deep Link/通知/Spotlight/Intents/Widget/Control 均依赖真机。
 - iOS CI 远程首次结果**尚未确认**（本地解析通过，GitHub Actions 未触发或未记录）。
 - `FamiliarRunRecoveryService` 的 CapabilitySnapshot/Cursor 与 ToolInvocation 生命周期已接入；字节级中断续跑仍未实现。
 - Memory 自动/显式 Runtime 工具、Remote MCP 和可靠后台承接仍未实现，按后续层次推进。
 - 后台承接未实现：`BGContinuedProcessingTask` 仅适用于 iOS 26+；当前通知只报告进程内实际到达的终态。
 - EventKit 写入幂等与跨重启 Undo 已实现但未真机验证；系统 save 后进程立即终止的边界仍未验证。
-- FastVLM 当前不提供：UI 和自动路由已断开；仓库内残留依赖是否彻底删除放到 DeepSeek 收尾后的单独清理，不进入当前功能说明。
+- FastVLMRuntime/MLX 已从 iOS target 与 Package graph 移除；`Vendor/` 研究源码不进入 App 包。
 - SwiftData 真机恢复路径（磁盘不足、损坏 store、旧安装覆盖）未在真机验收。
 
 ## Next

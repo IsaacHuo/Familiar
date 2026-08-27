@@ -11,7 +11,7 @@
 - 文档原文件复制到 App 私有目录。
 - 文档转换和 PDF OCR 在设备内执行。
 - 流式 token 和等待用户决策的 continuation 只存在于内存；工具 invocation 的 requested / approved / terminal 检查点保存在 SwiftData。
-- 图片原文件保存在 App 私有附件目录，不写入 SwiftData；图片字节只进入当前选中的 DeepSeek 实验视觉模型请求或设备端 Apple Vision 处理。
+- 图片原文件保存在 App 私有附件目录，不写入 SwiftData；图片字节只由设备端 Apple Vision 处理，不发送给 DeepSeek。
 - Apple Vision 结果以有限证据文本和 provenance 持久化。
 - App 不创建原始录音文件。
 - App 不读取学术系统或其他 App 的私有数据。
@@ -43,12 +43,15 @@
 | 流式 token | Provider | 内存 | 不作二次上传 | 回答终态或任务结束 |
 | 文档原文件 | 文件选择器 | App Support | 不上传 | 附件、消息或会话删除 |
 | 文档抽取文本 | AnyDoc/OCR | SwiftData | 对应 Provider | 附件、消息或会话删除 |
-| 图片数据 | 相机或相册 | App 私有草稿/消息附件目录；SwiftData 只保存引用和元数据 | 当前选中的 DeepSeek 实验视觉模型，或设备端 Apple Vision | 随草稿、消息、附件或会话删除 |
+| 图片数据 | 相机或相册 | App 私有草稿/消息附件目录；SwiftData 只保存引用和元数据 | 仅设备端 Apple Vision；有限证据文字可能进入 DeepSeek | 随草稿、消息、附件或会话删除 |
 | 视觉证据 | Apple Vision | SwiftData；引用 App 私有图片附件 | 作为只读上下文进入当前文本模型 | 随消息/附件删除 |
 | 语音转写 | Apple Speech | 输入草稿 | 发送后进入 Provider | 用户编辑或清空草稿 |
 | 原始录音 | 麦克风输入 | 不落盘 | Speech framework 按系统能力处理 | audio buffer 生命周期 |
 | 日历/提醒数据 | EventKit | 查询结果进入内存和工具记录摘要 | 可能作为工具结果进入 Provider | 运行结束和历史记录生命周期 |
-| 网页搜索 | 用户问题经 Agent 生成的最小搜索词 | 结果正文主要在运行内存；来源标题、HTTPS URL、站点、时间和有限 snippet 随助手消息保存 | 搜索词直接发送给所选 DuckDuckGo、Brave、Tavily 或 Exa；结果可能作为工具内容进入所选模型 Provider | 临时结果随 Run 结束；来源与 snippet 随消息删除 |
+| 网页搜索 | 用户问题经 Agent 生成的最小搜索词 | 结果正文主要在运行内存；来源标题、HTTPS URL、站点、时间和有限 snippet 随助手消息保存 | 1.0 搜索词直接发送给 DuckDuckGo；结果可能作为工具内容进入 DeepSeek | 临时结果随 Run 结束；来源与 snippet 随消息删除 |
+| 联系人 | 用户主动调用工具并授权 | 查询结果进入当前 Run；默认只返回姓名 | 明确请求的最小字段可能作为 Tool Result 进入 DeepSeek | Run 与工具记录生命周期 |
+| 单次位置 | 用户主动调用工具并授权 | 当前 Run 内存和有限工具结果 | 经纬度、精度和时间可能作为 Tool Result 进入 DeepSeek | Run 与工具记录生命周期 |
+| 剪贴板 | 用户确认读取或写入 | 当前 Run；写入 Undo 旧值仅当前 App 会话内存 | 确认读取的文本可能进入 DeepSeek | Run 或当前 App 会话生命周期 |
 | 网页读取 | 用户提供或搜索返回的公开 HTTPS URL | 原始 HTML 与完整正文默认仅在运行内存；来源元数据和最多 360 字符的有限正文 snippet 随助手消息保存；用户导入项目时抽取正文保存为 Project Resource | 请求直接发送给目标站点及允许的 HTTPS 重定向目标；抽取正文可能进入所选 Provider | 临时原始内容随 Run 结束；来源与 snippet 随消息删除；导入副本沿用 Resource 生命周期 |
 | Deep Link 输入 | 其他 App 或系统入口 | 草稿文本进入内存；会话 / Run UUID 仅用于本地查询 | 不因打开链接自动发送 | 链接处理或草稿生命周期 |
 | Share Extension 输入 | 用户从其他 App 明确共享 | App Group `ShareInbox`，导入后复制到 App 私有草稿附件目录 | 不因共享或导入自动发送 | 成功或终态失败处理后删除共享副本；草稿副本沿用附件生命周期 |
@@ -143,7 +146,7 @@ kSecAttrAccessible = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
 
 API Key 不进入 SwiftData、UserDefaults、日志文案和工具记录。
 
-Search Provider Key 使用独立 service `com.isaachuo.familiar.search-provider-api-keys.v1`，account 为 Search Provider ID；搜索服务选择使用独立 UserDefaults key `familiar.search.provider.v1`。搜索 Key 不与模型 Provider Key 共用。DuckDuckGo 不需要 Key；选择 Brave、Tavily 或 Exa 后缺少 Key 会明确失败，不会回退到其他搜索服务。
+Familiar 1.0 设置只显示 DuckDuckGo，不需要 Search API Key。Brave、Tavily、Exa adapter 仅保留确定性 contract tests，在完成真实 Key 验收前不进入 Release UI，也不会被静默选择。
 
 ## 7. Provider 网络数据
 
@@ -208,8 +211,8 @@ CSP 主要限制：
 ### 照片
 
 - 使用 `PhotosPicker`，不请求完整照片库权限。
-- 用户选定的图片复制到 App 私有草稿目录；选中实验视觉模型时图片字节进入当前 DeepSeek 请求，否则只由 Apple Vision 在设备端处理。
-- 当前文本模型不支持图片时，原始字节不发送到模型；FastVLM 当前不参与处理。
+- 用户选定的图片复制到 App 私有草稿目录，只由 Apple Vision 在设备端处理。
+- 原始图片 bytes 不发送给 DeepSeek；FastVLMRuntime/MLX 不在 iOS target 中。
 
 ### 语音
 
@@ -247,7 +250,7 @@ CSP 主要限制：
 | 风险 | 控制 |
 |---|---|
 | API Key 泄露到普通存储 | Keychain，ThisDeviceOnly |
-| 自定义服务地址收集内容 | 用户显式配置，设置中展示 Base URL |
+| DeepSeek 收集请求内容 | 只使用用户自己的 API Key，设置与隐私政策明确网络目的地 |
 | 模型执行未授权写入 | 精确 grant 匹配、动作卡、协调 actor、EventKit commit 分层；模型不能创建自己的授权 |
 | 重复工具调用 | run 内重复检测、授权消费、持久化 invocation 与 commit 幂等 |
 | 路径穿越 | 相对路径校验和根目录约束 |
@@ -315,9 +318,9 @@ App 容器中的 SwiftData、UserDefaults、附件、项目资源和 Artifact �
 - 拒绝 EventKit 权限时零读取和零写入。
 - 取消写入确认时零写入。
 - 授权范围越界、目标变化或 grant 过期时零写入并重新询问。
-- 验证图片在纯文本模型路径中只由 Apple Vision 处理，未经选择不发送到实验视觉模型。
+- 验证图片只由 Apple Vision 处理，原始 bytes 不发送给 DeepSeek。
 - 验证视觉证据记录包含方法、版本和原图引用，且不能产生工具授权。
-- 验证设置和 Chat 中没有 FastVLM 用户入口或自动路由。
+- 验证 Release 包不链接 FastVLMRuntime/MLX，设置和 Chat 中没有相关入口。
 - 删除会话后附件目录无对应文件。
 - 停止语音后无录音文件。
 - 验证 Markdown CSP 不允许 HTTP/HTTPS 图片，且远程图片只呈现为用户主动打开的来源链接。

@@ -59,8 +59,9 @@
 "settings.privacy.no_account" = "No sign-in or Familiar account";
 "settings.privacy.local_history" = "Conversation history stays on this device";
 "settings.privacy.local_documents" = "Documents are converted locally with AnyDoc; only the resulting text is sent with your message";
-"settings.privacy.remote_images" = "Remote Markdown images never load automatically; source links open only when you choose";
-"settings.privacy.web_tools" = "Web search sends queries directly to your selected search provider; web fetch separately contacts the selected public HTTPS site. Search results and extracted text may be sent to your model provider";
+"settings.privacy.remote_images" = "Attached images stay local; Apple Vision creates limited evidence text that may be sent to DeepSeek";
+"settings.privacy.web_tools" = "Web search sends queries to DuckDuckGo; results and fetched public text may be sent to DeepSeek";
+"settings.privacy.native_private_data" = "Contacts, one-time location, and clipboard data are used only by explicitly requested tools";
 "settings.error.title" = "Couldn't Save Settings";
 "settings.onboarding.restart" = "Review setup";
 "settings.onboarding.restart.footer" = "You can revisit onboarding at any time. Your local data and API keys stay in place.";
@@ -500,7 +501,7 @@
 "settings.model.refresh" = "Refresh Models";
 "settings.model.curated_footer" = "This provider has no reliable model-list endpoint. Choose a curated model or enter an official model ID manually.";
 "settings.model.refresh_footer" = "Refreshes from the provider's official model-list endpoint. You can always enter a model ID manually.";
-"settings.privacy.permission_tools" = "Calendar and reminder data is accessed only after permission and only for requested tools";
+"settings.privacy.permission_tools" = "System data is accessed only after permission and only for requested tools";
 "model.switched_marker" = "Switched to %1$@ · %2$@";
 "error.provider.invalid_configuration" = "%@ configuration is invalid.";
 "error.message.context_too_large" = "This message exceeds the selected model's local context safety limit.";

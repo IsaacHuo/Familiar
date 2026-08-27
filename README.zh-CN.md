@@ -335,7 +335,7 @@ Familiar 内部借鉴 MCP 的思想但不把它当作内核，用原生 Swift �
 
 当前唯一启用的 Provider descriptor 是 DeepSeek，使用通用 OpenAI-compatible Chat Completions adapter。`FamiliarModelProvider`、ModelRouter、Tool Call、SSE 和 Agent Runtime 均不包含 DeepSeek 专用分支；只是当前没有启用第二家 Provider。
 
-Catalog 包含 `deepseek-v4-flash`、`deepseek-v4-pro` 和实验图片入口 `deepseek-v4-flash-vision-exp`。Core AI/Qwen 保留为 iOS 27 后的本地方向。FastVLM 当前不提供设置入口或自动路由。
+iOS 1.0 Catalog 只包含 `deepseek-v4-flash` 与 `deepseek-v4-pro`。Core AI/Qwen 保留为后续方向，不进入 Release UI；FastVLMRuntime/MLX 不链接进 iOS target。
 
 ## 文档处理链路
 
@@ -354,7 +354,7 @@ Catalog 包含 `deepseek-v4-flash`、`deepseek-v4-pro` 和实验图片入口 `de
 
 只有转换后的 Markdown 和文件名会进入模型请求。原始文档字节、本地路径和 security-scoped URL 不会发送给 Firecrawl 或所选模型 Provider。
 
-`deepseek-v4-flash-vision-exp` 会直接接收用户本次选择的图片。对于文本模型，Controller 执行 Apple Vision OCR、条码和分类预处理；结果以带来源信息的不可信视觉证据持久化。当前不调用 FastVLM。
+图片留在设备上，由 Apple Vision 执行 OCR、条码和基础分类预处理；只有有限、不可信的证据文字进入 DeepSeek 请求，并带 provenance 持久化。
 
 ## 富文本渲染
 

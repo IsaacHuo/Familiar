@@ -19,7 +19,7 @@
 
 使用 `deepseek-v4-flash` 完成认证、文本流式、错误 Key、模型列表、取消、工具调用、Apple Vision 证据注入以及日历/提醒闭环。对 `deepseek-v4-pro` 执行最小文本与 Tool Call 冒烟。
 
-`deepseek-v4-flash-vision-exp` 是当前保留的实验图片入口。必须用真实账户确认 `/models`、图片 content parts、流式、取消、错误和 Tool Call 能力；不可用时明确失败，不自动切换 FastVLM。
+图片不进入 DeepSeek 请求。用户添加图片后只由 Apple Vision 在设备端生成有限、不可信的只读证据文字，再进入当前文本模型上下文。
 
 ### 1.3 通用 Provider 合同
 
@@ -28,7 +28,7 @@
 | 认证成功 | 保存有效 Key，执行连接验证 | 明确成功，不泄露 Key |
 | 文本流式 | 发送简短非私密问题 | 收到增量文本和正常 stop，不出现空响应 |
 | 错误 Key | 替换为无效 Key | 显示认证失败，不显示虚假回答 |
-| 模型列表 | 刷新 DeepSeek `/models`，与 curated catalog 对照 | 文本模型差异明确；实验视觉模型是否可用有记录 |
+| 模型列表 | 刷新 DeepSeek `/models`，与 Flash/Pro curated catalog 对照 | 只显示实时可用的正式模型；空交集明确失败 |
 | 超时/取消 | 发送长请求并主动停止 | 请求终止，UI 回到可发送状态，不保存虚假助手终态 |
 | Provider 错误 | 使用无效模型 ID | 显示有限长度错误，草稿和历史可恢复 |
 
@@ -76,17 +76,16 @@ full access 允许 / 拒绝 / restricted；查询时间范围与文字条件；�
 ### 2.4 相机与图片
 
 - 相机权限、前后镜头、闪光灯和 PhotosPicker 多选。
-- `deepseek-v4-flash-vision-exp` 只向当前 DeepSeek endpoint 发送用户本次选择的图片；实验模型不可用时显示真实错误。
-- `deepseek-v4-flash` / `deepseek-v4-pro` 等文本模型使用 Apple Vision 完成 OCR、条码和基础分类，并在折叠运行过程记录方法、版本和原图引用。
+- `deepseek-v4-flash` / `deepseek-v4-pro` 使用 Apple Vision 完成 OCR、条码和基础分类，并在折叠运行过程记录方法、版本和原图引用；原始图片不进入 Provider 请求。
 - 基础结果不足时说明限制；不自动切换到实验视觉模型，不调用 FastVLM。
 - 所有视觉路径失败时文字和图片草稿保持。
 
-### 2.5 FastVLM 暂停提供
+### 2.5 FastVLM 不进入 iOS 1.0
 
 - 设置中不显示 FastVLM 安装、下载、基准或删除入口。
 - Chat 不自动调用 FastVLM；未安装和历史残留模型均不改变当前路由。
-- 当前图片主路径验证 DeepSeek 实验视觉模型；文本模型只使用 Apple Vision 基础证据。
-- 仓库内 FastVLM 研究代码和依赖是否彻底删除作为单独清理，不阻塞 DeepSeek 验收。
+- 当前图片路径只使用 Apple Vision 基础证据。
+- Release target 和 Package graph 不包含 FastVLMRuntime/MLX；`Vendor/` 研究源码不进入 App 包。
 
 ### 2.6 Speech
 
@@ -145,7 +144,7 @@ Share Extension（Notes/Safari/Files 来源、文件协调、签名环境）、D
 ### Provider
 
 - 当前 DeepSeek descriptor 至少完成一次真实文本流式、错误和工具闭环冒烟。
-- `deepseek-v4-flash-vision-exp` 的真实可用或不可用边界有脱敏记录。
+- Flash/Pro `/models`、文本流式与 Tool Call 有脱敏记录；不存在生产图片模型。
 - Provider/Agent 测试确认 adapter 和 AgentLoop 没有 DeepSeek 类型判断；当前只启用 DeepSeek 不等于接口绑定 DeepSeek。
 
 ### 隐私
@@ -153,7 +152,7 @@ Share Extension（Notes/Safari/Files 来源、文件协调、签名环境）、D
 - API Key 不出现在日志和普通存储。
 - 图片 bytes 只进入当前多模态 Provider 或设备端视觉处理，不进入其他 Provider 或无关存储。
 - 视觉证据带 provenance，作为不可信只读输入，不能产生工具授权。
-- FastVLM 当前没有用户入口和自动路由，不作为当前数据目的地。
+- FastVLMRuntime/MLX 不在 Release 二进制或数据目的地中。
 - Speech 和 EventKit 用途说明与调用一致。
 - Markdown 远程图片不自动加载，策略在 App 与官网披露。
 

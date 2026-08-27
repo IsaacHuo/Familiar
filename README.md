@@ -342,7 +342,7 @@ Remembered authorization is enforced in Swift and matches Project, capability ID
 
 The only currently enabled Provider descriptor is DeepSeek, using a generic OpenAI-compatible Chat Completions adapter. `FamiliarModelProvider`, ModelRouter, tool calls, SSE, and Agent Runtime contain no DeepSeek-specific branch; no second Provider is enabled yet.
 
-The catalog contains `deepseek-v4-flash`, `deepseek-v4-pro`, and the experimental image entry `deepseek-v4-flash-vision-exp`. Core AI/Qwen remains the post-iOS 27 local direction. FastVLM currently has no settings entry or automatic route.
+The iOS 1.0 catalog contains `deepseek-v4-flash` and `deepseek-v4-pro`. Core AI/Qwen remains a later direction and is not exposed in the release UI. FastVLMRuntime/MLX is not linked into the iOS target.
 
 ## Document pipeline
 
@@ -361,7 +361,7 @@ All documents are first copied to the App's private directory and then converted
 
 Only the converted Markdown and filename enter the model request. Original document bytes, local paths and security-scoped URLs are never sent to Firecrawl or the selected model Provider.
 
-`deepseek-v4-flash-vision-exp` receives the images selected for the current request. Text models use Apple Vision OCR/barcode/classification preflight, and the resulting untrusted visual evidence is persisted with provenance. FastVLM is not called in the current product path.
+Images stay on device. Apple Vision performs OCR, barcode, and basic classification preflight; only bounded, untrusted evidence text can enter the DeepSeek request, and it is persisted with provenance.
 
 ## Rendering
 
