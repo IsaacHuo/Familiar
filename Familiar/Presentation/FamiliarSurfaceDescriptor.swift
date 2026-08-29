@@ -238,6 +238,8 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
                 if let result, let envelope = result.envelope {
                     let placement: FamiliarSurfacePlacement = isTopLevelPresentation(envelope.presentation.name) ? .topLevel : .trace
                     upsert(resultDescriptor(activity: activity, envelope: envelope, placement: placement, artifact: nil))
+                } else {
+                    upsert(toolDescriptor(activity: activity))
                 }
             } else if phase == .failed || phase == .cancelled {
                 upsert(failureDescriptor(activity: activity, phase: phase))
@@ -281,15 +283,14 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
 
     private mutating func beginTool(runID: String, assistantTurnID: String?, toolCallID: String, toolName: String, effect: FamiliarToolEffect, at date: Date) {
         ensureTrace(runID: runID, assistantTurnID: assistantTurnID, context: nil, startedAt: date)
-        guard effect != .read else { return }
         upsert(.init(
             id: toolID(runID, toolCallID),
             runID: runID,
             assistantTurnID: assistantTurnID,
             kind: .toolSummary,
-            placement: .topLevel,
+            placement: effect == .read ? .trace : .topLevel,
             phase: .queued,
-            title: toolTitle(toolName),
+            title: FamiliarToolPresentationName.title(for: toolName),
             toolCallID: toolCallID,
             toolName: toolName,
             effect: effect,
@@ -316,7 +317,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             kind: .approval,
             placement: .topLevel,
             phase: .awaitingApproval,
-            title: toolTitle(request.toolName),
+            title: FamiliarToolPresentationName.title(for: request.toolName),
             toolCallID: request.toolCallID,
             toolName: request.toolName,
             effect: request.effect,
@@ -384,7 +385,11 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         ensureTrace(runID: event.runID, assistantTurnID: event.assistantTurnID, context: nil, startedAt: event.producedAt)
         let activity = FamiliarActivitySnapshot(activityID: toolID(event.runID, event.toolCallID), parentID: traceID(event.runID), assistantTurnID: event.assistantTurnID, kind: .tool, effect: event.effect, phase: .succeeded, toolName: event.toolName, toolCallID: event.toolCallID, summary: event.toolName, detail: nil, progress: 1, resultRecordID: nil, approvalRecordID: nil, sequence: 0, startedAt: descriptors[toolID(event.runID, event.toolCallID)]?.startedAt ?? event.producedAt, endedAt: event.producedAt)
         let placement: FamiliarSurfacePlacement = event.effect == .read && !isTopLevelPresentation(event.envelope.presentation.name) ? .trace : .topLevel
-        upsert(resultDescriptor(activity: activity, envelope: event.envelope, placement: placement, artifact: event.artifact))
+        let result = resultDescriptor(activity: activity, envelope: event.envelope, placement: placement, artifact: event.artifact)
+        if result.id != activity.activityID {
+            descriptors.removeValue(forKey: activity.activityID)
+        }
+        upsert(result)
     }
 
     private mutating func showRuntimeNotice(_ notice: FamiliarRuntimeNotice, runID: String, assistantTurnID: String?, at date: Date) {
@@ -407,7 +412,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         case .awaitingClarification: String(localized: "clarification.awaiting", defaultValue: "Waiting for your answer")
         case .executingActivities(let names):
             names.count == 1
-                ? String(format: String(localized: "agent.status.using_tool"), toolTitle(names[0]))
+                ? String(format: String(localized: "agent.status.using_tool"), FamiliarToolPresentationName.title(for: names[0]))
                 : String(localized: "agent.status.using_tools", defaultValue: "Using tools")
         }
         upsert(descriptor)
@@ -467,7 +472,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             kind: .approval,
             placement: .topLevel,
             phase: phase,
-            title: toolTitle(approval.toolName),
+            title: FamiliarToolPresentationName.title(for: approval.toolName),
             toolCallID: approval.toolCallID,
             toolName: approval.toolName,
             effect: approval.effect,
@@ -516,9 +521,9 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             runID: runtimeID(from: activity.activityID),
             assistantTurnID: activity.assistantTurnID,
             kind: .toolSummary,
-            placement: .topLevel,
+            placement: activity.effect == .read ? .trace : .topLevel,
             phase: surfacePhase(activity.phase),
-            title: activity.toolName.map(toolTitle) ?? activity.summary,
+            title: activity.toolName.map { FamiliarToolPresentationName.title(for: $0) } ?? activity.summary,
             detail: activity.detail,
             toolCallID: activity.toolCallID,
             toolName: activity.toolName,
@@ -536,7 +541,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             kind: .failure,
             placement: .topLevel,
             phase: phase,
-            title: activity.toolName.map(toolTitle) ?? activity.summary,
+            title: activity.toolName.map { FamiliarToolPresentationName.title(for: $0) } ?? activity.summary,
             detail: activity.detail,
             toolCallID: activity.toolCallID,
             toolName: activity.toolName,
@@ -657,16 +662,30 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         return parts.count > 1 ? String(parts[1]) : activityID
     }
 
-    private func toolTitle(_ name: String) -> String {
+}
+
+nonisolated enum FamiliarToolPresentationName {
+    static func title(for name: String) -> String {
         switch name {
         case "current_date_time": String(localized: "tool.date_time")
         case "app_information": String(localized: "tool.app_information")
+        case "contacts_search": String(localized: "tool.contacts_search", defaultValue: "Search contacts")
+        case "current_location": String(localized: "tool.current_location", defaultValue: "Current location")
+        case "clipboard_read": String(localized: "tool.clipboard_read", defaultValue: "Read clipboard")
+        case "clipboard_write": String(localized: "tool.clipboard_write", defaultValue: "Write clipboard")
+        case "prepare_share": String(localized: "tool.prepare_share", defaultValue: "Prepare share")
+        case "familiar_search": String(localized: "tool.familiar_search", defaultValue: "Search Familiar")
         case "web_search": String(localized: "tool.web_search", defaultValue: "Search the web")
         case "web_fetch": String(localized: "tool.web_fetch", defaultValue: "Read web page")
         case "calendar_events": String(localized: "tool.calendar_query")
         case "create_calendar_event": String(localized: "tool.calendar_create")
         case "reminders": String(localized: "tool.reminders_query")
         case "create_reminder": String(localized: "tool.reminder_create")
+        case "workspace_list": String(localized: "tool.workspace_list", defaultValue: "List workspace files")
+        case "workspace_read": String(localized: "tool.workspace_read", defaultValue: "Read workspace file")
+        case "workspace_search": String(localized: "tool.workspace_search", defaultValue: "Search workspace files")
+        case "workspace_write": String(localized: "tool.workspace_write", defaultValue: "Write workspace output")
+        case "workspace_image_list": String(localized: "tool.workspace_image_list", defaultValue: "List workspace images")
         case "resource_list": String(localized: "tool.resource_list", defaultValue: "List project resources")
         case "resource_read": String(localized: "tool.resource_read", defaultValue: "Read project resource")
         case "resource_search": String(localized: "tool.resource_search", defaultValue: "Search project resources")
@@ -679,8 +698,10 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         default: name.replacingOccurrences(of: "_", with: " ").localizedCapitalized
         }
     }
+}
 
-    private func runtimeNoticeDetail(_ value: String?) -> String? {
+private extension FamiliarSurfaceStore {
+    func runtimeNoticeDetail(_ value: String?) -> String? {
         guard let value else { return nil }
         let fields = Dictionary(uniqueKeysWithValues: value.split(separator: ";").compactMap { component -> (String, String)? in
             let pair = component.split(separator: "=", maxSplits: 1).map(String.init)

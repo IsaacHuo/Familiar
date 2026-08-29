@@ -321,6 +321,26 @@ private struct FamiliarAssistantTurn: View {
 
     private var runID: String? { run?.id ?? surfaces.first?.runID }
     private var status: FamiliarSurfaceDescriptor? { surfaces.first { $0.kind == .runStatus } }
+    private var toolChipStatus: FamiliarSurfaceDescriptor? {
+        if let status { return status }
+        guard let run else { return nil }
+        let phase: FamiliarSurfacePhase = switch run.status {
+        case .running: .running
+        case .completed: .succeeded
+        case .failed: .failed
+        case .cancelled: .cancelled
+        }
+        return FamiliarSurfaceDescriptor(
+            id: "tool-chips-status:\(run.id)",
+            runID: run.id,
+            kind: .runStatus,
+            placement: .topLevel,
+            phase: phase,
+            title: String(localized: "agent.status.thinking"),
+            startedAt: run.startedAt,
+            finishedAt: run.finishedAt
+        )
+    }
     private var trace: FamiliarSurfaceDescriptor? { surfaces.first { $0.kind == .activityTrace } }
     private var traceItems: [FamiliarSurfaceDescriptor] { surfaces.filter { $0.placement == .trace } }
     private var interventionItems: [FamiliarSurfaceDescriptor] {
@@ -329,7 +349,12 @@ private struct FamiliarAssistantTurn: View {
     }
     private var responseAccessoryItems: [FamiliarSurfaceDescriptor] {
         surfaces.filter { $0.placement == .topLevel && $0.kind != .runStatus && $0.kind != .activityTrace }
-            .filter { $0.kind != .approval && $0.kind != .clarification && $0.kind != .failure }
+            .filter {
+                $0.kind != .approval
+                    && $0.kind != .clarification
+                    && $0.kind != .failure
+                    && $0.kind != .toolSummary
+            }
     }
     private var reasoningSummary: String? {
         let value = streamingReasoningSummary.isEmpty
@@ -339,15 +364,19 @@ private struct FamiliarAssistantTurn: View {
     }
 
     private var searchSurfaces: [FamiliarSurfaceDescriptor] { surfaces.filter { $0.kind == .search } }
-    private var toolSurfaces: [FamiliarSurfaceDescriptor] {
+    private var toolChipSurfaces: [FamiliarSurfaceDescriptor] {
         surfaces.filter {
-            ($0.kind == .toolSummary || $0.kind == .activityTrace)
-                && ($0.placement == .trace || $0.toolName != nil)
+            $0.toolName != nil
+                && $0.toolCallID != nil
+                && $0.kind != .runStatus
+                && $0.kind != .activityTrace
         }
     }
     private var taskSurfaces: [FamiliarSurfaceDescriptor] { surfaces.filter { $0.kind == .taskList } }
     private var hasThinkingContent: Bool {
-        reasoningSummary != nil || !searchSurfaces.isEmpty || !toolSurfaces.isEmpty || !taskSurfaces.isEmpty
+        reasoningSummary != nil
+            || (toolChipSurfaces.isEmpty && !searchSurfaces.isEmpty)
+            || !taskSurfaces.isEmpty
     }
 
     private func thinkingContent(status: FamiliarSurfaceDescriptor) -> FamiliarThinkingContent {
@@ -367,9 +396,6 @@ private struct FamiliarAssistantTurn: View {
                         id: "reasoning-\(index)",
                         primary: line,
                         secondary: nil,
-                        mono: false,
-                        add: nil,
-                        del: nil,
                         href: nil,
                         tone: .accent,
                         phase: .succeeded
@@ -379,16 +405,16 @@ private struct FamiliarAssistantTurn: View {
             )
         }
 
-        if let search = searchSurfaces.first, let searchContent = searchPayload(search), !searchContent.results.isEmpty {
+        if toolChipSurfaces.isEmpty,
+           let search = searchSurfaces.first,
+           let searchContent = searchPayload(search),
+           !searchContent.results.isEmpty {
             let shown = Array(searchContent.results.prefix(4))
             let rows = shown.enumerated().map { index, result in
                 FamiliarThinkingRow(
                     id: "search-\(result.id)-\(index)",
                     primary: result.title,
                     secondary: hostname(result.url),
-                    mono: false,
-                    add: nil,
-                    del: nil,
                     href: result.url,
                     tone: [FamiliarThinkingTone.accent, .orange, .green][index % 3],
                     phase: .succeeded
@@ -402,30 +428,6 @@ private struct FamiliarAssistantTurn: View {
                 query: searchContent.query,
                 rows: rows,
                 truncatedCount: max(0, searchContent.results.count - shown.count)
-            )
-        }
-
-        if !toolSurfaces.isEmpty {
-            return FamiliarThinkingContent(
-                variant: .coding,
-                isWorking: isWorking,
-                header: status.title,
-                settledHeader: String(format: String(localized: "agent.status.ran_tools", defaultValue: "Ran %lld tools"), toolSurfaces.count),
-                query: nil,
-                rows: toolSurfaces.map { activity in
-                    FamiliarThinkingRow(
-                        id: activity.id,
-                        primary: activity.title,
-                        secondary: activity.detail ?? activity.toolName,
-                        mono: true,
-                        add: nil,
-                        del: nil,
-                        href: nil,
-                        tone: .accent,
-                        phase: surfacePhase(activity.phase)
-                    )
-                },
-                truncatedCount: 0
             )
         }
 
@@ -450,13 +452,6 @@ private struct FamiliarAssistantTurn: View {
         return max(0, end.timeIntervalSince(start))
     }
 
-    private func surfacePhase(_ phase: FamiliarSurfacePhase) -> FamiliarSurfacePhase {
-        switch phase {
-        case .queued, .planning, .running, .awaitingApproval, .awaitingClarification: phase
-        default: .succeeded
-        }
-    }
-
     private func taskRows(_ surface: FamiliarSurfaceDescriptor) -> [FamiliarThinkingRow] {
         guard case .taskList(let list)? = surface.resultEnvelope?.presentation.content else { return [] }
         return list.tasks.map { task in
@@ -464,9 +459,6 @@ private struct FamiliarAssistantTurn: View {
                 id: task.id,
                 primary: task.title,
                 secondary: task.detail,
-                mono: false,
-                add: nil,
-                del: nil,
                 href: nil,
                 tone: .accent,
                 phase: taskPhase(task.status)
@@ -503,11 +495,21 @@ private struct FamiliarAssistantTurn: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceM) {
-            if let status, (!status.phase.isTerminal || hasThinkingContent) {
+            if toolChipSurfaces.isEmpty,
+               let status,
+               (!status.phase.isTerminal || hasThinkingContent) {
                 FamiliarThinkingState(
                     content: thinkingContent(status: status),
                     onSettled: nil,
                     reduceMotion: reduceMotion
+                )
+            }
+
+            if !toolChipSurfaces.isEmpty {
+                FamiliarToolChips(
+                    surfaces: toolChipSurfaces,
+                    status: toolChipStatus,
+                    reasoningSummary: reasoningSummary
                 )
             }
 
@@ -545,10 +547,6 @@ private struct FamiliarAssistantTurn: View {
                 )
             }
 
-            if let message, !message.sources.isEmpty {
-                FamiliarInlineSources(sources: message.sources)
-            }
-
             if let trace, trace.context != nil || !traceItems.isEmpty {
                 FamiliarActivityTrace(
                     surface: trace,
@@ -559,7 +557,11 @@ private struct FamiliarAssistantTurn: View {
             }
 
             if let message {
-                assistantActions(message)
+                FamiliarAssistantFooter(
+                    message: message,
+                    onRetryMessage: onRetryMessage,
+                    onInsertPrompt: onInsertPrompt
+                )
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -584,35 +586,6 @@ private struct FamiliarAssistantTurn: View {
         return { onRetryRecovery(runID) }
     }
 
-    private func assistantActions(_ message: FamiliarMessageSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
-            if let providerID = message.providerID, let modelID = message.modelID {
-                Text(sourceLabel(providerID: providerID, modelID: modelID))
-                    .font(.caption2)
-                    .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
-            }
-            HStack(spacing: 0) {
-                FamiliarMessageAction(symbol: "doc.on.doc", label: String(localized: "common.copy")) {
-                    UIPasteboard.general.string = message.content
-                }
-                ShareLink(item: message.content) {
-                    Image(systemName: "square.and.arrow.up")
-                        .frame(width: FamiliarAISurfaceMetric.rowHeight, height: FamiliarAISurfaceMetric.rowHeight, alignment: .leading)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(localized: "common.share"))
-                if let onRetryMessage {
-                    FamiliarMessageAction(symbol: "arrow.clockwise", label: String(localized: "message.retry"), action: onRetryMessage)
-                }
-            }
-            .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
-        }
-    }
-
-    private func sourceLabel(providerID: String, modelID: String) -> String {
-        let provider = FamiliarProviderCatalog.descriptor(for: providerID)
-        return "\(provider?.displayName ?? providerID) · \(provider?.model(for: modelID).displayName ?? modelID)"
-    }
 }
 
 private struct FamiliarShimmerLabel: View {
@@ -642,7 +615,7 @@ private struct FamiliarShimmerLabel: View {
 }
 
 enum FamiliarThinkingVariant: Equatable {
-    case steps, reasoning, search, coding
+    case steps, reasoning, search
 }
 
 enum FamiliarThinkingTone {
@@ -653,9 +626,6 @@ struct FamiliarThinkingRow: Identifiable {
     let id: String
     let primary: String
     let secondary: String?
-    let mono: Bool
-    let add: Int?
-    let del: Int?
     let href: String?
     let tone: FamiliarThinkingTone
     let phase: FamiliarSurfacePhase
@@ -801,25 +771,6 @@ private struct FamiliarThinkingState: View {
                         .lineLimit(1)
                 }
             }
-        case .coding:
-            FamiliarThinkingRowView(row: row, index: index, selectable: true) { _ in
-                Text(row.primary)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(FamiliarAISurfaceColor.ink)
-                    .lineLimit(1)
-                if let secondary = row.secondary {
-                    Text(secondary)
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
-                        .lineLimit(1)
-                }
-                if row.add != nil || row.del != nil {
-                    Text((row.add.map { "+\($0)" } ?? "") + " " + (row.del.map { "−\($0)" } ?? ""))
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(row.add != nil ? FamiliarAISurfaceColor.success : FamiliarAISurfaceColor.inkTertiary)
-                        .lineLimit(1)
-                }
-            }
         }
     }
 
@@ -836,35 +787,28 @@ private struct FamiliarThinkingRowView<Content: View>: View {
     let row: FamiliarThinkingRow
     let index: Int
     var isLink = false
-    var selectable = false
     private let buildContent: (Int) -> Content
 
     init(
         row: FamiliarThinkingRow,
         index: Int,
         isLink: Bool = false,
-        selectable: Bool = false,
         @ViewBuilder content: @escaping (Int) -> Content
     ) {
         self.row = row
         self.index = index
         self.isLink = isLink
-        self.selectable = selectable
         self.buildContent = content
     }
 
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var selected = false
     @State private var visible = false
 
     var body: some View {
         Group {
             if let href = row.href, isLink {
                 Button { if let url = URL(string: href) { openURL(url) } } label: { rowLabel }
-                    .buttonStyle(.plain)
-            } else if selectable {
-                Button { selected.toggle() } label: { rowLabel }
                     .buttonStyle(.plain)
             } else {
                 rowLabel
@@ -882,10 +826,6 @@ private struct FamiliarThinkingRowView<Content: View>: View {
         }
         .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
         .padding(.horizontal, FamiliarAISurfaceMetric.spaceS)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(selected ? FamiliarAISurfaceColor.inset : .clear)
-        )
     }
 }
 
@@ -937,7 +877,7 @@ private struct FamiliarTurnSurface: View {
         Group {
             switch surface.kind {
             case .approval:
-                FamiliarApprovalIntervention(surface: surface, onResolve: onResolveApproval)
+                FamiliarApprovalCard(surface: surface, onResolve: onResolveApproval)
             case .mutationReceipt, .artifact:
                 FamiliarWriteReceipt(surface: surface, canUndo: canUndo, onUndo: onUndo)
             case .failure:
@@ -957,7 +897,7 @@ private struct FamiliarTurnSurface: View {
             case .diff:
                 FamiliarDiffSurface(surface: surface)
             case .toolSummary:
-                FamiliarCompactToolSummary(surface: surface, canUndo: canUndo, onUndo: onUndo)
+                EmptyView()
             case .context:
                 FamiliarContextMatchesSurface(surface: surface)
             case .records:
@@ -1909,153 +1849,6 @@ private struct FamiliarDiffBlock: View {
     }
 }
 
-private struct FamiliarCompactToolSummary: View {
-    let surface: FamiliarSurfaceDescriptor
-    let canUndo: Bool
-    let onUndo: () -> Void
-
-    var body: some View {
-        HStack(alignment: .top, spacing: FamiliarAISurfaceMetric.spaceS) {
-            Image(systemName: symbol)
-                .font(.system(size: FamiliarAISurfaceMetric.compactIcon, weight: .semibold))
-                .foregroundStyle(tone)
-                .frame(width: FamiliarAISurfaceMetric.icon)
-            VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
-                Text(surface.title).font(.subheadline.weight(.semibold)).foregroundStyle(FamiliarAISurfaceColor.ink)
-                if let detail = surface.detail, !detail.isEmpty {
-                    Text(detail).font(.caption).foregroundStyle(FamiliarAISurfaceColor.inkSecondary).lineLimit(3)
-                }
-            }
-            Spacer(minLength: 0)
-            if canUndo {
-                Button(String(localized: "common.undo"), action: onUndo)
-                    .font(.caption.weight(.semibold))
-                    .buttonStyle(.plain)
-                    .foregroundStyle(FamiliarAISurfaceColor.accentInk)
-                    .frame(minWidth: FamiliarControlSize.minimumHitTarget, minHeight: FamiliarControlSize.minimumHitTarget)
-            }
-        }
-        .padding(.vertical, FamiliarAISurfaceMetric.spaceS)
-    }
-
-    private var symbol: String {
-        switch surface.phase {
-        case .succeeded: "checkmark.circle.fill"
-        case .failed: "exclamationmark.circle.fill"
-        case .cancelled: "xmark.circle"
-        case .undone: "arrow.uturn.backward.circle.fill"
-        case .queued, .planning, .running, .awaitingApproval, .awaitingClarification: "circle.dotted"
-        }
-    }
-
-    private var tone: Color {
-        switch surface.phase {
-        case .succeeded: FamiliarAISurfaceColor.success
-        case .failed: FamiliarAISurfaceColor.failure
-        case .cancelled, .undone: FamiliarAISurfaceColor.inkTertiary
-        case .queued, .planning, .running, .awaitingApproval, .awaitingClarification: FamiliarAISurfaceColor.accent
-        }
-    }
-}
-
-private struct FamiliarApprovalIntervention: View {
-    let surface: FamiliarSurfaceDescriptor
-    let onResolve: (UUID, FamiliarToolConfirmationDecision) -> Void
-    @AccessibilityFocusState private var isAccessibilityFocused: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceM) {
-            HStack(alignment: .top, spacing: FamiliarAISurfaceMetric.spaceS) {
-                Image(systemName: "checklist.checked")
-                    .foregroundStyle(FamiliarAISurfaceColor.warning)
-                    .frame(width: FamiliarAISurfaceMetric.icon)
-                VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
-                    Text(surface.title).font(.headline).foregroundStyle(FamiliarAISurfaceColor.ink)
-                    if let target = surface.approvalTarget {
-                        Text(target).font(.caption).foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
-                    }
-                }
-            }
-
-            VStack(spacing: FamiliarAISurfaceMetric.spaceS) {
-                ForEach(surface.approvalFields) { field in
-                    ViewThatFits(in: .horizontal) {
-                        HStack(alignment: .firstTextBaseline, spacing: FamiliarAISurfaceMetric.spaceM) {
-                            approvalFieldLabel(field.label)
-                                .frame(width: 86, alignment: .leading)
-                            approvalFieldValue(field.formattedValue)
-                        }
-                        VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
-                            approvalFieldLabel(field.label)
-                            approvalFieldValue(field.formattedValue)
-                        }
-                    }
-                }
-            }
-
-            if let consequence = surface.approvalConsequence, !consequence.isEmpty {
-                Text(consequence).font(.caption).foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
-            }
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: FamiliarAISurfaceMetric.spaceS) { approvalActions }
-                VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceS) { approvalActions }
-            }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-        }
-        .padding(FamiliarAISurfaceMetric.spaceL)
-        .background(FamiliarAISurfaceColor.warningTint, in: RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.window, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.window, style: .continuous)
-                .stroke(FamiliarAISurfaceColor.warning.opacity(0.3), lineWidth: FamiliarAISurfaceMetric.hairline)
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityFocused($isAccessibilityFocused)
-        .onAppear { isAccessibilityFocused = true }
-    }
-
-    private func approvalFieldLabel(_ label: String) -> some View {
-        Text(label)
-            .font(.caption)
-            .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
-    }
-
-    private func approvalFieldValue(_ value: String) -> some View {
-        Text(value)
-            .font(.subheadline)
-            .foregroundStyle(FamiliarAISurfaceColor.ink)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .textSelection(.enabled)
-    }
-
-    @ViewBuilder
-    private var approvalActions: some View {
-        Button(String(localized: "common.cancel")) { resolve(.cancelled) }
-            .buttonStyle(.bordered)
-            .frame(minHeight: FamiliarControlSize.minimumHitTarget)
-        Menu {
-            Button(String(localized: "authorization.once", defaultValue: "Only Once")) { resolve(.confirmedOnce) }
-            Button(String(localized: "authorization.always", defaultValue: "Always Allow")) { resolve(.confirmedAlways) }
-        } label: {
-            Label(
-                String(localized: "authorization.more_options", defaultValue: "More approval options"),
-                systemImage: "ellipsis"
-            )
-            .labelStyle(.iconOnly)
-        }
-        .buttonStyle(.bordered)
-        .accessibilityLabel(String(localized: "authorization.more_options", defaultValue: "More approval options"))
-        .frame(minWidth: FamiliarControlSize.minimumHitTarget, minHeight: FamiliarControlSize.minimumHitTarget)
-        Button(String(localized: "authorization.session", defaultValue: "Allow This Session")) { resolve(.confirmed) }
-            .buttonStyle(.borderedProminent)
-            .frame(minHeight: FamiliarControlSize.minimumHitTarget)
-    }
-
-    private func resolve(_ decision: FamiliarToolConfirmationDecision) {
-        if let id = surface.approvalRequestID { onResolve(id, decision) }
-    }
-}
-
 private struct FamiliarWriteReceipt: View {
     let surface: FamiliarSurfaceDescriptor
     let canUndo: Bool
@@ -2312,63 +2105,105 @@ private struct FamiliarTypedResult: View {
     }
 }
 
+private struct FamiliarAssistantFooter: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let message: FamiliarMessageSnapshot
+    let onRetryMessage: (() -> Void)?
+    let onInsertPrompt: (String) -> Void
+    @State private var sourcesOpen = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceS) {
+            HStack(spacing: FamiliarAISurfaceMetric.spaceXS) {
+                FamiliarMessageAction(symbol: "doc.on.doc", label: String(localized: "common.copy")) {
+                    UIPasteboard.general.string = message.content
+                }
+                if let onRetryMessage {
+                    FamiliarMessageAction(symbol: "arrow.clockwise", label: String(localized: "message.retry"), action: onRetryMessage)
+                }
+                if !message.sources.isEmpty {
+                    Button {
+                        withAnimation(reduceMotion ? nil : FamiliarMotion.state) {
+                            sourcesOpen.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
+                            FamiliarSourceCluster(sources: message.sources)
+                            Text(String(format: String(localized: "message.sources.count", defaultValue: "%lld sources"), message.sources.count))
+                                .font(.caption)
+                                .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+                        }
+                        .padding(.horizontal, FamiliarAISurfaceMetric.spaceXS)
+                        .frame(minHeight: 28)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("message.sources.disclosure")
+                    .accessibilityLabel(String(format: String(localized: "message.sources.count", defaultValue: "%lld sources"), message.sources.count))
+                    .accessibilityValue(sourcesOpen
+                                        ? String(localized: "common.expanded", defaultValue: "Expanded")
+                                        : String(localized: "common.collapsed", defaultValue: "Collapsed"))
+                }
+            }
+            .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+
+            if sourcesOpen {
+                FamiliarInlineSources(sources: message.sources)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            FamiliarFollowUps(onInsertPrompt: onInsertPrompt)
+                .padding(.top, FamiliarAISurfaceMetric.spaceXS)
+        }
+    }
+}
+
 private struct FamiliarInlineSources: View {
     @Environment(\.openURL) private var openURL
     let sources: [FamiliarSource]
-    @State private var expanded = false
 
     var body: some View {
-        DisclosureGroup(isExpanded: $expanded) {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(sources.enumerated()), id: \.element.id) { index, source in
-                    if index > 0 {
-                        Rectangle()
-                            .fill(FamiliarAISurfaceColor.line)
-                            .frame(height: FamiliarAISurfaceMetric.hairline)
-                            .padding(.leading, 30)
-                    }
-                    sourceRow(source)
-                }
-            }
-            .padding(.top, FamiliarAISurfaceMetric.spaceS)
-        } label: {
-            HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
-                FamiliarSourceCluster(sources: sources)
-                Text(String(format: String(localized: "message.sources.count", defaultValue: "%lld sources"), sources.count))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(sources) { source in
+                sourceRow(source)
             }
         }
-        .tint(FamiliarAISurfaceColor.inkSecondary)
-        .padding(.vertical, FamiliarAISurfaceMetric.spaceXS)
-        .accessibilityIdentifier("message.sources.disclosure")
-        .accessibilityLabel(String(format: String(localized: "message.sources.count", defaultValue: "%lld sources"), sources.count))
+        .padding(FamiliarAISurfaceMetric.spaceXS)
+        .background(FamiliarAISurfaceColor.inset, in: RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.card, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.card, style: .continuous)
+                .stroke(FamiliarAISurfaceColor.line, lineWidth: FamiliarAISurfaceMetric.hairline)
+        }
+        .accessibilityElement(children: .contain)
     }
 
     private func sourceRow(_ source: FamiliarSource) -> some View {
         Button { openURL(source.url) } label: {
             HStack(alignment: .center, spacing: FamiliarAISurfaceMetric.spaceS) {
                 FamiliarSourceGlyph(source: source)
-                VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
-                    Text(source.title)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(FamiliarAISurfaceColor.ink)
-                        .lineLimit(2)
-                    Text(source.siteName ?? source.url.host ?? source.url.absoluteString)
-                        .font(.caption2)
-                        .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
-                        .lineLimit(1)
-                }
+                Text(source.title)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(FamiliarAISurfaceColor.ink)
+                    .lineLimit(1)
                 Spacer(minLength: 0)
-                FamiliarSourceStatusLabel(title: statusTitle(source), isRead: source.kind == .fetchedPage)
+                Text(displayDomain(source))
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
+                    .lineLimit(1)
             }
-            .frame(minHeight: FamiliarAISurfaceMetric.rowHeight)
+            .padding(.horizontal, FamiliarAISurfaceMetric.spaceS)
+            .frame(minHeight: 32)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("message.source.row.\(source.id)")
-        .accessibilityLabel("\(source.title), \(source.siteName ?? source.url.host ?? source.url.absoluteString), \(statusTitle(source))")
+        .accessibilityLabel("\(source.title), \(displayDomain(source)), \(statusTitle(source))")
         .accessibilityHint(String(localized: "source.open_hint", defaultValue: "Opens in Familiar's browser"))
+    }
+
+    private func displayDomain(_ source: FamiliarSource) -> String {
+        let host = source.url.host ?? source.url.absoluteString
+        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
 
     private func statusTitle(_ source: FamiliarSource) -> String {
@@ -2396,15 +2231,34 @@ private struct FamiliarSourceGlyph: View {
     let source: FamiliarSource
 
     var body: some View {
-        Circle()
-            .fill(source.kind == .fetchedPage ? FamiliarAISurfaceColor.successTint : FamiliarAISurfaceColor.accentTint)
-            .frame(width: 20, height: 20)
-            .overlay {
-                Image(systemName: source.kind == .fetchedPage ? "doc.text.fill" : "globe")
+        AsyncImage(url: faviconURL) { phase in
+            if case .success(let image) = phase {
+                image
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Image(systemName: "globe")
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(source.kind == .fetchedPage ? FamiliarAISurfaceColor.success : FamiliarAISurfaceColor.accentInk)
+                    .foregroundStyle(FamiliarAISurfaceColor.accentInk)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(FamiliarAISurfaceColor.accentTint)
             }
-            .accessibilityHidden(true)
+        }
+        .frame(width: 20, height: 20)
+        .clipShape(Circle())
+        .overlay { Circle().stroke(FamiliarAISurfaceColor.line, lineWidth: FamiliarAISurfaceMetric.hairline) }
+        .accessibilityHidden(true)
+    }
+
+    private var faviconURL: URL? {
+        guard var components = URLComponents(url: source.url, resolvingAgainstBaseURL: false),
+              components.scheme == "https",
+              components.host != nil
+        else { return nil }
+        components.path = "/favicon.ico"
+        components.query = nil
+        components.fragment = nil
+        return components.url
     }
 }
 
@@ -2419,6 +2273,85 @@ private struct FamiliarSourceStatusLabel: View {
             .padding(.horizontal, FamiliarAISurfaceMetric.spaceS)
             .padding(.vertical, FamiliarAISurfaceMetric.spaceXS)
             .background(isRead ? FamiliarAISurfaceColor.successTint : FamiliarAISurfaceColor.inset, in: Capsule())
+    }
+}
+
+nonisolated enum FamiliarFollowUpPrompt: String, CaseIterable, Identifiable, Sendable {
+    case goDeeper
+    case nextSteps
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .goDeeper:
+            String(localized: "message.follow_up.go_deeper", defaultValue: "Explain the most important point in more detail")
+        case .nextSteps:
+            String(localized: "message.follow_up.next_steps", defaultValue: "Turn this answer into clear next steps")
+        }
+    }
+}
+
+private struct FamiliarFollowUps: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let onInsertPrompt: (String) -> Void
+    @State private var visibleCount = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(String(localized: "message.follow_ups", defaultValue: "Follow-ups"))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+                .padding(.bottom, FamiliarAISurfaceMetric.spaceXS)
+
+            ForEach(Array(FamiliarFollowUpPrompt.allCases.prefix(visibleCount).enumerated()), id: \.element.id) { index, followUp in
+                if index > 0 {
+                    Rectangle()
+                        .fill(FamiliarAISurfaceColor.line)
+                        .frame(height: FamiliarAISurfaceMetric.hairline)
+                }
+
+                Button {
+                    onInsertPrompt(followUp.title)
+                } label: {
+                    HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
+                        Image(systemName: "arrow.turn.up.left")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
+                        Text(followUp.title)
+                            .font(.subheadline)
+                            .foregroundStyle(FamiliarAISurfaceColor.ink)
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, FamiliarAISurfaceMetric.spaceXS)
+                    .frame(minHeight: 36)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("message.follow_up.\(followUp.rawValue)")
+                .accessibilityHint(String(localized: "message.follow_up.hint", defaultValue: "Fills the composer without sending"))
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(String(localized: "message.follow_ups", defaultValue: "Follow-ups"))
+        .task {
+            let count = FamiliarFollowUpPrompt.allCases.count
+            guard visibleCount < count else { return }
+            if reduceMotion {
+                visibleCount = count
+                return
+            }
+            for nextCount in (visibleCount + 1)...count {
+                withAnimation(FamiliarMotion.reveal) {
+                    visibleCount = nextCount
+                }
+                if nextCount < count {
+                    try? await Task.sleep(for: .milliseconds(90))
+                }
+            }
+        }
     }
 }
 
@@ -2505,7 +2438,9 @@ private struct FamiliarMessageAction: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .frame(width: FamiliarAISurfaceMetric.rowHeight, height: FamiliarAISurfaceMetric.rowHeight, alignment: .leading)
+                .font(.system(size: 14, weight: .regular))
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -2604,6 +2539,13 @@ struct FamiliarAssistantTurnVisualFixture: View {
                 fixtureSection(String(localized: "visual.fixture.search", defaultValue: "Search"), id: "search") {
                     FamiliarTypedResult(surface: Self.searchSurface, readURLs: ["https://example.com/read"])
                 }
+                fixtureSection(String(localized: "visual.fixture.tool_chips", defaultValue: "Tool Chips"), id: "tool-chips") {
+                    FamiliarToolChips(
+                        surfaces: Self.toolChipSurfaces,
+                        status: Self.loadingSurface,
+                        reasoningSummary: String(localized: "visual.fixture.reasoning.detail", defaultValue: "Compared the request with the available context and checked the important constraints.")
+                    )
+                }
                 fixtureSection(String(localized: "visual.fixture.approval", defaultValue: "Approval"), id: "approval") {
                     turnSurface(Self.approvalSurface)
                 }
@@ -2638,7 +2580,11 @@ struct FamiliarAssistantTurnVisualFixture: View {
                         .accessibilityValue(Text(sendCount, format: .number))
                 }
                 fixtureSection(String(localized: "visual.fixture.sources", defaultValue: "Sources"), id: "sources") {
-                    FamiliarInlineSources(sources: Self.sources)
+                    FamiliarAssistantFooter(
+                        message: Self.sourceMessage,
+                        onRetryMessage: {},
+                        onInsertPrompt: { draft = $0 }
+                    )
                 }
             }
             .padding(FamiliarAISurfaceMetric.spaceL)
@@ -2716,6 +2662,69 @@ struct FamiliarAssistantTurnVisualFixture: View {
         approvalUndoPolicy: .durable
     )
 
+    private static let toolChipSurfaces = [
+        FamiliarSurfaceDescriptor(
+            id: "fixture-tool-date",
+            runID: "fixture",
+            assistantTurnID: "fixture:turn:0",
+            kind: .context,
+            placement: .trace,
+            phase: .succeeded,
+            title: "Date",
+            toolCallID: "date",
+            toolName: "current_date_time",
+            effect: .read,
+            resultEnvelope: envelope(.scalar(.init(summary: "Current date", label: "Date", value: "2026-08-29"))),
+            startedAt: Date(timeIntervalSince1970: 1),
+            finishedAt: Date(timeIntervalSince1970: 2)
+        ),
+        FamiliarSurfaceDescriptor(
+            id: "fixture-tool-write",
+            runID: "fixture",
+            assistantTurnID: "fixture:turn:0",
+            kind: .mutationReceipt,
+            placement: .topLevel,
+            phase: .succeeded,
+            title: "Write output",
+            toolCallID: "write",
+            toolName: "workspace_write",
+            effect: .reversibleWrite,
+            resultEnvelope: envelope(.mutationReceipt(.init(summary: "Saved schedule", operation: "write", targetIdentifier: "Outputs/schedule.md", succeeded: true, undoAvailable: true))),
+            startedAt: Date(timeIntervalSince1970: 2),
+            finishedAt: Date(timeIntervalSince1970: 3)
+        ),
+        FamiliarSurfaceDescriptor(
+            id: "fixture-tool-read",
+            runID: "fixture",
+            assistantTurnID: "fixture:turn:1",
+            kind: .context,
+            placement: .trace,
+            phase: .succeeded,
+            title: "Read page",
+            toolCallID: "read",
+            toolName: "web_fetch",
+            effect: .read,
+            resultEnvelope: envelope(.document(.init(summary: "Read page", title: "SwiftUI", text: "SwiftUI helps you build interfaces across Apple platforms.\nViews update from state.", url: "https://developer.apple.com/documentation/swiftui"))),
+            startedAt: Date(timeIntervalSince1970: 3),
+            finishedAt: Date(timeIntervalSince1970: 4)
+        ),
+        FamiliarSurfaceDescriptor(
+            id: "fixture-tool-diff",
+            runID: "fixture",
+            assistantTurnID: "fixture:turn:1",
+            kind: .diff,
+            placement: .topLevel,
+            phase: .succeeded,
+            title: "Schedule diff",
+            toolCallID: "diff",
+            toolName: "artifact_edit",
+            effect: .reversibleWrite,
+            resultEnvelope: envelope(.diff(.init(summary: "schedule.md", before: "# Schedule\nVanilla\nMint", after: "# Schedule\nPistachio\nMint\nPeach"))),
+            startedAt: Date(timeIntervalSince1970: 4),
+            finishedAt: Date(timeIntervalSince1970: 5)
+        ),
+    ]
+
     private static let clarificationSurface = FamiliarSurfaceDescriptor(
         id: "fixture-clarification",
         runID: "fixture",
@@ -2790,9 +2799,22 @@ struct FamiliarAssistantTurnVisualFixture: View {
     )
 
     private static let sources = [
-        FamiliarSource(id: "fixture-read", kind: .fetchedPage, title: String(localized: "visual.fixture.source.read", defaultValue: "Read source fixture"), url: URL(string: "https://example.com/read")!, siteName: "example.com", snippet: nil, retrievedAt: Date()),
-        FamiliarSource(id: "fixture-found", kind: .searchResult, title: String(localized: "visual.fixture.source.discovered", defaultValue: "Discovered source fixture"), url: URL(string: "https://example.org/found")!, siteName: "example.org", snippet: nil, retrievedAt: Date())
+        FamiliarSource(id: "fixture-apple", kind: .fetchedPage, title: String(localized: "visual.fixture.source.read", defaultValue: "Read source fixture"), url: URL(string: "https://developer.apple.com/documentation/swiftui")!, siteName: "Apple Developer", snippet: nil, retrievedAt: Date()),
+        FamiliarSource(id: "fixture-swift", kind: .searchResult, title: String(localized: "visual.fixture.source.discovered", defaultValue: "Discovered source fixture"), url: URL(string: "https://www.swift.org/documentation/")!, siteName: "Swift.org", snippet: nil, retrievedAt: Date()),
+        FamiliarSource(id: "fixture-webkit", kind: .searchResult, title: "WebKit", url: URL(string: "https://webkit.org/")!, siteName: "WebKit", snippet: nil, retrievedAt: Date())
     ]
+
+    private static let sourceMessage = FamiliarMessageSnapshot(
+        id: UUID(),
+        role: .assistant,
+        content: String(localized: "visual.fixture.reasoning.detail", defaultValue: "Compared the request with the available context and checked the important constraints."),
+        createdAt: Date(),
+        sequence: 0,
+        providerID: "deepseek",
+        modelID: "deepseek-v4-flash",
+        attachments: [],
+        sources: sources
+    )
 
     private static func resultSurface(id: String, kind: FamiliarSurfaceKind, payload: FamiliarToolPresentationPayload) -> FamiliarSurfaceDescriptor {
         FamiliarSurfaceDescriptor(
