@@ -197,6 +197,20 @@ final class FamiliarChatController {
     ) {
         guard !isSending else { return }
         let prompt = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty || !draftAttachments.isEmpty || !draftImages.isEmpty || preparedImageDrafts?.isEmpty == false else { return }
+
+        let requestSettings = settings
+        guard let descriptor = requestSettings.resolvedProvider else {
+            errorMessage = String(
+                format: String(localized: "error.provider.invalid_configuration"),
+                FamiliarProviderCatalog.deepSeek.displayName
+            )
+            return
+        }
+        guard let apiKey = FamiliarKeychainStore.load(for: requestSettings.providerID) else {
+            errorMessage = String(localized: "error.api_key_missing")
+            return
+        }
 
         var importedImageDrafts: [FamiliarAttachmentDraft] = []
         var shouldRemoveImportedDrafts = true
@@ -220,14 +234,6 @@ final class FamiliarChatController {
         let combinedAttachments = draftAttachments + importedImageDrafts
 
         guard !prompt.isEmpty || !combinedAttachments.isEmpty else { return }
-        let requestSettings = settings
-        guard let descriptor = requestSettings.resolvedProvider else {
-            errorMessage = String(
-                format: String(localized: "error.provider.invalid_configuration"),
-                FamiliarProviderCatalog.deepSeek.displayName
-            )
-            return
-        }
         let imageAttachments = combinedAttachments.filter { $0.kind == .image }
         if !imageAttachments.isEmpty,
            !requestSettings.selectedModel.capabilities.supportsImages,
@@ -294,14 +300,6 @@ final class FamiliarChatController {
             errorMessage = String(localized: "error.message.context_too_large")
             return
         }
-        guard let apiKey = FamiliarKeychainStore.load(for: requestSettings.providerID) else {
-            errorMessage = String(
-                format: String(localized: "error.api_key_missing"),
-                descriptor.displayName
-            )
-            return
-        }
-
         let conversation: FamiliarConversation
         let createdConversation: Bool
         if let existing = selectedConversation(in: context) {

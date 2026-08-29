@@ -29,7 +29,6 @@ struct FamiliarSettingsView: View {
     let registry: FamiliarToolRegistry
     let searchService: FamiliarWebSearchService
     let onSaveSettings: (FamiliarSettings) -> Void
-    let onRestartOnboarding: () -> Void
 
     @State private var settings: FamiliarSettings
     @State private var path: [FamiliarSettingsRoute]
@@ -39,15 +38,13 @@ struct FamiliarSettingsView: View {
         initialRoute: FamiliarSettingsRoute? = nil,
         registry: FamiliarToolRegistry,
         searchService: FamiliarWebSearchService,
-        onSaveSettings: @escaping (FamiliarSettings) -> Void,
-        onRestartOnboarding: @escaping () -> Void
+        onSaveSettings: @escaping (FamiliarSettings) -> Void
     ) {
         self.initialSettings = initialSettings
         self.initialRoute = initialRoute
         self.registry = registry
         self.searchService = searchService
         self.onSaveSettings = onSaveSettings
-        self.onRestartOnboarding = onRestartOnboarding
         _settings = State(initialValue: initialSettings)
         _path = State(initialValue: initialRoute.map { [$0] } ?? [])
     }
@@ -151,9 +148,6 @@ struct FamiliarSettingsView: View {
                         symbol: "info.circle.fill",
                         color: .indigo
                     )
-                    Button(String(localized: "settings.onboarding.restart")) {
-                        onRestartOnboarding()
-                    }
                 }
             }
             .navigationTitle(String(localized: "drawer.settings"))
@@ -220,8 +214,7 @@ struct FamiliarSettingsView: View {
                 onSaveSettings: { value in
                     settings = value
                     onSaveSettings(value)
-                },
-                onRestartOnboarding: onRestartOnboarding
+                }
             )
         case .searchService:
             FamiliarSearchSettingsView(searchService: searchService)
@@ -272,10 +265,17 @@ private struct FamiliarSkillsSettingsView: View {
                     )
                 }
                 ForEach(skills) { skill in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(skill.name)
-                        Text("\(skill.stableID) · \(skill.version)").font(.caption).foregroundStyle(.secondary)
+                    NavigationLink {
+                        FamiliarSkillEditorView(skill: skill) { document in
+                            _ = try FamiliarSkillService().install(document, in: modelContext)
+                        }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(skill.name)
+                            Text("\(skill.stableID) · \(skill.version)").font(.caption).foregroundStyle(.secondary)
+                        }
                     }
+                    .accessibilityHint(String(localized: "settings.skills.edit.hint", defaultValue: "Opens this Skill for viewing and editing"))
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button(role: .destructive) {
                             do {
@@ -303,11 +303,13 @@ private struct FamiliarSkillsSettingsView: View {
             }
         }
         .sheet(isPresented: $creating) {
-            FamiliarSkillCreatorView { document in
-                guard !skills.contains(where: { $0.stableID == document.id }) else {
-                    throw FamiliarSkillServiceError.alreadyInstalled
+            NavigationStack {
+                FamiliarSkillEditorView(skill: nil, showsCancelButton: true) { document in
+                    guard !skills.contains(where: { $0.stableID == document.id }) else {
+                        throw FamiliarSkillServiceError.alreadyInstalled
+                    }
+                    _ = try FamiliarSkillService().install(document, in: modelContext)
                 }
-                _ = try FamiliarSkillService().install(document, in: modelContext)
             }
         }
         .alert(String(localized: "settings.skills.title", defaultValue: "Skills"), isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
@@ -318,25 +320,50 @@ private struct FamiliarSkillsSettingsView: View {
     }
 }
 
-private struct FamiliarSkillCreatorView: View {
+private struct FamiliarSkillEditorView: View {
     @Environment(\.dismiss) private var dismiss
 
-    let onCreate: (FamiliarSkillDocument) throws -> Void
+    let skill: FamiliarSkill?
+    let showsCancelButton: Bool
+    let onSave: (FamiliarSkillDocument) throws -> Void
+    private let preservedAllowedTools: [String]
+    private let preservedExamples: [String]
 
-    @State private var name = ""
-    @State private var identifier = ""
-    @State private var descriptionText = ""
-    @State private var instructions = String(
-        localized: "settings.skills.create.instructions_template",
-        defaultValue: "Goal:\n- Describe what this Skill should help accomplish.\n\nRules:\n- Add requirements the response must follow.\n\nOutput:\n- Describe the expected format and style."
-    )
+    @State private var name: String
+    @State private var identifier: String
+    @State private var descriptionText: String
+    @State private var instructions: String
     @State private var errorMessage: String?
 
+    init(
+        skill: FamiliarSkill?,
+        showsCancelButton: Bool = false,
+        onSave: @escaping (FamiliarSkillDocument) throws -> Void
+    ) {
+        self.skill = skill
+        self.showsCancelButton = showsCancelButton
+        self.onSave = onSave
+        preservedAllowedTools = Self.decode([String].self, from: skill?.allowedToolsJSON) ?? []
+        preservedExamples = Self.decode([String].self, from: skill?.examplesJSON) ?? []
+        _name = State(initialValue: skill?.name ?? "")
+        _identifier = State(initialValue: skill?.stableID ?? "")
+        _descriptionText = State(initialValue: skill?.descriptionText ?? "")
+        _instructions = State(initialValue: skill?.instructions ?? String(
+            localized: "settings.skills.create.instructions_template",
+            defaultValue: "Goal:\n- Describe what this Skill should help accomplish.\n\nRules:\n- Add requirements the response must follow.\n\nOutput:\n- Describe the expected format and style."
+        ))
+    }
+
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField(String(localized: "settings.skills.name", defaultValue: "Name"), text: $name)
+        Form {
+            Section {
+                TextField(String(localized: "settings.skills.name", defaultValue: "Name"), text: $name)
+                if let skill {
+                    LabeledContent(
+                        String(localized: "settings.skills.identifier", defaultValue: "Identifier"),
+                        value: "/\(skill.stableID)"
+                    )
+                } else {
                     TextField(
                         String(localized: "settings.skills.identifier", defaultValue: "Identifier"),
                         text: $identifier,
@@ -344,46 +371,58 @@ private struct FamiliarSkillCreatorView: View {
                     )
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                    TextField(
-                        String(localized: "settings.skills.description", defaultValue: "Description"),
-                        text: $descriptionText,
-                        axis: .vertical
-                    )
-                    .lineLimit(2...4)
-                } footer: {
+                }
+                TextField(
+                    String(localized: "settings.skills.description", defaultValue: "Description"),
+                    text: $descriptionText,
+                    axis: .vertical
+                )
+                .lineLimit(2...4)
+            } footer: {
+                if skill == nil {
                     Text(String(
                         format: String(localized: "settings.skills.create.identifier_hint", defaultValue: "Slash command: /%@"),
                         resolvedIdentifier.isEmpty ? "my-skill" : resolvedIdentifier
                     ))
                 }
-
-                Section(String(localized: "settings.skills.instructions", defaultValue: "Instructions")) {
-                    TextEditor(text: $instructions)
-                        .frame(minHeight: 220)
-                }
-
-                Section {
-                    Text(String(localized: "settings.skills.create.no_tools", defaultValue: "New Skills contain instructions only and start with no tool access."))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
             }
-            .navigationTitle(String(localized: "settings.skills.create.title", defaultValue: "New Skill"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
+
+            Section(String(localized: "settings.skills.instructions", defaultValue: "Instructions")) {
+                TextEditor(text: $instructions)
+                    .frame(minHeight: 220)
+            }
+
+            Section {
+                Text(skill == nil
+                     ? String(localized: "settings.skills.create.no_tools", defaultValue: "New Skills contain instructions only and start with no tool access.")
+                     : String(localized: "settings.skills.edit.preserved", defaultValue: "The identifier, tool scope, and examples stay unchanged when you edit this Skill."))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .navigationTitle(skill == nil
+                         ? String(localized: "settings.skills.create.title", defaultValue: "New Skill")
+                         : String(localized: "settings.skills.edit.title", defaultValue: "Edit Skill"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if showsCancelButton {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(String(localized: "common.cancel")) { dismiss() }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(String(localized: "common.create", defaultValue: "Create")) {
-                        create()
-                    }
-                    .fontWeight(.semibold)
-                    .disabled(!canCreate)
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button(skill == nil
+                       ? String(localized: "common.create", defaultValue: "Create")
+                       : String(localized: "common.save")) {
+                    save()
                 }
+                .fontWeight(.semibold)
+                .disabled(!canSave)
             }
         }
-        .alert(String(localized: "settings.skills.create.title", defaultValue: "New Skill"), isPresented: Binding(
+        .alert(skill == nil
+               ? String(localized: "settings.skills.create.title", defaultValue: "New Skill")
+               : String(localized: "settings.skills.edit.title", defaultValue: "Edit Skill"), isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
         )) {
@@ -398,32 +437,33 @@ private struct FamiliarSkillCreatorView: View {
     }
 
     private var resolvedIdentifier: String {
+        if let skill { return skill.stableID }
         let explicit = normalizedIdentifier(identifier)
         return explicit.isEmpty ? generatedIdentifier : explicit
     }
 
-    private var canCreate: Bool {
+    private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !resolvedIdentifier.isEmpty
             && !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private func create() {
+    private func save() {
         let document = FamiliarSkillDocument(
             format: "familiar.skill",
             formatVersion: 1,
             id: resolvedIdentifier,
-            version: "1.0.0",
+            version: skill?.version ?? "1.0.0",
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             description: descriptionText.trimmingCharacters(in: .whitespacesAndNewlines),
             instructions: instructions.trimmingCharacters(in: .whitespacesAndNewlines),
-            allowedTools: [],
-            examples: []
+            allowedTools: preservedAllowedTools,
+            examples: preservedExamples
         )
         do {
             let data = try JSONEncoder().encode(document)
-            let validated = try FamiliarSkillDocumentParser.parse(data: data, toolIDs: [])
-            try onCreate(validated)
+            let validated = try FamiliarSkillDocumentParser.parse(data: data, toolIDs: Set(preservedAllowedTools))
+            try onSave(validated)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
@@ -435,6 +475,11 @@ private struct FamiliarSkillCreatorView: View {
             .split { !$0.isLetter && !$0.isNumber }
             .map(String.init)
             .joined(separator: "-")
+    }
+
+    private static func decode<Value: Decodable>(_ type: Value.Type, from value: String?) -> Value? {
+        guard let value, let data = value.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(type, from: data)
     }
 }
 

@@ -32,6 +32,7 @@ suites=(
     FamiliarSkillsTests
     FamiliarSurfaceTests
     FamiliarToolContractTests
+    FamiliarUIFeedbackTests
     FamiliarWP1Tests
     FamiliarWP4Tests
     FamiliarWP5Tests

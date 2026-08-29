@@ -15,23 +15,8 @@
 "share.draft.accessibility_hint" = "Opens the system share sheet. Familiar does not send this automatically.";
 "common.before" = "Before";
 "common.after" = "After";
-
-"onboarding.welcome.title" = "Meet Familiar";
-"onboarding.welcome.subtitle" = "A calm, native AI companion that is always close at hand.";
-"onboarding.feature.chat" = "Ask, think, and create naturally";
-"onboarding.feature.byok" = "Use your own model API key";
-"onboarding.feature.local" = "Keep conversation history on this iPhone";
-"onboarding.provider.title" = "Connect your model";
-"onboarding.provider.subtitle" = "Familiar connects directly from your device, without routing requests through a Familiar server.";
-"onboarding.ready.title" = "You're all set";
-"onboarding.ready.subtitle" = "Start with a question and let Familiar help make things clear.";
-"onboarding.ready.keychain" = "Your API key is stored in Keychain";
-"onboarding.ready.history" = "Chat history stays on this device";
-"onboarding.ready.permissions" = "Familiar asks before using system permissions";
-"onboarding.verify" = "Verify and Continue";
-"onboarding.start" = "Start Using Familiar";
-"onboarding.browse_without_setup" = "Browse Familiar without setup";
-"onboarding.validation_failed" = "Connection Failed";
+"common.expanded" = "Expanded";
+"common.collapsed" = "Collapsed";
 
 "provider.validation.invalid_response" = "The provider returned an unrecognized response.";
 "provider.validation.model_unavailable" = "The selected model is not available for this API key: %@";
@@ -63,8 +48,6 @@
 "settings.privacy.web_tools" = "Web search sends queries to DuckDuckGo; results and fetched public text may be sent to DeepSeek";
 "settings.privacy.native_private_data" = "Contacts, one-time location, and clipboard data are used only by explicitly requested tools";
 "settings.error.title" = "Couldn't Save Settings";
-"settings.onboarding.restart" = "Review setup";
-"settings.onboarding.restart.footer" = "You can revisit onboarding at any time. Your local data and API keys stay in place.";
 
 "common.done" = "Done";
 "settings.hub.models" = "Models";
@@ -118,6 +101,9 @@
 "settings.skills.create.identifier_hint" = "Slash command: /%@";
 "settings.skills.create.no_tools" = "New Skills contain instructions only and start with no tool access.";
 "settings.skills.create.instructions_template" = "Goal:\n- Describe what this Skill should help accomplish.\n\nRules:\n- Add requirements the response must follow.\n\nOutput:\n- Describe the expected format and style.";
+"settings.skills.edit.title" = "Edit Skill";
+"settings.skills.edit.hint" = "Opens this Skill for viewing and editing";
+"settings.skills.edit.preserved" = "The identifier, tool scope, and examples stay unchanged when you edit this Skill.";
 "settings.skills.example.name" = "Clear Writing";
 "settings.skills.example.description" = "Turn rough ideas into clear, concise writing.";
 "settings.skills.example.instructions" = "Understand the user's goal first. Write clearly and concretely, remove filler, preserve important details, and state uncertainty when information is missing.";
@@ -378,6 +364,7 @@
 "attachment.all_photos" = "All Photos";
 "attachment.add_photos_count" = "Add %ld Photos";
 "attachment.remove_image" = "Remove image";
+"attachment.preview_image" = "Preview image";
 "attachment.remove_file" = "Remove file";
 "attachment.file_import_failed_title" = "Couldn't add files";
 "attachment.processing" = "Converting with AnyDoc…";
@@ -491,7 +478,7 @@
 "error.create_conversation" = "Couldn't create the conversation: %@";
 "error.delete_conversation" = "Couldn't delete the conversation: %@";
 "error.rename_conversation" = "Couldn't rename the conversation: %@";
-"error.api_key_missing" = "Configure a %@ API key in Settings first.";
+"error.api_key_missing" = "You need to add an API key first.";
 "error.save_prompt" = "Couldn't save your message: %@";
 "error.save_settings" = "Couldn't save settings: %@";
 "error.edit_message" = "Couldn't edit the message: %@";
@@ -510,7 +497,6 @@
 "common.no" = "No";
 "common.undo" = "Undo";
 "agent.status.awaiting_confirmation" = "Waiting for your confirmation";
-"onboarding.page_indicator" = "Page %1$ld of %2$ld";
 "camera.capture" = "Take photo";
 "camera.capturing" = "Taking photo";
 "composer.disabled.importing" = "A document is still being imported.";

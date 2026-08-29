@@ -109,7 +109,7 @@
 - `FamiliarRunRecoveryService.swift` — `@MainActor`，capability/grant/cursor/tool-invocation 持久化 + `recoverInterruptedRuns`（启动时把遗留 running Run 终结为 failed、取消在途 invocation）；CapabilitySnapshot 与 RunResumeCursor 已接入，grant 创建/消费与字节级中断续跑仍未接入。
 
 ### `Familiar/Presentation/` — SwiftUI
-- `FamiliarRootView.swift` — 首启 gate + Deep Link/Spotlight/App Intent handoff 路由。
+- `FamiliarRootView.swift` — 直接进入 Chat，并承接 Deep Link/Spotlight/App Intent handoff 路由。
 - `FamiliarChatView.swift` — 统一 Chat Surface：顶栏依次提供设置、普通/活跃项目工作区、模型和新对话；切换工作区恢复该作用域最近更新的会话，无历史时建立未持久化空白会话。左缘手势打开的抽屉只保留搜索、置顶、可折叠项目、全部项目和普通最近会话；项目与普通最近会话按 20 条逐批展开。
 - `FamiliarChatController.swift` — `@MainActor @Observable` 中央状态容器：`startSending`/`performSend` 编排整条 Agent Run。
 - `FamiliarChatMessageViews.swift` — 唯一 Assistant Turn 时间线：无背景 Markdown 正文、Loading/Thinking rail、终态 Selection Actions、Task Rows、Recommendation、Swift Charts Insight、Clarification、typed Code、紧凑 Context chunks、纵向可筛选 Records、移动端 before/after Diff、紧凑 tool summary、默认折叠的来源簇、typed approval intervention、write receipt、failure recovery 与可展开 typed activity trace；Context 超过 2 条进入 sheet，Records 超过 3 条进入可搜索全屏，Diff 与长 Code 进入全屏。Selection/Recommendation 动作只填 Composer。Search trace 展示 query、结果数和已读取/仅发现统计，不逐结果生成顶级卡片。
@@ -118,7 +118,6 @@
 - `FamiliarSettingsHubView.swift` / `FamiliarSettingsView.swift` / `FamiliarSearchSettingsView.swift` — 设置 hub、模型服务与独立网页搜索设置；搜索页提供 Provider 选择、独立 Key 保存/删除、最小连接验证以及隐私/费用说明。Skills 页只以右上角加号打开带默认 instructions 模板的创建表单，没有导入行，新建 Skill 的 allowedTools 为空。
 - `FamiliarProjectsView.swift` — Project Context Workspace：项目列表/主页/编辑、文件/网页/文本资料与 Artifact；主页主动作回到 Chat，对话与 Runs 作为次级 Context 导航。
 - `FamiliarSharedDestinationView.swift` — Share 收件箱目标选择（已有项目、新建项目、普通聊天草稿）。
-- `FamiliarOnboardingView.swift` — 三步首启。
 - `FamiliarMarkdownWebView.swift` — 非持久化 WKWebView 渲染 + 高度回传 + 首帧回退文本；终态通过 `selectionChanged` bridge 回传最多 4000 字符纯文本，流式状态禁用并清空选择；长 Mermaid 通过 `previewMermaid` bridge 打开全屏，并复用同一 bundled renderer、非持久化 data store 与禁止远程连接的 CSP。
 - `FamiliarCameraView.swift`、`FamiliarAttachmentQuickLookView.swift`、`FamiliarMarkdownNormalizer.swift`。
 
@@ -254,7 +253,7 @@ MainActor 容器：`FamiliarChatController`、`FamiliarRunPersistenceRecorder`�
 
 ## 8. 已知缺口与未验证边界
 
-- iOS 1.0 设置与 Onboarding 固定 `.cloud`，只显示 DeepSeek Flash/Pro；内部 `ModelRouter` 合同保留，但本地路由不进入生产 UI。
+- iOS 1.0 设置固定 `.cloud`，只显示 DeepSeek Flash/Pro；App 直接进入 Chat，缺少 API Key 时由发送动作提示并提供设置入口。内部 `ModelRouter` 合同保留，但本地路由不进入生产 UI。
 - 当前没有生产视觉模型。图片在本机经 Apple Vision 转成有限证据文本，原始 bytes 不发送到 DeepSeek。
 - 当前开发机是 Xcode 26.6 / iOS 26.5 SDK；计划中的 Xcode 27 Core AI API、Qwen3-0.6B Core AI bundle、specialization 与真机断网流式对话尚不可编译/验收。`FamiliarCoreAIModelProvider` 目前只完成 SDK-neutral adapter contract。
 - iSH 具体 GPL fork、固定上游 commit、Alpine rootfs 与 Familiar bridge 尚未加入仓库；iOS executor contract 已存在但返回 unavailable，Shell Tool 因此未注册。

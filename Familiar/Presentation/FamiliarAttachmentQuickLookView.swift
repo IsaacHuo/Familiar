@@ -1,6 +1,27 @@
 import QuickLook
 import SwiftUI
 
+struct FamiliarAttachmentPreviewView: View {
+    @Environment(\.dismiss) private var dismiss
+    let url: URL
+
+    var body: some View {
+        NavigationStack {
+            FamiliarAttachmentQuickLookView(url: url)
+                .ignoresSafeArea(edges: .bottom)
+                .navigationTitle(url.lastPathComponent)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(String(localized: "common.done", defaultValue: "Done")) {
+                            dismiss()
+                        }
+                    }
+                }
+        }
+    }
+}
+
 struct FamiliarAttachmentQuickLookView: UIViewControllerRepresentable {
     let url: URL
 

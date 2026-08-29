@@ -157,6 +157,7 @@ struct FamiliarComposer: View {
     @State private var showsFiles = false
     @State private var showsSkillPalette = false
     @State private var notice: FamiliarComposerNotice?
+    @State private var previewImage: FamiliarDraftImage?
     private let availableHeight: CGFloat
     private static let editorFontSize: CGFloat = 20
     private static let lineHeight = UIFont.systemFont(ofSize: editorFontSize).lineHeight
@@ -251,6 +252,11 @@ struct FamiliarComposer: View {
             }
             .presentationDetents([.fraction(0.62)])
             .presentationBackground(.black)
+        }
+        .fullScreenCover(item: $previewImage) { item in
+            FamiliarDraftImagePreviewView(image: item.image) {
+                images.removeAll { $0.id == item.id }
+            }
         }
         .fileImporter(isPresented: $showsFiles, allowedContentTypes: Self.allowedFileTypes, allowsMultipleSelection: true, onCompletion: importFiles)
         .alert(item: $notice) { notice in
@@ -532,14 +538,34 @@ struct FamiliarComposer: View {
                     }
                     ForEach(images) { item in
                         ZStack(alignment: .topTrailing) {
-                            Image(uiImage: item.image)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 92, height: 76)
-                                .clipShape(RoundedRectangle(cornerRadius: FamiliarRadius.card))
-                                .clipped()
-                            removeButton(label: String(localized: "attachment.remove_image")) { images.removeAll { $0.id == item.id } }
+                            Button {
+                                previewImage = item
+                            } label: {
+                                Image(uiImage: item.image)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 96, height: 96)
+                                    .clipShape(RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous))
+                                    .clipped()
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(String(localized: "attachment.preview_image", defaultValue: "Preview image"))
+
+                            Button(role: .destructive) {
+                                images.removeAll { $0.id == item.id }
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.primary)
+                                    .frame(width: 28, height: 28)
+                                    .background(.regularMaterial, in: Circle())
+                                    .frame(width: FamiliarControlSize.minimumHitTarget, height: FamiliarControlSize.minimumHitTarget)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(String(localized: "attachment.remove_image"))
+                            .offset(x: 8, y: -8)
                         }
+                        .padding(.trailing, FamiliarSpacing.xSmall)
                     }
                     ForEach(documents) { file in
                         HStack(spacing: FamiliarSpacing.small) {
@@ -706,6 +732,46 @@ struct FamiliarComposer: View {
         importingFileCount = 0
         fileTasks.forEach { $0.cancel() }
         imageTasks.forEach { $0.cancel() }
+    }
+}
+
+private struct FamiliarDraftImagePreviewView: View {
+    @Environment(\.dismiss) private var dismiss
+    let image: UIImage
+    let onDelete: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .accessibilityLabel(String(localized: "attachment.preview_image", defaultValue: "Image preview"))
+            }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel(String(localized: "common.done", defaultValue: "Done"))
+                }
+                ToolbarItem(placement: .destructiveAction) {
+                    Button(role: .destructive) {
+                        onDelete()
+                        dismiss()
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .accessibilityLabel(String(localized: "attachment.remove_image"))
+                }
+            }
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(.black.opacity(0.72), for: .navigationBar)
+        }
+        .tint(.white)
     }
 }
 
