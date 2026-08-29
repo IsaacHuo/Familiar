@@ -51,6 +51,26 @@ struct FamiliarUIFeedbackTests {
         #expect(settings.contains("if let skill { return skill.stableID }"))
     }
 
+    @Test("Tool chips project real tool surfaces through the reference interactions")
+    func toolChipPresentation() throws {
+        let messages = try source("Familiar/Presentation/FamiliarChatMessageViews.swift")
+        let chips = try source("Familiar/Presentation/FamiliarToolChips.swift")
+
+        #expect(messages.contains("FamiliarToolChips("))
+        #expect(messages.contains("surfaces: toolChipSurfaces"))
+        #expect(messages.contains("reasoningSummary: reasoningSummary"))
+        #expect(!messages.contains("variant: .coding"))
+        #expect(chips.contains("@State private var isOpen = true"))
+        #expect(chips.contains("@State private var openRows: Set<String>"))
+        #expect(chips.contains(".onHover { isHovered = $0 }"))
+        #expect(chips.contains("FamiliarToolChipFlowLayout"))
+        #expect(chips.contains("afterLines.difference(from: beforeLines)"))
+        #expect(chips.contains("FamiliarToolDiffPreview"))
+        #expect(chips.contains("scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)"))
+        #expect(chips.contains("Dictionary(grouping: eligible)"))
+        #expect(chips.contains("static func thinkingItem("))
+    }
+
     private func source(_ relativePath: String) throws -> String {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

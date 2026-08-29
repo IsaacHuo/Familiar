@@ -154,6 +154,7 @@ struct FamiliarSurfaceTests {
         #expect(markdown.contains("allowsMermaidPreview: false"))
         #expect(renderer.contains("post(\"previewMermaid\", source)"))
         #expect(renderer.contains("source.length > 320"))
+        #expect(renderer.contains("content.classList.toggle(\"streaming\""))
         #expect(markdown.contains("connect-src 'none'"))
     }
 
@@ -234,6 +235,22 @@ struct FamiliarSurfaceTests {
 
         #expect(store.orderedSurfaces.contains { $0.kind == .recommendation && $0.placement == .topLevel })
         #expect(store.orderedSurfaces.contains { $0.kind == .insight && $0.placement == .topLevel })
+    }
+
+    @Test("Approval card keeps the rounded two-step authorization flow")
+    func approvalCardStaticContracts() throws {
+        let card = try source("Familiar/Presentation/FamiliarApprovalCard.swift")
+
+        #expect(card.contains("private let stepCount = 2"))
+        #expect(card.contains("@State private var isOpen = true"))
+        #expect(card.contains("contentTransition(.numericText"))
+        #expect(card.contains("FamiliarRadius.card"))
+        #expect(card.contains("FamiliarApprovalPrimaryButtonStyle()"))
+        #expect(card.contains("authorization.once"))
+        #expect(card.contains("authorization.session"))
+        #expect(card.contains("authorization.always"))
+        #expect(card.contains("selectedDecision == nil"))
+        #expect(card.contains("resolve(.cancelled)"))
     }
 
     @Test("Haptics mark approval, success, and failure boundaries")

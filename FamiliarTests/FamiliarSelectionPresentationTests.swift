@@ -38,8 +38,8 @@ struct FamiliarSelectionPresentationTests {
     func compactSourceAndSearchContracts() throws {
         let presentation = try source("Familiar/Presentation/FamiliarChatMessageViews.swift")
         let sources = try section(
-            named: "private struct FamiliarInlineSources",
-            endingAt: "nonisolated enum FamiliarSelectionAction",
+            named: "private struct FamiliarAssistantFooter",
+            endingAt: "nonisolated enum FamiliarFollowUpPrompt",
             in: presentation
         )
         let typedResult = try section(
@@ -50,14 +50,41 @@ struct FamiliarSelectionPresentationTests {
         let english = try source("Familiar/Resources/en.lproj/Localizable.strings")
         let chinese = try source("Familiar/Resources/zh-Hans.lproj/Localizable.strings")
 
-        #expect(sources.contains("@State private var expanded = false"))
-        #expect(sources.contains("DisclosureGroup(isExpanded: $expanded)"))
-        #expect(!sources.contains("arrow.up.right"))
+        #expect(sources.contains("@State private var sourcesOpen = false"))
+        #expect(sources.contains("FamiliarSourceCluster(sources: message.sources)"))
+        #expect(sources.contains("AsyncImage(url: faviconURL)"))
+        #expect(sources.contains("components.path = \"/favicon.ico\""))
+        #expect(sources.contains("FamiliarAISurfaceColor.inset"))
         #expect(typedResult.contains("search.activity.query"))
         #expect(typedResult.contains("search.activity.read_count"))
         #expect(!typedResult.contains("ForEach(search.results"))
         #expect(!english.contains("tool.cards.position"))
         #expect(!chinese.contains("tool.cards.position"))
+    }
+
+    @Test("Terminal reply footer offers safe follow-ups without rating actions")
+    func followUpContracts() throws {
+        let presentation = try source("Familiar/Presentation/FamiliarChatMessageViews.swift")
+        let followUps = try section(
+            named: "private struct FamiliarFollowUps",
+            endingAt: "nonisolated enum FamiliarSelectionAction",
+            in: presentation
+        )
+        let footer = try section(
+            named: "private struct FamiliarAssistantFooter",
+            endingAt: "private struct FamiliarInlineSources",
+            in: presentation
+        )
+
+        #expect(followUps.contains("FamiliarFollowUpPrompt.allCases"))
+        #expect(followUps.contains("onInsertPrompt(followUp.title)"))
+        #expect(!followUps.contains("onSend"))
+        #expect(footer.contains("FamiliarInlineSources(sources: message.sources)"))
+        #expect(footer.contains("FamiliarFollowUps(onInsertPrompt: onInsertPrompt)"))
+        #expect(footer.contains("symbol: \"doc.on.doc\""))
+        #expect(footer.contains("symbol: \"arrow.clockwise\""))
+        #expect(!footer.contains("hand.thumbsup"))
+        #expect(!footer.contains("hand.thumbsdown"))
     }
 
     private func source(_ relativePath: String) throws -> String {
