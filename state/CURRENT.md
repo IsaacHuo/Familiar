@@ -1,6 +1,6 @@
 # Current State
 
-Last verified: 2026-08-27
+Last verified: 2026-08-29
 
 ## Current Focus
 
@@ -10,8 +10,9 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 
 ## Recently Completed
 
+- **集中 UI 反馈收口**：移除首启 Onboarding 与设置中的重看入口，首次启动直接进入 Chat；发送前在任何图片导入或 Apple Vision 处理之前检查 Keychain，缺 Key 时保留草稿并提示先填写 API Key。Composer 图片改为可点击缩略图，原生全屏预览提供关闭与删除；已发送图片从文字气泡中独立右对齐，所有 Quick Look 预览均有明确完成按钮。Thinking 只保留系统 Disclosure 箭头，Activity 内容取消额外左缩进；抽屉开合提交时触发原生 selection feedback。Skills 列表行可进入查看/编辑，保存时保持 stable ID、version、工具范围和 examples，历史 Run snapshot 不变。
 - **28 Tool Release hardening**：`FamiliarActionProposal` 现在只保存纯预览和批准后 `commit`；commit 返回结果及实际执行后才成立的 Undo，Runtime 在批准后、commit 前统一准备系统 capability。Clipboard 不再在批准前读取旧值；Workspace 写入不再预建整库 checkpoint，Undo 只恢复目标 `Outputs` 文件。Workspace 的 `Files/Resources` 与 `Files/Attachments` 由当前不可变 ContextSnapshot 虚拟投影，Resource/Attachment 仍是唯一真相源；输出继续落在 Workspace Store。联系人默认只回姓名，电话/邮箱/组织必须由模型显式请求。`prepare_share` 使用 schema v3 `shareDraft` top-level Surface 与真实 ShareLink。搜索设置 1.0 只显示 DuckDuckGo，其他 adapter 保留测试合同。
-- **DeepSeek 1.0 生产路径**：模型协议已统一为无 API Key 的 `generate/stream`，当前 catalog 只启用 DeepSeek Flash/Pro；HTTP adapter 保持通用 OpenAI-compatible 实现，Agent Runtime 不包含 DeepSeek 分支。设置与 Onboarding 固定 `.cloud`，不暴露本地路由或手填模型。模型列表只接受正式 curated ID 与实时 `/models` 的交集；替换 Key 在写入 Keychain 前验证所选模型。Provider 使用 ephemeral URLSession，错误文本会脱敏，Malformed SSE 与无 finish reason 的中断流不会伪造成功终态。
+- **DeepSeek 1.0 生产路径**：模型协议已统一为无 API Key 的 `generate/stream`，当前 catalog 只启用 DeepSeek Flash/Pro；HTTP adapter 保持通用 OpenAI-compatible 实现，Agent Runtime 不包含 DeepSeek 分支。设置固定 `.cloud`，不暴露本地路由或手填模型；App 不再提供首启引导，缺少 API Key 时从发送动作直接进入设置。模型列表只接受正式 curated ID 与实时 `/models` 的交集；替换 Key 在写入 Keychain 前验证所选模型。Provider 使用 ephemeral URLSession，错误文本会脱敏，Malformed SSE 与无 finish reason 的中断流不会伪造成功终态。
 - **Workspace、Native Tools 与受控 Shell 边界**：新增 Project/Conversation Workspace 目录、Files/Outputs/Runtime 隔离、路径穿越与 symlink 防护、配额、checkpoint/diff/restore；注册 Workspace、Contacts、Location、Clipboard、Share preparation 与 Familiar-only Spotlight 工具。新增 `ShellExecutor`、`ShellTool`、`ShellPolicy`、iSH bridge contract 和 macOS Containerization executor；Shell 尚未注册到 Agent，因为 iSH fork/runtime assets 与 macOS kernel/init/rootfs assets 尚未完整接线。
 - **原生 FamiliarMac target**：新增 SwiftUI macOS App、Codex 式 Sidebar/Chat/Inspector shell、Commands、Settings、App Sandbox/Hardened Runtime/Virtualization entitlement；固定直接依赖 `apple/containerization` 0.33.4，不调用外部 `container` CLI。Container session 支持无网络接口、Workspace-only mounts、持久 writable layer 输入、同 Workspace 串行、全局串行、进程树取消与 10 分钟 idle stop。当前 Mac shell 尚未接入共享 SwiftData/Agent Runtime，容器资产管理与实际 VM 启动未验收。
 - **结构化内容 Surface 完整形态**：Surface policy 只把 scalar、Web search/fetch document 留在 Activity trace，Context Matches、RecordCollection、Diff 与 typed Code 作为正文后的 top-level accessory。Context 使用最多两条紧凑 chunk 并展示来源、字符数和真实资源版本；Records 使用纵向主次字段行、存在状态/类型字段时提供筛选 chips，超过三条进入可搜索全屏；Diff 正文只给摘要并在全屏按 before/after 纵向展示；typed Code 使用原生等宽文本、语言/文件名/复制与长内容全屏。Insight metrics 已改用 Swift Charts，无 metrics 不建图；Task Rows 显式区分四种状态且只展示真实 progress。长 Mermaid 可从本地 Markdown WebView 进入复用 bundled renderer/CSP 的全屏预览。上述详情路径均有中英本地化和无固定尺寸的 NavigationStack/List/ScrollView 布局。
@@ -49,6 +50,7 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 
 ## Verification Evidence
 
+- 2026-08-29：集中 UI 反馈改动后，独立 DerivedData 的 Debug arm64 generic iOS Simulator `build-for-testing` 成功，App、Share Extension、Widget、`FamiliarTests` 与 `FamiliarUITests` 全部完成编译；新增 direct launch/API Key guard、图片预览/删除、Activity/Thinking、drawer haptic 与 Skill editor 静态契约测试。中英 strings plist/parity 与 `git diff --check` 通过。按项目约束未启动 Simulator；图片布局、Quick Look 关闭、抽屉触觉和 Skill 编辑仍需所有者真机验收。
 - 2026-08-28：最终发布验证使用独立 DerivedData 完成 Debug arm64 generic Simulator `build-for-testing`；24 个 Swift Testing suite 按 `Scripts/run-release-test-suites.sh` 的清单逐套串行执行并全部通过，随后 UI smoke 2/2 通过。修复了测试夹具未持有 SwiftData `ModelContainer`、过时的 `.always` 授权断言与 UI fixture 子元素暴露问题。Release generic iOS arm64 build 和无签名 Archive 成功；App/Share/Widget 版本均为 1.0 (1)，三个 bundle manifest、许可资源和 arm64 架构检查通过，包内扫描未发现 FastVLM/MLX、实验 DeepSeek 模型或 DEBUG fixture。签名 Archive、Organizer Privacy Report、真实 DeepSeek Key 与真机矩阵仍由所有者完成。
 - 2026-08-28：App、Share Extension、Widget/Control 分别加入 PrivacyInfo.xcprivacy；FastVLM/MLX 已确认不在 iOS target；AnyDoc Rust notices 由锁定 Cargo graph 与 crate 自带 license 文件生成，App About 同时展示主 notices 与 Rust 清单。网站与 App 内隐私说明更新为 DeepSeek、DuckDuckGo、Apple Vision、28 Tool、联系人、位置、剪贴板和 Workspace 的真实路径；Release fixture 已限制在 DEBUG。Debug arm64 Simulator `build-for-testing` 成功，产物中的三个 executable bundle 均包含各自 manifest，`FamiliarReleaseComplianceTests` 3/3 通过；Release Archive 留在最终发布验证任务执行。
 - 2026-08-28：SwiftData Release V1、单 schema migration plan、Debug/Release store profile 与无自动清理启动路径接线后，Debug arm64 generic iOS Simulator `build-for-testing` 和 Release arm64 generic iOS Simulator build 成功。iOS 26.5 Simulator 单独执行 `FamiliarPersistenceReleaseTests` 4/4：31 实体/版本、文件 store 重开与关系、Release 不删除 Development store、失败打开不删除目标均通过。

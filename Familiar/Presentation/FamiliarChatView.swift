@@ -39,18 +39,15 @@ struct FamiliarChatView: View {
     @FocusState private var isComposerFocused: Bool
     private let toolRegistry: FamiliarToolRegistry
     private let searchService: FamiliarWebSearchService
-    private let onRestartOnboarding: () -> Void
     @Binding private var pendingSystemEntry: FamiliarSystemEntryRequest?
 
     init(
         dependencies: FamiliarAppDependencies,
-        onRestartOnboarding: @escaping () -> Void,
         pendingSystemEntry: Binding<FamiliarSystemEntryRequest?>
     ) {
         _controller = State(initialValue: FamiliarChatController(dependencies: dependencies))
         toolRegistry = dependencies.registry
         searchService = dependencies.searchService
-        self.onRestartOnboarding = onRestartOnboarding
         _pendingSystemEntry = pendingSystemEntry
     }
 
@@ -159,6 +156,7 @@ struct FamiliarChatView: View {
             .ignoresSafeArea(.container)
         }
         .ignoresSafeArea(.keyboard, edges: isDrawerOpen || drawerDrag != 0 ? .all : [])
+        .sensoryFeedback(.selection, trigger: isDrawerOpen)
         .sheet(item: $presentedSheet, onDismiss: refreshConfiguredProviders) { destination in
             switch destination {
             case .settings(let route):
@@ -170,8 +168,7 @@ struct FamiliarChatView: View {
                     onSaveSettings: {
                         controller.updateSettings($0, in: modelContext)
                         refreshConfiguredProviders()
-                    },
-                    onRestartOnboarding: onRestartOnboarding
+                    }
                 )
             case .projects(let projectID):
                 FamiliarProjectsView(

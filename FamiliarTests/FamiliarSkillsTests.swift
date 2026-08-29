@@ -69,6 +69,16 @@ struct FamiliarSkillsTests {
         #expect(updated.id == originalID)
         #expect(updated.contentHash == originalHash)
 
+        let edited = try service.install(document(
+            id: "alpha",
+            version: "1",
+            instructions: "Edited instructions",
+            allowedTools: ["web_fetch", "resource_read"]
+        ), in: context)
+        #expect(edited.id == originalID)
+        #expect(edited.instructions == "Edited instructions")
+        #expect(edited.contentHash != originalHash)
+
         #expect(try service.snapshot(skillID: earlier.id, in: context).stableID == "alpha")
         #expect(try service.snapshot(skillID: later.id, in: context).stableID == "zeta")
     }

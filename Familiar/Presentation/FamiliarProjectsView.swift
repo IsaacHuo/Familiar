@@ -321,7 +321,7 @@ private struct FamiliarProjectDetailView: View {
             }
         }
         .sheet(item: $previewDocument) { document in
-            FamiliarAttachmentQuickLookView(url: document.url)
+            FamiliarAttachmentPreviewView(url: document.url)
         }
         .confirmationDialog(
             String(localized: "resource.delete.title"),

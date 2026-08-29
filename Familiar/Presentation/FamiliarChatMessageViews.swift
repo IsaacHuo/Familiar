@@ -228,7 +228,7 @@ private struct FamiliarMessageRow: View {
         }
         .sheet(item: $previewAttachment) { attachment in
             if let url = FamiliarAttachmentStore.url(for: attachment.relativePath) {
-                FamiliarAttachmentQuickLookView(url: url).ignoresSafeArea()
+                FamiliarAttachmentPreviewView(url: url)
             } else {
                 ContentUnavailableView(
                     String(localized: "attachment.unavailable.title"),
@@ -242,34 +242,44 @@ private struct FamiliarMessageRow: View {
     private var userMessage: some View {
         HStack(alignment: .bottom) {
             Spacer(minLength: FamiliarAISurfaceMetric.rowHeight)
-            VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceS) {
-                ForEach(message.attachments) { attachment in
+            VStack(alignment: .trailing, spacing: FamiliarAISurfaceMetric.spaceS) {
+                ForEach(imageAttachments) { attachment in
                     Button { previewAttachment = attachment } label: {
-                        if attachment.kind == .image {
-                            FamiliarImageAttachmentView(relativePath: attachment.relativePath)
-                        } else {
-                            HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
-                                Image(systemName: attachment.mimeType == "application/pdf" ? "doc.richtext" : "doc.text")
-                                    .foregroundStyle(FamiliarAISurfaceColor.accent)
-                                VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
-                                    Text(attachment.filename).font(.subheadline.weight(.medium)).lineLimit(2)
-                                    Text("\(attachment.detectedFormat.uppercased()) · \(ByteCountFormatter.string(fromByteCount: attachment.byteSize, countStyle: .file))")
-                                        .font(.caption)
-                                        .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
+                        FamiliarImageAttachmentView(relativePath: attachment.relativePath)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(String(format: String(localized: "attachment.preview"), attachment.filename))
                 }
+
+                ForEach(documentAttachments) { attachment in
+                    Button { previewAttachment = attachment } label: {
+                        HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
+                            Image(systemName: attachment.mimeType == "application/pdf" ? "doc.richtext" : "doc.text")
+                                .foregroundStyle(FamiliarAISurfaceColor.accent)
+                            VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
+                                Text(attachment.filename).font(.subheadline.weight(.medium)).lineLimit(2)
+                                Text("\(attachment.detectedFormat.uppercased()) · \(ByteCountFormatter.string(fromByteCount: attachment.byteSize, countStyle: .file))")
+                                    .font(.caption)
+                                    .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+                            }
+                        }
+                        .padding(FamiliarAISurfaceMetric.spaceM)
+                        .frame(maxWidth: 280, alignment: .leading)
+                        .background(FamiliarTheme.userFill, in: RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.window, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(String(format: String(localized: "attachment.preview"), attachment.filename))
+                }
+
                 if !message.content.isEmpty {
-                    Text(message.content).font(.body).textSelection(.enabled)
+                    Text(message.content)
+                        .font(.body)
+                        .textSelection(.enabled)
+                        .padding(FamiliarAISurfaceMetric.spaceM)
+                        .background(FamiliarTheme.userFill, in: RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.window, style: .continuous))
                 }
             }
-            .padding(FamiliarAISurfaceMetric.spaceM)
-            .background(FamiliarTheme.userFill, in: RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.window, style: .continuous))
+            .frame(maxWidth: 300, alignment: .trailing)
             .contextMenu {
                 if !message.content.isEmpty {
                     Button { UIPasteboard.general.string = message.content } label: {
@@ -281,6 +291,14 @@ private struct FamiliarMessageRow: View {
                 }
             }
         }
+    }
+
+    private var imageAttachments: [FamiliarAttachmentSnapshot] {
+        message.attachments.filter { $0.kind == .image }
+    }
+
+    private var documentAttachments: [FamiliarAttachmentSnapshot] {
+        message.attachments.filter { $0.kind != .image }
     }
 }
 
@@ -697,17 +715,14 @@ private struct FamiliarThinkingState: View {
             } else {
                 FamiliarShimmerLabel(text: content.header, reduceMotion: reduceMotion)
             }
-            Image(systemName: "chevron.down")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
-                .rotationEffect(.degrees(expanded ? 180 : 0))
-                .animation(reduceMotion ? nil : FamiliarMotion.micro, value: expanded)
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(content.isWorking ? content.header : content.settledHeader)
         .accessibilityAddTraits(.isButton)
-        .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+        .accessibilityValue(expanded
+                            ? String(localized: "common.expanded", defaultValue: "Expanded")
+                            : String(localized: "common.collapsed", defaultValue: "Collapsed"))
     }
 
     @ViewBuilder
@@ -2091,7 +2106,7 @@ private struct FamiliarWriteReceipt: View {
         .padding(FamiliarAISurfaceMetric.spaceM)
         .background(FamiliarAISurfaceColor.successTint, in: RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.card, style: .continuous))
         .sheet(isPresented: Binding(get: { previewURL != nil }, set: { if !$0 { previewURL = nil } })) {
-            if let previewURL { FamiliarAttachmentQuickLookView(url: previewURL).ignoresSafeArea() }
+            if let previewURL { FamiliarAttachmentPreviewView(url: previewURL) }
         }
     }
 
@@ -2155,7 +2170,7 @@ private struct FamiliarActivityTrace: View {
                 ForEach(items) { item in FamiliarTypedResult(surface: item, readURLs: readURLs) }
             }
             .padding(.top, FamiliarAISurfaceMetric.spaceS)
-            .padding(.leading, FamiliarAISurfaceMetric.traceIndent)
+            .frame(maxWidth: .infinity, alignment: .leading)
         } label: {
             HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
                 Image(systemName: "waveform.path.ecg")
@@ -2169,6 +2184,7 @@ private struct FamiliarActivityTrace: View {
         }
         .tint(FamiliarAISurfaceColor.inkSecondary)
         .transaction { if reduceMotion { $0.animation = nil } }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func duration(_ start: Date, _ end: Date) -> String {
@@ -2505,19 +2521,27 @@ private struct FamiliarImageAttachmentView: View {
             if let image {
                 Image(uiImage: image)
                     .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: 240, maxHeight: 240)
+                    .scaledToFill()
+                    .frame(width: displaySize(for: image).width, height: displaySize(for: image).height)
                     .clipShape(RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.window, style: .continuous))
+                    .clipped()
             } else {
                 RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.window, style: .continuous)
                     .fill(FamiliarAISurfaceColor.inset)
-                    .frame(width: 200, height: 140)
+                    .frame(width: 220, height: 180)
                     .overlay { ProgressView() }
             }
         }
         .task(id: relativePath) {
             if let url = FamiliarAttachmentStore.url(for: relativePath) { image = UIImage(contentsOfFile: url.path) }
         }
+    }
+
+    private func displaySize(for image: UIImage) -> CGSize {
+        let maximum = CGSize(width: 240, height: 320)
+        guard image.size.width > 0, image.size.height > 0 else { return CGSize(width: 220, height: 180) }
+        let scale = min(maximum.width / image.size.width, maximum.height / image.size.height)
+        return CGSize(width: image.size.width * scale, height: image.size.height * scale)
     }
 }
 

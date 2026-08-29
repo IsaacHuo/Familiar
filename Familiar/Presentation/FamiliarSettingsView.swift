@@ -8,7 +8,6 @@ struct FamiliarModelServiceSettingsView: View {
 
     let initialSettings: FamiliarSettings
     let onSaveSettings: (FamiliarSettings) -> Void
-    let onRestartOnboarding: () -> Void
 
     @State private var settings: FamiliarSettings
     @State private var configuration: FamiliarProviderConfiguration
@@ -19,19 +18,16 @@ struct FamiliarModelServiceSettingsView: View {
     @State private var isRefreshingModels = false
     @State private var validationSucceeded = false
     @State private var errorMessage: String?
-    @State private var asksToRestartOnboarding = false
     @State private var runNotificationsEnabled: Bool
     @State private var notificationAuthorization: FamiliarNotificationAuthorizationState = .unknown
     @State private var isUpdatingNotifications = false
 
     init(
         initialSettings: FamiliarSettings,
-        onSaveSettings: @escaping (FamiliarSettings) -> Void,
-        onRestartOnboarding: @escaping () -> Void
+        onSaveSettings: @escaping (FamiliarSettings) -> Void
     ) {
         self.initialSettings = initialSettings
         self.onSaveSettings = onSaveSettings
-        self.onRestartOnboarding = onRestartOnboarding
         _settings = State(initialValue: initialSettings)
         _configuration = State(initialValue: initialSettings.providerConfiguration)
         _models = State(initialValue: initialSettings.selectedProvider.curatedModels)
@@ -189,16 +185,6 @@ struct FamiliarModelServiceSettingsView: View {
             Text(String(localized: "settings.notifications.title"))
         } footer: {
             Text(notificationFooter)
-        }
-    }
-
-    private var onboardingSection: some View {
-        Section {
-            Button(String(localized: "settings.onboarding.restart")) {
-                asksToRestartOnboarding = true
-            }
-        } footer: {
-            Text(String(localized: "settings.onboarding.restart.footer"))
         }
     }
 

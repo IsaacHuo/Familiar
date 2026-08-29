@@ -15,23 +15,8 @@
 "share.draft.accessibility_hint" = "打开系统分享面板。Familiar 不会自动发送。";
 "common.before" = "修改前";
 "common.after" = "修改后";
-
-"onboarding.welcome.title" = "认识 Familiar";
-"onboarding.welcome.subtitle" = "一个安静、原生、始终在你手边的 AI 助手。";
-"onboarding.feature.chat" = "自然地提问、思考与创作";
-"onboarding.feature.byok" = "使用你自己的模型 API Key";
-"onboarding.feature.local" = "会话历史只保存在这台 iPhone";
-"onboarding.provider.title" = "连接你的模型";
-"onboarding.provider.subtitle" = "Familiar 从你的设备直接连接服务商，不经过 Familiar 服务器。";
-"onboarding.ready.title" = "一切准备好了";
-"onboarding.ready.subtitle" = "从一句问题开始，让 Familiar 帮你把事情想清楚。";
-"onboarding.ready.keychain" = "API Key 安全保存在系统钥匙串";
-"onboarding.ready.history" = "聊天记录保存在本机";
-"onboarding.ready.permissions" = "需要系统权限时，Familiar 会先询问你";
-"onboarding.verify" = "验证并继续";
-"onboarding.start" = "开始使用 Familiar";
-"onboarding.browse_without_setup" = "暂不配置，先浏览 Familiar";
-"onboarding.validation_failed" = "连接失败";
+"common.expanded" = "已展开";
+"common.collapsed" = "已折叠";
 
 "provider.validation.invalid_response" = "服务商返回了无法识别的响应。";
 "provider.validation.model_unavailable" = "当前 API Key 无法使用所选模型：%@";
@@ -63,8 +48,6 @@
 "settings.privacy.web_tools" = "网页搜索会把搜索词发送给 DuckDuckGo；搜索结果和公开网页抽取文字可能发送给 DeepSeek";
 "settings.privacy.native_private_data" = "联系人、单次位置和剪贴板数据只用于你明确请求的工具";
 "settings.error.title" = "设置失败";
-"settings.onboarding.restart" = "重新查看首启";
-"settings.onboarding.restart.footer" = "你可以随时重新查看首启说明，本地数据和 API Key 会保留。";
 
 "common.done" = "完成";
 "settings.hub.models" = "模型";
@@ -118,6 +101,9 @@
 "settings.skills.create.identifier_hint" = "斜杠命令：/%@";
 "settings.skills.create.no_tools" = "新建技能只包含指令，默认不使用任何工具。";
 "settings.skills.create.instructions_template" = "目标：\n- 描述这个 Skill 要帮助完成什么。\n\n规则：\n- 写出回答必须遵守的要求。\n\n输出要求：\n- 描述期望的格式和风格。";
+"settings.skills.edit.title" = "编辑技能";
+"settings.skills.edit.hint" = "打开并查看或编辑这个技能";
+"settings.skills.edit.preserved" = "编辑时会保留技能标识符、工具范围和示例。";
 "settings.skills.example.name" = "清晰写作示例";
 "settings.skills.example.description" = "把零散想法整理成清晰、简洁的文字。";
 "settings.skills.example.instructions" = "先理解用户目标。回答要清晰、具体，删除空话，保留重要细节；信息不足时明确说明不确定之处。";
@@ -378,6 +364,7 @@
 "attachment.all_photos" = "全部照片";
 "attachment.add_photos_count" = "添加 %ld 张照片";
 "attachment.remove_image" = "移除图片";
+"attachment.preview_image" = "预览图片";
 "attachment.remove_file" = "移除文件";
 "attachment.file_import_failed_title" = "无法添加文件";
 "attachment.processing" = "正在使用 AnyDoc 转换…";
@@ -491,7 +478,7 @@
 "error.create_conversation" = "新建对话失败：%@";
 "error.delete_conversation" = "删除对话失败：%@";
 "error.rename_conversation" = "重命名失败：%@";
-"error.api_key_missing" = "请先在设置中配置 %@ API Key。";
+"error.api_key_missing" = "你需要先填写 API Key。";
 "error.save_prompt" = "保存问题失败：%@";
 "error.save_settings" = "保存设置失败：%@";
 "error.edit_message" = "编辑消息失败：%@";
@@ -510,7 +497,6 @@
 "common.no" = "否";
 "common.undo" = "撤销";
 "agent.status.awaiting_confirmation" = "等待你的确认";
-"onboarding.page_indicator" = "第 %1$ld 页，共 %2$ld 页";
 "camera.capture" = "拍照";
 "camera.capturing" = "正在拍照";
 "composer.disabled.importing" = "文件仍在导入。";
