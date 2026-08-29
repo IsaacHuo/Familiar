@@ -483,6 +483,7 @@
   function render(markdown, options) {
     try {
       setSelectionEnabled(!(options && options.streaming));
+      content.classList.toggle("streaming", Boolean(options && options.streaming));
       const md = createMarkdownIt();
       if (!md) {
         content.innerHTML = "<p>" + escapeHTML(markdown).replace(/\n/g, "<br>") + "</p>";
