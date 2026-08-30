@@ -182,8 +182,8 @@ private actor FamiliarBenchmarkEventKitService: FamiliarEventKitServicing {
 
     func targetDescription(for request: FamiliarPendingWriteRequest) -> String {
         switch request {
-        case .event: "Benchmark Calendar"
-        case .reminder: "Benchmark Reminders"
+        case .event, .eventUpdate, .eventDelete: "Benchmark Calendar"
+        case .reminder, .reminderUpdate, .reminderDelete: "Benchmark Reminders"
         }
     }
 
@@ -218,8 +218,8 @@ private actor FamiliarBenchmarkEventKitService: FamiliarEventKitServicing {
             return existing
         }
         let kind: FamiliarEventKitAccessKind = switch request {
-        case .event: .events
-        case .reminder: .reminders
+        case .event, .eventUpdate, .eventDelete: .events
+        case .reminder, .reminderUpdate, .reminderDelete: .reminders
         }
         let result = FamiliarWriteCommitResult(
             idempotencyKey: idempotencyKey,

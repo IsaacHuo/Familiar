@@ -11,7 +11,8 @@ actor FamiliarContainerRuntimeSession {
         case failed(String)
     }
 
-    let workspaceID: FamiliarWorkspaceID
+    let workspaceView: FamiliarWorkspaceTaskView
+    var workspaceID: FamiliarWorkspaceID { workspaceView.workspaceID }
     private let container: LinuxContainer
     private(set) var state: State = .stopped
     private var activeProcess: LinuxProcess?
@@ -21,12 +22,12 @@ actor FamiliarContainerRuntimeSession {
     private var cancelledTaskIDs: Set<UUID> = []
 
     init(
-        workspaceID: FamiliarWorkspaceID,
+        workspaceView: FamiliarWorkspaceTaskView,
         container: LinuxContainer,
         idleTimeout: Duration = .seconds(600),
         executionGate: FamiliarContainerExecutionGate = .shared
     ) {
-        self.workspaceID = workspaceID
+        self.workspaceView = workspaceView
         self.container = container
         self.idleTimeout = idleTimeout
         self.executionGate = executionGate
@@ -57,13 +58,22 @@ actor FamiliarContainerRuntimeSession {
     }
 
     func execute(_ request: FamiliarShellRequest) async throws -> FamiliarShellResult {
+        guard request.workspaceView == workspaceView else {
+            throw FamiliarWorkspaceError.invalidTaskView
+        }
+        guard !request.networkPolicy.enabled else {
+            throw FamiliarContainerRuntimeError.networkUnavailable
+        }
         await executionGate.acquire()
         defer { Task { await executionGate.release() } }
         try await start()
         guard case .ready = state else { throw FamiliarShellExecutorError.alreadyRunning }
         state = .running(request.taskID)
-        let stdout = FamiliarContainerBufferWriter(limit: FamiliarShellLimits.macOS.maximumOutputBytes)
-        let stderr = FamiliarContainerBufferWriter(limit: FamiliarShellLimits.macOS.maximumOutputBytes)
+        // Container Writer is synchronous, so split the combined output budget
+        // evenly across both streams. The iOS/iSH path uses a shared exact budget.
+        let perStreamOutputLimit = FamiliarShellLimits.macOS.maximumOutputBytes / 2
+        let stdout = FamiliarContainerBufferWriter(limit: perStreamOutputLimit)
+        let stderr = FamiliarContainerBufferWriter(limit: perStreamOutputLimit)
         let startedAt = Date()
 
         let process = try await container.exec(request.taskID.uuidString.lowercased()) { config in
@@ -94,7 +104,8 @@ actor FamiliarContainerRuntimeSession {
                 outputWasTruncated: stdout.wasTruncated || stderr.wasTruncated,
                 startedAt: startedAt,
                 finishedAt: exit.exitedAt,
-                workspaceDiff: nil
+                workspaceDiff: nil,
+                networkStatistics: .zero
             )
         } catch is CancellationError {
             try? await process.kill(.term)
@@ -114,7 +125,8 @@ actor FamiliarContainerRuntimeSession {
                 outputWasTruncated: stdout.wasTruncated || stderr.wasTruncated,
                 startedAt: startedAt,
                 finishedAt: Date(),
-                workspaceDiff: nil
+                workspaceDiff: nil,
+                networkStatistics: .zero
             )
         } catch {
             try? await process.kill(.kill)
@@ -133,7 +145,8 @@ actor FamiliarContainerRuntimeSession {
                 outputWasTruncated: stdout.wasTruncated || stderr.wasTruncated,
                 startedAt: startedAt,
                 finishedAt: Date(),
-                workspaceDiff: nil
+                workspaceDiff: nil,
+                networkStatistics: .zero
             )
         }
     }
@@ -198,13 +211,12 @@ actor FamiliarContainerExecutionGate {
 /// by Familiar. OCI pulling and host command execution are intentionally absent.
 nonisolated enum FamiliarContainerRuntimeFactory {
     static func makeSession(
-        workspaceID: FamiliarWorkspaceID,
-        workspaceStore: FamiliarWorkspaceStore,
+        workspaceView: FamiliarWorkspaceTaskView,
         rootFileSystem: Mount,
         writableLayer: Mount,
         virtualMachineManager: any VirtualMachineManager
     ) throws -> FamiliarContainerRuntimeSession {
-        let paths = try workspaceStore.prepare(workspaceID)
+        let workspaceID = workspaceView.workspaceID
         let containerID = "familiar-" + workspaceID.rawID.uuidString
             .replacingOccurrences(of: "-", with: "")
             .lowercased()
@@ -226,14 +238,14 @@ nonisolated enum FamiliarContainerRuntimeFactory {
             config.hosts = nil
             config.sockets = []
             config.mounts = LinuxContainer.defaultMounts() + [
-                .share(source: paths.files.path, destination: "/workspace/files"),
-                .share(source: paths.outputs.path, destination: "/workspace/outputs"),
-                .share(source: paths.work.path, destination: "/workspace/work")
+                .share(source: workspaceView.files.path, destination: "/workspace/files", options: ["ro"]),
+                .share(source: workspaceView.outputs.path, destination: "/workspace/outputs"),
+                .share(source: workspaceView.work.path, destination: "/workspace/work")
             ]
             config.useInit = true
         }
         return FamiliarContainerRuntimeSession(
-            workspaceID: workspaceID,
+            workspaceView: workspaceView,
             container: container
         )
     }
@@ -279,9 +291,15 @@ nonisolated final class FamiliarContainerShellExecutor: FamiliarShellExecutor, @
 
 nonisolated enum FamiliarContainerRuntimeError: LocalizedError, Sendable {
     case networkInterfaceConfigured
+    case networkUnavailable
 
     var errorDescription: String? {
-        "Familiar Container 必须在无网络接口的配置下运行。"
+        switch self {
+        case .networkInterfaceConfigured:
+            "Familiar Container 必须在受控网络配置下运行。"
+        case .networkUnavailable:
+            "当前 Container Runtime 尚未实现受控公共网络访问。"
+        }
     }
 }
 

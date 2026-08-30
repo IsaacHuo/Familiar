@@ -9,14 +9,23 @@ nonisolated enum FamiliarShellPolicyDecision: Equatable, Sendable {
 nonisolated struct FamiliarShellPolicy: Sendable {
     static let maximumCommandCharacters = 32_000
 
-    func evaluate(command: String) -> FamiliarShellPolicyDecision {
+    func evaluate(
+        command: String,
+        networkPolicy: FamiliarShellNetworkPolicy = .disabled
+    ) -> FamiliarShellPolicyDecision {
         let normalized = command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty, normalized.count <= Self.maximumCommandCharacters else {
             return .deny(reason: "命令为空或超过长度限制。")
         }
 
-        if matches(networkPattern, in: normalized) {
-            return .deny(reason: "Shell Runtime 第一阶段不允许网络访问。")
+        if matches(networkPattern, in: normalized), !networkPolicy.enabled {
+            return .deny(reason: "当前 Workspace 未开启 Shell 网络访问。")
+        }
+        if networkPolicy.enabled, matches(networkListenerPattern, in: normalized) {
+            return .deny(reason: "Shell 不允许监听端口或启动网络服务。")
+        }
+        if networkPolicy.enabled, matches(privateNetworkPattern, in: normalized) {
+            return .deny(reason: "Shell 不允许访问本机、局域网或链路本地地址。")
         }
         if matches(hostPathPattern, in: normalized) {
             return .deny(reason: "Shell 只能访问当前 Familiar Workspace。")
@@ -42,6 +51,14 @@ nonisolated struct FamiliarShellPolicy: Sendable {
 
     private var networkPattern: String {
         #"(^|[;&|]\s*)(curl|wget|ssh|scp|sftp|nc|ncat|socat|telnet|ftp)\b|\b(git\s+(clone|fetch|pull|push)|pip3?\s+install|npm\s+(install|ci)|pnpm\s+install|yarn\s+install|apk\s+add|apt(-get)?\s+install)\b"#
+    }
+
+    private var networkListenerPattern: String {
+        #"\b(nc|ncat|socat)\b[^\n]*\s(-l|--listen)\b|\bpython3?\s+-m\s+(http\.server|socketserver)\b|\b(uvicorn|gunicorn|http-server)\b"#
+    }
+
+    private var privateNetworkPattern: String {
+        #"\b(localhost|0\.0\.0\.0|127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|169\.254(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|::1|fe80:|fc[0-9a-f]{2}:|fd[0-9a-f]{2}:)\b"#
     }
 
     private var hostPathPattern: String {

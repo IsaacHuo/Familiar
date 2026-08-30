@@ -1,4 +1,5 @@
 "NSCameraUsageDescription" = "Familiar uses the camera to add a photo draft to your message.";
+"NSPhotoLibraryAddUsageDescription" = "Familiar saves a Workspace image to Photos only after you approve the exact output.";
 "NSCalendarsFullAccessUsageDescription" = "Familiar reads calendar events you ask about and adds an event only after you confirm its preview.";
 "NSRemindersFullAccessUsageDescription" = "Familiar reads reminders you ask about and adds a reminder only after you confirm its preview.";
 "NSMicrophoneUsageDescription" = "Familiar uses the microphone only while transcribing your voice into an editable message draft.";

@@ -22,13 +22,16 @@ struct FamiliarProjectService {
     nonisolated static let maximumInstructionLength = 8_000
     let resourceStore: FamiliarProjectResourceStore
     let artifactStore: FamiliarArtifactStore
+    let workspaceStore: FamiliarWorkspaceStore
 
     init(
         resourceStore: FamiliarProjectResourceStore = FamiliarProjectResourceStore(),
-        artifactStore: FamiliarArtifactStore = FamiliarArtifactStore()
+        artifactStore: FamiliarArtifactStore = FamiliarArtifactStore(),
+        workspaceStore: FamiliarWorkspaceStore = FamiliarWorkspaceStore()
     ) {
         self.resourceStore = resourceStore
         self.artifactStore = artifactStore
+        self.workspaceStore = workspaceStore
     }
 
     @discardableResult
@@ -83,12 +86,16 @@ struct FamiliarProjectService {
         guard !project.agentRuns.contains(where: { $0.status == .running }) else {
             throw FamiliarProjectServiceError.projectHasRunningRun
         }
-        let staged = try resourceStore.stageProjectDirectory(projectID: project.id)
-        let stagedArtifacts = try artifactStore.stageProjectDirectory(projectID: project.id)
+        var staged: FamiliarStagedResourceDirectory?
+        var stagedArtifacts: FamiliarStagedArtifactDirectory?
+        var stagedWorkspace: FamiliarStagedWorkspaceDirectory?
         let projectID = project.id
-        project.conversations.forEach { $0.project = nil }
-        project.agentRuns.forEach { $0.project = nil }
         do {
+            staged = try resourceStore.stageProjectDirectory(projectID: projectID)
+            stagedArtifacts = try artifactStore.stageProjectDirectory(projectID: projectID)
+            stagedWorkspace = try workspaceStore.stageWorkspace(.project(projectID))
+            project.conversations.forEach { $0.project = nil }
+            project.agentRuns.forEach { $0.project = nil }
             let artifacts = try context.fetch(FetchDescriptor<FamiliarArtifact>(
                 predicate: #Predicate { $0.projectID == projectID }
             ))
@@ -112,12 +119,14 @@ struct FamiliarProjectService {
             _ = try FamiliarPinService().stageRemoval(.project, targetIDs: [projectID], in: context)
             context.delete(project)
             try context.save()
-            if let staged { try resourceStore.discard(staged) }
-            if let stagedArtifacts { try artifactStore.discard(stagedArtifacts) }
+            if let staged { try? resourceStore.discard(staged) }
+            if let stagedArtifacts { try? artifactStore.discard(stagedArtifacts) }
+            if let stagedWorkspace { try? workspaceStore.discard(stagedWorkspace) }
         } catch {
             context.rollback()
             if let staged { try? resourceStore.restore(staged) }
             if let stagedArtifacts { try? artifactStore.restore(stagedArtifacts) }
+            if let stagedWorkspace { try? workspaceStore.restore(stagedWorkspace) }
             throw error
         }
     }

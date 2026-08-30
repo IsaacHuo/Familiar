@@ -476,7 +476,19 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                 conversationID: contextSnapshot.conversationID,
                 workspaceID: workspaceID,
                 resources: resources,
-                attachments: attachments
+                attachments: attachments,
+                progressReporter: { progress in
+                    let detail: String = switch progress {
+                    case .status(let value): value
+                    case .standardOutput(let value): value
+                    case .standardError(let value): value
+                    }
+                    await emitter.emit(.activityProgress(.init(
+                        id: call.id,
+                        fractionCompleted: nil,
+                        detail: detail
+                    )))
+                }
             )
             let outcome = try await executeOutcome(
                 name: call.name,
@@ -501,16 +513,19 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                 let approvalDecision: FamiliarToolConfirmationDecision
                 if hasGrant {
                     approvalDecision = .confirmed
-                    automaticApprovalRequest = FamiliarToolConfirmationRequest(runID: runID, toolCallID: call.id, toolName: call.name, effect: manifest.effect, risk: manifest.risk, title: proposal.title, fields: proposal.fields, target: proposal.target, consequence: proposal.consequence, undoPolicy: proposal.undoPolicy, automaticAuthorization: true, automaticAuthorizationScope: authorizationScope)
+                    automaticApprovalRequest = FamiliarToolConfirmationRequest(runID: runID, toolCallID: call.id, toolName: call.name, effect: manifest.effect, risk: manifest.risk, title: proposal.title, fields: proposal.fields, target: proposal.target, consequence: proposal.consequence, undoPolicy: proposal.undoPolicy, automaticAuthorization: true, automaticAuthorizationScope: authorizationScope, allowedAuthorizationDurations: proposal.allowedAuthorizationDurations)
                 } else {
-                    approvalDecision = try await approve(runID: runID, call: call, effect: manifest.effect, risk: manifest.risk, title: proposal.title, fields: proposal.fields, target: proposal.target, consequence: proposal.consequence, undoPolicy: proposal.undoPolicy, emitter: emitter, deadline: deadline)
+                    approvalDecision = try await approve(runID: runID, call: call, effect: manifest.effect, risk: manifest.risk, title: proposal.title, fields: proposal.fields, target: proposal.target, consequence: proposal.consequence, undoPolicy: proposal.undoPolicy, allowedAuthorizationDurations: proposal.allowedAuthorizationDurations, emitter: emitter, deadline: deadline)
                 }
                 guard approvalDecision.isConfirmed else {
                     let completion = activityCompletion(runID: runID, call: call, manifest: manifest, assistantTurnID: assistantTurnID, detail: String(localized: "tool.cancelled_by_user"), confirmation: .cancelled, status: .cancelled, startedAt: item.startedAt)
                     await emitter.emit(.activityCompleted(completion))
                     return .init(index: item.index, message: .tool(Self.cancelledResult(), toolCallID: call.id, name: call.name), sources: [])
                 }
-                if !hasGrant, let duration = approvalDecision.authorizationDuration, let authorizationRuntime {
+                if !hasGrant,
+                   let duration = approvalDecision.authorizationDuration,
+                   proposal.allowedAuthorizationDurations.contains(duration),
+                   let authorizationRuntime {
                     try await authorizationRuntime.issueAuthorization(duration: duration, manifest: manifest, arguments: call.arguments, projectID: contextSnapshot.projectID, targetKey: proposal.targetKey, evidence: proposal.title)
                 }
                 if manifest.effect != .read {
@@ -603,8 +618,8 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         }
     }
 
-    private func approve(runID: String, call: FamiliarToolCall, effect: FamiliarToolEffect, risk: FamiliarToolRisk, title: String, fields: [FamiliarApprovalField], target: String?, consequence: String, undoPolicy: FamiliarApprovalUndoPolicy, emitter: FamiliarRuntimeEventEmitter, deadline: ContinuousClock.Instant) async throws -> FamiliarToolConfirmationDecision {
-        let request = FamiliarToolConfirmationRequest(runID: runID, toolCallID: call.id, toolName: call.name, effect: effect, risk: risk, title: title, fields: fields, target: target, consequence: consequence, undoPolicy: undoPolicy)
+    private func approve(runID: String, call: FamiliarToolCall, effect: FamiliarToolEffect, risk: FamiliarToolRisk, title: String, fields: [FamiliarApprovalField], target: String?, consequence: String, undoPolicy: FamiliarApprovalUndoPolicy, allowedAuthorizationDurations: [FamiliarAuthorizationDuration] = [.once, .session, .always], emitter: FamiliarRuntimeEventEmitter, deadline: ContinuousClock.Instant) async throws -> FamiliarToolConfirmationDecision {
+        let request = FamiliarToolConfirmationRequest(runID: runID, toolCallID: call.id, toolName: call.name, effect: effect, risk: risk, title: title, fields: fields, target: target, consequence: consequence, undoPolicy: undoPolicy, allowedAuthorizationDurations: allowedAuthorizationDurations)
         await emitter.emit(.runPhaseChanged(.awaitingApproval))
         await emitter.emit(.approvalRequested(request))
         let decision = try await Self.withDeadline(deadline) {

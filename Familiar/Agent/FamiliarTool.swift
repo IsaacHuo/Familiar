@@ -29,6 +29,7 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         case insight
         case code
         case shareDraft
+        case shellExecution
     }
 
     public struct Scalar: Codable, Equatable, Sendable {
@@ -315,6 +316,77 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         }
     }
 
+    public struct ShellNetworkStatistics: Codable, Equatable, Sendable {
+        public let openedConnections: Int
+        public let peakConcurrentConnections: Int
+        public let bytesReceived: Int64
+        public let bytesSent: Int64
+
+        public init(
+            openedConnections: Int = 0,
+            peakConcurrentConnections: Int = 0,
+            bytesReceived: Int64 = 0,
+            bytesSent: Int64 = 0
+        ) {
+            self.openedConnections = openedConnections
+            self.peakConcurrentConnections = peakConcurrentConnections
+            self.bytesReceived = bytesReceived
+            self.bytesSent = bytesSent
+        }
+    }
+
+    public struct ShellExecution: Codable, Equatable, Sendable {
+        public let summary: String
+        public let taskID: UUID
+        public let command: String
+        public let workingDirectory: String
+        public let runtime: String
+        public let status: String
+        public let exitCode: Int32?
+        public let standardOutput: String
+        public let standardError: String
+        public let outputWasTruncated: Bool
+        public let networkEnabled: Bool
+        public let networkStatistics: ShellNetworkStatistics
+        public let addedFiles: [String]
+        public let modifiedFiles: [String]
+        public let removedFiles: [String]
+
+        public init(
+            summary: String,
+            taskID: UUID,
+            command: String,
+            workingDirectory: String,
+            runtime: String,
+            status: String,
+            exitCode: Int32?,
+            standardOutput: String,
+            standardError: String,
+            outputWasTruncated: Bool,
+            networkEnabled: Bool,
+            networkStatistics: ShellNetworkStatistics = .init(),
+            addedFiles: [String] = [],
+            modifiedFiles: [String] = [],
+            removedFiles: [String] = []
+        ) {
+            self.summary = summary
+            self.taskID = taskID
+            self.command = command
+            self.workingDirectory = workingDirectory
+            self.runtime = runtime
+            self.status = status
+            self.exitCode = exitCode
+            self.standardOutput = standardOutput
+            self.standardError = standardError
+            self.outputWasTruncated = outputWasTruncated
+            self.networkEnabled = networkEnabled
+            self.networkStatistics = networkStatistics
+            self.addedFiles = addedFiles
+            self.modifiedFiles = modifiedFiles
+            self.removedFiles = removedFiles
+        }
+    }
+
     public enum Content: Equatable, Sendable {
         case scalar(Scalar)
         case searchResults(SearchResults)
@@ -329,6 +401,7 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         case insight(Insight)
         case code(Code)
         case shareDraft(ShareDraft)
+        case shellExecution(ShellExecution)
     }
 
     public let schemaVersion: Int
@@ -348,6 +421,7 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
     public static func insight(_ value: Insight) -> Self { .init(name: .insight, content: .insight(value)) }
     public static func code(_ value: Code) -> Self { .init(name: .code, content: .code(value)) }
     public static func shareDraft(_ value: ShareDraft) -> Self { .init(name: .shareDraft, content: .shareDraft(value)) }
+    public static func shellExecution(_ value: ShellExecution) -> Self { .init(name: .shellExecution, content: .shellExecution(value)) }
 
     public var summary: String {
         switch content {
@@ -364,6 +438,7 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         case .insight(let value): value.title
         case .code(let value): value.summary
         case .shareDraft(let value): value.summary
+        case .shellExecution(let value): value.summary
         }
     }
 
@@ -402,6 +477,7 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         case .insight: .insight(try container.decode(Insight.self, forKey: .payload))
         case .code: .code(try container.decode(Code.self, forKey: .payload))
         case .shareDraft: .shareDraft(try container.decode(ShareDraft.self, forKey: .payload))
+        case .shellExecution: .shellExecution(try container.decode(ShellExecution.self, forKey: .payload))
         }
     }
 
@@ -423,6 +499,7 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         case .insight(let value): try container.encode(value, forKey: .payload)
         case .code(let value): try container.encode(value, forKey: .payload)
         case .shareDraft(let value): try container.encode(value, forKey: .payload)
+        case .shellExecution(let value): try container.encode(value, forKey: .payload)
         }
     }
 }
@@ -521,6 +598,14 @@ nonisolated enum FamiliarCapabilityAvailability: Equatable, Sendable {
 }
 
 nonisolated struct FamiliarToolContext: Sendable {
+    enum Progress: Equatable, Sendable {
+        case status(String)
+        case standardOutput(String)
+        case standardError(String)
+    }
+
+    typealias ProgressReporter = @Sendable (Progress) async -> Void
+
     struct Resource: Sendable {
         let id: UUID
         let versionID: UUID
@@ -549,6 +634,7 @@ nonisolated struct FamiliarToolContext: Sendable {
     let workspaceID: FamiliarWorkspaceID?
     let resources: [Resource]
     let attachments: [Attachment]
+    private let progressReporter: ProgressReporter?
 
     init(
         runID: String = "standalone",
@@ -557,7 +643,8 @@ nonisolated struct FamiliarToolContext: Sendable {
         conversationID: UUID? = nil,
         workspaceID: FamiliarWorkspaceID? = nil,
         resources: [Resource] = [],
-        attachments: [Attachment] = []
+        attachments: [Attachment] = [],
+        progressReporter: ProgressReporter? = nil
     ) {
         self.runID = runID
         self.toolCallID = toolCallID
@@ -566,9 +653,14 @@ nonisolated struct FamiliarToolContext: Sendable {
         self.workspaceID = workspaceID
         self.resources = resources
         self.attachments = attachments
+        self.progressReporter = progressReporter
     }
 
     var idempotencyKey: String { runID + ":" + toolCallID }
+
+    func reportProgress(_ progress: Progress) async {
+        await progressReporter?(progress)
+    }
 }
 
 nonisolated struct FamiliarToolExecutionResult: Sendable {
@@ -612,9 +704,10 @@ nonisolated struct FamiliarActionProposal: Sendable {
     let consequence: String
     let undoPolicy: FamiliarApprovalUndoPolicy
     let idempotencyKey: String
+    let allowedAuthorizationDurations: [FamiliarAuthorizationDuration]
     let commit: @Sendable () async throws -> FamiliarCommittedAction
 
-    init(title: String, fields: [FamiliarApprovalField], target: String?, targetKey: String? = nil, effect: FamiliarToolEffect, risk: FamiliarToolRisk, consequence: String, undoPolicy: FamiliarApprovalUndoPolicy, idempotencyKey: String, commit: @escaping @Sendable () async throws -> FamiliarCommittedAction) {
+    init(title: String, fields: [FamiliarApprovalField], target: String?, targetKey: String? = nil, effect: FamiliarToolEffect, risk: FamiliarToolRisk, consequence: String, undoPolicy: FamiliarApprovalUndoPolicy, idempotencyKey: String, allowedAuthorizationDurations: [FamiliarAuthorizationDuration] = [.once, .session, .always], commit: @escaping @Sendable () async throws -> FamiliarCommittedAction) {
         self.title = title
         self.fields = fields
         self.target = target
@@ -624,6 +717,7 @@ nonisolated struct FamiliarActionProposal: Sendable {
         self.consequence = consequence
         self.undoPolicy = undoPolicy
         self.idempotencyKey = idempotencyKey
+        self.allowedAuthorizationDurations = allowedAuthorizationDurations
         self.commit = commit
     }
 }
@@ -714,7 +808,7 @@ nonisolated enum FamiliarToolRegistryError: LocalizedError, Sendable {
 }
 
 actor FamiliarToolRegistry {
-    private let toolsByName: [String: AnyFamiliarTool]
+    private var toolsByName: [String: AnyFamiliarTool]
     private let capabilities: (any FamiliarCapabilityProviding)?
 
     init(tools: [AnyFamiliarTool], capabilities: (any FamiliarCapabilityProviding)? = nil) throws {
@@ -747,6 +841,13 @@ actor FamiliarToolRegistry {
             }
             return $0.name < $1.name
         }
+    }
+
+    func register(_ tool: AnyFamiliarTool) throws {
+        guard toolsByName[tool.manifest.name] == nil else {
+            throw FamiliarToolRegistryError.duplicateTool(tool.manifest.name)
+        }
+        toolsByName[tool.manifest.name] = tool
     }
 
     func manifest(named name: String) throws -> FamiliarToolManifest {

@@ -1,5 +1,8 @@
 import AVFoundation
+import Contacts
+import CoreLocation
 import EventKit
+import Photos
 import Speech
 import SwiftData
 import SwiftUI
@@ -11,6 +14,7 @@ enum FamiliarSettingsRoute: String, Hashable {
     case searchService
     case appearance
     case tools
+    case shellRuntime
     case authorizations
     case skills
     case soul
@@ -28,6 +32,9 @@ struct FamiliarSettingsView: View {
     let initialRoute: FamiliarSettingsRoute?
     let registry: FamiliarToolRegistry
     let searchService: FamiliarWebSearchService
+    let workspaceStore: FamiliarWorkspaceStore
+    let workspaceID: FamiliarWorkspaceID?
+    let shellRuntimeStatus: FamiliarShellRuntimeStatus
     let onSaveSettings: (FamiliarSettings) -> Void
 
     @State private var settings: FamiliarSettings
@@ -38,12 +45,18 @@ struct FamiliarSettingsView: View {
         initialRoute: FamiliarSettingsRoute? = nil,
         registry: FamiliarToolRegistry,
         searchService: FamiliarWebSearchService,
+        workspaceStore: FamiliarWorkspaceStore,
+        workspaceID: FamiliarWorkspaceID?,
+        shellRuntimeStatus: FamiliarShellRuntimeStatus,
         onSaveSettings: @escaping (FamiliarSettings) -> Void
     ) {
         self.initialSettings = initialSettings
         self.initialRoute = initialRoute
         self.registry = registry
         self.searchService = searchService
+        self.workspaceStore = workspaceStore
+        self.workspaceID = workspaceID
+        self.shellRuntimeStatus = shellRuntimeStatus
         self.onSaveSettings = onSaveSettings
         _settings = State(initialValue: initialSettings)
         _path = State(initialValue: initialRoute.map { [$0] } ?? [])
@@ -78,6 +91,13 @@ struct FamiliarSettingsView: View {
                         subtitle: String(localized: "settings.hub.tools.detail", defaultValue: "Capabilities registered with the Agent Runtime"),
                         symbol: "puzzlepiece.extension.fill",
                         color: .blue
+                    )
+                    settingsLink(
+                        .shellRuntime,
+                        title: String(localized: "settings.shell.title", defaultValue: "Shell Runtime"),
+                        subtitle: String(localized: "settings.shell.detail", defaultValue: "Alpine Linux in the current Familiar Workspace"),
+                        symbol: "terminal.fill",
+                        color: .gray
                     )
                     settingsLink(
                         .authorizations,
@@ -222,6 +242,12 @@ struct FamiliarSettingsView: View {
             FamiliarAppearanceSettingsView()
         case .tools:
             FamiliarToolsSettingsView(registry: registry)
+        case .shellRuntime:
+            FamiliarShellRuntimeSettingsView(
+                store: workspaceStore,
+                workspaceID: workspaceID,
+                runtimeStatus: shellRuntimeStatus
+            )
         case .authorizations:
             FamiliarAuthorizationSettingsView()
         case .skills:
@@ -245,6 +271,137 @@ struct FamiliarSettingsView: View {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
         return String(format: String(localized: "settings.about.version", defaultValue: "Version %@ (%@)"), version, build)
+    }
+}
+
+private struct FamiliarShellRuntimeSettingsView: View {
+    let store: FamiliarWorkspaceStore
+    let workspaceID: FamiliarWorkspaceID?
+    let runtimeStatus: FamiliarShellRuntimeStatus
+
+    @State private var networkEnabled = false
+    @State private var errorMessage: String?
+    @State private var asksToResetRuntime = false
+
+    var body: some View {
+        Form {
+            Section(String(localized: "settings.shell.status", defaultValue: "Runtime Status")) {
+                LabeledContent(
+                    String(localized: "settings.shell.title", defaultValue: "Shell Runtime"),
+                    value: runtimeStatusLabel
+                )
+                LabeledContent(
+                    String(localized: "settings.shell.rootfs", defaultValue: "Root filesystem"),
+                    value: "Alpine 3.24.0 · arm64"
+                )
+                LabeledContent(
+                    String(localized: "settings.shell.storage", defaultValue: "Bundled storage"),
+                    value: bundledRuntimeSize
+                )
+            }
+
+            Section {
+                Toggle(
+                    String(localized: "settings.shell.network", defaultValue: "Allow public internet in this Workspace"),
+                    isOn: Binding(
+                        get: { networkEnabled },
+                        set: { enabled in saveNetworkEnabled(enabled) }
+                    )
+                )
+                .disabled(workspaceID == nil || !runtimeStatus.isReady)
+            } footer: {
+                Text(String(localized: "settings.shell.network.footer", defaultValue: "Off by default. Shell never receives model API keys, Keychain data, cookies, or access to local-network services."))
+            }
+
+            Section(String(localized: "settings.shell.limits", defaultValue: "Limits")) {
+                Text(String(localized: "settings.shell.limits.detail", defaultValue: "180 seconds · 16 processes · 1 MB output · 500 MB Workspace"))
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Link(String(localized: "settings.shell.source", defaultValue: "iSH Source Code"), destination: URL(string: "https://github.com/OpenMinis/ish-arm64/tree/54ca185b77f170e12fd353fcd7443232f6cb73fd")!)
+                Link(String(localized: "settings.shell.license", defaultValue: "GNU GPLv3 License"), destination: URL(string: "https://www.gnu.org/licenses/gpl-3.0.html")!)
+            }
+
+            Section {
+                Button(
+                    runtimeStatus.resetScheduled
+                        ? String(localized: "settings.shell.reset_scheduled", defaultValue: "Runtime reset scheduled")
+                        : String(localized: "settings.shell.reset", defaultValue: "Reset Runtime on Next Launch"),
+                    role: .destructive
+                ) {
+                    asksToResetRuntime = true
+                }
+                .disabled(runtimeStatus.resetScheduled)
+            } footer: {
+                Text(String(localized: "settings.shell.reset.footer", defaultValue: "The installed Alpine filesystem will be replaced from the verified bundled image the next time Familiar launches."))
+            }
+        }
+        .navigationTitle(String(localized: "settings.shell.title", defaultValue: "Shell Runtime"))
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: workspaceID) {
+            guard let workspaceID else {
+                networkEnabled = false
+                return
+            }
+            do {
+                networkEnabled = try store.shellSettings(in: workspaceID).networkEnabled
+            } catch is CancellationError {
+                return
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+        .alert(String(localized: "settings.shell.title", defaultValue: "Shell Runtime"), isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button(String(localized: "common.ok"), role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
+        .confirmationDialog(
+            String(localized: "settings.shell.reset.confirm", defaultValue: "Reset the Shell Runtime on next launch?"),
+            isPresented: $asksToResetRuntime,
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "settings.shell.reset", defaultValue: "Reset Runtime on Next Launch"), role: .destructive) {
+                runtimeStatus.scheduleReset()
+            }
+        }
+    }
+
+    private var runtimeStatusLabel: String {
+        switch runtimeStatus.phase {
+        case .unavailable:
+            String(localized: "settings.shell.unavailable", defaultValue: "Runtime assets are not available in this build")
+        case .preparing:
+            String(localized: "settings.shell.preparing", defaultValue: "Preparing")
+        case .ready:
+            String(localized: "settings.shell.ready", defaultValue: "Ready")
+        case .failed(let message):
+            String(format: String(localized: "settings.shell.failed", defaultValue: "Failed: %@"), message)
+        }
+    }
+
+    private var bundledRuntimeSize: String {
+        guard let archive = Bundle.main.url(
+            forResource: "alpine-3.24.0-aarch64-fakefs",
+            withExtension: "tar.gz"
+        ), let bytes = try? archive.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
+            return String(localized: "settings.shell.unavailable", defaultValue: "Unavailable")
+        }
+        return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+    }
+
+    private func saveNetworkEnabled(_ enabled: Bool) {
+        guard let workspaceID else { return }
+        do {
+            try store.setShellNetworkEnabled(enabled, in: workspaceID)
+            networkEnabled = enabled
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
 
@@ -574,34 +731,64 @@ private struct FamiliarSoulSettingsView: View {
 }
 
 private struct FamiliarToolsSettingsView: View {
+    private struct Entry: Identifiable, Sendable {
+        let manifest: FamiliarToolManifest
+        let availability: FamiliarCapabilityAvailability
+        var id: String { manifest.name }
+    }
+
     let registry: FamiliarToolRegistry
-    @State private var tools: [FamiliarToolManifest] = []
+    @State private var entries: [Entry] = []
 
     var body: some View {
         List {
             Section {
-                ForEach(tools, id: \.name) { tool in
+                ForEach(entries) { entry in
                     Label {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(tool.title)
-                            Text(tool.name)
+                            Text(entry.manifest.title)
+                            Text("\(executionClassLabel(entry.manifest.executionClass)) · \(availabilityLabel(entry.availability))")
                                 .font(.caption.monospaced())
                                 .foregroundStyle(.secondary)
                         }
                     } icon: {
-                        Image(systemName: FamiliarToolPresentation.symbol(for: tool.name))
+                        Image(systemName: FamiliarToolPresentation.symbol(for: entry.manifest.name))
                     }
                 }
             } header: {
                 Text(String(localized: "settings.tools.registered", defaultValue: "Registered Tools"))
             } footer: {
-                Text(String(localized: "settings.tools.registered.footer", defaultValue: "This read-only list reflects the tools registered with Familiar's Agent Runtime. Availability is checked only when a run uses a tool."))
+                Text(String(localized: "settings.tools.registered.footer", defaultValue: "This read-only list shows each registered tool's execution class and current system-capability availability."))
             }
         }
         .navigationTitle(String(localized: "settings.hub.tools", defaultValue: "Tools"))
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            tools = await registry.snapshot()
+            let tools = await registry.snapshot()
+            var values: [Entry] = []
+            for tool in tools {
+                values.append(Entry(
+                    manifest: tool,
+                    availability: await registry.availability(for: tool)
+                ))
+            }
+            entries = values
+        }
+    }
+
+    private func executionClassLabel(_ value: FamiliarToolExecutionClass) -> String {
+        switch value {
+        case .native: String(localized: "settings.tools.class.native", defaultValue: "Native")
+        case .specializedLocal: String(localized: "settings.tools.class.specialized", defaultValue: "Specialized Local")
+        case .shell: String(localized: "settings.tools.class.shell", defaultValue: "Shell")
+        }
+    }
+
+    private func availabilityLabel(_ value: FamiliarCapabilityAvailability) -> String {
+        switch value {
+        case .available: String(localized: "settings.tools.availability.available", defaultValue: "Available")
+        case .requestable: String(localized: "settings.tools.availability.requestable", defaultValue: "Permission Required")
+        case .unavailable: String(localized: "settings.tools.availability.unavailable", defaultValue: "Unavailable")
         }
     }
 }
@@ -677,6 +864,9 @@ private struct FamiliarPermissionsSettingsView: View {
                 .disabled(isUpdatingNotifications)
                 permissionRow(String(localized: "settings.permissions.calendar", defaultValue: "Calendar"), symbol: "calendar", status: eventStatus(.event))
                 permissionRow(String(localized: "settings.permissions.reminders", defaultValue: "Reminders"), symbol: "checklist", status: eventStatus(.reminder))
+                permissionRow(String(localized: "settings.permissions.contacts", defaultValue: "Contacts"), symbol: "person.crop.circle", status: contactsStatus)
+                permissionRow(String(localized: "settings.permissions.location", defaultValue: "Location"), symbol: "location", status: locationStatus)
+                permissionRow(String(localized: "settings.permissions.photos_add", defaultValue: "Add to Photos"), symbol: "photo.badge.plus", status: photoAddStatus)
                 permissionRow(String(localized: "settings.permissions.camera", defaultValue: "Camera"), symbol: "camera", status: mediaStatus(AVCaptureDevice.authorizationStatus(for: .video)))
                 permissionRow(String(localized: "settings.permissions.microphone", defaultValue: "Microphone"), symbol: "mic", status: mediaStatus(AVCaptureDevice.authorizationStatus(for: .audio)))
                 permissionRow(String(localized: "settings.permissions.speech", defaultValue: "Speech Recognition"), symbol: "waveform", status: speechStatus)
@@ -738,6 +928,36 @@ private struct FamiliarPermissionsSettingsView: View {
         case .enabled: allowed
         case .denied: denied
         case .notDetermined, .unknown: notRequested
+        }
+    }
+
+    private var contactsStatus: String {
+        switch CNContactStore.authorizationStatus(for: .contacts) {
+        case .authorized, .limited: allowed
+        case .denied: denied
+        case .restricted: restricted
+        case .notDetermined: notRequested
+        @unknown default: restricted
+        }
+    }
+
+    private var locationStatus: String {
+        switch CLLocationManager().authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse: allowed
+        case .denied: denied
+        case .restricted: restricted
+        case .notDetermined: notRequested
+        @unknown default: restricted
+        }
+    }
+
+    private var photoAddStatus: String {
+        switch PHPhotoLibrary.authorizationStatus(for: .addOnly) {
+        case .authorized, .limited: allowed
+        case .denied: denied
+        case .restricted: restricted
+        case .notDetermined: notRequested
+        @unknown default: restricted
         }
     }
 
@@ -907,6 +1127,7 @@ private struct FamiliarAboutView: View {
                 Link(String(localized: "settings.about.privacy", defaultValue: "Privacy Policy"), destination: URL(string: "https://isaachuo.github.io/familiar/privacy/")!)
                 Link(String(localized: "settings.about.support", defaultValue: "Support"), destination: URL(string: "https://isaachuo.github.io/familiar/support/")!)
                 Link(String(localized: "settings.about.feedback", defaultValue: "Report an Issue"), destination: URL(string: "https://github.com/IsaacHuo/familiar/issues")!)
+                Link(String(localized: "settings.about.source", defaultValue: "Source Code"), destination: URL(string: "https://github.com/IsaacHuo/Familiar")!)
             }
 
             Section {
@@ -969,7 +1190,7 @@ private struct FamiliarAboutView: View {
     }
 
     private var thirdPartyNotices: String {
-        let names = ["ThirdPartyNotices", "AnyDocRustDependencies"]
+        let names = ["ThirdPartyNotices", "ThirdPartyNotices-iSH", "AnyDocRustDependencies", "GPL-3.0", "ISH_LICENSE_IOS", "ISHSourceOffer"]
         let values = names.compactMap { name -> String? in
             guard let url = Bundle.main.url(forResource: name, withExtension: "txt") else { return nil }
             return try? String(contentsOf: url, encoding: .utf8)

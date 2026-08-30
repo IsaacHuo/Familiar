@@ -1,4 +1,5 @@
 "NSCameraUsageDescription" = "Familiar 使用相机把照片加入消息草稿。";
+"NSPhotoLibraryAddUsageDescription" = "Familiar 只会在你确认具体输出后，把 Workspace 图片保存到照片。";
 "NSCalendarsFullAccessUsageDescription" = "Familiar 仅查询你询问的日历事件，并且只在你确认预览后添加日程。";
 "NSRemindersFullAccessUsageDescription" = "Familiar 仅查询你询问的提醒事项，并且只在你确认预览后添加提醒。";
 "NSMicrophoneUsageDescription" = "Familiar 仅在把你的语音转成可编辑消息草稿时使用麦克风。";

@@ -350,7 +350,7 @@ private struct FamiliarToolDiffChipButton: View {
             .contentShape(RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.chip, style: .continuous))
         }
         .buttonStyle(FamiliarToolChipPressStyle())
-        .onHover(onPreviewChange)
+        .onHover(perform: onPreviewChange)
         .opacity(isVisible ? 1 : 0)
         .scaleEffect(reduceMotion || isVisible ? 1 : 0.96)
         .animation(
@@ -705,6 +705,7 @@ private enum FamiliarToolChipProjection {
         case .insight(let value): return bounded(value.title)
         case .code(let value): return bounded(value.filename ?? value.language ?? value.summary)
         case .shareDraft(let value): return bounded(value.title ?? value.summary)
+        case .shellExecution(let value): return bounded(value.command)
         }
     }
 
@@ -761,6 +762,10 @@ private enum FamiliarToolChipProjection {
                 values += nonEmptyLines(value.code).prefix(2).map { (String($0), .add) }
             case .shareDraft(let value):
                 values += nonEmptyLines(value.text).prefix(2).map { (String($0), .normal) }
+            case .shellExecution(let value):
+                values.append(("\(value.runtime) · \(value.status)", value.status == "succeeded" ? .add : .normal))
+                values += nonEmptyLines(value.standardOutput).suffix(2).map { (String($0), .normal) }
+                values += nonEmptyLines(value.standardError).suffix(1).map { (String($0), .delete) }
             }
         }
 

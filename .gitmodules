@@ -1,0 +1,5 @@
+[submodule "Vendor/ish-arm64"]
+	path = Vendor/ish-arm64
+	url = https://github.com/OpenMinis/ish-arm64.git
+	shallow = true
+	fetchRecurseSubmodules = false

@@ -22,6 +22,8 @@
 - Run 终态通知是用户可选的本地通知，不使用远程推送；通知只包含通用状态与本地 Run / 会话标识，不包含问题、回答、附件名或工具结果。
 - Spotlight 使用受保护的设备内索引，只保存已有内容会话的标题、更新时间和本地 UUID；不索引消息正文、附件名、工具结果、密钥或 Provider 配置。
 - Skill 只有在用户从 Composer 为下一次 Run 显式选择时才进入上下文；它只能收窄工具范围，不能创建授权或绕过确认。
+- Shell 只接收当前 Run 的不可变 Resource/Attachment 只读投影；Outputs 与临时 Work 可写。照片、联系人、日历、位置、Keychain、其他 Workspace、Metadata 和 Checkpoint 不挂载。
+- Workspace Shell 默认禁网。开启网络是每个 Workspace 的显式设置，并仍受连接目标、socket 数和传输量限制；Familiar 不向 guest 注入 API Key、Cookie、系统代理凭据或宿主环境变量。
 
 ## 2. 数据清单
 
@@ -58,10 +60,11 @@
 | App Intent 文本 | 用户在 Siri / Shortcuts / Spotlight 明确提供 | 仅作为进程内 handoff 和新草稿短暂存在，发送后进入本地消息记录 | Ask / Process 通过当前选择的 BYOK Provider 发送；Open 不发送 | 未发送草稿被拒绝覆盖；成功提交后沿用会话生命周期 |
 | 本地通知状态 | Agent Run 终态 | iOS 通知中心保存通用文案和本地 Run / 会话 UUID；开关保存在 UserDefaults | 无 Familiar 服务或远程推送目的地 | 用户关闭功能时清理 Familiar 待处理与已投递通知；系统也可按自身策略清理 |
 | Spotlight 会话索引 | 本地 SwiftData 会话 | Core Spotlight `.complete` 保护索引；最多 80 字符标题、更新时间和会话 UUID | 无 Familiar 服务或公开 Web 索引目的地 | 随当前会话集合重建；重命名更新，删除会话后清理对应结果 |
+| Shell 输入与输出 | 当前 ContextSnapshot、Agent command 和运行结果 | task-scoped 只读 Files、Workspace Outputs、临时 Work；command/result/diff 随工具记录 | 默认无；用户开启当前 Workspace 网络后仅允许受 policy 约束的公共目标 | Files 随 Run view 清理；Work 结束清理；Outputs 与 Workspace 生命周期一致 |
 
 ## 3. SwiftData 与 store 策略
 
-当前使用 `FamiliarReleaseSchemaV1` 冻结 31 个 SwiftData 实体，并由 `FamiliarReleaseMigrationPlan` 接入 ModelContainer。Debug 使用 `FamiliarDevelopment.store`，Release 使用 `Familiar.store`；完整实体模型与 store 地址见 `state/ARCHITECTURE.md` 第 5 节。数据模型设计约束：
+当前使用单一 `FamiliarReleaseSchema` 的 33 个 SwiftData 实体，不配置 migration plan。项目仍在无人使用的测试阶段，旧测试 store 不受支持，schema 不兼容时直接重建。Debug 使用 `FamiliarDevelopment.store`，Release 使用 `Familiar.store`；完整实体模型与 store 地址见 `state/ARCHITECTURE.md` 第 5 节。数据模型设计约束：
 
 - 关系删除规则使用 cascade；附件 / 项目资源 / Artifact 文件由控制器显式清理。
 - Project 名称在本地 store 中全局唯一，比较时不区分大小写。
@@ -183,14 +186,14 @@ CSP 主要限制：
 
 ### 9.2 写入
 
-创建操作包含以下阶段：
+创建、修改和删除操作包含以下阶段：
 
 1. 生成待确认计划。
 2. Execution Policy 查找 Project、工具、目标和参数范围均匹配的有效 grant。
-3. 无有效 grant 时展示结构化动作卡，由用户选择仅这次、本次会话或始终允许；默认本次会话。
-4. 有效授权产生后调用 EventKit save，并保存执行与撤销所需记录。
+3. 无有效 grant 时展示结构化动作卡；删除只提供“仅这次”，其他操作只显示该 Tool 明确允许的授权时长。
+4. 有效授权产生后调用 EventKit save/remove，并保存 mutation 前置快照和撤销所需记录。
 
-动作卡展示目标容器和字段。取消结果进入 Agent Loop，取消路径不调用 save。有效 grant 可以免除重复询问，但不能隐藏动作卡，也不能越过 Project、工具、目标或参数边界。修改、删除和目标变化必须重新判断授权；EventKit create 已保存跨重启 Undo 记录，真机边界仍待验证（见 `state/CURRENT.md`）。
+动作卡展示目标容器和字段。取消结果进入 Agent Loop，取消路径不调用 EventKit。有效 grant 不能越过 Project、工具、目标或参数边界；修改、删除和目标变化必须重新判断授权。EventKit create/update/delete 均保存跨重启 Undo 记录，真机边界仍待验证（见 `state/CURRENT.md`）。
 
 ### 9.3 权限
 
@@ -212,6 +215,7 @@ CSP 主要限制：
 
 - 使用 `PhotosPicker`，不请求完整照片库权限。
 - 用户选定的图片复制到 App 私有草稿目录，只由 Apple Vision 在设备端处理。
+- 只有用户批准 `photos_save_output` 后，才使用 Photos add-only 权限把指定 Workspace 图片输出写入照片库；工具不遍历图库。
 - 原始图片 bytes 不发送给 DeepSeek；FastVLMRuntime/MLX 不在 iOS target 中。
 
 ### 语音
@@ -228,7 +232,7 @@ CSP 主要限制：
 | 操作 | 默认行为 |
 |---|---|
 | Read + 低风险 | 自动执行 |
-| 可逆写入 | 首次结构化授权；有效 grant 范围内免重复确认但仍展示动作卡；EventKit create 保存跨重启 Undo 记录 |
+| 可逆写入 | 首次结构化授权；EventKit create/update/delete 保存跨重启 Undo 记录 |
 | 推断出的写入 | 无匹配 grant 时结构化授权 |
 | Web 敏感读取 | 受限公网请求自动执行；不授予后续工具权限 |
 | EventKit 可申请读取 | 结构化确认后请求系统权限 |
@@ -240,9 +244,12 @@ CSP 主要限制：
 | Camera | 拍照 | 创建图片草稿 |
 | Microphone | 语音输入 | 提供实时音频 buffer 给 Speech |
 | Speech Recognition | 语音输入 | 生成可编辑文本 |
-| Calendars Full Access | 日历工具 | 查询和确认后创建事件 |
-| Reminders Full Access | 提醒工具 | 查询和确认后创建提醒 |
+| Calendars Full Access | 日历工具 | 查询和确认后创建、修改或删除事件 |
+| Reminders Full Access | 提醒工具 | 查询和确认后创建、修改、完成或删除提醒 |
 | PhotosPicker | 相册 | 读取用户选定图片 |
+| Photos Add Only | 保存 Workspace 图片输出 | 只添加用户批准的指定输出，不读取图库 |
+| Contacts | 联系人工具 | 按当前请求读取最小字段 |
+| Location When In Use | 位置工具 | 前台单次定位 |
 | Security-scoped file URL | 文件 | 复制用户选定文档 |
 
 ## 12. 威胁与控制
@@ -254,6 +261,9 @@ CSP 主要限制：
 | 模型执行未授权写入 | 精确 grant 匹配、动作卡、协调 actor、EventKit commit 分层；模型不能创建自己的授权 |
 | 重复工具调用 | run 内重复检测、授权消费、持久化 invocation 与 commit 幂等 |
 | 路径穿越 | 相对路径校验和根目录约束 |
+| Shell 越权读取 | task-scoped mount allowlist；Files 只读；敏感系统数据、其他 Workspace、Metadata、Checkpoint 与 Keychain 不挂载 |
+| Shell 资源耗尽或常驻 | timeout、全局串行、进程数/guest memory/output/文件/Workspace 限额、进程树取消和失败 checkpoint 恢复 |
+| Shell 网络探测或外传 | Workspace 默认禁网；guest syscall policy 阻止监听与私有/本地目标，并限制连接数、收发量和宿主凭据注入 |
 | 大文件耗尽上下文 | 25 MiB 文件限制和模型字符上限 |
 | 图片意外上传 | 模型能力路由、adapter gate；本地 fallback 不产生新网络目的地 |
 | 本地视觉输出被当作指令 | VisualEvidence 标记为不可信只读输入，不授予工具权限 |

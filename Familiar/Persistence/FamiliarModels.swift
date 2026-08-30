@@ -35,6 +35,8 @@ typealias FamiliarToolResultRecord = FamiliarSchemaV10.FamiliarToolResultRecord
 typealias FamiliarApprovalRecord = FamiliarSchemaV10.FamiliarApprovalRecord
 typealias FamiliarResponseBlockRecord = FamiliarSchemaV10.FamiliarResponseBlockRecord
 typealias FamiliarClarificationRecord = FamiliarSchemaV10.FamiliarClarificationRecord
+typealias FamiliarContextAttachmentReference = FamiliarSchemaV11.FamiliarContextAttachmentReference
+typealias FamiliarEventKitUndoMutationRecord = FamiliarSchemaV11.FamiliarEventKitUndoMutationRecord
 
 nonisolated enum FamiliarStoreProfile: Sendable {
     case development
@@ -60,7 +62,7 @@ enum FamiliarModelContainer {
     static var storeName: String { FamiliarStoreProfile.current.storeName }
     static var storeFilename: String { storeName + ".store" }
 
-    static var currentSchema: Schema { Schema(versionedSchema: FamiliarReleaseSchemaV1.self) }
+    static var currentSchema: Schema { Schema(versionedSchema: FamiliarReleaseSchema.self) }
 
     static func make(at storeURL: URL, configurationName: String = storeName) throws -> ModelContainer {
         let schema = currentSchema
@@ -70,20 +72,12 @@ enum FamiliarModelContainer {
             url: storeURL,
             cloudKitDatabase: .none
         )
-        return try ModelContainer(
-            for: schema,
-            migrationPlan: FamiliarReleaseMigrationPlan.self,
-            configurations: [configuration]
-        )
+        return try ModelContainer(for: schema, configurations: [configuration])
     }
 
     static func makeInMemory(name: String = "FamiliarTests") throws -> ModelContainer {
         let schema = currentSchema
         let configuration = ModelConfiguration(name, schema: schema, isStoredInMemoryOnly: true)
-        return try ModelContainer(
-            for: schema,
-            migrationPlan: FamiliarReleaseMigrationPlan.self,
-            configurations: [configuration]
-        )
+        return try ModelContainer(for: schema, configurations: [configuration])
     }
 }

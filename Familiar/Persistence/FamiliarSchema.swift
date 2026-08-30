@@ -49,20 +49,18 @@ nonisolated enum FamiliarModelSchema {
         FamiliarToolResultRecord.self,
         FamiliarApprovalRecord.self,
         FamiliarResponseBlockRecord.self,
-        FamiliarClarificationRecord.self
+        FamiliarClarificationRecord.self,
+        FamiliarContextAttachmentReference.self,
+        FamiliarEventKitUndoMutationRecord.self
     ]
 
     static var schema: Schema { Schema(models) }
 }
 
-/// The first public, stable Familiar schema. The earlier FamiliarSchemaV3...
-/// V10 types are source-organization history, not released migration steps.
-enum FamiliarReleaseSchemaV1: VersionedSchema {
+/// The only persisted schema in the current test-stage product. Earlier
+/// FamiliarSchemaV3...V11 types organize model declarations; they are not a
+/// supported migration chain.
+enum FamiliarReleaseSchema: VersionedSchema {
     static let versionIdentifier = Schema.Version(1, 0, 0)
     static var models: [any PersistentModel.Type] { FamiliarModelSchema.models }
-}
-
-enum FamiliarReleaseMigrationPlan: SchemaMigrationPlan {
-    static var schemas: [any VersionedSchema.Type] { [FamiliarReleaseSchemaV1.self] }
-    static var stages: [MigrationStage] { [] }
 }

@@ -42,8 +42,13 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
+          lfs: true
       - name: Toolchain
         run: xcodebuild -version && uname -m
+      - name: Verify iSH supply chain
+        run: Scripts/verify-ish-supply-chain.sh
       - name: Build
         run: >-
           xcodebuild
@@ -62,6 +67,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
+          lfs: true
       - name: Select Simulator
         id: simulator
         shell: bash
@@ -98,6 +106,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
+          lfs: true
       - name: Select Simulator
         id: simulator
         shell: bash

@@ -17,6 +17,7 @@ nonisolated enum FamiliarSurfaceKind: String, Sendable, Equatable {
     case clarification
     case code
     case share
+    case shell
     case failure
 }
 
@@ -62,6 +63,7 @@ nonisolated struct FamiliarSurfaceDescriptor: Identifiable, Sendable, Equatable 
     var approvalRisk: FamiliarToolRisk?
     var approvalConsequence: String?
     var approvalUndoPolicy: FamiliarApprovalUndoPolicy?
+    var approvalAllowedAuthorizationDurations: [FamiliarAuthorizationDuration]
     var clarificationRequestID: UUID?
     var clarificationOptions: [FamiliarClarificationOption]
     var clarificationAllowsCustom: Bool
@@ -90,6 +92,7 @@ nonisolated struct FamiliarSurfaceDescriptor: Identifiable, Sendable, Equatable 
         approvalRisk: FamiliarToolRisk? = nil,
         approvalConsequence: String? = nil,
         approvalUndoPolicy: FamiliarApprovalUndoPolicy? = nil,
+        approvalAllowedAuthorizationDurations: [FamiliarAuthorizationDuration] = [.once, .session, .always],
         clarificationRequestID: UUID? = nil,
         clarificationOptions: [FamiliarClarificationOption] = [],
         clarificationAllowsCustom: Bool = false,
@@ -117,6 +120,7 @@ nonisolated struct FamiliarSurfaceDescriptor: Identifiable, Sendable, Equatable 
         self.approvalRisk = approvalRisk
         self.approvalConsequence = approvalConsequence
         self.approvalUndoPolicy = approvalUndoPolicy
+        self.approvalAllowedAuthorizationDurations = approvalAllowedAuthorizationDurations
         self.clarificationRequestID = clarificationRequestID
         self.clarificationOptions = clarificationOptions
         self.clarificationAllowsCustom = clarificationAllowsCustom
@@ -327,6 +331,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             approvalRisk: request.risk,
             approvalConsequence: request.consequence,
             approvalUndoPolicy: request.undoPolicy,
+            approvalAllowedAuthorizationDurations: request.allowedAuthorizationDurations,
             startedAt: date
         ))
     }
@@ -552,12 +557,13 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
     }
 
     private func resultDescriptor(activity: FamiliarActivitySnapshot, envelope: FamiliarToolResultEnvelope, placement: FamiliarSurfacePlacement, artifact: FamiliarArtifactDescriptor?) -> FamiliarSurfaceDescriptor {
-        .init(
+        let isFileExport = activity.toolName == "prepare_file_export"
+        return .init(
             id: resultSurfaceID(activity: activity, envelope: envelope),
             runID: runtimeID(from: activity.activityID),
             assistantTurnID: activity.assistantTurnID,
-            kind: surfaceKind(envelope.presentation.name, hasArtifact: artifact != nil),
-            placement: placement,
+            kind: isFileExport ? .share : surfaceKind(envelope.presentation.name, hasArtifact: artifact != nil),
+            placement: isFileExport ? .topLevel : placement,
             phase: surfacePhase(activity.phase),
             title: envelope.summary,
             detail: activity.detail,
@@ -606,12 +612,13 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         case .insight: .insight
         case .code: .code
         case .shareDraft: .share
+        case .shellExecution: .shell
         }
     }
 
     private func isTopLevelPresentation(_ name: FamiliarToolPresentationPayload.Name) -> Bool {
         switch name {
-        case .contextMatches, .recordCollection, .diff, .taskList, .recommendation, .insight, .code, .shareDraft: true
+        case .contextMatches, .recordCollection, .diff, .taskList, .recommendation, .insight, .code, .shareDraft, .shellExecution: true
         case .scalar, .searchResults, .document, .mutationReceipt, .artifactMutation: false
         }
     }
@@ -679,8 +686,15 @@ nonisolated enum FamiliarToolPresentationName {
         case "web_fetch": String(localized: "tool.web_fetch", defaultValue: "Read web page")
         case "calendar_events": String(localized: "tool.calendar_query")
         case "create_calendar_event": String(localized: "tool.calendar_create")
+        case "update_calendar_event": String(localized: "tool.calendar_update", defaultValue: "Update calendar event")
+        case "delete_calendar_event": String(localized: "tool.calendar_delete", defaultValue: "Delete calendar event")
         case "reminders": String(localized: "tool.reminders_query")
         case "create_reminder": String(localized: "tool.reminder_create")
+        case "update_reminder": String(localized: "tool.reminder_update", defaultValue: "Update reminder")
+        case "delete_reminder": String(localized: "tool.reminder_delete", defaultValue: "Delete reminder")
+        case "photos_save_output": String(localized: "tool.photos_save_output", defaultValue: "Save image to Photos")
+        case "prepare_file_export": String(localized: "tool.prepare_file_export", defaultValue: "Prepare file export")
+        case "shell_execute": String(localized: "tool.shell_execute", defaultValue: "Run Workspace Shell")
         case "workspace_list": String(localized: "tool.workspace_list", defaultValue: "List workspace files")
         case "workspace_read": String(localized: "tool.workspace_read", defaultValue: "Read workspace file")
         case "workspace_search": String(localized: "tool.workspace_search", defaultValue: "Search workspace files")
@@ -701,7 +715,7 @@ nonisolated enum FamiliarToolPresentationName {
 }
 
 private extension FamiliarSurfaceStore {
-    func runtimeNoticeDetail(_ value: String?) -> String? {
+    nonisolated func runtimeNoticeDetail(_ value: String?) -> String? {
         guard let value else { return nil }
         let fields = Dictionary(uniqueKeysWithValues: value.split(separator: ";").compactMap { component -> (String, String)? in
             let pair = component.split(separator: "=", maxSplits: 1).map(String.init)
@@ -714,9 +728,9 @@ private extension FamiliarSurfaceStore {
         return String(format: String(localized: "runtime.notice.retrying.detail", defaultValue: "Attempt %lld in %.1f s (%@)"), attempt, delay, failure)
     }
 
-    private func runStatusID(_ runID: String) -> String { "run-status:\(runID)" }
-    private func traceID(_ runID: String) -> String { "trace:\(runID)" }
-    private func toolID(_ runID: String, _ toolCallID: String) -> String { "tool:\(runID):\(toolCallID)" }
-    private func failureID(_ runID: String) -> String { "failure:\(runID)" }
-    private func clarificationID(_ runID: String, _ requestID: UUID) -> String { "clarification:\(runID):\(requestID.uuidString)" }
+    nonisolated private func runStatusID(_ runID: String) -> String { "run-status:\(runID)" }
+    nonisolated private func traceID(_ runID: String) -> String { "trace:\(runID)" }
+    nonisolated private func toolID(_ runID: String, _ toolCallID: String) -> String { "tool:\(runID):\(toolCallID)" }
+    nonisolated private func failureID(_ runID: String) -> String { "failure:\(runID)" }
+    nonisolated private func clarificationID(_ runID: String, _ requestID: UUID) -> String { "clarification:\(runID):\(requestID.uuidString)" }
 }

@@ -49,6 +49,7 @@ nonisolated public struct FamiliarToolConfirmationRequest: Identifiable, Codable
     public let undoPolicy: FamiliarApprovalUndoPolicy
     public let automaticAuthorization: Bool
     public let automaticAuthorizationScope: FamiliarAuthorizationDuration?
+    public let allowedAuthorizationDurations: [FamiliarAuthorizationDuration]
 
     nonisolated public init(
         id: UUID = UUID(),
@@ -63,7 +64,8 @@ nonisolated public struct FamiliarToolConfirmationRequest: Identifiable, Codable
         consequence: String = "",
         undoPolicy: FamiliarApprovalUndoPolicy = .unavailable,
         automaticAuthorization: Bool = false,
-        automaticAuthorizationScope: FamiliarAuthorizationDuration? = nil
+        automaticAuthorizationScope: FamiliarAuthorizationDuration? = nil,
+        allowedAuthorizationDurations: [FamiliarAuthorizationDuration] = [.once, .session, .always]
     ) {
         self.id = id
         self.runID = runID
@@ -78,6 +80,49 @@ nonisolated public struct FamiliarToolConfirmationRequest: Identifiable, Codable
         self.undoPolicy = undoPolicy
         self.automaticAuthorization = automaticAuthorization
         self.automaticAuthorizationScope = automaticAuthorizationScope
+        self.allowedAuthorizationDurations = allowedAuthorizationDurations.isEmpty ? [.once] : allowedAuthorizationDurations
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, runID, toolCallID, toolName, effect, risk, title, fields, target
+        case consequence, undoPolicy, automaticAuthorization, automaticAuthorizationScope
+        case allowedAuthorizationDurations
+    }
+
+    nonisolated public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        runID = try container.decode(String.self, forKey: .runID)
+        toolCallID = try container.decode(String.self, forKey: .toolCallID)
+        toolName = try container.decode(String.self, forKey: .toolName)
+        effect = try container.decode(FamiliarToolEffect.self, forKey: .effect)
+        risk = try container.decode(FamiliarToolRisk.self, forKey: .risk)
+        title = try container.decode(String.self, forKey: .title)
+        fields = try container.decodeIfPresent([FamiliarApprovalField].self, forKey: .fields) ?? []
+        target = try container.decodeIfPresent(String.self, forKey: .target)
+        consequence = try container.decodeIfPresent(String.self, forKey: .consequence) ?? ""
+        undoPolicy = try container.decodeIfPresent(FamiliarApprovalUndoPolicy.self, forKey: .undoPolicy) ?? .unavailable
+        automaticAuthorization = try container.decodeIfPresent(Bool.self, forKey: .automaticAuthorization) ?? false
+        automaticAuthorizationScope = try container.decodeIfPresent(FamiliarAuthorizationDuration.self, forKey: .automaticAuthorizationScope)
+        allowedAuthorizationDurations = try container.decodeIfPresent([FamiliarAuthorizationDuration].self, forKey: .allowedAuthorizationDurations) ?? [.once, .session, .always]
+    }
+
+    nonisolated public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(runID, forKey: .runID)
+        try container.encode(toolCallID, forKey: .toolCallID)
+        try container.encode(toolName, forKey: .toolName)
+        try container.encode(effect, forKey: .effect)
+        try container.encode(risk, forKey: .risk)
+        try container.encode(title, forKey: .title)
+        try container.encode(fields, forKey: .fields)
+        try container.encodeIfPresent(target, forKey: .target)
+        try container.encode(consequence, forKey: .consequence)
+        try container.encode(undoPolicy, forKey: .undoPolicy)
+        try container.encode(automaticAuthorization, forKey: .automaticAuthorization)
+        try container.encodeIfPresent(automaticAuthorizationScope, forKey: .automaticAuthorizationScope)
+        try container.encode(allowedAuthorizationDurations, forKey: .allowedAuthorizationDurations)
     }
 }
 
@@ -160,10 +205,17 @@ public actor FamiliarToolConfirmationCoordinator {
             return .alreadyResolved(previousDecision)
         }
 
-        completedByKey[pending.key] = decision
-        completedByRequestID[requestID] = decision
-        pending.continuation.resume(returning: decision)
-        return decision.isConfirmed ? .confirmed : .cancelled
+        let resolvedDecision: FamiliarToolConfirmationDecision
+        if let duration = decision.authorizationDuration,
+           !pending.request.allowedAuthorizationDurations.contains(duration) {
+            resolvedDecision = .cancelled
+        } else {
+            resolvedDecision = decision
+        }
+        completedByKey[pending.key] = resolvedDecision
+        completedByRequestID[requestID] = resolvedDecision
+        pending.continuation.resume(returning: resolvedDecision)
+        return resolvedDecision.isConfirmed ? .confirmed : .cancelled
     }
 
     /// Cancels every pending request belonging to a run. Cancellation is never confirmation.

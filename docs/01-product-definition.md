@@ -228,7 +228,7 @@ Provider 原生能力、设备端预处理和可选本地模型是不同的数�
 6. API Key 只进入 Keychain 和对应 Provider 请求。
 7. 隐私用途说明与实际调用一致。
 8. 内置模型 ID 失效时允许用户输入有效模型 ID，界面保持可恢复。
-9. SwiftData 启动路径使用 `FamiliarReleaseSchemaV1` 的 31 实体和正式 migration plan；Debug/Release store 分离，首次启动不会自动删除旧数据。
+9. SwiftData 启动路径使用单一 `FamiliarReleaseSchema` 的当前 33 实体，不配置 migration plan；Debug/Release store 分离，测试阶段不支持旧 store。
 10. EventKit、相机、Apple Vision、Speech 和安全作用域文件完成真机验收。
 11. 通知权限只在用户明确开启时请求；关闭后不再安排 Familiar 通知，并清理待处理与已投递通知。
 12. Spotlight 结果只暴露受保护的本地会话标题和 UUID，点击后能回到存在的本地会话；删除会话后对应结果被清理。

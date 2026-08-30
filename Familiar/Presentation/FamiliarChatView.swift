@@ -39,6 +39,8 @@ struct FamiliarChatView: View {
     @FocusState private var isComposerFocused: Bool
     private let toolRegistry: FamiliarToolRegistry
     private let searchService: FamiliarWebSearchService
+    private let workspaceStore: FamiliarWorkspaceStore
+    private let shellRuntimeStatus: FamiliarShellRuntimeStatus
     @Binding private var pendingSystemEntry: FamiliarSystemEntryRequest?
 
     init(
@@ -48,6 +50,8 @@ struct FamiliarChatView: View {
         _controller = State(initialValue: FamiliarChatController(dependencies: dependencies))
         toolRegistry = dependencies.registry
         searchService = dependencies.searchService
+        workspaceStore = dependencies.workspaceStore
+        shellRuntimeStatus = dependencies.shellRuntimeStatus
         _pendingSystemEntry = pendingSystemEntry
     }
 
@@ -165,6 +169,10 @@ struct FamiliarChatView: View {
                     initialRoute: route,
                     registry: toolRegistry,
                     searchService: searchService,
+                    workspaceStore: workspaceStore,
+                    workspaceID: controller.selectedProjectID.map(FamiliarWorkspaceID.project)
+                        ?? controller.selectedConversationID.map(FamiliarWorkspaceID.conversation),
+                    shellRuntimeStatus: shellRuntimeStatus,
                     onSaveSettings: {
                         controller.updateSettings($0, in: modelContext)
                         refreshConfiguredProviders()

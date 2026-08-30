@@ -51,7 +51,7 @@
 
 > **Familiar is a native, safe and inspectable personal AI workspace.** Projects are the long-lived work unit, chat is the primary entry, and a typed set of local-information, restricted Web, Project and EventKit tools forms the current execution surface. The single-Agent Runtime is the execution kernel.
 
-Familiar turns the iPhone's native capabilities into a composable runtime without adopting a Linux execution environment, Apple Intelligence dependency or multi-agent orchestration. Projects, versioned document resources, Markdown/text artifacts, persistent workspace pins and explicit one-Run Skills are implemented; broader writable workspace capabilities and byte-level resumable execution remain future layers.
+Familiar turns the iPhone's native capabilities into a composable runtime, with a task-scoped iSH/Alpine environment available only when native tools are not sufficient. Projects, versioned document resources, Markdown/text artifacts, persistent workspace pins and explicit one-Run Skills are implemented; byte-level resumable execution remains a future layer.
 
 The app is BYOK-only: users bring their own model API Key, model requests go directly from the device to the selected Provider, and conversations, attachments and tool records stay on the device. When web tools are used, search queries go directly to DuckDuckGo and page requests go directly to the selected public HTTPS site.
 
@@ -59,8 +59,8 @@ The app is BYOK-only: users bring their own model API Key, model requests go dir
 
 ## Highlights
 
-- **iPhone-native Agent Runtime** — a single primary Agent that plans with tools and executes through native iOS frameworks; no Linux environment, no Apple Intelligence dependency.
-- **Tools as the core abstraction** — 28 typed tools cover native device capabilities, Workspace, restricted Web, Project resources, artifacts, EventKit, and structured presentation; each tool is small, inspectable and policy-controlled.
+- **iPhone-native Agent Runtime** — a single primary Agent that plans with typed tools; native iOS frameworks remain the preferred execution path and a sandboxed iSH runtime handles general local computation.
+- **Tools as the core abstraction** — 35 typed tools cover native device capabilities, Workspace, restricted Web, Project resources, artifacts, EventKit, structured presentation and Shell; each tool is small, inspectable and policy-controlled.
 - **Native First** — reuse EventKit, Vision, PDFKit, Photos and Foundation for native capabilities and local preprocessing instead of rebuilding system services.
 - **Unified Chat workspace** — ordinary and Project chats share one surface. The top bar switches workspace and model; the left drawer provides search, persistent pins, expandable Project history and recent ordinary chats.
 - **Project workspace** — projects share an instruction and versioned local resources across chats; resources use protected storage and immutable Run references. Markdown/text artifacts support controlled write and edit operations, and Project names are globally unique after normalization.
@@ -103,7 +103,7 @@ flowchart TB
     subgraph Runtime["Agent Runtime"]
         Loop[FamiliarAgentLoop]
         Assembly[Context Assembly]
-        Registry[Tool Registry · 28 tools]
+        Registry[Tool Registry · 35 tools]
         Policy[Execution Policy]
         Auth[Authorization Runtime]
         Clarify[Clarification Coordinator]
@@ -125,6 +125,7 @@ flowchart TB
         Speech[Speech]
         Photos[Photos]
         Web[Restricted Web]
+        Shell[iSH / Alpine Shell]
     end
 
     subgraph Store["Local Storage"]
@@ -142,6 +143,7 @@ flowchart TB
     Registry --> Policy
     Policy --> Auth
     Policy --> Native
+    Policy --> Shell
     Loop --> Store
 ```
 
@@ -493,23 +495,23 @@ Familiar does not currently include:
 
 - iPad support
 - Account systems
-- Arbitrary writable workspace beyond controlled Project artifacts
+- Host-wide or arbitrary writable filesystem access outside the current task Workspace
 - Byte-level resumable execution or reliable background continuation; cursor/invocation records and startup failure-finalization for interrupted Runs are implemented
 - Familiar-hosted model proxying
 - Subscription or entitlement flows
-- Linux / iSH execution environment
-- Shell or arbitrary code execution
+- Unrestricted Shell execution, background daemons or access to other apps' data
 - Multi-agent, subagents or agent graphs
 - Complex RAG or vector databases
 - MCP Server on iPhone (a client may arrive later)
 - Core ML LLM or Apple Intelligence dependency
 - Real-time voice conversation
-- Calendar/reminder modification or deletion
 - Autonomous browser actions, JavaScript execution or recursive crawling
 
 ## Third-party software
 
-Familiar embeds AnyDoc and SwiftSoup under the MIT License. Their notices are included in:
+Familiar is distributed under GPLv3 and embeds the audited iSH ARM64 fork and Alpine userspace for its controlled Shell runtime. Corresponding source, exact revisions, build scripts and notices are included in `Vendor/ish-arm64`, `Vendor/ISHRuntime`, `Scripts`, `LICENSE` and the App's About screen.
+
+Familiar also embeds AnyDoc and SwiftSoup under the MIT License. Their notices are included in:
 
 - `Vendor/AnyDocBridgeRust/LICENSE.anydoc`
 - `Familiar/Resources/ThirdPartyNotices.txt`

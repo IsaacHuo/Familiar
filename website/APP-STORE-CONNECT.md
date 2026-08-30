@@ -54,7 +54,9 @@
 
 > Familiar is a BYOK AI chat app and does not provide a Familiar account or backend. A valid API key for a supported model provider is required to test model responses. API keys are stored in iOS Keychain, and requests go directly from the device to the selected provider.
 >
-> Camera, microphone, speech recognition, calendar, and reminders permissions are requested only when the reviewer actively invokes the related feature. Calendar or reminder writes always show a preview and require per-action confirmation.
+> Camera, microphone, speech recognition, calendar, reminders, contacts, location, and Photos add-only permissions are requested only when the reviewer actively invokes the related feature. Calendar or reminder creates, updates, completion changes, and deletions always show an exact preview before system access and require confirmation. Deletions cannot be remembered as a session or always authorization.
+>
+> Familiar includes a headless iSH/Alpine runtime for user-approved local computation. Shell is not a terminal exposed outside the Agent flow: every command is shown in Chat and requires one-shot approval. The guest sees only task-scoped read-only inputs plus the current Workspace Outputs and temporary Work directory. It has no Photos, Contacts, Calendar, Location, Keychain, other-Workspace, or host-environment bridge. Network is disabled per Workspace by default; if the user enables it, the runtime still blocks listening sockets, loopback, local/private/link-local/multicast destinations and enforces connection and byte limits. The corresponding GPLv3 source and build scripts are available at https://github.com/IsaacHuo/Familiar.
 >
 > Please use the review API credential supplied in the secure App Review Information field. Do not place API credentials in public notes or screenshots.
 
@@ -66,9 +68,10 @@
 
 - 消息、对话上下文与系统提示；
 - 用户选择文件的提取文本；
-- 相机或相册图片只保留为本地草稿；当前版本在发送前统一阻止，不创建消息也不上传图片；
+- 相机或相册图片保存在 App 私有附件目录并由 Apple Vision 在本机生成有限证据；原始图片不发送给 DeepSeek。用户可批准把指定 Workspace 图片输出以 Photos add-only 方式保存到图库；
 - 语音输入及 Apple Speech 处理；
 - 用户主动调用工具后的日历或提醒事项数据；
+- 用户明确导入并投影到 task-scoped iSH Workspace 的文件，以及 Shell command、stdout/stderr、diff 与用户开启网络后的公共网络请求；
 - 诊断数据（仅当最终构建实际加入崩溃或分析服务时）；
 - 数据是否仅在设备处理，或会发送给所选第三方 Provider/自定义 endpoint；
 - 数据用途是否仅为 App 功能；

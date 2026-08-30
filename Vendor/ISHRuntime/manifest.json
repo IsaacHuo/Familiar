@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "ish": {
+    "repository": "https://github.com/OpenMinis/ish-arm64.git",
+    "commit": "54ca185b77f170e12fd353fcd7443232f6cb73fd",
+    "license": "GPL-3.0-or-later WITH iSH-iOS-exception",
+    "sourcePath": "Vendor/ish-arm64",
+    "upstreamLicense": "Vendor/ish-arm64/LICENSE.md",
+    "iosAdditionalTerms": "Vendor/ish-arm64/LICENSE.IOS"
+  },
+  "alpine": {
+    "version": "3.24.0",
+    "architecture": "aarch64",
+    "filename": "alpine-minirootfs-3.24.0-aarch64.tar.gz",
+    "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/aarch64/alpine-minirootfs-3.24.0-aarch64.tar.gz",
+    "signatureURL": "https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/aarch64/alpine-minirootfs-3.24.0-aarch64.tar.gz.asc",
+    "sha256": "4b8cd66a6688b2a87276c39843ed89c3a06d9534fc6a5823c586aff2696c1f2a",
+    "signingKeyURL": "https://alpinelinux.org/keys/ncopa.asc",
+    "signingKeyFingerprint": "0482D84022F52DF1C4E7CD43293ACD0907D9495A",
+    "repositories": [
+      "https://dl-cdn.alpinelinux.org/alpine/v3.24/main",
+      "https://dl-cdn.alpinelinux.org/alpine/v3.24/community"
+    ],
+    "packages": [
+      "ca-certificates",
+      "coreutils",
+      "findutils",
+      "gawk",
+      "git",
+      "grep",
+      "jq",
+      "py3-pip",
+      "python3",
+      "sed",
+      "unzip",
+      "zip"
+    ]
+  },
+  "build": {
+    "platforms": ["iphoneos-arm64", "iphonesimulator-arm64"],
+    "targets": ["libish", "libish_emu", "libfakefs"],
+    "xcframework": ".build/ish/xcframeworks/FamiliarISHRuntime.xcframework",
+    "installedXCFramework": "Vendor/ISHRuntime/FamiliarISHRuntime.xcframework",
+    "preparedRootfs": ".build/ish/rootfs/alpine-3.24.0-aarch64-fakefs.tar.gz",
+    "installedRootfs": "Familiar/Resources/alpine-3.24.0-aarch64-fakefs.tar.gz",
+    "packageInventory": ".build/ish/rootfs/alpine-3.24.0-packages.tsv"
+  }
+}

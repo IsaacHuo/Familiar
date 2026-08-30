@@ -15,10 +15,18 @@ nonisolated struct FamiliarContact: Codable, Equatable, Sendable, Identifiable {
     let organizationName: String?
 }
 
+nonisolated struct FamiliarContactRequestedFields: OptionSet, Sendable {
+    let rawValue: Int
+
+    static let phoneNumbers = Self(rawValue: 1 << 0)
+    static let emailAddresses = Self(rawValue: 1 << 1)
+    static let organization = Self(rawValue: 1 << 2)
+}
+
 nonisolated protocol FamiliarContactsServicing: Sendable {
     func availability() async -> FamiliarCapabilityAvailability
     func requestAccess() async throws
-    func search(query: String, limit: Int) async throws -> [FamiliarContact]
+    func search(query: String, limit: Int, requestedFields: FamiliarContactRequestedFields) async throws -> [FamiliarContact]
 }
 
 actor FamiliarContactsService: FamiliarContactsServicing {
@@ -44,30 +52,31 @@ actor FamiliarContactsService: FamiliarContactsServicing {
         }
     }
 
-    func search(query: String, limit: Int) async throws -> [FamiliarContact] {
+    func search(query: String, limit: Int, requestedFields: FamiliarContactRequestedFields) async throws -> [FamiliarContact] {
         try Task.checkCancellation()
         guard case .available = availability() else {
             throw FamiliarToolRegistryError.capabilityUnavailable("联系人权限尚未授予。")
         }
         let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return [] }
-        let keys: [CNKeyDescriptor] = [
+        var keys: [CNKeyDescriptor] = [
             CNContactIdentifierKey as CNKeyDescriptor,
-            CNContactFormatter.descriptorForRequiredKeys(for: .fullName),
-            CNContactPhoneNumbersKey as CNKeyDescriptor,
-            CNContactEmailAddressesKey as CNKeyDescriptor,
-            CNContactOrganizationNameKey as CNKeyDescriptor
+            CNContactFormatter.descriptorForRequiredKeys(for: .fullName)
         ]
+        if requestedFields.contains(.phoneNumbers) { keys.append(CNContactPhoneNumbersKey as CNKeyDescriptor) }
+        if requestedFields.contains(.emailAddresses) { keys.append(CNContactEmailAddressesKey as CNKeyDescriptor) }
+        if requestedFields.contains(.organization) { keys.append(CNContactOrganizationNameKey as CNKeyDescriptor) }
         let request = CNContactFetchRequest(keysToFetch: keys)
         request.predicate = CNContact.predicateForContacts(matchingName: normalized)
         var values: [FamiliarContact] = []
         try store.enumerateContacts(with: request) { contact, stop in
             values.append(FamiliarContact(
                 id: contact.identifier,
-                displayName: CNContactFormatter.string(from: contact, style: .fullName) ?? contact.organizationName,
-                phoneNumbers: contact.phoneNumbers.map(\.value.stringValue),
-                emailAddresses: contact.emailAddresses.map { String($0.value) },
-                organizationName: contact.organizationName.isEmpty ? nil : contact.organizationName
+                displayName: CNContactFormatter.string(from: contact, style: .fullName)
+                    ?? (requestedFields.contains(.organization) ? contact.organizationName : ""),
+                phoneNumbers: requestedFields.contains(.phoneNumbers) ? contact.phoneNumbers.map(\.value.stringValue) : [],
+                emailAddresses: requestedFields.contains(.emailAddresses) ? contact.emailAddresses.map { String($0.value) } : [],
+                organizationName: requestedFields.contains(.organization) && !contact.organizationName.isEmpty ? contact.organizationName : nil
             ))
             if values.count == limit { stop.pointee = true }
         }
@@ -112,7 +121,15 @@ nonisolated struct FamiliarContactsSearchTool: FamiliarTool {
     )
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
-        let values = try await service.search(query: input.query, limit: min(max(input.limit ?? 10, 1), 20))
+        var requestedFields: FamiliarContactRequestedFields = []
+        if input.includePhoneNumbers == true { requestedFields.insert(.phoneNumbers) }
+        if input.includeEmailAddresses == true { requestedFields.insert(.emailAddresses) }
+        if input.includeOrganization == true { requestedFields.insert(.organization) }
+        let values = try await service.search(
+            query: input.query,
+            limit: min(max(input.limit ?? 10, 1), 20),
+            requestedFields: requestedFields
+        )
         let output = values.map { contact in
             OutputContact(
                 id: contact.id,

@@ -1,0 +1,24 @@
+Familiar iSH Corresponding Source
+
+Familiar incorporates source from the iSH ARM64 fork at:
+https://github.com/OpenMinis/ish-arm64/tree/54ca185b77f170e12fd353fcd7443232f6cb73fd
+
+The exact upstream source revision is included as the Vendor/ish-arm64 Git
+submodule. Familiar's integration source and reproducible build scripts are
+available at:
+https://github.com/IsaacHuo/Familiar
+
+The iSH source is licensed under GNU GPL version 3, together with the
+additional iOS terms reproduced in ISH_LICENSE_IOS.txt. Familiar is distributed
+under GNU GPL version 3; the complete license text is reproduced in the root
+LICENSE file.
+
+The Alpine root filesystem is assembled from Alpine Linux 3.24.0 aarch64.
+Its locked source URL, digest, selected packages, and generated package-license
+inventory are defined by Vendor/ISHRuntime/manifest.json and
+Scripts/prepare-ish-rootfs.sh.
+
+For a source copy on durable physical media, contact the distributor identified
+on Familiar's App Store listing. This offer is valid for at least three years
+after the last distribution of the corresponding object code. The charge, if
+any, will not exceed the reasonable cost of physically providing the source.

@@ -56,6 +56,22 @@ final class FamiliarRunPersistenceRecorder {
                 snapshot: record
             ))
         }
+        for attachment in snapshot.attachments {
+            let sourceData = FamiliarAttachmentStore.url(for: attachment.relativePath)
+                .flatMap { try? Data(contentsOf: $0, options: [.mappedIfSafe]) }
+                ?? Data(attachment.extractedText.utf8)
+            context.insert(FamiliarContextAttachmentReference(
+                contextSnapshotID: snapshot.id,
+                attachmentID: attachment.id,
+                filename: attachment.filename,
+                mimeType: attachment.mimeType,
+                sourceRelativePath: attachment.relativePath,
+                byteSize: attachment.byteSize,
+                contentHash: Self.sha256(sourceData),
+                extractedTextHash: Self.sha256(Data(attachment.extractedText.utf8)),
+                createdAt: snapshot.createdAt
+            ))
+        }
         for (sequence, skill) in snapshot.skills.enumerated() {
             let allowedToolsData = try? JSONEncoder().encode(skill.allowedTools)
             context.insert(FamiliarRunSkillSnapshotRecord(
@@ -91,6 +107,10 @@ final class FamiliarRunPersistenceRecorder {
         } catch {
             context.rollback()
         }
+    }
+
+    private static func sha256(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     func recordActivityStarted(

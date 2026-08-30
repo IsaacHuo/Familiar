@@ -377,7 +377,7 @@ struct FamiliarApprovalCard: View {
     }
 
     private var authorizationOptions: [FamiliarApprovalOption] {
-        [
+        let all: [FamiliarApprovalOption] = [
             .init(
                 id: "once",
                 title: String(localized: "authorization.once", defaultValue: "Only Once"),
@@ -397,6 +397,10 @@ struct FamiliarApprovalCard: View {
                 decision: .confirmedAlways
             ),
         ]
+        return all.filter { option in
+            guard let duration = option.decision.authorizationDuration else { return false }
+            return surface.approvalAllowedAuthorizationDurations.contains(duration)
+        }
     }
 
     private func approvalFieldLabel(_ label: String) -> some View {

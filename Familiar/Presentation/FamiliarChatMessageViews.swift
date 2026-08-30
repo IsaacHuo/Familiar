@@ -894,6 +894,8 @@ private struct FamiliarTurnSurface: View {
                 FamiliarCodeSurface(surface: surface)
             case .share:
                 FamiliarShareDraftSurface(surface: surface)
+            case .shell:
+                FamiliarShellExecutionSurface(surface: surface)
             case .diff:
                 FamiliarDiffSurface(surface: surface)
             case .toolSummary:
@@ -916,37 +918,74 @@ private struct FamiliarTurnSurface: View {
 
 private struct FamiliarShareDraftSurface: View {
     let surface: FamiliarSurfaceDescriptor
+    @State private var preview: FamiliarPreparedFilePreview?
 
     var body: some View {
-        if case .shareDraft(let draft) = surface.resultEnvelope?.presentation.content {
-            VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceM) {
-                HStack(alignment: .top, spacing: FamiliarAISurfaceMetric.spaceS) {
-                    Image(systemName: "square.and.arrow.up")
-                        .foregroundStyle(FamiliarAISurfaceColor.accentInk)
-                        .frame(width: FamiliarAISurfaceMetric.icon)
-                    VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
-                        Text(draft.title ?? String(localized: "common.share"))
+        Group {
+            if case .shareDraft(let draft) = surface.resultEnvelope?.presentation.content {
+                VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceM) {
+                    HStack(alignment: .top, spacing: FamiliarAISurfaceMetric.spaceS) {
+                        Image(systemName: "square.and.arrow.up")
+                            .foregroundStyle(FamiliarAISurfaceColor.accentInk)
+                            .frame(width: FamiliarAISurfaceMetric.icon)
+                        VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
+                            Text(draft.title ?? String(localized: "common.share"))
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(FamiliarAISurfaceColor.ink)
+                            Text(draft.text)
+                                .font(.caption)
+                                .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+                                .lineLimit(6)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    ShareLink(item: draft.text) {
+                        Label(String(localized: "common.share"), systemImage: "square.and.arrow.up")
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(FamiliarAISurfaceColor.ink)
-                        Text(draft.text)
-                            .font(.caption)
-                            .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
-                            .lineLimit(6)
-                            .textSelection(.enabled)
+                            .frame(minHeight: 44)
+                    }
+                    .accessibilityHint(String(localized: "share.draft.accessibility_hint", defaultValue: "Opens the system share sheet. Familiar does not send this automatically."))
+                }
+                .padding(FamiliarAISurfaceMetric.spaceM)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(FamiliarAISurfaceColor.accentTint, in: RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.card, style: .continuous))
+            } else if case .document(let document) = surface.resultEnvelope?.presentation.content,
+                      let value = document.url,
+                      let url = URL(string: value),
+                      url.isFileURL {
+                VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceM) {
+                    Label(document.title ?? document.summary, systemImage: "doc")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(FamiliarAISurfaceColor.ink)
+                    HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
+                        Button {
+                            preview = FamiliarPreparedFilePreview(url: url)
+                        } label: {
+                            Label(String(localized: "common.preview", defaultValue: "Preview"), systemImage: "eye")
+                                .frame(minHeight: FamiliarControlSize.minimumHitTarget)
+                        }
+                        .buttonStyle(.bordered)
+                        ShareLink(item: url) {
+                            Label(String(localized: "common.share"), systemImage: "square.and.arrow.up")
+                                .frame(minHeight: FamiliarControlSize.minimumHitTarget)
+                        }
+                        .buttonStyle(.borderedProminent)
                     }
                 }
-                ShareLink(item: draft.text) {
-                    Label(String(localized: "common.share"), systemImage: "square.and.arrow.up")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(minHeight: 44)
-                }
-                .accessibilityHint(String(localized: "share.draft.accessibility_hint", defaultValue: "Opens the system share sheet. Familiar does not send this automatically."))
+                .padding(FamiliarAISurfaceMetric.spaceM)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(FamiliarAISurfaceColor.accentTint, in: RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.card, style: .continuous))
             }
-            .padding(FamiliarAISurfaceMetric.spaceM)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(FamiliarAISurfaceColor.accentTint, in: RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.card, style: .continuous))
+        }
+        .sheet(item: $preview) { item in
+            FamiliarAttachmentPreviewView(url: item.url)
         }
     }
+}
+
+private struct FamiliarPreparedFilePreview: Identifiable {
+    let url: URL
+    var id: String { url.absoluteString }
 }
 
 private struct FamiliarTaskListSurface: View {
@@ -1908,7 +1947,7 @@ private struct FamiliarWriteReceipt: View {
         switch content {
         case .mutationReceipt(let receipt): return receipt.operation
         case .artifactMutation(let artifact): return "\(artifact.operation) · \(ByteCountFormatter.string(fromByteCount: artifact.byteSize, countStyle: .file))"
-        case .scalar, .searchResults, .document, .contextMatches, .recordCollection, .diff, .taskList, .recommendation, .insight, .code, .shareDraft: return surface.detail
+        case .scalar, .searchResults, .document, .contextMatches, .recordCollection, .diff, .taskList, .recommendation, .insight, .code, .shareDraft, .shellExecution: return surface.detail
         }
     }
 }
@@ -2070,7 +2109,7 @@ private struct FamiliarTypedResult: View {
             traceValue(label: receipt.operation, value: receipt.targetIdentifier ?? receipt.summary)
         case .artifactMutation(let artifact):
             traceValue(label: artifact.operation, value: artifact.title)
-        case .contextMatches, .recordCollection, .diff, .taskList, .recommendation, .insight, .code, .shareDraft:
+        case .contextMatches, .recordCollection, .diff, .taskList, .recommendation, .insight, .code, .shareDraft, .shellExecution:
             EmptyView()
         }
     }
@@ -2101,7 +2140,86 @@ private struct FamiliarTypedResult: View {
         case .clarification: "bubble.left.and.bubble.right"
         case .code: "chevron.left.forwardslash.chevron.right"
         case .share: "square.and.arrow.up"
+        case .shell: "terminal"
         }
+    }
+}
+
+private struct FamiliarShellExecutionSurface: View {
+    let surface: FamiliarSurfaceDescriptor
+
+    var body: some View {
+        if case .shellExecution(let shell) = surface.resultEnvelope?.presentation.content {
+            VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceM) {
+                HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
+                    Image(systemName: "terminal")
+                        .foregroundStyle(FamiliarAISurfaceColor.accentInk)
+                    Text(shell.summary)
+                        .font(.subheadline.weight(.semibold))
+                    Spacer(minLength: 0)
+                    Text(shell.status)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(shell.status == "succeeded" ? FamiliarAISurfaceColor.success : FamiliarAISurfaceColor.inkSecondary)
+                }
+
+                VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
+                    Text(String(localized: "shell.command", defaultValue: "Command"))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
+                    Text(shell.command)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(FamiliarAISurfaceColor.ink)
+                        .textSelection(.enabled)
+                    Text("\(shell.workingDirectory) · \(shell.networkEnabled ? String(localized: "shell.network.enabled", defaultValue: "Public Internet On") : String(localized: "shell.network.disabled", defaultValue: "Network Off"))")
+                        .font(.caption2)
+                        .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
+                }
+
+                if !shell.standardOutput.isEmpty {
+                    output(shell.standardOutput, color: FamiliarAISurfaceColor.ink)
+                }
+                if !shell.standardError.isEmpty {
+                    output(shell.standardError, color: FamiliarAISurfaceColor.failure)
+                }
+                if shell.outputWasTruncated {
+                    Label(String(localized: "shell.output.truncated", defaultValue: "Output was truncated at the safety limit."), systemImage: "exclamationmark.triangle")
+                        .font(.caption2)
+                        .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+                }
+
+                let diffCount = shell.addedFiles.count + shell.modifiedFiles.count + shell.removedFiles.count
+                if diffCount > 0 {
+                    Text(String(
+                        format: String(localized: "shell.diff.summary", defaultValue: "%lld added · %lld modified · %lld removed"),
+                        shell.addedFiles.count,
+                        shell.modifiedFiles.count,
+                        shell.removedFiles.count
+                    ))
+                    .font(.caption)
+                    .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+                }
+            }
+            .padding(FamiliarAISurfaceMetric.spaceM)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(FamiliarAISurfaceColor.inset, in: RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.card, style: .continuous))
+            .accessibilityElement(children: .contain)
+        }
+    }
+
+    private func output(_ value: String, color: Color) -> some View {
+        ScrollView(.horizontal) {
+            Text(outputTail(value))
+                .font(.caption2.monospaced())
+                .foregroundStyle(color)
+                .textSelection(.enabled)
+                .padding(FamiliarAISurfaceMetric.spaceS)
+        }
+        .background(FamiliarAISurfaceColor.field, in: RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.control, style: .continuous))
+    }
+
+    private func outputTail(_ value: String) -> String {
+        let lines = value.split(separator: "\n", omittingEmptySubsequences: false)
+        return lines.suffix(20).joined(separator: "\n")
     }
 }
 

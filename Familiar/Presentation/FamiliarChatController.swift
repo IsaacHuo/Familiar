@@ -153,11 +153,16 @@ final class FamiliarChatController {
             conversation.messages.flatMap { $0.attachments.map(\.relativePath) }
         }
         deleteSkillSnapshots(for: conversations.flatMap(\.agentRuns), in: context)
+        var stagedWorkspaces: [FamiliarStagedWorkspaceDirectory] = []
         do {
+            for conversation in conversations {
+                stagedWorkspaces.append(try dependencies.workspaceStore.stageWorkspace(.conversation(conversation.id)))
+            }
             _ = try FamiliarPinService().stageRemoval(.conversation, targetIDs: deletedIDs, in: context)
             conversations.forEach(context.delete)
             try context.save()
             FamiliarAttachmentStore.remove(relativePaths: attachmentPaths)
+            for staged in stagedWorkspaces { try? dependencies.workspaceStore.discard(staged) }
             if let selectedConversationID, deletedIDs.contains(selectedConversationID) {
                 self.selectedConversationID = nil
                 messages = []
@@ -168,6 +173,7 @@ final class FamiliarChatController {
             }
         } catch {
             context.rollback()
+            for staged in stagedWorkspaces.reversed() { try? dependencies.workspaceStore.restore(staged) }
             errorMessage = String(format: String(localized: "error.delete_conversation"), error.localizedDescription)
         }
     }
@@ -1045,7 +1051,7 @@ final class FamiliarChatController {
                         errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
                     }
                     if record.undoAvailable {
-                        persistDurableUndo(record, context: context)
+                        await persistDurableUndo(record, context: context)
                         availableUndoKeys.insert(record.runID + ":" + record.toolCallID)
                     }
                 case .toolResultProduced(let record):
@@ -1179,7 +1185,13 @@ final class FamiliarChatController {
                 let result: FamiliarToolExecutionResult
                 if let record = try context.fetch(descriptor).first {
                     guard record.state == .available else { throw FamiliarEventKitError.undoUnavailable }
-                    result = try await dependencies.eventKit.undo(kind: record.kind, identifier: record.calendarItemIdentifier)
+                    let mutationDescriptor = FetchDescriptor<FamiliarEventKitUndoMutationRecord>(predicate: #Predicate { $0.idempotencyKey == key })
+                    if let mutation = try context.fetch(mutationDescriptor).first {
+                        result = try await dependencies.eventKit.undo(try mutation.descriptor())
+                        mutation.restoredCalendarItemIdentifier = result.artifactIdentifier
+                    } else {
+                        result = try await dependencies.eventKit.undo(kind: record.kind, identifier: record.calendarItemIdentifier)
+                    }
                     record.state = .undone
                     record.undoneAt = Date()
                     try context.save()
@@ -1210,18 +1222,25 @@ final class FamiliarChatController {
         }
     }
 
-    private func persistDurableUndo(_ event: FamiliarRuntimeActivityCompletion, context: ModelContext) {
+    private func persistDurableUndo(_ event: FamiliarRuntimeActivityCompletion, context: ModelContext) async {
         guard let identifier = event.artifactIdentifier else { return }
         let kind: FamiliarEventKitAccessKind
         switch event.toolName {
-        case "create_calendar_event": kind = .events
-        case "create_reminder": kind = .reminders
+        case "create_calendar_event", "update_calendar_event", "delete_calendar_event": kind = .events
+        case "create_reminder", "update_reminder", "delete_reminder": kind = .reminders
         default: return
         }
         let key = event.runID + ":" + event.toolCallID
         let descriptor = FetchDescriptor<FamiliarEventKitUndoRecord>(predicate: #Predicate { $0.idempotencyKey == key })
         guard (try? context.fetch(descriptor).first) == nil else { return }
         context.insert(FamiliarEventKitUndoRecord(idempotencyKey: key, runtimeID: event.runID, toolCallID: event.toolCallID, toolName: event.toolName, kind: kind, calendarItemIdentifier: identifier))
+        if let undoDescriptor = await dependencies.eventKit.undoDescriptor(idempotencyKey: key),
+           undoDescriptor.operation != .create,
+           (try? context.fetch(FetchDescriptor<FamiliarEventKitUndoMutationRecord>(predicate: #Predicate { $0.idempotencyKey == key })).first) == nil {
+            if let mutation = try? FamiliarEventKitUndoMutationRecord(idempotencyKey: key, descriptor: undoDescriptor) {
+                context.insert(mutation)
+            }
+        }
         try? context.save()
     }
 

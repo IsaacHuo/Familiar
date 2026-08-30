@@ -5,19 +5,58 @@ import Testing
 
 @Suite("Familiar release persistence", .serialized)
 struct FamiliarPersistenceReleaseTests {
-    @Test("Release V1 freezes the current 31 entity schema")
+    @Test("Release uses one destructive current schema with no migration plan")
     @MainActor
     func releaseSchemaBaseline() {
-        #expect(FamiliarReleaseSchemaV1.versionIdentifier == Schema.Version(1, 0, 0))
-        #expect(FamiliarReleaseSchemaV1.models.count == 31)
-        #expect(FamiliarReleaseMigrationPlan.schemas.count == 1)
-        #expect(FamiliarReleaseMigrationPlan.stages.isEmpty)
-        #expect(FamiliarModelContainer.currentSchema.entities.count == 31)
+        #expect(FamiliarReleaseSchema.versionIdentifier == Schema.Version(1, 0, 0))
+        #expect(FamiliarReleaseSchema.models.count == 33)
+        #expect(FamiliarModelContainer.currentSchema.entities.count == 33)
         #expect(FamiliarStoreProfile.development.storeName == "FamiliarDevelopment")
         #expect(FamiliarStoreProfile.release.storeName == "Familiar")
     }
 
-    @Test("A file-backed V1 store reopens with relationships intact")
+    @Test("Current schema persists immutable attachment evidence and EventKit inverse snapshots")
+    @MainActor
+    func v2NativeRecords() throws {
+        let container = try FamiliarModelContainer.makeInMemory(name: "FamiliarCurrentNativeRecords")
+        let context = container.mainContext
+        let snapshotID = UUID()
+        let attachmentID = UUID()
+        context.insert(FamiliarContextAttachmentReference(
+            contextSnapshotID: snapshotID,
+            attachmentID: attachmentID,
+            filename: "data.csv",
+            mimeType: "text/csv",
+            sourceRelativePath: "Messages/message/data.csv",
+            byteSize: 12,
+            contentHash: "content",
+            extractedTextHash: "text"
+        ))
+        let descriptor = FamiliarEventKitUndoDescriptor(
+            operation: .delete,
+            kind: .reminders,
+            calendarItemIdentifier: "reminder-1",
+            snapshot: .reminder(.init(
+                title: "Review",
+                dueISO8601: nil,
+                priority: 0,
+                notes: nil,
+                isCompleted: true,
+                listIdentifier: "list-1"
+            ))
+        )
+        context.insert(try FamiliarEventKitUndoMutationRecord(idempotencyKey: "run:call", descriptor: descriptor))
+        try context.save()
+
+        let attachment = try #require(context.fetch(FetchDescriptor<FamiliarContextAttachmentReference>()).first)
+        #expect(attachment.contextSnapshotID == snapshotID)
+        #expect(attachment.attachmentID == attachmentID)
+        let mutation = try #require(context.fetch(FetchDescriptor<FamiliarEventKitUndoMutationRecord>()).first)
+        #expect(mutation.operation == .delete)
+        #expect(try mutation.descriptor().calendarItemIdentifier == "reminder-1")
+    }
+
+    @Test("A file-backed current store reopens with relationships intact")
     @MainActor
     func fileBackedReopen() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("FamiliarReleaseStore-\(UUID().uuidString)", isDirectory: true)

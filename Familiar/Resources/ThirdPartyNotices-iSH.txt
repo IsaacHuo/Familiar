@@ -1,0 +1,123 @@
+Familiar iSH and Alpine Runtime Notices
+
+Generated from the pinned source and prepared rootfs. Do not edit by hand.
+
+===== iSH LICENSE DECLARATION =====
+
+iSH is licensed under the [GPLv3][]. The additional terms in LICENSE.IOS also apply.
+
+Contributions made after commit 0e3a4144f93135c4fd618c8397d2cfd87194f69f are
+additionally licensed under the [GPLv2][]. This is intended to allow linking
+with GPLv2 licensed projects such as Linux and QEMU.
+
+The following authors have agreed to relicense their past contributions under GPLv2:
+- Theodore Dubois <tblodt@icloud.com>
+- Saagar Jha <saagar@saagarjha.com>
+- Christoffer Tønnessen <christoffertonnessen@icloud.com> <christoffer.tonnessen@gmail.com>
+- Philipp Wallisch <philipp.wallisch@inode.at>
+- Ed Luff <beartechtalks@gmail.com>
+- David Southgate <d@davidsouthgate.co.uk>
+- Charlie Melbye <charles.melbye@gmail.com>
+- David <0b101@users.noreply.github.com>
+- [as@irc](https://gist.github.com/tbodt/45ccbea8d3c095258d63f611654f05b4)
+- asdfugil (name was "Assfugil" when last contributed) <towinchenmi@gmail.com> <42699250+Assfugil@users.noreply.github.com>
+- AngeloHYang <38714377+AngeloHYang@users.noreply.github.com>
+- Matthew Merrill <mattmerr47@gmail.com>
+- Siddharth Dushantha <siddharth.dushantha@gmail.com>
+- Lorenzo De Linares <lorenzo.linares@icloud.com>
+- Christopher Albert <albert@alumni.tugraz.at>
+- Stephen Leaf <stephenaleaf@gmail.com>
+- Noah Peeters <noah@noahpeeters.de>
+- Alexis Marquis <alexis@marquis.me>
+- Brian Almeida <bma@thunderkeys.net>
+- Viktor Oreshkin <imselfish@stek29.rocks>
+- Ryan Hileman <lunixbochs@gmail.com>
+- Christoforos Charalambous <chrischaralambous14@gmail.com>
+- Kenta Kubo <kabuto669@icloud.com>
+- Zhuowei Zhang
+- never_released <24752637+woachk@users.noreply.github.com>
+
+[GPLv3]: https://www.gnu.org/licenses/gpl-3.0.html
+[GPLv2]: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+
+===== iSH iOS ADDITIONAL TERMS =====
+
+The iSH developers are aware that the terms of service that apply to
+apps distributed via Apple's App Store services may conflict with
+rights granted under the iSH license, the GNU General Public License,
+version 2 or 3. The copyright holders of the iSH app do not wish this
+conflict to prevent the otherwise-compliant distribution of derived
+apps via the App Store. Therefore, we have committed not to pursue
+any license violation that results solely from the conflict between
+the GNU GPLv2 or v3 and the Apple App Store terms of service. In other
+words, as long as you comply with the GPL in all other respects,
+including its requirements to provide users with source code and the
+text of the license, we will not object to your distribution of the
+iSH app through the App Store.
+
+===== ALPINE INSTALLED PACKAGE INVENTORY =====
+
+Package and version<TAB>Declared license
+acl-libs	2.3.2-r1	LGPL-2.1-or-later AND GPL-2.0-or-later
+alpine-baselayout	3.7.2-r1	GPL-2.0-only
+alpine-baselayout-data	3.7.2-r1	GPL-2.0-only
+alpine-keys	2.6-r0	MIT
+alpine-release	3.24.0-r0	MIT
+apk-tools	3.0.6-r0	GPL-2.0-only
+brotli-libs	1.2.0-r1	MIT
+busybox	1.37.0-r31	GPL-2.0-only
+busybox-binsh	1.37.0-r31	GPL-2.0-only
+c-ares	1.34.8-r0	MIT
+ca-certificates	20260611-r0	MPL-2.0 AND MIT
+ca-certificates-bundle	20260413-r0	MPL-2.0 AND MIT
+coreutils	9.11-r0	GPL-3.0-or-later
+coreutils-env	9.11-r0	GPL-3.0-or-later
+coreutils-fmt	9.11-r0	GPL-3.0-or-later
+coreutils-sha512sum	9.11-r0	GPL-3.0-or-later
+findutils	4.10.0-r1	GPL-3.0-or-later
+gawk	5.3.2-r2	GPL-3.0-or-later
+gdbm	1.26-r0	GPL-3.0-or-later
+git	2.54.0-r0	GPL-2.0-only
+git-init-template	2.54.0-r0	GPL-2.0-only
+grep	3.12-r0	GPL-3.0-or-later
+jq	1.8.1-r0	MIT
+libapk	3.0.6-r0	GPL-2.0-only
+libattr	2.5.2-r2	LGPL-2.1-or-later
+libbz2	1.0.8-r6	bzip2-1.0.6
+libcrypto3	3.5.6-r0	Apache-2.0
+libcurl	8.21.0-r0	curl
+libexpat	2.8.3-r0	MIT
+libffi	3.5.2-r1	MIT
+libgcc	15.2.0-r5	GPL-2.0-or-later AND LGPL-2.1-or-later
+libidn2	2.3.8-r0	GPL-2.0-or-later OR LGPL-3.0-or-later
+libncursesw	6.6_p20260516-r0	X11
+libpanelw	6.6_p20260516-r0	X11
+libpsl	0.21.5-r3	MIT
+libssl3	3.5.6-r0	Apache-2.0
+libstdc++	15.2.0-r5	GPL-2.0-or-later AND LGPL-2.1-or-later
+libunistring	1.4.2-r0	GPL-2.0-or-later OR LGPL-3.0-or-later
+mpdecimal	4.0.1-r0	BSD-2-Clause
+musl	1.2.6-r2	MIT
+musl-utils	1.2.6-r2	MIT AND BSD-2-Clause AND GPL-2.0-or-later
+ncurses-terminfo-base	6.6_p20260516-r0	X11
+nghttp2-libs	1.69.0-r0	MIT
+oniguruma	6.9.10-r0	BSD-2-Clause
+pcre2	10.47-r1	BSD-3-Clause
+py3-pip	26.1.2-r0	MIT
+py3-pip-pyc	26.1.2-r0	MIT
+pyc	3.14.7-r1	PSF-2.0
+python3	3.14.7-r1	PSF-2.0
+python3-pyc	3.14.7-r1	PSF-2.0
+python3-pycache-pyc0	3.14.7-r1	PSF-2.0
+readline	8.3.3-r1	GPL-3.0-or-later
+scanelf	1.3.9-r1	GPL-2.0-only
+sed	4.9-r2	GPL-3.0-or-later
+skalibs-libs	2.15.0.0-r0	ISC
+sqlite-libs	3.53.4-r0	blessing
+ssl_client	1.37.0-r31	GPL-2.0-only
+unzip	6.0-r16	custom
+utmps-libs	0.1.3.3-r0	ISC
+xz-libs	5.8.3-r0	GPL-2.0-or-later AND 0BSD AND Public-Domain AND LGPL-2.1-or-later
+zip	3.0-r13	Info-ZIP
+zlib	1.3.2-r0	Zlib
+zstd-libs	1.5.7-r2	BSD-3-Clause OR GPL-2.0-or-later

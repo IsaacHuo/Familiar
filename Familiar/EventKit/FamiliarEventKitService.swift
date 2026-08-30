@@ -41,6 +41,7 @@ nonisolated public enum FamiliarEventKitError: LocalizedError, Sendable {
     case resultLimitExceeded
     case invalidResultLimit
     case missingCalendar
+    case missingItem(String)
     case idempotencyKeyEmpty
     case undoUnavailable
 
@@ -54,6 +55,7 @@ nonisolated public enum FamiliarEventKitError: LocalizedError, Sendable {
         case .resultLimitExceeded: return "查询结果超过允许的上限。"
         case .invalidResultLimit: return "结果上限必须在 1 到 200 之间。"
         case .missingCalendar: return "找不到指定的日历或提醒列表。"
+        case .missingItem(let identifier): return "找不到日历项目：\(identifier)"
         case .idempotencyKeyEmpty: return "幂等键不能为空。"
         case .undoUnavailable: return "这次操作已经撤销，或撤销已失效。"
         }
@@ -102,15 +104,104 @@ nonisolated public struct FamiliarReminderWriteRequest: Codable, Sendable {
     public let notes: String?
 }
 
+nonisolated public struct FamiliarEventUpdateRequest: Codable, Sendable {
+    public let identifier: String
+    public let title: String
+    public let startISO8601: String
+    public let endISO8601: String
+    public let isAllDay: Bool
+    public let location: String?
+    public let notes: String?
+    public let urlString: String?
+    public let calendarIdentifier: String?
+}
+
+nonisolated public struct FamiliarReminderUpdateRequest: Codable, Sendable {
+    public let identifier: String
+    public let title: String
+    public let dueISO8601: String?
+    public let listIdentifier: String?
+    public let priority: Int
+    public let notes: String?
+    public let isCompleted: Bool
+}
+
+nonisolated public struct FamiliarEventKitDeleteRequest: Codable, Sendable {
+    public let identifier: String
+}
+
 nonisolated public enum FamiliarPendingWriteRequest: Codable, Sendable {
     case event(FamiliarEventWriteRequest)
     case reminder(FamiliarReminderWriteRequest)
+    case eventUpdate(FamiliarEventUpdateRequest)
+    case reminderUpdate(FamiliarReminderUpdateRequest)
+    case eventDelete(FamiliarEventKitDeleteRequest)
+    case reminderDelete(FamiliarEventKitDeleteRequest)
+}
+
+nonisolated public enum FamiliarEventKitMutationOperation: String, Codable, Sendable {
+    case create
+    case update
+    case delete
+}
+
+nonisolated public struct FamiliarEventKitEventSnapshot: Codable, Sendable {
+    public let title: String
+    public let startISO8601: String
+    public let endISO8601: String
+    public let isAllDay: Bool
+    public let location: String?
+    public let notes: String?
+    public let urlString: String?
+    public let calendarIdentifier: String
+}
+
+nonisolated public struct FamiliarEventKitReminderSnapshot: Codable, Sendable {
+    public let title: String
+    public let dueISO8601: String?
+    public let priority: Int
+    public let notes: String?
+    public let isCompleted: Bool
+    public let listIdentifier: String
+}
+
+nonisolated public enum FamiliarEventKitUndoSnapshot: Codable, Sendable {
+    case event(FamiliarEventKitEventSnapshot)
+    case reminder(FamiliarEventKitReminderSnapshot)
+}
+
+nonisolated public struct FamiliarEventKitUndoDescriptor: Codable, Sendable {
+    public let operation: FamiliarEventKitMutationOperation
+    public let kind: FamiliarEventKitAccessKind
+    public let calendarItemIdentifier: String
+    public let snapshot: FamiliarEventKitUndoSnapshot?
 }
 
 nonisolated public struct FamiliarWriteCommitResult: Codable, Sendable {
     public let idempotencyKey: String
     public let kind: FamiliarEventKitAccessKind
     public let identifier: String
+    public let operation: FamiliarEventKitMutationOperation
+    public let undoDescriptor: FamiliarEventKitUndoDescriptor
+
+    public init(
+        idempotencyKey: String,
+        kind: FamiliarEventKitAccessKind,
+        identifier: String,
+        operation: FamiliarEventKitMutationOperation = .create,
+        undoDescriptor: FamiliarEventKitUndoDescriptor? = nil
+    ) {
+        self.idempotencyKey = idempotencyKey
+        self.kind = kind
+        self.identifier = identifier
+        self.operation = operation
+        self.undoDescriptor = undoDescriptor ?? .init(
+            operation: operation,
+            kind: kind,
+            calendarItemIdentifier: identifier,
+            snapshot: nil
+        )
+    }
 }
 
 nonisolated private struct FamiliarUndoResult: Codable, Sendable {
@@ -131,12 +222,21 @@ nonisolated protocol FamiliarEventKitServicing: FamiliarEventKitWriteExecutor, F
     func reminders(from startISO8601: String?, to endISO8601: String?, text: String?, limit: Int) async throws -> [FamiliarReminder]
     func undoCommit(idempotencyKey: String) async throws -> FamiliarToolExecutionResult
     func undo(kind: FamiliarEventKitAccessKind, identifier: String) async throws -> FamiliarToolExecutionResult
+    func undo(_ descriptor: FamiliarEventKitUndoDescriptor) async throws -> FamiliarToolExecutionResult
+    func undoDescriptor(idempotencyKey: String) async -> FamiliarEventKitUndoDescriptor?
 }
 
 nonisolated extension FamiliarEventKitServicing {
     func undo(kind: FamiliarEventKitAccessKind, identifier: String) async throws -> FamiliarToolExecutionResult {
         throw FamiliarEventKitError.undoUnavailable
     }
+
+    func undo(_ descriptor: FamiliarEventKitUndoDescriptor) async throws -> FamiliarToolExecutionResult {
+        guard descriptor.operation == .create else { throw FamiliarEventKitError.undoUnavailable }
+        return try await undo(kind: descriptor.kind, identifier: descriptor.calendarItemIdentifier)
+    }
+
+    func undoDescriptor(idempotencyKey: String) async -> FamiliarEventKitUndoDescriptor? { nil }
 }
 
 public actor FamiliarEventKitService: FamiliarEventKitServicing {
@@ -211,15 +311,21 @@ public actor FamiliarEventKitService: FamiliarEventKitServicing {
     public func targetDescription(for request: FamiliarPendingWriteRequest) throws -> String {
         switch request {
         case .event(let input):
-            if authorization(for: .events) != .fullAccess, input.calendarIdentifier == nil {
-                return String(localized: "eventkit.default_calendar")
-            }
-            return try eventCalendar(identifier: input.calendarIdentifier).title
+            return input.calendarIdentifier.map { "\(String(localized: "eventkit.target.calendar")) \($0)" }
+                ?? String(localized: "eventkit.default_calendar")
         case .reminder(let input):
-            if authorization(for: .reminders) != .fullAccess, input.listIdentifier == nil {
-                return String(localized: "eventkit.default_reminder_list")
-            }
-            return try reminderCalendar(identifier: input.listIdentifier).title
+            return input.listIdentifier.map { "\(String(localized: "eventkit.target.reminder_list")) \($0)" }
+                ?? String(localized: "eventkit.default_reminder_list")
+        case .eventUpdate(let input):
+            return input.calendarIdentifier.map { "\(String(localized: "eventkit.target.calendar")) \($0)" }
+                ?? "\(String(localized: "eventkit.target.event")) \(input.identifier)"
+        case .reminderUpdate(let input):
+            return input.listIdentifier.map { "\(String(localized: "eventkit.target.reminder_list")) \($0)" }
+                ?? "\(String(localized: "eventkit.target.reminder")) \(input.identifier)"
+        case .eventDelete(let input):
+            return "\(String(localized: "eventkit.target.event")) \(input.identifier)"
+        case .reminderDelete(let input):
+            return "\(String(localized: "eventkit.target.reminder")) \(input.identifier)"
         }
     }
 
@@ -273,6 +379,10 @@ public actor FamiliarEventKitService: FamiliarEventKitServicing {
         switch request {
         case .event(let input): result = try saveEvent(input, key: idempotencyKey)
         case .reminder(let input): result = try saveReminder(input, key: idempotencyKey)
+        case .eventUpdate(let input): result = try updateEvent(input, key: idempotencyKey)
+        case .reminderUpdate(let input): result = try updateReminder(input, key: idempotencyKey)
+        case .eventDelete(let input): result = try deleteEvent(input, key: idempotencyKey)
+        case .reminderDelete(let input): result = try deleteReminder(input, key: idempotencyKey)
         }
         committedKeys[idempotencyKey] = result
         return result
@@ -283,44 +393,60 @@ public actor FamiliarEventKitService: FamiliarEventKitServicing {
         guard !undoneKeys.contains(idempotencyKey),
               let committed = committedKeys[idempotencyKey]
         else { throw FamiliarEventKitError.undoUnavailable }
-        switch committed.kind {
-        case .events:
-            guard let event = store.event(withIdentifier: committed.identifier) else {
-                throw FamiliarEventKitError.undoUnavailable
-            }
-            try store.remove(event, span: .thisEvent, commit: true)
-        case .reminders:
-            guard let reminder = store.calendarItem(withIdentifier: committed.identifier) as? EKReminder else {
-                throw FamiliarEventKitError.undoUnavailable
-            }
-            try store.remove(reminder, commit: true)
-        }
+        let result = try await undo(committed.undoDescriptor)
         undoneKeys.insert(idempotencyKey)
-        return FamiliarToolExecutionResult(
-            envelope: try FamiliarToolResultEnvelope(
-                model: FamiliarUndoResult(undone: true, identifier: committed.identifier),
-                presentation: .mutationReceipt(.init(summary: "已撤销", operation: "undo", targetIdentifier: committed.identifier, succeeded: true, undoAvailable: false))
-            ),
-            artifactIdentifier: committed.identifier
-        )
+        return result
+    }
+
+    func undoDescriptor(idempotencyKey: String) -> FamiliarEventKitUndoDescriptor? {
+        committedKeys[idempotencyKey]?.undoDescriptor
     }
 
     func undo(kind: FamiliarEventKitAccessKind, identifier: String) async throws -> FamiliarToolExecutionResult {
+        try await undo(.init(operation: .create, kind: kind, calendarItemIdentifier: identifier, snapshot: nil))
+    }
+
+    func undo(_ descriptor: FamiliarEventKitUndoDescriptor) async throws -> FamiliarToolExecutionResult {
         try Task.checkCancellation()
-        switch kind {
-        case .events:
-            guard let event = store.event(withIdentifier: identifier) else { throw FamiliarEventKitError.undoUnavailable }
+        let resultingIdentifier: String
+        switch (descriptor.operation, descriptor.kind, descriptor.snapshot) {
+        case (.create, .events, _):
+            guard let event = store.event(withIdentifier: descriptor.calendarItemIdentifier) else { throw FamiliarEventKitError.undoUnavailable }
             try store.remove(event, span: .thisEvent, commit: true)
-        case .reminders:
-            guard let reminder = store.calendarItem(withIdentifier: identifier) as? EKReminder else { throw FamiliarEventKitError.undoUnavailable }
+            resultingIdentifier = descriptor.calendarItemIdentifier
+        case (.create, .reminders, _):
+            guard let reminder = store.calendarItem(withIdentifier: descriptor.calendarItemIdentifier) as? EKReminder else { throw FamiliarEventKitError.undoUnavailable }
             try store.remove(reminder, commit: true)
+            resultingIdentifier = descriptor.calendarItemIdentifier
+        case (.update, .events, .event(let snapshot)):
+            guard let event = store.event(withIdentifier: descriptor.calendarItemIdentifier) else { throw FamiliarEventKitError.undoUnavailable }
+            try apply(snapshot, to: event)
+            try store.save(event, span: .thisEvent, commit: true)
+            resultingIdentifier = event.eventIdentifier
+        case (.update, .reminders, .reminder(let snapshot)):
+            guard let reminder = store.calendarItem(withIdentifier: descriptor.calendarItemIdentifier) as? EKReminder else { throw FamiliarEventKitError.undoUnavailable }
+            try apply(snapshot, to: reminder)
+            try store.save(reminder, commit: true)
+            resultingIdentifier = reminder.calendarItemIdentifier
+        case (.delete, .events, .event(let snapshot)):
+            let event = EKEvent(eventStore: store)
+            try apply(snapshot, to: event)
+            try store.save(event, span: .thisEvent, commit: true)
+            resultingIdentifier = event.eventIdentifier
+        case (.delete, .reminders, .reminder(let snapshot)):
+            let reminder = EKReminder(eventStore: store)
+            try apply(snapshot, to: reminder)
+            try store.save(reminder, commit: true)
+            resultingIdentifier = reminder.calendarItemIdentifier
+        default:
+            throw FamiliarEventKitError.undoUnavailable
         }
         return FamiliarToolExecutionResult(
             envelope: try FamiliarToolResultEnvelope(
-                model: FamiliarUndoResult(undone: true, identifier: identifier),
-                presentation: .mutationReceipt(.init(summary: String(localized: "tool.undone", defaultValue: "Undone"), operation: "undo", targetIdentifier: identifier, succeeded: true, undoAvailable: false))
+                model: FamiliarUndoResult(undone: true, identifier: resultingIdentifier),
+                presentation: .mutationReceipt(.init(summary: String(localized: "tool.undone", defaultValue: "Undone"), operation: "undo", targetIdentifier: resultingIdentifier, succeeded: true, undoAvailable: false))
             ),
-            artifactIdentifier: identifier
+            artifactIdentifier: resultingIdentifier
         )
     }
 
@@ -377,6 +503,150 @@ public actor FamiliarEventKitService: FamiliarEventKitServicing {
         return FamiliarWriteCommitResult(idempotencyKey: key, kind: .reminders, identifier: reminder.calendarItemIdentifier)
     }
 
+    private func updateEvent(_ input: FamiliarEventUpdateRequest, key: String) throws -> FamiliarWriteCommitResult {
+        try require(.events)
+        guard let event = store.event(withIdentifier: input.identifier) else {
+            throw FamiliarEventKitError.missingItem(input.identifier)
+        }
+        let previous = snapshot(of: event)
+        try apply(input, to: event)
+        try store.save(event, span: .thisEvent, commit: true)
+        guard let identifier = event.eventIdentifier else {
+            throw FamiliarEventKitError.missingItem(input.identifier)
+        }
+        return FamiliarWriteCommitResult(
+            idempotencyKey: key,
+            kind: .events,
+            identifier: identifier,
+            operation: .update,
+            undoDescriptor: .init(operation: .update, kind: .events, calendarItemIdentifier: identifier, snapshot: .event(previous))
+        )
+    }
+
+    private func updateReminder(_ input: FamiliarReminderUpdateRequest, key: String) throws -> FamiliarWriteCommitResult {
+        try require(.reminders)
+        guard let reminder = store.calendarItem(withIdentifier: input.identifier) as? EKReminder else {
+            throw FamiliarEventKitError.missingItem(input.identifier)
+        }
+        let previous = snapshot(of: reminder)
+        try apply(input, to: reminder)
+        try store.save(reminder, commit: true)
+        let identifier = reminder.calendarItemIdentifier
+        return FamiliarWriteCommitResult(
+            idempotencyKey: key,
+            kind: .reminders,
+            identifier: identifier,
+            operation: .update,
+            undoDescriptor: .init(operation: .update, kind: .reminders, calendarItemIdentifier: identifier, snapshot: .reminder(previous))
+        )
+    }
+
+    private func deleteEvent(_ input: FamiliarEventKitDeleteRequest, key: String) throws -> FamiliarWriteCommitResult {
+        try require(.events)
+        guard let event = store.event(withIdentifier: input.identifier) else {
+            throw FamiliarEventKitError.missingItem(input.identifier)
+        }
+        let previous = snapshot(of: event)
+        try store.remove(event, span: .thisEvent, commit: true)
+        return FamiliarWriteCommitResult(
+            idempotencyKey: key,
+            kind: .events,
+            identifier: input.identifier,
+            operation: .delete,
+            undoDescriptor: .init(operation: .delete, kind: .events, calendarItemIdentifier: input.identifier, snapshot: .event(previous))
+        )
+    }
+
+    private func deleteReminder(_ input: FamiliarEventKitDeleteRequest, key: String) throws -> FamiliarWriteCommitResult {
+        try require(.reminders)
+        guard let reminder = store.calendarItem(withIdentifier: input.identifier) as? EKReminder else {
+            throw FamiliarEventKitError.missingItem(input.identifier)
+        }
+        let previous = snapshot(of: reminder)
+        try store.remove(reminder, commit: true)
+        return FamiliarWriteCommitResult(
+            idempotencyKey: key,
+            kind: .reminders,
+            identifier: input.identifier,
+            operation: .delete,
+            undoDescriptor: .init(operation: .delete, kind: .reminders, calendarItemIdentifier: input.identifier, snapshot: .reminder(previous))
+        )
+    }
+
+    private func apply(_ input: FamiliarEventUpdateRequest, to event: EKEvent) throws {
+        let start = try FamiliarISO8601.date(input.startISO8601)
+        let end = try FamiliarISO8601.date(input.endISO8601)
+        guard start < end else { throw FamiliarEventKitError.invalidRange }
+        guard !input.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw FamiliarEventKitError.emptyTitle }
+        event.title = input.title
+        event.startDate = start
+        event.endDate = end
+        event.isAllDay = input.isAllDay
+        event.location = input.location
+        event.notes = input.notes
+        event.url = input.urlString.flatMap(URL.init(string:))
+        if let calendarIdentifier = input.calendarIdentifier {
+            event.calendar = try eventCalendar(identifier: calendarIdentifier)
+        }
+    }
+
+    private func apply(_ input: FamiliarReminderUpdateRequest, to reminder: EKReminder) throws {
+        guard !input.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw FamiliarEventKitError.emptyTitle }
+        guard (0...9).contains(input.priority) else { throw FamiliarEventKitError.invalidRange }
+        reminder.title = input.title
+        reminder.notes = input.notes
+        reminder.priority = input.priority
+        reminder.dueDateComponents = try input.dueISO8601.map(FamiliarISO8601.components)
+        reminder.isCompleted = input.isCompleted
+        if let listIdentifier = input.listIdentifier {
+            reminder.calendar = try reminderCalendar(identifier: listIdentifier)
+        }
+    }
+
+    private func apply(_ snapshot: FamiliarEventKitEventSnapshot, to event: EKEvent) throws {
+        event.title = snapshot.title
+        event.startDate = try FamiliarISO8601.date(snapshot.startISO8601)
+        event.endDate = try FamiliarISO8601.date(snapshot.endISO8601)
+        event.isAllDay = snapshot.isAllDay
+        event.location = snapshot.location
+        event.notes = snapshot.notes
+        event.url = snapshot.urlString.flatMap(URL.init(string:))
+        event.calendar = try eventCalendar(identifier: snapshot.calendarIdentifier)
+    }
+
+    private func apply(_ snapshot: FamiliarEventKitReminderSnapshot, to reminder: EKReminder) throws {
+        reminder.title = snapshot.title
+        reminder.dueDateComponents = try snapshot.dueISO8601.map(FamiliarISO8601.components)
+        reminder.priority = snapshot.priority
+        reminder.notes = snapshot.notes
+        reminder.isCompleted = snapshot.isCompleted
+        reminder.calendar = try reminderCalendar(identifier: snapshot.listIdentifier)
+    }
+
+    private func snapshot(of event: EKEvent) -> FamiliarEventKitEventSnapshot {
+        FamiliarEventKitEventSnapshot(
+            title: event.title,
+            startISO8601: FamiliarISO8601.string(event.startDate),
+            endISO8601: FamiliarISO8601.string(event.endDate),
+            isAllDay: event.isAllDay,
+            location: event.location,
+            notes: event.notes,
+            urlString: event.url?.absoluteString,
+            calendarIdentifier: event.calendar.calendarIdentifier
+        )
+    }
+
+    private func snapshot(of reminder: EKReminder) -> FamiliarEventKitReminderSnapshot {
+        FamiliarEventKitReminderSnapshot(
+            title: reminder.title,
+            dueISO8601: reminder.dueDateComponents?.date.map(FamiliarISO8601.string),
+            priority: reminder.priority,
+            notes: reminder.notes,
+            isCompleted: reminder.isCompleted,
+            listIdentifier: reminder.calendar.calendarIdentifier
+        )
+    }
+
     private func eventCalendar(identifier: String?) throws -> EKCalendar {
         if let identifier, let calendar = store.calendar(withIdentifier: identifier) { return calendar }
         guard identifier == nil, let calendar = store.defaultCalendarForNewEvents else { throw FamiliarEventKitError.missingCalendar }
@@ -391,6 +661,12 @@ public actor FamiliarEventKitService: FamiliarEventKitServicing {
 }
 
 nonisolated private enum FamiliarISO8601 {
+    static func string(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
+    }
+
     static func date(_ value: String) throws -> Date {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

@@ -106,3 +106,22 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+-------------------------------------------------------------------------------
+
+Familiar incorporates iSH ARM64 at commit
+54ca185b77f170e12fd353fcd7443232f6cb73fd.
+https://github.com/OpenMinis/ish-arm64
+
+iSH is licensed under GNU GPL version 3. The iSH iOS additional terms and the
+corresponding-source offer are bundled as ISH_LICENSE_IOS.txt and
+ISHSourceOffer.txt. Familiar's complete GPLv3 text is bundled as GPL-3.0.txt.
+
+Familiar's Linux userspace is assembled from Alpine Linux 3.24.0 aarch64.
+https://alpinelinux.org/
+
+Alpine is an aggregation of independently licensed packages. The exact base
+image digest and requested package set are recorded in
+Vendor/ISHRuntime/manifest.json. Scripts/prepare-ish-rootfs.sh emits the exact
+installed package versions and declared licenses beside the prepared rootfs;
+that generated inventory must be included in release compliance artifacts.

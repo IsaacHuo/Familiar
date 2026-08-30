@@ -43,6 +43,8 @@
     <string>Familiar searches contacts only when you ask and only after you approve access.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>Familiar requests a single foreground location only when your task needs it.</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>Familiar saves a Workspace image to Photos only after you approve the exact output.</string>
     <key>NSRemindersFullAccessUsageDescription</key>
     <string>Familiar reads reminders you ask about and adds a reminder only after you confirm its preview.</string>
     <key>NSMicrophoneUsageDescription</key>

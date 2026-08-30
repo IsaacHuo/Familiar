@@ -7,7 +7,7 @@
 | 领域 | 技术 |
 |---|---|
 | UI | SwiftUI |
-| 数据模型 | SwiftData（`FamiliarReleaseSchemaV1` 31 实体 + `FamiliarReleaseMigrationPlan`） |
+| 数据模型 | SwiftData（单一 `FamiliarReleaseSchema`，33 实体，无 migration plan） |
 | 网络 | URLSession + SSE（模型请求）；Network.framework 自研 HTTP/1.1（Web fetch） |
 | 富文本 | WKWebView 非持久化 + 内置 Markdown-It、highlight.js、KaTeX、Mermaid、DOMPurify |
 | 密钥 | Security.framework Keychain，`kSecAttrAccessibleWhenUnlockedThisDeviceOnly` |
@@ -16,7 +16,7 @@
 | PDF | PDFKit 文本层检查 + Vision OCR |
 | 图片 | PhotosPicker、AVFoundation、UIKit、Vision；Apple Vision 生成本地只读证据，生产模型不接收图片 bytes |
 | 本地文本模型 | Core AI adapter contract + ModelManager；真实 Xcode 27 Runtime/Qwen bundle 尚未接入 |
-| 受控计算 | iOS iSH bridge contract；macOS Apple Containerization 0.33.4 direct Swift API |
+| 受控计算 | iOS ARM64 iSH/Alpine headless runtime；macOS Apple Containerization 0.33.4 direct Swift API |
 | 语音 | Speech、AVAudioEngine |
 | 网页解析 | SwiftSoup（SPM 2.13.7，仅 app target 链接） |
 
@@ -90,7 +90,8 @@
 - `FamiliarWorkspaceTools.swift` — `Files/Resources/<id>/...` 与 `Files/Attachments/<id>/...` 是当前 ContextSnapshot 的虚拟只读投影；`Outputs`/`Runtime/Work` 来自 Workspace Store。write 只允许 `Outputs`，批准后保存目标文件级旧值，Undo 不触碰其他路径；image list 只列当前会话显式附件图片。
 - `FamiliarDeviceTools.swift` — Contacts 只读、单次前台 Location、Clipboard 双向确认/写入 undo、只准备 payload 的 Share；EventKit 继续独立 adapter，Spotlight 只查 Familiar 索引。
 - `FamiliarShellExecutor.swift` / `FamiliarShellPolicy.swift` / `FamiliarShellTool.swift` — 统一 Shell 事件/typed result/取消/限制、危险命令确认、禁网/host path/后台/循环/编码绕过、执行前 checkpoint 与执行后 diff。真实 executor 未就绪前 `shell_execute` 不注册。
-- `FamiliarISHShellExecutor.swift` — Workspace 三目录 allowlist、禁网 runtime config 和 iSH bridge contract；具体 GPL fork/bridge 尚未 vendored。
+- `FamiliarISHShellExecutor.swift` — 全局串行 iSH actor、Alpine fakefs 安装、Workspace 三目录 allowlist、streaming、timeout/cancel 和网络计数。bridge 只有 `prepare()` 成功后才向 ToolRegistry 暴露 Shell。
+- `Vendor/ish-arm64/` / `Vendor/ISHRuntime/` — 固定 commit 的 GPLv3 iSH ARM64 源码、Familiar headless bridge、网络 syscall policy、arm64 device/simulator XCFramework 与供应链 manifest。
 - `FamiliarContainerShellExecutor.swift` — 直接使用 LinuxContainer/exec/process API；无网络接口、三目录 VirtioFS、persistent writable layer 输入、2 vCPU/4 GiB、全局串行、取消与 idle stop。kernel/init/rootfs 下载准备尚未实现。
 
 ### `FamiliarMac/`
@@ -103,7 +104,7 @@
 
 ### `Familiar/Persistence/` — SwiftData
 - `FamiliarModels.swift` — 当前模型 typealias 与 `FamiliarModelContainer`；生产和测试容器直接打开单一当前 schema，不配置 migration plan。
-- `FamiliarSchema.swift` — 当前 31 个实体集合与项目/会话统一置顶记录。
+- `FamiliarSchema.swift` — 唯一当前 Release Schema，直接包含不可变 Attachment Context Reference 与 EventKit mutation Undo snapshot 等共 33 个实体；不保留旧 Release schema 或 migration stage。
 - `FamiliarProjectService.swift` — `@MainActor`，项目 CRUD（名称去除首尾空白并截断至 80 字符；创建/编辑时跨活跃与归档项目做不区分大小写的全局唯一检查）、指令（8k 上限）、归档、删除（运行中 Run 保护 + 资源/Artifact staged 删除/回滚；保留并解除 Conversation/Run，清理项目 Memory/授权）。
 - `FamiliarRunPersistenceRecorder.swift` — `@MainActor`，**已接线**：ensureRun + ContextSnapshot/VisualEvidence、Activity/ToolResult/Approval/Clarification/ResponseBlock 持久化；tool/approval/clarification/result 在 Runtime 事件边界 upsert，task plan 按稳定 identity 更新 latest revision，最终回复一次写 block，失败/取消且无助手消息时写可重放 runtime notice recovery，text delta 不写 SwiftData。没有 AgentStep/checkpoint 投影。
 - `FamiliarRunRecoveryService.swift` — `@MainActor`，capability/grant/cursor/tool-invocation 持久化 + `recoverInterruptedRuns`（启动时把遗留 running Run 终结为 failed、取消在途 invocation）；CapabilitySnapshot 与 RunResumeCursor 已接入，grant 创建/消费与字节级中断续跑仍未接入。
@@ -162,24 +163,25 @@
 ### `FamiliarWidgets/`、`FamiliarShareExtension/`
 - Widget bundle（launcher + control）、`SLComposeServiceViewController` 分享面板（最多 3 文件、25 MiB）。
 
-## 4. 启动时注册的工具（28 个）
+## 4. 启动时注册的工具（最多 35 个）
 
 注册位置：`FamiliarAppDependencies.init()`。ToolRegistry 按 manifest 的 `.native / .specializedLocal / .shell` 分类保存；Agent Runtime 不硬编码具体工具。
 
 | 分类 | 工具 |
 |---|---|
 | 设备原生 | `current_date_time`、`app_information`、`contacts_search`、`current_location`、`clipboard_read`、`clipboard_write`、`prepare_share`、`familiar_search` |
-| EventKit | `calendar_events`、`create_calendar_event`、`reminders`、`create_reminder` |
-| Workspace | `workspace_list`、`workspace_read`、`workspace_search`、`workspace_write`、`workspace_image_list` |
+| EventKit | `calendar_events`、`create_calendar_event`、`update_calendar_event`、`delete_calendar_event`、`reminders`、`create_reminder`、`update_reminder`、`delete_reminder` |
+| Workspace | `workspace_list`、`workspace_read`、`workspace_search`、`workspace_write`、`workspace_image_list`、`photos_save_output`、`prepare_file_export` |
 | Project/Artifact | `resource_list`、`resource_read`、`resource_search`、`artifact_write`、`artifact_edit` |
 | Web | `web_search`、`web_fetch` |
 | Presentation/interaction | `task_plan`、`present_recommendation`、`present_insight`、`ask_user` |
+| Shell | `shell_execute`（仅在 iSH bridge 和 bundled rootfs 准备成功后注册） |
 
-`shell_execute` 已实现 manifest、policy、checkpoint 和 executor contract，但在 iSH/Container runtime 资产与隔离完成验收前刻意不注册。App Intents 是系统入口，不作为模型可调用 Tool 注册。
+App Intents 是系统入口，不作为模型可调用 Tool 注册。ToolRegistry 只按 manifest 分类和可用性注册，Agent Runtime 不包含 iSH 或 Native Tool 的类型判断。
 
 ## 5. SwiftData Schema
 
-schema：`FamiliarReleaseSchemaV1`（version `1.0.0`），当前 31 个实体；`FamiliarReleaseMigrationPlan` 仅包含 V1，首版没有 migration stage：
+schema：`FamiliarReleaseSchema`（version `1.0.0`），当前 33 个实体；测试阶段没有 migration plan，旧 store 不受支持：
 
 | 实体 | 运行时是否写入 |
 |---|---|
@@ -256,7 +258,7 @@ MainActor 容器：`FamiliarChatController`、`FamiliarRunPersistenceRecorder`�
 - iOS 1.0 设置固定 `.cloud`，只显示 DeepSeek Flash/Pro；App 直接进入 Chat，缺少 API Key 时由发送动作提示并提供设置入口。内部 `ModelRouter` 合同保留，但本地路由不进入生产 UI。
 - 当前没有生产视觉模型。图片在本机经 Apple Vision 转成有限证据文本，原始 bytes 不发送到 DeepSeek。
 - 当前开发机是 Xcode 26.6 / iOS 26.5 SDK；计划中的 Xcode 27 Core AI API、Qwen3-0.6B Core AI bundle、specialization 与真机断网流式对话尚不可编译/验收。`FamiliarCoreAIModelProvider` 目前只完成 SDK-neutral adapter contract。
-- iSH 具体 GPL fork、固定上游 commit、Alpine rootfs 与 Familiar bridge 尚未加入仓库；iOS executor contract 已存在但返回 unavailable，Shell Tool 因此未注册。
+- iSH fork 固定到 `54ca185b77f170e12fd353fcd7443232f6cb73fd`，Alpine 3.24.0 aarch64 fakefs、device/simulator XCFramework、GPL 源码入口与 headless bridge 已加入生产 target；真实 guest 执行和资源边界尚待真机验收。
 - macOS 已直接编译链接 Containerization 0.33.4，并有可构造 networkless LinuxContainer 的 session/factory；Familiar runtime kernel/init/rootfs/persistent disk 的下载校验器与真实 VM 启动尚未完成。FamiliarMac 当前是原生 Codex 式 UI shell，未接入共享 SwiftData/Agent Runtime。
 - Workspace 的 Files 以 Attachment/Project Resource ContextSnapshot 虚拟投影，Outputs/Runtime 保持独立目录；不做重复物理迁移。未公开的 development store 不迁入首个 Release store，也不会被自动删除。
 - ToolInvocation/cursor、授权创建/消费均已接入；字节级中断续跑仍未实现。

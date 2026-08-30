@@ -88,13 +88,19 @@ const base = import.meta.env.BASE_URL;
           <p>用于将你的语音转换为可编辑的文字草稿。Familiar 使用 Apple Speech 框架，并在设备与语言支持时要求端侧识别；并非所有情况下都能保证完全在设备上识别。Familiar 不保存音频录音，但 Apple 对语音数据的处理可能适用 Apple 自身的隐私政策。</p>
 
           <h3>日历与提醒事项</h3>
-          <p>仅在你主动请求相应工具并授予权限后，读取完成当前问题所需的日历或提醒事项数据。创建日历事件或提醒事项前，Familiar 会显示预览并要求确认。与问题相关的数据可能作为工具结果发送给 DeepSeek，以便生成回答。</p>
+          <p>仅在你主动请求相应工具并授予权限后，读取完成当前问题所需的日历或提醒事项数据。创建、修改、完成或删除前，Familiar 会显示精确预览并要求确认；取消不会写入。成功操作保存本地 Undo 记录。与问题相关的数据可能作为工具结果发送给 DeepSeek，以便生成回答。</p>
+
+          <h3>照片图库</h3>
+          <p>导入图片继续使用系统 PhotosPicker，只读取你明确选择的内容。只有你批准保存指定 Workspace 图片输出时，Familiar 才请求 add-only 权限写入照片库；Shell 和 Agent 不能遍历图库。</p>
 
           <h3>联系人与位置</h3>
           <p>联系人只按你请求的姓名搜索，默认只返回姓名；电话、邮箱和组织必须由当前任务明确请求。位置只在 App 前台单次获取，不持续或后台跟踪。相关结果可能作为当前 Tool Result 发送给 DeepSeek。</p>
 
           <h3>剪贴板</h3>
           <p>读取剪贴板前 Familiar 会显示确认，确认后文本会进入当前 Agent Run 并可能发送给 DeepSeek。写入剪贴板也需确认，可在当前 App 会话中恢复旧值。</p>
+
+          <h3>受控本机 Shell</h3>
+          <p>Shell 在 App 内的 iSH/Alpine 环境运行，每次命令都需要精确批准。它只挂载当前任务的只读 Resource/Attachment 输入、可写 Outputs 和临时 Work，不挂载照片、联系人、日历、位置、Keychain、其他 Workspace 或 App 元数据。网络按 Workspace 默认关闭；开启后仍阻止监听、局域网、本机地址和 Bonjour，并限制连接数与收发量。Familiar 不向 Shell 注入 DeepSeek API Key、Cookie、系统代理凭据或宿主环境变量。</p>
 
           <h3>通知</h3>
           <p>只有你在 Familiar 设置中主动开启“Run 结束时通知我”后，App 才会请求通知权限。通知仅在 App 不活跃且当前 Run 实际完成或失败时安排。你可以在 Familiar 中关闭该功能，或在 iOS“设置”中撤销权限；关闭后 Familiar 会清理自己的待处理与已投递通知。通知不保证任务能在 App 被系统挂起后继续运行。</p>
@@ -111,7 +117,7 @@ const base = import.meta.env.BASE_URL;
           <ul>
             <li>你可以在 Familiar 中删除会话及其本地附件。</li>
             <li>你可以在设置中清除 DeepSeek API Key。</li>
-            <li>你可以在 iOS“设置”中撤销相机、麦克风、语音识别、日历、提醒事项、联系人、位置或通知权限。</li>
+            <li>你可以在 iOS“设置”中撤销相机、麦克风、语音识别、日历、提醒事项、照片添加、联系人、位置或通知权限。</li>
             <li>卸载 App 通常会删除 App 容器中的会话与附件；Keychain 项可能在卸载后仍由系统保留，因此如需确保清除，请先在 Familiar 设置中移除 API Key。</li>
           </ul>
           <p>Familiar 无法代表第三方模型或搜索服务删除其已经接收的数据。相关请求请直接依据该服务提供的控制项或隐私渠道处理。</p>

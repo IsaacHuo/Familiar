@@ -1,6 +1,6 @@
 # Current State
 
-Last verified: 2026-08-29
+Last verified: 2026-08-30
 
 ## Current Focus
 
@@ -10,10 +10,11 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 
 ## Recently Completed
 
+- **2026-08-30 DeepSeek + Native Tools + iSH 成品纵切**：EventKit 更新/完成/删除与跨重启 Undo、Photos add-only 输出、Files 导出、最小 Contacts 字段、当前单一 33 实体 Release Schema、task-scoped Shell 输入投影、Workspace 删除事务、ARM64 iSH/Alpine headless runtime、socket/资源 policy、Shell Chat Surface 和 Runtime 设置页已接入。固定 iSH commit、Alpine 3.24.0 rootfs、device/simulator XCFramework、GPLv3 源码/许可与构建脚本通过供应链校验；全新 DerivedData 的 Debug arm64 generic Simulator `build-for-testing` 与 Release generic iOS arm64 无签名 build 成功，网站构建、本地化 plist/key parity 和 `git diff --check` 通过。未启动 Simulator、未执行测试、未使用真实 DeepSeek Key；真实 iSH guest、系统权限、DeepSeek 效果、签名 Archive 与 App Review 仍由所有者验收。
 - **集中 UI 反馈收口**：移除首启 Onboarding 与设置中的重看入口，首次启动直接进入 Chat；发送前在任何图片导入或 Apple Vision 处理之前检查 Keychain，缺 Key 时保留草稿并提示先填写 API Key。Composer 图片改为可点击缩略图，原生全屏预览提供关闭与删除；已发送图片从文字气泡中独立右对齐，所有 Quick Look 预览均有明确完成按钮。Thinking 只保留系统 Disclosure 箭头，Activity 内容取消额外左缩进；抽屉开合提交时触发原生 selection feedback。Skills 列表行可进入查看/编辑，保存时保持 stable ID、version、工具范围和 examples，历史 Run snapshot 不变。
-- **28 Tool Release hardening**：`FamiliarActionProposal` 现在只保存纯预览和批准后 `commit`；commit 返回结果及实际执行后才成立的 Undo，Runtime 在批准后、commit 前统一准备系统 capability。Clipboard 不再在批准前读取旧值；Workspace 写入不再预建整库 checkpoint，Undo 只恢复目标 `Outputs` 文件。Workspace 的 `Files/Resources` 与 `Files/Attachments` 由当前不可变 ContextSnapshot 虚拟投影，Resource/Attachment 仍是唯一真相源；输出继续落在 Workspace Store。联系人默认只回姓名，电话/邮箱/组织必须由模型显式请求。`prepare_share` 使用 schema v3 `shareDraft` top-level Surface 与真实 ShareLink。搜索设置 1.0 只显示 DuckDuckGo，其他 adapter 保留测试合同。
+- **35 Tool Release hardening**：`FamiliarActionProposal` 只保存纯预览和批准后 `commit`；EventKit 已补齐日历/提醒的查询、创建、修改、完成、删除及跨重启 Undo，删除和 Shell 只允许一次性授权。Contacts 按请求选择最小字段；Workspace 图片输出可 add-only 保存到 Photos，任意输出可进入 Quick Look、系统分享和 Files 导出。`prepare_share` 使用 schema v3 `shareDraft` top-level Surface 与真实 ShareLink。
 - **DeepSeek 1.0 生产路径**：模型协议已统一为无 API Key 的 `generate/stream`，当前 catalog 只启用 DeepSeek Flash/Pro；HTTP adapter 保持通用 OpenAI-compatible 实现，Agent Runtime 不包含 DeepSeek 分支。设置固定 `.cloud`，不暴露本地路由或手填模型；App 不再提供首启引导，缺少 API Key 时从发送动作直接进入设置。模型列表只接受正式 curated ID 与实时 `/models` 的交集；替换 Key 在写入 Keychain 前验证所选模型。Provider 使用 ephemeral URLSession，错误文本会脱敏，Malformed SSE 与无 finish reason 的中断流不会伪造成功终态。
-- **Workspace、Native Tools 与受控 Shell 边界**：新增 Project/Conversation Workspace 目录、Files/Outputs/Runtime 隔离、路径穿越与 symlink 防护、配额、checkpoint/diff/restore；注册 Workspace、Contacts、Location、Clipboard、Share preparation 与 Familiar-only Spotlight 工具。新增 `ShellExecutor`、`ShellTool`、`ShellPolicy`、iSH bridge contract 和 macOS Containerization executor；Shell 尚未注册到 Agent，因为 iSH fork/runtime assets 与 macOS kernel/init/rootfs assets 尚未完整接线。
+- **Workspace、Native Tools 与受控 Shell**：Project/Conversation Workspace 已具备路径穿越与 symlink 防护、配额、checkpoint/diff/restore，以及每个 Run 的只读 Resource/Attachment 输入投影。固定 commit 的 ARM64 iSH fork、Alpine 3.24.0 aarch64 fakefs、iPhoneOS/Simulator XCFramework 和 headless bridge 已纳入生产 target；bridge 准备成功时注册 `shell_execute`。Shell 只挂载当前 Run 的只读 Files、可写 Outputs 与临时 Work，默认禁网，精确审批，并执行 timeout、进程、输出、文件、Workspace 与网络资源限制。
 - **原生 FamiliarMac target**：新增 SwiftUI macOS App、Codex 式 Sidebar/Chat/Inspector shell、Commands、Settings、App Sandbox/Hardened Runtime/Virtualization entitlement；固定直接依赖 `apple/containerization` 0.33.4，不调用外部 `container` CLI。Container session 支持无网络接口、Workspace-only mounts、持久 writable layer 输入、同 Workspace 串行、全局串行、进程树取消与 10 分钟 idle stop。当前 Mac shell 尚未接入共享 SwiftData/Agent Runtime，容器资产管理与实际 VM 启动未验收。
 - **结构化内容 Surface 完整形态**：Surface policy 只把 scalar、Web search/fetch document 留在 Activity trace，Context Matches、RecordCollection、Diff 与 typed Code 作为正文后的 top-level accessory。Context 使用最多两条紧凑 chunk 并展示来源、字符数和真实资源版本；Records 使用纵向主次字段行、存在状态/类型字段时提供筛选 chips，超过三条进入可搜索全屏；Diff 正文只给摘要并在全屏按 before/after 纵向展示；typed Code 使用原生等宽文本、语言/文件名/复制与长内容全屏。Insight metrics 已改用 Swift Charts，无 metrics 不建图；Task Rows 显式区分四种状态且只展示真实 progress。长 Mermaid 可从本地 Markdown WebView 进入复用 bundled renderer/CSP 的全屏预览。上述详情路径均有中英本地化和无固定尺寸的 NavigationStack/List/ScrollView 布局。
 - **Selection Actions、来源交互与视觉夹具**：本地 Markdown renderer 仅在终态启用文本选择，通过 `selectionChanged` bridge 向 SwiftUI 回传最多 4000 字符纯文本，取消或流式状态会清空选区。终态 Assistant 正文下方提供解释、改进、缩短、语气、语法五个本地化动作，只将带引用片段的自然语言指令填入 Composer 并聚焦，不自动发送。Sources 改为默认折叠的紧凑来源簇，展开行显示标题、域名及已读取/仅发现语义；Search trace 只显示 query、结果数和读取语义，不逐结果展示卡片。`-familiar.visual-fixture 1` 与 Light/Dark SwiftUI Preview 共用生产组件覆盖 loading/reasoning/search/approval/clarification/task/recommendation/insight/receipt/failure/sources。
@@ -33,7 +34,7 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 - **Assistant Turn Surface（前端 P0）**：`FamiliarSurfaceDescriptor`/`FamiliarSurfaceStore` 将实时事件与历史 `FamiliarAgentRunSnapshot` 归一投影为 runStatus/activityTrace/toolSummary/approval/search/context/records/mutationReceipt/artifact/failure。时间线采用无背景正文、Loading/Thinking rail、inline source list、typed approval、write receipt 与 failure recovery；无横向 pager、卡中卡或旧 snapshot 分支。UI 只使用 `FamiliarAISurfaceColor/Radius/Metric` 与 `FamiliarMotion` tokens；真机视觉/VoiceOver/Dynamic Type 验收仍待所有者完成。
 
 - **WP0 可验证内核**：8 场景 fake-provider Benchmark（`FamiliarBenchmarkTests`）+ `Scripts/run-agent-benchmarks.sh` + arm64 Simulator iOS CI（`.github/workflows/ios.yml`）。
-- **SwiftData 1.0 Release baseline**：`FamiliarReleaseSchemaV1` 以 `1.0.0` 冻结当前 31 个实体，`FamiliarReleaseMigrationPlan` 已接入 ModelContainer，首版暂无 migration stage。Debug 使用 `FamiliarDevelopment.store`，Release 使用稳定 `Familiar.store`，两者共享同一 V1 schema。首次打开不再自动删除任何旧 store、附件、资源或 Artifact；只有用户在恢复页明确确认后才重建当前 profile 的 store 与本地内容，Keychain 保留。
+- **破坏性单一 SwiftData Schema**：测试阶段不保留任何 Release migration chain。`FamiliarReleaseSchema` 直接包含当前 33 个实体，ModelContainer 不配置 `SchemaMigrationPlan`；旧测试 store 不受支持，需要时直接重建。Debug 使用 `FamiliarDevelopment.store`，Release 使用 `Familiar.store`。
 - **Project 最小纵切**：Project/ProjectInstruction 已接入，对话可选归属项目，支持项目指令注入、抽屉/项目列表/编辑/归档/删除。项目名称去除首尾空白后全局唯一，创建与编辑均不区分大小写，归档项目也参与冲突检查。
 - **Resource + ContextSnapshot**：Resource/ResourceVersion/ContextSnapshotRecord/ContextResourceReference 已接入；项目资源独立受保护目录；`FamiliarProjectContextAssembler` 生成确定性不可变上下文，超出输入预算明确拒绝。
 - **Artifact + Web 项目闭环**：Artifact 与受控 `artifact_write` 工具已接入；`web_fetch` 正文可经 `importFetchedWebText` 落为 Project Resource（不二次 refetch，记录 URL/时间/hash/truncated/source lineage）。
@@ -43,7 +44,7 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 - **运行时预算**：工具调用总数与单次 Run 总时长预算，超限以明确终态失败。
 - **孤儿 Run 恢复**：`FamiliarRunRecoveryService.recoverInterruptedRuns` 在启动时把遗留 running Run 终结为 failed，并取消在途 invocation。
 - **Project 闭环补齐**：项目详情可浏览/预览/删除 Artifact，单项删除同步清理元数据和文件；永久删除项目时 Resource 与 Artifact 目录先暂存、数据库提交成功后再清理，失败时恢复；运行启动时持久化 CapabilitySnapshot 与 RunResumeCursor。
-- **Resource 工具**：`resource_list/read/search` 已注册；当前启动时注册表共 28 个工具，读取工具使用运行开始时冻结的 Resource 版本快照。
+- **Resource 工具**：`resource_list/read/search` 已注册；iSH bridge 可准备时启动注册表共 35 个工具，读取与 Shell 输入都使用运行开始时冻结的 Resource/Attachment ContextSnapshot。
 - **Share 目标选择**：共享收件箱内容进入 App 后可选择已有项目、新建项目或普通聊天草稿，取消时清理准备中的附件。
 - **系统入口**：Share Extension、类型化 Deep Link、App Intents/Shortcuts、Run 终态本地通知、Spotlight 会话索引、Widget/Control。
 - **本地渲染**：非持久化 WKWebView + 内置 Markdown/高亮/Mermaid/KaTeX/DOMPurify，CSP 禁远程图片自动加载。
@@ -76,7 +77,7 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 - DeepSeek 尚未使用真实测试 Key 完成认证、模型列表、文本流式、取消、无效 Key、无效模型、Tool Call 与 ToolResult 回填的完整冒烟；这是当前最优先缺口。
 - DeepSeek catalog 当前只包含 `deepseek-v4-flash` 与 `deepseek-v4-pro`。图片字节不发送给 DeepSeek；Apple Vision 只生成有限的本地证据文本。
 - Core AI 当前只有 ModelManager、Provider adapter 和路由合同。iOS 27/Xcode 27 正式 SDK、Qwen Core AI bundle、specialization、设备适配、流式和 Tool Call 尚未实现，不阻塞当前 DeepSeek 收尾。
-- iSH bridge 与 macOS Containerization session 仍是不可执行纵切：Shell Tool 未注册，iSH fork/Alpine 和 macOS kernel/init/rootfs/runtime assets 尚未接入，不属于本轮 DeepSeek 验收范围。
+- iSH 源码、构建产物、rootfs 和 Shell Tool 已接线并完成编译；实际 ARM64 guest 启动、Python/CSV、取消、网络边界与资源限制仍需所有者在真机验收。macOS Containerization 的 kernel/init/rootfs 资产仍未接入。
 - FamiliarMac 只有可编译的 Codex 式原生 UI shell 与 Containerization adapter，尚未接入共享 SwiftData 和 Agent Runtime，不作为本轮 iOS 收尾完成项。
 - Brave、Tavily、Exa Search adapter 尚未使用真实账户与 Key 冒烟，因此不在 Release UI；DuckDuckGo 仍需真实网络验收。
 - 真机验收未完成：EventKit 权限、真实文档/OCR、相机、Speech、Share/Deep Link/通知/Spotlight/Intents/Widget/Control 均依赖真机。
@@ -94,4 +95,4 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 2. 用同一 DeepSeek Run 验证 `calendar_events`、`reminders`、`create_reminder`：读取零确认，写入先审批，取消零写入，成功只写一次，ToolResult 回填后模型继续生成最终回答。
 3. 真机重启 App 后验证 EventKit Undo、运行记录、Reasoning summary、错误恢复和 Keychain；自动 Swift Testing、8 场景 Agent benchmark 与 UI smoke 已执行通过，后续改动继续用串行脚本回归。
 4. 修复真实冒烟暴露的问题后冻结当前“唯一启用 Provider 为 DeepSeek”的 iOS 实验基线；分别记录构建、测试执行和真机结论。Search、Share、系统入口和无障碍继续按风险逐项验收，FastVLM 不进入本轮。
-5. Core AI、iSH、Shell、MCP、自动 Memory 与后台执行保持在 iOS 1.0 范围之外；不在本轮恢复本地路由 UI。
+5. Core AI、MCP、自动 Memory 与后台执行保持在本版范围之外；不在本轮恢复本地路由 UI。iSH/Shell 只修复真机验收暴露的问题，不扩展为宿主文件系统或 Native capability bridge。

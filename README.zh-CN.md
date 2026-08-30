@@ -41,7 +41,7 @@ App 采用 BYOK 模式：用户使用自己的模型 API Key，模型请求从�
 ## 核心特性
 
 - **iPhone 原生 Agent Runtime** — 单一主 Agent 通过 Tool 规划，并由 iOS 原生 Framework 执行；无 Linux 环境，无 Apple Intelligence 依赖。
-- **Tool 是最核心的抽象** — 28 个类型化工具覆盖原生设备能力、Workspace、受限 Web、Project Resource、Artifact、EventKit 与结构化展示；每个 Tool 小而可检查，并统一经过策略控制。
+- **Tool 是最核心的抽象** — 35 个类型化工具覆盖原生设备能力、Workspace、受限 Web、Project Resource、Artifact、EventKit、结构化展示与 Shell；每个 Tool 小而可检查，并统一经过策略控制。
 - **Native First** — 复用 EventKit、Vision、PDFKit、Photos 与 Foundation 承接原生能力和本地预处理，不重复实现系统服务。
 - **统一 Chat Workspace** — 普通聊天与 Project 对话共用一个 Surface。顶栏切换工作区和模型，左侧抽屉提供搜索、持久置顶、可展开的项目历史与普通最近会话。
 - **Project Workspace** — 项目指令和版本化本地资源可跨项目对话共享；资源使用受保护目录，并在 Run 中保存不可变引用。Markdown/纯文本 Artifact 支持受控新建和编辑，规范化后的项目名称全局唯一。
@@ -96,7 +96,7 @@ flowchart TB
     subgraph Runtime["Agent Runtime"]
         Loop[FamiliarAgentLoop]
         Assembly[Context Assembly]
-        Registry[Tool Registry · 28 个工具]
+        Registry[Tool Registry · 35 个工具]
         Policy[Execution Policy]
         Auth[Authorization Runtime]
         Clarify[Clarification Coordinator]
@@ -484,23 +484,23 @@ Familiar 当前不包含：
 
 - iPad 支持
 - 账号、登录、云端 Workspace 或同步系统
-- 受控 Project Artifact 之外的任意可写 Workspace
+- 当前任务 Workspace 之外的宿主文件系统写入
 - 字节级续跑或可靠后台承接；Cursor/Invocation 记录与启动时中断 Run 失败终结已实现
 - Familiar 托管的模型代理
 - 订阅或权益流程
-- Linux / iSH 执行环境
-- Shell 或任意代码执行
+- 无限制 Shell、后台常驻进程或对其他 App 数据的访问
 - 多 Agent、Subagent 或 Agent Graph
 - 复杂 RAG 或向量数据库
 - iPhone 上的 MCP Server（后期可能增加 MCP Client）
 - Core ML LLM 或 Apple Intelligence 依赖
 - 实时语音对话
-- 修改或删除日历/提醒事项
 - 自主浏览器操作、JavaScript 执行或递归爬取
 
 ## 第三方软件
 
-Familiar 依据 MIT License 内置 AnyDoc 与 SwiftSoup，相关声明位于：
+Familiar 整体依据 GPLv3 分发，并内置经固定版本审计的 iSH ARM64 fork 与 Alpine 用户空间，用于受控 Shell。对应源码、精确版本、构建脚本与许可位于 `Vendor/ish-arm64`、`Vendor/ISHRuntime`、`Scripts`、根目录 `LICENSE` 和 App 的“关于”页面。
+
+Familiar 还依据 MIT License 内置 AnyDoc 与 SwiftSoup，相关声明位于：
 
 - `Vendor/AnyDocBridgeRust/LICENSE.anydoc`
 - `Familiar/Resources/ThirdPartyNotices.txt`

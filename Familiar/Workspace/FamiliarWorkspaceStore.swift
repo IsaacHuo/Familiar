@@ -43,11 +43,40 @@ nonisolated struct FamiliarWorkspaceDiff: Equatable, Sendable {
     let removed: [String]
 }
 
+nonisolated struct FamiliarWorkspaceUsage: Equatable, Sendable {
+    let totalBytes: Int64
+    let largestFileBytes: Int64
+}
+
+/// A per-command host view. Only this view is mounted into a shell runtime.
+/// Inputs are immutable copies; Outputs are the workspace's durable output
+/// directory; Work is unique to one task and is removed at terminal state.
+nonisolated struct FamiliarWorkspaceTaskView: Equatable, Sendable {
+    let taskID: UUID
+    let workspaceID: FamiliarWorkspaceID
+    let root: URL
+    let files: URL
+    let outputs: URL
+    let work: URL
+}
+
+nonisolated enum FamiliarWorkspaceCheckpointScope: Sendable {
+    case workspace
+    case shellOutputs
+}
+
 nonisolated struct FamiliarWorkspaceCheckpoint: Sendable {
     let id: UUID
     let workspaceID: FamiliarWorkspaceID
     let rootURL: URL
     let createdAt: Date
+    let scope: FamiliarWorkspaceCheckpointScope
+}
+
+nonisolated struct FamiliarStagedWorkspaceDirectory: Sendable {
+    let workspaceID: FamiliarWorkspaceID
+    let originalURL: URL
+    let stagedURL: URL?
 }
 
 nonisolated enum FamiliarWorkspaceError: LocalizedError, Sendable {
@@ -56,6 +85,7 @@ nonisolated enum FamiliarWorkspaceError: LocalizedError, Sendable {
     case missingFile
     case quotaExceeded(limit: Int64)
     case checkpointUnavailable
+    case invalidTaskView
 
     var errorDescription: String? {
         switch self {
@@ -69,6 +99,8 @@ nonisolated enum FamiliarWorkspaceError: LocalizedError, Sendable {
             "Workspace 已超过 \(limit) 字节的存储上限。"
         case .checkpointUnavailable:
             "Workspace checkpoint 不可用。"
+        case .invalidTaskView:
+            "Shell task Workspace 视图无效。"
         }
     }
 }
@@ -107,12 +139,8 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         let work = runtime.appendingPathComponent("Work", isDirectory: true)
         let tasks = runtime.appendingPathComponent("Tasks", isDirectory: true)
         let checkpoints = runtime.appendingPathComponent("Checkpoints", isDirectory: true)
-        for directory in [metadata, files, outputs, work, tasks, checkpoints] {
-            try fileManager.createDirectory(
-                at: directory,
-                withIntermediateDirectories: true,
-                attributes: directoryAttributes
-            )
+        for directory in [root, metadata, files, outputs, runtime, work, tasks, checkpoints] {
+            try ensureDirectory(directory)
         }
         return FamiliarWorkspacePaths(
             root: root,
@@ -124,6 +152,137 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
             tasks: tasks,
             checkpoints: checkpoints
         )
+    }
+
+    func shellSettingsURL(in id: FamiliarWorkspaceID) throws -> URL {
+        try prepare(id).metadata.appendingPathComponent("shell-settings.json", isDirectory: false)
+    }
+
+    func prepareShellTaskView(
+        taskID: UUID,
+        workspaceID: FamiliarWorkspaceID,
+        resources: [FamiliarToolContext.Resource],
+        attachments: [FamiliarToolContext.Attachment]
+    ) throws -> FamiliarWorkspaceTaskView {
+        let paths = try prepare(workspaceID)
+        let taskRoot = paths.tasks.appendingPathComponent(taskID.uuidString.lowercased(), isDirectory: true)
+        guard isConfined(taskRoot, below: paths.tasks), !fileManager.fileExists(atPath: taskRoot.path) else {
+            throw FamiliarWorkspaceError.invalidTaskView
+        }
+        let inputs = taskRoot.appendingPathComponent("Files", isDirectory: true)
+        let work = taskRoot.appendingPathComponent("Work", isDirectory: true)
+        do {
+            try ensureDirectory(inputs)
+            try ensureDirectory(work)
+            for resource in resources {
+                let directory = inputs
+                    .appendingPathComponent("Resources", isDirectory: true)
+                    .appendingPathComponent(resource.id.uuidString.lowercased(), isDirectory: true)
+                try ensureDirectory(directory)
+                let destination = directory.appendingPathComponent(safeFilename(resource.filename), isDirectory: false)
+                try Data(resource.extractedText.utf8).write(to: destination, options: [.atomic])
+                try protectFile(destination)
+            }
+            for attachment in attachments {
+                let directory = inputs
+                    .appendingPathComponent("Attachments", isDirectory: true)
+                    .appendingPathComponent(attachment.id.uuidString.lowercased(), isDirectory: true)
+                try ensureDirectory(directory)
+                let destination = directory.appendingPathComponent(safeFilename(attachment.filename), isDirectory: false)
+                if let source = FamiliarAttachmentStore.url(for: attachment.relativePath) {
+                    guard !isSymbolicLink(source) else { throw FamiliarWorkspaceError.symbolicLinkNotAllowed }
+                    let sourceSize = Int64(
+                        try source.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                    )
+                    guard sourceSize == attachment.byteSize,
+                          sourceSize <= FamiliarAttachmentStore.maximumSourceBytes
+                    else { throw FamiliarWorkspaceError.invalidTaskView }
+                    try fileManager.copyItem(at: source, to: destination)
+                } else if attachment.kind != .image {
+                    try Data(attachment.extractedText.utf8).write(to: destination, options: [.atomic])
+                } else {
+                    throw FamiliarWorkspaceError.missingFile
+                }
+                try protectFile(destination)
+            }
+            try makeTreeReadOnly(inputs)
+        } catch {
+            try? makeTreeWritable(taskRoot)
+            try? fileManager.removeItem(at: taskRoot)
+            throw error
+        }
+        return FamiliarWorkspaceTaskView(
+            taskID: taskID,
+            workspaceID: workspaceID,
+            root: taskRoot,
+            files: inputs,
+            outputs: paths.outputs,
+            work: work
+        )
+    }
+
+    func removeShellTaskView(_ view: FamiliarWorkspaceTaskView) throws {
+        let paths = try prepare(view.workspaceID)
+        guard isConfined(view.root, below: paths.tasks),
+              view.root.lastPathComponent == view.taskID.uuidString.lowercased()
+        else { throw FamiliarWorkspaceError.invalidTaskView }
+        guard fileManager.fileExists(atPath: view.root.path) else { return }
+        try makeTreeWritable(view.root)
+        try fileManager.removeItem(at: view.root)
+    }
+
+    func removeWorkspace(_ id: FamiliarWorkspaceID) throws {
+        let root = rootURL.appendingPathComponent(id.directoryName, isDirectory: true).standardizedFileURL
+        guard isConfined(root, below: rootURL.standardizedFileURL) else {
+            throw FamiliarWorkspaceError.invalidPath
+        }
+        guard fileManager.fileExists(atPath: root.path) else { return }
+        guard !isSymbolicLink(root) else { throw FamiliarWorkspaceError.symbolicLinkNotAllowed }
+        try makeTreeWritable(root)
+        try fileManager.removeItem(at: root)
+    }
+
+    func stageWorkspace(_ id: FamiliarWorkspaceID) throws -> FamiliarStagedWorkspaceDirectory {
+        let original = rootURL.appendingPathComponent(id.directoryName, isDirectory: true).standardizedFileURL
+        guard isConfined(original, below: rootURL.standardizedFileURL) else {
+            throw FamiliarWorkspaceError.invalidPath
+        }
+        guard fileManager.fileExists(atPath: original.path) else {
+            return FamiliarStagedWorkspaceDirectory(workspaceID: id, originalURL: original, stagedURL: nil)
+        }
+        guard !isSymbolicLink(original) else { throw FamiliarWorkspaceError.symbolicLinkNotAllowed }
+        let trash = rootURL.appendingPathComponent(".Trash", isDirectory: true)
+        try ensureDirectory(trash)
+        let staged = trash.appendingPathComponent(
+            "\(id.directoryName)-\(UUID().uuidString.lowercased())",
+            isDirectory: true
+        )
+        guard isConfined(staged, below: trash), !fileManager.fileExists(atPath: staged.path) else {
+            throw FamiliarWorkspaceError.invalidPath
+        }
+        try fileManager.moveItem(at: original, to: staged)
+        return FamiliarStagedWorkspaceDirectory(workspaceID: id, originalURL: original, stagedURL: staged)
+    }
+
+    func restore(_ staged: FamiliarStagedWorkspaceDirectory) throws {
+        guard let stagedURL = staged.stagedURL else { return }
+        guard isConfined(stagedURL, below: rootURL.appendingPathComponent(".Trash", isDirectory: true)),
+              !fileManager.fileExists(atPath: staged.originalURL.path),
+              fileManager.fileExists(atPath: stagedURL.path),
+              !isSymbolicLink(stagedURL)
+        else { throw FamiliarWorkspaceError.invalidPath }
+        try fileManager.moveItem(at: stagedURL, to: staged.originalURL)
+    }
+
+    func discard(_ staged: FamiliarStagedWorkspaceDirectory) throws {
+        guard let stagedURL = staged.stagedURL else { return }
+        guard isConfined(stagedURL, below: rootURL.appendingPathComponent(".Trash", isDirectory: true)) else {
+            throw FamiliarWorkspaceError.invalidPath
+        }
+        guard fileManager.fileExists(atPath: stagedURL.path) else { return }
+        guard !isSymbolicLink(stagedURL) else { throw FamiliarWorkspaceError.symbolicLinkNotAllowed }
+        try makeTreeWritable(stagedURL)
+        try fileManager.removeItem(at: stagedURL)
     }
 
     func read(relativePath: String, in id: FamiliarWorkspaceID) throws -> Data {
@@ -184,12 +343,49 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         }
     }
 
+    func shellWritableUsage(for view: FamiliarWorkspaceTaskView) throws -> FamiliarWorkspaceUsage {
+        let paths = try prepare(view.workspaceID)
+        guard view.outputs.standardizedFileURL == paths.outputs.standardizedFileURL,
+              isConfined(view.root, below: paths.tasks),
+              view.root.lastPathComponent == view.taskID.uuidString.lowercased(),
+              isConfined(view.work, below: view.root),
+              !isSymbolicLink(view.outputs),
+              !isSymbolicLink(view.work)
+        else { throw FamiliarWorkspaceError.invalidTaskView }
+
+        var totalBytes: Int64 = 0
+        var largestFileBytes: Int64 = 0
+        for root in [view.outputs, view.work] {
+            guard let enumerator = fileManager.enumerator(
+                at: root,
+                includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey],
+                options: []
+            ) else { continue }
+            for case let url as URL in enumerator {
+                guard let values = try? url.resourceValues(
+                    forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]
+                ) else { continue }
+                if values.isSymbolicLink == true {
+                    throw FamiliarWorkspaceError.symbolicLinkNotAllowed
+                }
+                guard values.isRegularFile == true else { continue }
+                let byteSize = Int64(values.fileSize ?? 0)
+                totalBytes += byteSize
+                largestFileBytes = max(largestFileBytes, byteSize)
+            }
+        }
+        return FamiliarWorkspaceUsage(totalBytes: totalBytes, largestFileBytes: largestFileBytes)
+    }
+
     func createCheckpoint(
         for id: FamiliarWorkspaceID,
         checkpointID: UUID = UUID(),
         now: Date = Date()
     ) throws -> FamiliarWorkspaceCheckpoint {
         let paths = try prepare(id)
+        for root in [paths.files, paths.outputs, paths.work] {
+            try assertNoSymbolicLinks(below: root)
+        }
         let checkpointRoot = paths.checkpoints.appendingPathComponent(
             checkpointID.uuidString.lowercased(),
             isDirectory: true
@@ -207,7 +403,36 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
             id: checkpointID,
             workspaceID: id,
             rootURL: checkpointRoot,
-            createdAt: now
+            createdAt: now,
+            scope: .workspace
+        )
+    }
+
+    func createShellCheckpoint(
+        for id: FamiliarWorkspaceID,
+        checkpointID: UUID = UUID(),
+        now: Date = Date()
+    ) throws -> FamiliarWorkspaceCheckpoint {
+        let paths = try prepare(id)
+        try assertNoSymbolicLinks(below: paths.outputs)
+        let checkpointRoot = paths.checkpoints.appendingPathComponent(
+            checkpointID.uuidString.lowercased(),
+            isDirectory: true
+        )
+        guard isConfined(checkpointRoot, below: paths.checkpoints),
+              !fileManager.fileExists(atPath: checkpointRoot.path)
+        else { throw FamiliarWorkspaceError.checkpointUnavailable }
+        try ensureDirectory(checkpointRoot)
+        try fileManager.copyItem(
+            at: paths.outputs,
+            to: checkpointRoot.appendingPathComponent("Outputs", isDirectory: true)
+        )
+        return FamiliarWorkspaceCheckpoint(
+            id: checkpointID,
+            workspaceID: id,
+            rootURL: checkpointRoot,
+            createdAt: now,
+            scope: .shellOutputs
         )
     }
 
@@ -218,18 +443,20 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         guard fileManager.fileExists(atPath: checkpoint.rootURL.path) else {
             throw FamiliarWorkspaceError.checkpointUnavailable
         }
-        let current = try snapshotMap(
-            roots: [currentPaths.files, currentPaths.outputs, currentPaths.work],
-            base: currentPaths.root
-        )
-        let previous = try snapshotMap(
-            roots: [
-                checkpoint.rootURL.appendingPathComponent("Files", isDirectory: true),
-                checkpoint.rootURL.appendingPathComponent("Outputs", isDirectory: true),
-                checkpoint.rootURL.appendingPathComponent("Work", isDirectory: true)
-            ],
-            base: checkpoint.rootURL
-        )
+        let currentRoots: [URL]
+        let previousRoots: [URL]
+        switch checkpoint.scope {
+        case .workspace:
+            currentRoots = [currentPaths.files, currentPaths.outputs, currentPaths.work]
+            previousRoots = ["Files", "Outputs", "Work"].map {
+                checkpoint.rootURL.appendingPathComponent($0, isDirectory: true)
+            }
+        case .shellOutputs:
+            currentRoots = [currentPaths.outputs]
+            previousRoots = [checkpoint.rootURL.appendingPathComponent("Outputs", isDirectory: true)]
+        }
+        let current = try snapshotMap(roots: currentRoots, base: currentPaths.root)
+        let previous = try snapshotMap(roots: previousRoots, base: checkpoint.rootURL)
         let currentKeys = Set(current.keys)
         let previousKeys = Set(previous.keys)
         return FamiliarWorkspaceDiff(
@@ -244,7 +471,11 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         guard fileManager.fileExists(atPath: checkpoint.rootURL.path) else {
             throw FamiliarWorkspaceError.checkpointUnavailable
         }
-        for (destination, name) in [(paths.files, "Files"), (paths.outputs, "Outputs"), (paths.work, "Work")] {
+        let destinations: [(URL, String)] = switch checkpoint.scope {
+        case .workspace: [(paths.files, "Files"), (paths.outputs, "Outputs"), (paths.work, "Work")]
+        case .shellOutputs: [(paths.outputs, "Outputs")]
+        }
+        for (destination, name) in destinations {
             let source = checkpoint.rootURL.appendingPathComponent(name, isDirectory: true)
             guard fileManager.fileExists(atPath: source.path) else {
                 throw FamiliarWorkspaceError.checkpointUnavailable
@@ -288,7 +519,7 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
             throw FamiliarWorkspaceError.invalidPath
         }
         var cursor = root
-        for component in components.dropLast() {
+        for component in components {
             cursor.appendPathComponent(String(component))
             guard !isSymbolicLink(cursor) else {
                 throw FamiliarWorkspaceError.symbolicLinkNotAllowed
@@ -304,14 +535,13 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         guard let enumerator = fileManager.enumerator(
             at: directory,
             includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey],
-            options: [.skipsHiddenFiles]
+            options: []
         ) else { return [] }
         var result: [FamiliarWorkspaceEntry] = []
         for case let url as URL in enumerator {
             let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
             if values.isSymbolicLink == true {
-                enumerator.skipDescendants()
-                continue
+                throw FamiliarWorkspaceError.symbolicLinkNotAllowed
             }
             guard values.isRegularFile == true else { continue }
             result.append(try entry(for: url, workspaceRoot: workspaceRoot))
@@ -355,6 +585,76 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
 
     private func isSymbolicLink(_ url: URL) -> Bool {
         (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true
+    }
+
+    private func ensureDirectory(_ url: URL) throws {
+        if fileManager.fileExists(atPath: url.path) {
+            guard !isSymbolicLink(url),
+                  (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+            else { throw FamiliarWorkspaceError.symbolicLinkNotAllowed }
+            return
+        }
+        let parent = url.deletingLastPathComponent()
+        if parent.path != url.path, parent.path.hasPrefix(rootURL.standardizedFileURL.path),
+           fileManager.fileExists(atPath: parent.path), isSymbolicLink(parent) {
+            throw FamiliarWorkspaceError.symbolicLinkNotAllowed
+        }
+        try fileManager.createDirectory(at: url, withIntermediateDirectories: true, attributes: directoryAttributes)
+    }
+
+    private func isConfined(_ url: URL, below directory: URL) -> Bool {
+        let candidate = url.standardizedFileURL.path
+        let root = directory.standardizedFileURL.path
+        return candidate.hasPrefix(root + "/")
+    }
+
+    private func safeFilename(_ value: String) -> String {
+        let candidate = URL(fileURLWithPath: value).lastPathComponent
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return candidate.isEmpty || candidate == "." || candidate == ".." ? "file" : candidate
+    }
+
+    private func protectFile(_ url: URL) throws {
+        var attributes: [FileAttributeKey: Any] = [.posixPermissions: 0o444]
+#if os(iOS)
+        attributes[.protectionKey] = FileProtectionType.completeUntilFirstUserAuthentication
+#endif
+        try fileManager.setAttributes(attributes, ofItemAtPath: url.path)
+    }
+
+    private func makeTreeReadOnly(_ root: URL) throws {
+        if let enumerator = fileManager.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]) {
+            for case let url as URL in enumerator {
+                let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+                guard values.isSymbolicLink != true else { throw FamiliarWorkspaceError.symbolicLinkNotAllowed }
+                try fileManager.setAttributes(
+                    [.posixPermissions: values.isDirectory == true ? 0o555 : 0o444],
+                    ofItemAtPath: url.path
+                )
+            }
+        }
+        try fileManager.setAttributes([.posixPermissions: 0o555], ofItemAtPath: root.path)
+    }
+
+    private func makeTreeWritable(_ root: URL) throws {
+        try? fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path)
+        if let enumerator = fileManager.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: []) {
+            for case let url as URL in enumerator {
+                let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+                try? fileManager.setAttributes([.posixPermissions: isDirectory ? 0o700 : 0o600], ofItemAtPath: url.path)
+            }
+        }
+    }
+
+    private func assertNoSymbolicLinks(below directory: URL) throws {
+        guard let enumerator = fileManager.enumerator(
+            at: directory,
+            includingPropertiesForKeys: [.isSymbolicLinkKey],
+            options: []
+        ) else { return }
+        for case let url as URL in enumerator {
+            if isSymbolicLink(url) { throw FamiliarWorkspaceError.symbolicLinkNotAllowed }
+        }
     }
 
     private var directoryAttributes: [FileAttributeKey: Any] {

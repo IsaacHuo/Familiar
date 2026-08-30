@@ -520,7 +520,7 @@
 ## D-049 Familiar 1.0 冻结首个公开 SwiftData Schema
 
 - 日期：2026-08-28
-- 状态：生效；替代 D-047 的开发存储与破坏性首次启动策略
+- 状态：已被 D-050 替代
 - 决策：
   - `FamiliarReleaseSchemaV1` 以 `1.0.0` 冻结当前 31 个实体；`FamiliarReleaseMigrationPlan` 从 V1 开始，首版没有 migration stage。
   - Debug 使用 `FamiliarDevelopment.store`，Release 使用稳定 `Familiar.store`，两者必须共享同一 VersionedSchema 与 migration plan。
@@ -529,6 +529,15 @@
 - 依据：公开版本需要一个明确、可测试的数据起点；开发时期的自动清理会在 store 初始化或失败边界静默丢失用户内容。
 - 影响：Release 首装从空 `Familiar.store` 开始；文件型测试覆盖创建、重开、关系读取、Debug/Release 分离与失败不删库。后续发布必须保留所有仍受支持的已发布 schema。
 - 复审条件：仅在支持版本政策变化或需要淘汰已停止支持的公开 schema 时复审。
+
+## D-050 测试阶段只保留当前 SwiftData Schema
+
+- 日期：2026-08-30
+- 状态：生效；替代 D-049
+- 决策：当前没有用户和公开数据，生产与测试容器只使用包含 33 个实体的单一 `FamiliarReleaseSchema`，不配置 `SchemaMigrationPlan`，不保留 V1、V2 或旧 store fixture。schema 不兼容时直接重建测试数据。
+- 依据：未发布阶段的兼容层、迁移测试和历史 schema 会增加真实维护成本，却没有需要保护的用户数据。
+- 影响：删除 V1 → V2 migration stage 和迁移测试；Debug/Release store 仍分离，当前文件 store 重开和显式恢复继续验证。Core AI、FastVLM、Memory、MCP 等研究源码不因数据基线重置而删除。
+- 复审条件：准备向真实用户公开分发并承诺保留本地数据时，重新冻结首个公开 schema。
 
 ## 决策维护
 

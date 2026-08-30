@@ -23,8 +23,16 @@ private actor FamiliarFakeEventKitService: FamiliarEventKitServicing {
     func commit(_ request: FamiliarPendingWriteRequest, idempotencyKey: String) throws -> FamiliarWriteCommitResult {
         if failsCommit { throw CocoaError(.fileWriteUnknown) }
         if let existing = commits[idempotencyKey] { return existing }
-        let kind: FamiliarEventKitAccessKind = switch request { case .event: .events; case .reminder: .reminders }
-        let result = FamiliarWriteCommitResult(idempotencyKey: idempotencyKey, kind: kind, identifier: "created-1")
+        let kind: FamiliarEventKitAccessKind = switch request {
+        case .event, .eventUpdate, .eventDelete: .events
+        case .reminder, .reminderUpdate, .reminderDelete: .reminders
+        }
+        let operation: FamiliarEventKitMutationOperation = switch request {
+        case .event, .reminder: .create
+        case .eventUpdate, .reminderUpdate: .update
+        case .eventDelete, .reminderDelete: .delete
+        }
+        let result = FamiliarWriteCommitResult(idempotencyKey: idempotencyKey, kind: kind, identifier: "created-1", operation: operation)
         commits[idempotencyKey] = result
         return result
     }
@@ -66,5 +74,38 @@ struct FamiliarEventKitPolicyTests {
         let outcome = try await FamiliarCreateCalendarEventTool(service: failing).execute(event, context: .init(runID: "run", toolCallID: "call"))
         guard case .action(let proposal) = outcome else { Issue.record("Expected action proposal"); return }
         await #expect(throws: Error.self) { _ = try await proposal.commit() }
+    }
+
+    @Test("Update and delete writes remain pure proposals until commit")
+    func updateAndDeleteProposalBoundary() async throws {
+        let service = FamiliarFakeEventKitService()
+        let update = FamiliarReminderUpdateRequest(
+            identifier: "reminder-1",
+            title: "Review",
+            dueISO8601: "2026-08-30T15:00:00Z",
+            listIdentifier: nil,
+            priority: 3,
+            notes: nil,
+            isCompleted: true
+        )
+        let updateOutcome = try await FamiliarUpdateReminderTool(service: service).execute(
+            update,
+            context: .init(runID: "run", toolCallID: "update")
+        )
+        guard case .action(let updateProposal) = updateOutcome else { Issue.record("Expected update proposal"); return }
+        #expect(await service.commits.isEmpty)
+        #expect(updateProposal.fields.contains { $0.id == "completed" && $0.value == "true" })
+        let updateCommit = try await updateProposal.commit()
+        #expect(updateCommit.result.modelContent.contains(#""operation":"update""#))
+
+        let deleteOutcome = try await FamiliarDeleteCalendarEventTool(service: service).execute(
+            .init(identifier: "event-1"),
+            context: .init(runID: "run", toolCallID: "delete")
+        )
+        guard case .action(let deleteProposal) = deleteOutcome else { Issue.record("Expected delete proposal"); return }
+        #expect(await service.commits.count == 1)
+        #expect(deleteProposal.allowedAuthorizationDurations == [.once])
+        _ = try await deleteProposal.commit()
+        #expect(await service.commits.count == 2)
     }
 }

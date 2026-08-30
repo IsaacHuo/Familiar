@@ -14,6 +14,7 @@ struct FamiliarAppDependencies {
     let clipboard: FamiliarClipboardService
     let searchService: FamiliarWebSearchService
     let workspaceStore: FamiliarWorkspaceStore
+    let shellRuntimeStatus: FamiliarShellRuntimeStatus
     let visionProcessor = FamiliarVisionProcessor()
     let sessionID = UUID().uuidString
 
@@ -30,38 +31,51 @@ struct FamiliarAppDependencies {
         modelEscalationCoordinator = FamiliarModelEscalationCoordinator()
         policy = FamiliarExecutionPolicy()
         undoStore = FamiliarUndoStore()
+        let outputResolver = FamiliarWorkspaceOutputResolver(store: workspaceStore)
+        let photoLibrary = FamiliarPhotoLibraryService()
+        let shellRuntime = Self.makeShellRuntime(workspaceStore: workspaceStore)
+        shellRuntimeStatus = FamiliarShellRuntimeStatus(
+            phase: shellRuntime == nil ? .unavailable : .preparing
+        )
         do {
+            let tools: [AnyFamiliarTool] = [
+                AnyFamiliarTool(FamiliarCurrentDateTimeTool()),
+                AnyFamiliarTool(FamiliarAppInformationTool()),
+                AnyFamiliarTool(FamiliarWebSearchTool(service: searchService)),
+                AnyFamiliarTool(FamiliarWebFetchTool(service: web)),
+                AnyFamiliarTool(FamiliarResourceListTool()),
+                AnyFamiliarTool(FamiliarResourceReadTool()),
+                AnyFamiliarTool(FamiliarResourceSearchTool()),
+                AnyFamiliarTool(FamiliarWorkspaceListTool(store: workspaceStore)),
+                AnyFamiliarTool(FamiliarWorkspaceReadTool(store: workspaceStore)),
+                AnyFamiliarTool(FamiliarWorkspaceSearchTool(store: workspaceStore)),
+                AnyFamiliarTool(FamiliarWorkspaceWriteTool(store: workspaceStore)),
+                AnyFamiliarTool(FamiliarWorkspaceImageListTool(store: workspaceStore)),
+                AnyFamiliarTool(FamiliarPhotosSaveOutputTool(resolver: outputResolver, photos: photoLibrary)),
+                AnyFamiliarTool(FamiliarPrepareFileExportTool(resolver: outputResolver)),
+                AnyFamiliarTool(FamiliarSpotlightSearchTool(indexer: .shared)),
+                AnyFamiliarTool(FamiliarContactsSearchTool(service: contacts)),
+                AnyFamiliarTool(FamiliarCurrentLocationTool(service: location)),
+                AnyFamiliarTool(FamiliarClipboardReadTool(service: clipboard)),
+                AnyFamiliarTool(FamiliarClipboardWriteTool(service: clipboard)),
+                AnyFamiliarTool(FamiliarPrepareShareTool()),
+                AnyFamiliarTool(FamiliarTaskPlanTool()),
+                AnyFamiliarTool(FamiliarPresentRecommendationTool()),
+                AnyFamiliarTool(FamiliarPresentInsightTool()),
+                AnyFamiliarTool(FamiliarAskUserTool()),
+                AnyFamiliarTool(FamiliarArtifactWriteTool(store: FamiliarArtifactStore())),
+                AnyFamiliarTool(FamiliarArtifactEditTool(store: FamiliarArtifactStore())),
+                AnyFamiliarTool(FamiliarCalendarEventsTool(service: eventKit)),
+                AnyFamiliarTool(FamiliarCreateCalendarEventTool(service: eventKit)),
+                AnyFamiliarTool(FamiliarUpdateCalendarEventTool(service: eventKit)),
+                AnyFamiliarTool(FamiliarDeleteCalendarEventTool(service: eventKit)),
+                AnyFamiliarTool(FamiliarRemindersTool(service: eventKit)),
+                AnyFamiliarTool(FamiliarCreateReminderTool(service: eventKit)),
+                AnyFamiliarTool(FamiliarUpdateReminderTool(service: eventKit)),
+                AnyFamiliarTool(FamiliarDeleteReminderTool(service: eventKit))
+            ]
             registry = try FamiliarToolRegistry(
-                tools: [
-                    AnyFamiliarTool(FamiliarCurrentDateTimeTool()),
-                    AnyFamiliarTool(FamiliarAppInformationTool()),
-                    AnyFamiliarTool(FamiliarWebSearchTool(service: searchService)),
-                    AnyFamiliarTool(FamiliarWebFetchTool(service: web)),
-                    AnyFamiliarTool(FamiliarResourceListTool()),
-                    AnyFamiliarTool(FamiliarResourceReadTool()),
-                    AnyFamiliarTool(FamiliarResourceSearchTool()),
-                    AnyFamiliarTool(FamiliarWorkspaceListTool(store: workspaceStore)),
-                    AnyFamiliarTool(FamiliarWorkspaceReadTool(store: workspaceStore)),
-                    AnyFamiliarTool(FamiliarWorkspaceSearchTool(store: workspaceStore)),
-                    AnyFamiliarTool(FamiliarWorkspaceWriteTool(store: workspaceStore)),
-                    AnyFamiliarTool(FamiliarWorkspaceImageListTool(store: workspaceStore)),
-                    AnyFamiliarTool(FamiliarSpotlightSearchTool(indexer: .shared)),
-                    AnyFamiliarTool(FamiliarContactsSearchTool(service: contacts)),
-                    AnyFamiliarTool(FamiliarCurrentLocationTool(service: location)),
-                    AnyFamiliarTool(FamiliarClipboardReadTool(service: clipboard)),
-                    AnyFamiliarTool(FamiliarClipboardWriteTool(service: clipboard)),
-                    AnyFamiliarTool(FamiliarPrepareShareTool()),
-                    AnyFamiliarTool(FamiliarTaskPlanTool()),
-                    AnyFamiliarTool(FamiliarPresentRecommendationTool()),
-                    AnyFamiliarTool(FamiliarPresentInsightTool()),
-                    AnyFamiliarTool(FamiliarAskUserTool()),
-                    AnyFamiliarTool(FamiliarArtifactWriteTool(store: FamiliarArtifactStore())),
-                    AnyFamiliarTool(FamiliarArtifactEditTool(store: FamiliarArtifactStore())),
-                    AnyFamiliarTool(FamiliarCalendarEventsTool(service: eventKit)),
-                    AnyFamiliarTool(FamiliarCreateCalendarEventTool(service: eventKit)),
-                    AnyFamiliarTool(FamiliarRemindersTool(service: eventKit)),
-                    AnyFamiliarTool(FamiliarCreateReminderTool(service: eventKit))
-                ],
+                tools: tools,
                 capabilities: FamiliarDeviceCapabilityProvider(
                     eventKit: eventKit,
                     contacts: contacts,
@@ -71,6 +85,35 @@ struct FamiliarAppDependencies {
         } catch {
             preconditionFailure("无法创建工具注册表：\(error.localizedDescription)")
         }
+        if let shellRuntime {
+            let registry = registry
+            let status = shellRuntimeStatus
+            Task {
+                do {
+                    try await shellRuntime.executor.prepare()
+                    try await registry.register(shellRuntime.tool)
+                    status.markReady()
+                } catch {
+                    status.markFailed(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private static func makeShellRuntime(
+        workspaceStore: FamiliarWorkspaceStore
+    ) -> (tool: AnyFamiliarTool, executor: FamiliarISHShellExecutor)? {
+#if canImport(FamiliarISHRuntime)
+        guard FamiliarRealISHBridge.isBundledRuntimeAvailable else { return nil }
+        let bridge = FamiliarRealISHBridge()
+        let executor = FamiliarISHShellExecutor(bridge: bridge, workspaceStore: workspaceStore)
+        return (
+            AnyFamiliarTool(FamiliarShellTool(executor: executor, workspaceStore: workspaceStore)),
+            executor
+        )
+#else
+        return nil
+#endif
     }
 
     func makeRuntime(

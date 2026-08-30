@@ -22,10 +22,18 @@ private final class FamiliarClipboardSpy: FamiliarClipboardServicing, @unchecked
 }
 
 private actor FamiliarContactsFixture: FamiliarContactsServicing {
+    var lastRequestedFields: FamiliarContactRequestedFields = []
     func availability() -> FamiliarCapabilityAvailability { .available }
     func requestAccess() async throws {}
-    func search(query: String, limit: Int) async throws -> [FamiliarContact] {
-        [.init(id: "contact-1", displayName: "Ada", phoneNumbers: ["123"], emailAddresses: ["ada@example.com"], organizationName: "Familiar")]
+    func search(query: String, limit: Int, requestedFields: FamiliarContactRequestedFields) async throws -> [FamiliarContact] {
+        lastRequestedFields = requestedFields
+        return [.init(
+            id: "contact-1",
+            displayName: "Ada",
+            phoneNumbers: requestedFields.contains(.phoneNumbers) ? ["123"] : [],
+            emailAddresses: requestedFields.contains(.emailAddresses) ? ["ada@example.com"] : [],
+            organizationName: requestedFields.contains(.organization) ? "Familiar" : nil
+        )]
     }
 }
 
@@ -58,7 +66,8 @@ struct FamiliarReleaseToolTests {
 
     @Test("Contact search returns only explicitly requested fields")
     func contactFieldMinimization() async throws {
-        let tool = FamiliarContactsSearchTool(service: FamiliarContactsFixture())
+        let fixture = FamiliarContactsFixture()
+        let tool = FamiliarContactsSearchTool(service: fixture)
         let minimal = try await tool.execute(
             .init(query: "Ada", limit: nil, includePhoneNumbers: nil, includeEmailAddresses: nil, includeOrganization: nil),
             context: .init()
@@ -67,6 +76,7 @@ struct FamiliarReleaseToolTests {
         #expect(minimalResult.modelContent.contains("Ada"))
         #expect(!minimalResult.modelContent.contains("123"))
         #expect(!minimalResult.modelContent.contains("ada@example.com"))
+        #expect(await fixture.lastRequestedFields.isEmpty)
 
         let detailed = try await tool.execute(
             .init(query: "Ada", limit: 1, includePhoneNumbers: true, includeEmailAddresses: true, includeOrganization: true),
@@ -76,6 +86,7 @@ struct FamiliarReleaseToolTests {
         #expect(detailedResult.modelContent.contains("123"))
         #expect(detailedResult.modelContent.contains("ada@example.com"))
         #expect(detailedResult.modelContent.contains("Familiar"))
+        #expect(await fixture.lastRequestedFields == [.phoneNumbers, .emailAddresses, .organization])
     }
 
     @Test("Workspace projects immutable context and undo restores only its target")

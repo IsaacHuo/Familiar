@@ -1,0 +1,49 @@
+diff --git a/fs/sock.c b/fs/sock.c
+index 38c8ed4..4dc27c3 100644
+--- a/fs/sock.c
++++ b/fs/sock.c
+@@ -14,0 +15 @@
++#include "FamiliarISHNetworkPolicy.h"
+@@ -39,0 +41,2 @@ int_t sys_socket(dword_t domain, dword_t type, dword_t protocol) {
++    if (!familiar_ish_network_allow_socket((int) domain))
++        return _EACCES;
+@@ -65 +68 @@ int_t sys_socket(dword_t domain, dword_t type, dword_t protocol) {
+-    if (f < 0)
++    if (f < 0) {
+@@ -66,0 +70,3 @@ int_t sys_socket(dword_t domain, dword_t type, dword_t protocol) {
++    } else {
++        familiar_ish_network_socket_opened((int) domain);
++    }
+@@ -369,0 +376,2 @@ int_t sys_connect(fd_t sock_fd, addr_t sockaddr_addr, uint_t sockaddr_len) {
++    if (!familiar_ish_network_allow_connect((const struct sockaddr *) &sockaddr, (socklen_t) sockaddr_len))
++        return _EACCES;
+@@ -405,0 +414,2 @@ int_t sys_listen(fd_t sock_fd, int_t backlog) {
++    if (!familiar_ish_network_allow_listen(sock->socket.domain))
++        return _EACCES;
+@@ -1484 +1494,7 @@ static ssize_t sock_read(struct fd *fd, void *buf, size_t size) {
+-        if (res >= 0) { err = (int)res; break; }
++        if (res >= 0) {
++            if (res > 0 && (fd->socket.domain == 2 || fd->socket.domain == 10)
++                    && !familiar_ish_network_record_receive((uint64_t) res))
++                return _EFBIG;
++            err = (int)res;
++            break;
++        }
+@@ -1511 +1527,7 @@ static ssize_t sock_write(struct fd *fd, const void *buf, size_t size) {
+-        if (res >= 0) { err = (int)res; break; }
++        if (res >= 0) {
++            if (res > 0 && (fd->socket.domain == 2 || fd->socket.domain == 10)
++                    && !familiar_ish_network_record_send((uint64_t) res))
++                return _EFBIG;
++            err = (int)res;
++            break;
++        }
+@@ -1529,0 +1552 @@ static int sock_close(struct fd *fd) {
++    familiar_ish_network_socket_closed(fd->socket.domain);
+diff --git a/app/xcode-meson.sh b/app/xcode-meson.sh
+index d7aa9bf..737d6bc 100755
+--- a/app/xcode-meson.sh
++++ b/app/xcode-meson.sh
+@@ -34 +34 @@ if [[ $? -ne 0 ]]; then
+-    c_args = [$arch_args]
++    c_args = [$arch_args, '-I$FAMILIAR_ISH_BRIDGE_HEADERS']

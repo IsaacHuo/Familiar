@@ -108,15 +108,12 @@ nonisolated struct FamiliarCreateCalendarEventTool: FamiliarTool {
             undoPolicy: .durable,
             idempotencyKey: context.idempotencyKey,
             commit: {
-                let commit = try await service.commit(request, idempotencyKey: context.idempotencyKey)
-                let result = try FamiliarEventKitToolSupport.result(
-                    commit,
-                    presentation: .mutationReceipt(.init(summary: String(localized: "tool.write_succeeded"), operation: "createCalendarEvent", targetIdentifier: commit.identifier, succeeded: true, undoAvailable: true)),
-                    artifactIdentifier: commit.identifier
+                try await FamiliarEventKitMutationCommit.commit(
+                    request,
+                    service: service,
+                    idempotencyKey: context.idempotencyKey,
+                    operation: "createCalendarEvent"
                 )
-                return FamiliarCommittedAction(result: result) {
-                    try await service.undoCommit(idempotencyKey: context.idempotencyKey)
-                }
             }
         ))
     }
@@ -149,17 +146,198 @@ nonisolated struct FamiliarCreateReminderTool: FamiliarTool {
             undoPolicy: .durable,
             idempotencyKey: context.idempotencyKey,
             commit: {
-                let commit = try await service.commit(request, idempotencyKey: context.idempotencyKey)
-                let result = try FamiliarEventKitToolSupport.result(
-                    commit,
-                    presentation: .mutationReceipt(.init(summary: String(localized: "tool.write_succeeded"), operation: "createReminder", targetIdentifier: commit.identifier, succeeded: true, undoAvailable: true)),
-                    artifactIdentifier: commit.identifier
+                try await FamiliarEventKitMutationCommit.commit(
+                    request,
+                    service: service,
+                    idempotencyKey: context.idempotencyKey,
+                    operation: "createReminder"
                 )
-                return FamiliarCommittedAction(result: result) {
-                    try await service.undoCommit(idempotencyKey: context.idempotencyKey)
-                }
             }
         ))
+    }
+}
+
+nonisolated struct FamiliarUpdateCalendarEventTool: FamiliarTool {
+    typealias Input = FamiliarEventUpdateRequest
+    let service: any FamiliarEventKitServicing
+    init(service: any FamiliarEventKitServicing) { self.service = service }
+    let manifest = FamiliarToolManifest(
+        name: "update_calendar_event", title: String(localized: "tool.calendar_update"),
+        description: "替换单个日历事件的完整内容；重复事件只修改当前 occurrence。执行前展示结构化预览并逐次确认。",
+        parameters: FamiliarEventKitToolSupport.object([
+            "identifier": FamiliarEventKitToolSupport.string("calendar_events 返回的事件 identifier"),
+            "title": FamiliarEventKitToolSupport.string("非空标题"),
+            "startISO8601": FamiliarEventKitToolSupport.string("严格 ISO8601"),
+            "endISO8601": FamiliarEventKitToolSupport.string("严格 ISO8601"),
+            "isAllDay": FamiliarEventKitToolSupport.bool("是否全天"),
+            "location": FamiliarEventKitToolSupport.string("可选地点；省略表示清空"),
+            "notes": FamiliarEventKitToolSupport.string("可选备注；省略表示清空"),
+            "urlString": FamiliarEventKitToolSupport.string("可选 URL；省略表示清空"),
+            "calendarIdentifier": FamiliarEventKitToolSupport.string("可选目标日历 identifier；省略表示保留原日历")
+        ], required: ["identifier", "title", "startISO8601", "endISO8601", "isAllDay"]),
+        effect: .reversibleWrite, risk: .sensitive, requirements: [.calendarFullAccess], executionClass: .native
+    )
+
+    func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
+        try Task.checkCancellation()
+        guard !input.identifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw FamiliarEventKitError.missingItem(input.identifier) }
+        guard !input.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw FamiliarEventKitError.emptyTitle }
+        try FamiliarISO8601ForTools.validate(start: input.startISO8601, end: input.endISO8601)
+        let request = FamiliarPendingWriteRequest.eventUpdate(input)
+        let target = try await service.targetDescription(for: request)
+        return .action(FamiliarActionProposal(
+            title: manifest.title,
+            fields: FamiliarEventKitPreview.fields(for: request),
+            target: target,
+            targetKey: input.identifier,
+            effect: manifest.effect,
+            risk: manifest.risk,
+            consequence: "将替换 \(target) 中这一条日历事件；若为重复事件，只修改当前 occurrence。",
+            undoPolicy: .durable,
+            idempotencyKey: context.idempotencyKey,
+            commit: { try await FamiliarEventKitMutationCommit.commit(request, service: service, idempotencyKey: context.idempotencyKey, operation: "updateCalendarEvent") }
+        ))
+    }
+}
+
+nonisolated struct FamiliarDeleteCalendarEventTool: FamiliarTool {
+    typealias Input = FamiliarEventKitDeleteRequest
+    let service: any FamiliarEventKitServicing
+    init(service: any FamiliarEventKitServicing) { self.service = service }
+    let manifest = FamiliarToolManifest(
+        name: "delete_calendar_event", title: String(localized: "tool.calendar_delete"),
+        description: "删除单个日历事件；重复事件只删除当前 occurrence。执行前逐次确认。",
+        parameters: FamiliarEventKitToolSupport.object(["identifier": FamiliarEventKitToolSupport.string("calendar_events 返回的事件 identifier")], required: ["identifier"]),
+        effect: .destructiveWrite, risk: .sensitive, requirements: [.calendarFullAccess], executionClass: .native
+    )
+
+    func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
+        guard !input.identifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw FamiliarEventKitError.missingItem(input.identifier) }
+        let request = FamiliarPendingWriteRequest.eventDelete(input)
+        let target = try await service.targetDescription(for: request)
+        return .action(FamiliarActionProposal(
+            title: manifest.title,
+            fields: FamiliarEventKitPreview.fields(for: request),
+            target: target,
+            targetKey: input.identifier,
+            effect: manifest.effect,
+            risk: manifest.risk,
+            consequence: "将从 \(target) 删除这一条日历事件；若为重复事件，只删除当前 occurrence。",
+            undoPolicy: .durable,
+            idempotencyKey: context.idempotencyKey,
+            allowedAuthorizationDurations: [.once],
+            commit: { try await FamiliarEventKitMutationCommit.commit(request, service: service, idempotencyKey: context.idempotencyKey, operation: "deleteCalendarEvent") }
+        ))
+    }
+}
+
+nonisolated struct FamiliarUpdateReminderTool: FamiliarTool {
+    typealias Input = FamiliarReminderUpdateRequest
+    let service: any FamiliarEventKitServicing
+    init(service: any FamiliarEventKitServicing) { self.service = service }
+    let manifest = FamiliarToolManifest(
+        name: "update_reminder", title: String(localized: "tool.reminder_update"),
+        description: "替换提醒事项内容，可更新完成状态。执行前展示结构化预览并逐次确认。",
+        parameters: FamiliarEventKitToolSupport.object([
+            "identifier": FamiliarEventKitToolSupport.string("reminders 返回的 identifier"),
+            "title": FamiliarEventKitToolSupport.string("非空标题"),
+            "dueISO8601": FamiliarEventKitToolSupport.string("可选截止时间；省略表示清空"),
+            "listIdentifier": FamiliarEventKitToolSupport.string("可选目标提醒列表；省略表示保留原列表"),
+            "priority": FamiliarEventKitToolSupport.integer("0-9"),
+            "notes": FamiliarEventKitToolSupport.string("可选备注；省略表示清空"),
+            "isCompleted": FamiliarEventKitToolSupport.bool("完成状态")
+        ], required: ["identifier", "title", "priority", "isCompleted"]),
+        effect: .reversibleWrite, risk: .sensitive, requirements: [.remindersFullAccess], executionClass: .native
+    )
+
+    func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
+        try Task.checkCancellation()
+        guard !input.identifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw FamiliarEventKitError.missingItem(input.identifier) }
+        guard !input.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw FamiliarEventKitError.emptyTitle }
+        guard (0...9).contains(input.priority) else { throw FamiliarEventKitError.invalidRange }
+        if let dueISO8601 = input.dueISO8601 { _ = try FamiliarISO8601ForTools.date(dueISO8601) }
+        let request = FamiliarPendingWriteRequest.reminderUpdate(input)
+        let target = try await service.targetDescription(for: request)
+        return .action(FamiliarActionProposal(
+            title: manifest.title,
+            fields: FamiliarEventKitPreview.fields(for: request),
+            target: target,
+            targetKey: input.identifier,
+            effect: manifest.effect,
+            risk: manifest.risk,
+            consequence: "将替换 \(target) 中这一条提醒事项，包括完成状态。",
+            undoPolicy: .durable,
+            idempotencyKey: context.idempotencyKey,
+            commit: { try await FamiliarEventKitMutationCommit.commit(request, service: service, idempotencyKey: context.idempotencyKey, operation: "updateReminder") }
+        ))
+    }
+}
+
+nonisolated struct FamiliarDeleteReminderTool: FamiliarTool {
+    typealias Input = FamiliarEventKitDeleteRequest
+    let service: any FamiliarEventKitServicing
+    init(service: any FamiliarEventKitServicing) { self.service = service }
+    let manifest = FamiliarToolManifest(
+        name: "delete_reminder", title: String(localized: "tool.reminder_delete"),
+        description: "删除一条提醒事项。执行前逐次确认。",
+        parameters: FamiliarEventKitToolSupport.object(["identifier": FamiliarEventKitToolSupport.string("reminders 返回的 identifier")], required: ["identifier"]),
+        effect: .destructiveWrite, risk: .sensitive, requirements: [.remindersFullAccess], executionClass: .native
+    )
+
+    func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
+        guard !input.identifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw FamiliarEventKitError.missingItem(input.identifier) }
+        let request = FamiliarPendingWriteRequest.reminderDelete(input)
+        let target = try await service.targetDescription(for: request)
+        return .action(FamiliarActionProposal(
+            title: manifest.title,
+            fields: FamiliarEventKitPreview.fields(for: request),
+            target: target,
+            targetKey: input.identifier,
+            effect: manifest.effect,
+            risk: manifest.risk,
+            consequence: "将从 \(target) 删除这一条提醒事项。",
+            undoPolicy: .durable,
+            idempotencyKey: context.idempotencyKey,
+            allowedAuthorizationDurations: [.once],
+            commit: { try await FamiliarEventKitMutationCommit.commit(request, service: service, idempotencyKey: context.idempotencyKey, operation: "deleteReminder") }
+        ))
+    }
+}
+
+nonisolated private enum FamiliarEventKitMutationCommit {
+    private struct Output: Encodable {
+        let idempotencyKey: String
+        let kind: FamiliarEventKitAccessKind
+        let identifier: String
+        let operation: FamiliarEventKitMutationOperation
+    }
+
+    static func commit(
+        _ request: FamiliarPendingWriteRequest,
+        service: any FamiliarEventKitServicing,
+        idempotencyKey: String,
+        operation: String
+    ) async throws -> FamiliarCommittedAction {
+        let commit = try await service.commit(request, idempotencyKey: idempotencyKey)
+        let result = try FamiliarEventKitToolSupport.result(
+            Output(
+                idempotencyKey: commit.idempotencyKey,
+                kind: commit.kind,
+                identifier: commit.identifier,
+                operation: commit.operation
+            ),
+            presentation: .mutationReceipt(.init(
+                summary: String(localized: "tool.write_succeeded"),
+                operation: operation,
+                targetIdentifier: commit.identifier,
+                succeeded: true,
+                undoAvailable: true
+            )),
+            artifactIdentifier: commit.identifier
+        )
+        return FamiliarCommittedAction(result: result) {
+            try await service.undoCommit(idempotencyKey: idempotencyKey)
+        }
     }
 }
 
@@ -185,6 +363,30 @@ nonisolated enum FamiliarEventKitPreview {
             if let value = reminder.dueISO8601 { fields.append(.init(id: "due", label: String(localized: "eventkit.field.due"), type: .date, value: value)) }
             if let value = reminder.notes, !value.isEmpty { fields.append(.init(id: "notes", label: String(localized: "eventkit.field.notes"), type: .text, value: value)) }
             return fields
+        case .eventUpdate(let event):
+            var fields = [
+                FamiliarApprovalField(id: "identifier", label: "Identifier", type: .text, value: event.identifier),
+                FamiliarApprovalField(id: "title", label: String(localized: "eventkit.field.title"), type: .text, value: event.title),
+                FamiliarApprovalField(id: "start", label: String(localized: "eventkit.field.start"), type: .date, value: event.startISO8601),
+                FamiliarApprovalField(id: "end", label: String(localized: "eventkit.field.end"), type: .date, value: event.endISO8601),
+                FamiliarApprovalField(id: "all_day", label: String(localized: "eventkit.field.all_day"), type: .boolean, value: String(event.isAllDay))
+            ]
+            if let value = event.location, !value.isEmpty { fields.append(.init(id: "location", label: String(localized: "eventkit.field.location"), type: .text, value: value)) }
+            if let value = event.notes, !value.isEmpty { fields.append(.init(id: "notes", label: String(localized: "eventkit.field.notes"), type: .text, value: value)) }
+            if let value = event.urlString, !value.isEmpty { fields.append(.init(id: "url", label: "URL", type: .url, value: value)) }
+            return fields
+        case .reminderUpdate(let reminder):
+            var fields = [
+                FamiliarApprovalField(id: "identifier", label: "Identifier", type: .text, value: reminder.identifier),
+                FamiliarApprovalField(id: "title", label: String(localized: "eventkit.field.title"), type: .text, value: reminder.title),
+                FamiliarApprovalField(id: "priority", label: String(localized: "eventkit.field.priority"), type: .number, value: String(reminder.priority)),
+                FamiliarApprovalField(id: "completed", label: "Completed", type: .boolean, value: String(reminder.isCompleted))
+            ]
+            if let value = reminder.dueISO8601 { fields.append(.init(id: "due", label: String(localized: "eventkit.field.due"), type: .date, value: value)) }
+            if let value = reminder.notes, !value.isEmpty { fields.append(.init(id: "notes", label: String(localized: "eventkit.field.notes"), type: .text, value: value)) }
+            return fields
+        case .eventDelete(let request), .reminderDelete(let request):
+            return [.init(id: "identifier", label: "Identifier", type: .text, value: request.identifier)]
         }
     }
 }
