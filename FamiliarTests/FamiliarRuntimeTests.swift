@@ -141,6 +141,37 @@ private struct FamiliarBudgetProvider: FamiliarModelProvider {
     }
 }
 
+private actor FamiliarCompactionProbe {
+    private var summaryRequests = 0
+    private var finalRequestText = ""
+
+    func recordSummaryRequest() { summaryRequests += 1 }
+    func recordFinalRequest(_ text: String) { finalRequestText = text }
+    func snapshot() -> (Int, String) { (summaryRequests, finalRequestText) }
+}
+
+private struct FamiliarCompactingProvider: FamiliarModelProvider {
+    let providerID = "fake"
+    let probe: FamiliarCompactionProbe
+
+    func stream(request: FamiliarModelRequest) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                let system = request.messages.first?.networkText ?? ""
+                if system.contains("Summarize the supplied earlier conversation") {
+                    await probe.recordSummaryRequest()
+                    continuation.yield(.textDelta("## Goal\nContinue the current task.\n\n## Progress\nEarlier history was compacted."))
+                } else {
+                    await probe.recordFinalRequest(request.messages.compactMap(\.networkText).joined(separator: "\n"))
+                    continuation.yield(.textDelta("Done"))
+                }
+                continuation.yield(.completed(.stop))
+                continuation.finish()
+            }
+        }
+    }
+}
+
 private struct FamiliarRetryingReadTool: FamiliarTool {
     struct Input: Decodable, Sendable {}
     let counter: FamiliarAttemptCounter
@@ -251,12 +282,61 @@ struct FamiliarRuntimeTests {
         #expect(finish?.failureKind == .maxToolCalls)
     }
 
+    @Test("Oversized history is compacted while the recent user turn is retained")
+    func automaticContextCompaction() async throws {
+        let probe = FamiliarCompactionProbe()
+        let registry = try FamiliarToolRegistry(tools: [])
+        let oldHistory = "OLD_SENTINEL_" + String(repeating: "history ", count: 14_000)
+        let snapshots = [
+            FamiliarMessageSnapshot(
+                id: UUID(),
+                role: .assistant,
+                content: oldHistory,
+                createdAt: .distantPast,
+                sequence: 0,
+                providerID: "fake",
+                modelID: "deepseek-v4-flash",
+                attachments: []
+            ),
+            FamiliarMessageSnapshot(
+                id: UUID(),
+                role: .user,
+                content: "CURRENT_USER_REQUEST",
+                createdAt: Date(),
+                sequence: 1,
+                providerID: nil,
+                modelID: nil,
+                attachments: []
+            )
+        ]
+        let snapshot = try familiarTestContextSnapshot(messages: snapshots)
+        #expect(snapshot.initialInputCharacters > 90_000)
+        var events: [FamiliarRuntimeEvent] = []
+        let loop = FamiliarAgentLoop(
+            provider: FamiliarCompactingProvider(probe: probe),
+            registry: registry,
+            policy: .init(),
+            confirmationCoordinator: .init(),
+            undoStore: .init()
+        )
+        for try await event in loop.stream(contextSnapshot: snapshot) { events.append(event) }
+
+        let probeSnapshot = await probe.snapshot()
+        #expect(probeSnapshot.0 == 1)
+        #expect(probeSnapshot.1.contains("CURRENT_USER_REQUEST"))
+        #expect(probeSnapshot.1.contains("Earlier conversation summary"))
+        #expect(!probeSnapshot.1.contains("OLD_SENTINEL_"))
+        #expect(events.contains { if case .runPhaseChanged(.compactingContext) = $0.payload { true } else { false } })
+        #expect(events.contains { if case .runFinished(.succeeded) = $0.payload { true } else { false } })
+    }
+
     @Test("Provider failures retain typed classification")
     func failureClassification() {
         #expect(FamiliarRuntimeFailure.kind(for: FamiliarProviderRequestError.server(provider: "x", statusCode: 429, message: "")) == .rateLimited)
         #expect(FamiliarRuntimeFailure.kind(for: FamiliarProviderRequestError.server(provider: "x", statusCode: 500, message: "")) == .transientServer)
         #expect(FamiliarRuntimeFailure.kind(for: FamiliarProviderRequestError.server(provider: "x", statusCode: 401, message: "")) == .authentication)
         #expect(FamiliarRuntimeFailure.kind(for: FamiliarAgentError.contextTooLarge) == .contextTooLarge)
+        #expect(FamiliarRuntimeFailure.kind(for: FamiliarAgentError.contextCompactionFailed) == .contextTooLarge)
         #expect(FamiliarRuntimeFailure.kind(for: URLError(.timedOut)) == .network)
     }
 

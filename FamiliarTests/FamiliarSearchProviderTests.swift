@@ -4,15 +4,15 @@ import Testing
 
 @Suite("BYOK search providers")
 struct FamiliarSearchProviderTests {
-    @Test("Catalog and settings default to DuckDuckGo and reject unknown stored IDs")
+    @Test("Catalog keeps DuckDuckGo default and exposes Bing as a no-key alternative")
     func catalogAndSettings() {
         let suiteName = "FamiliarSearchProviderTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let store = FamiliarSearchSettingsStore(defaults: defaults)
 
-        #expect(FamiliarSearchProviderCatalog.all.map(\.id) == ["duckduckgo", "brave", "tavily", "exa"])
-        #expect(FamiliarSearchProviderCatalog.releaseVisible.map(\.id) == ["duckduckgo"])
+        #expect(FamiliarSearchProviderCatalog.all.map(\.id) == ["duckduckgo", "bing", "brave", "tavily", "exa"])
+        #expect(FamiliarSearchProviderCatalog.releaseVisible.map(\.id) == ["duckduckgo", "bing"])
         #expect(store.selectedProviderID == "duckduckgo")
         #expect(store.settings == .default)
         store.save(.init(providerID: "tavily"))
@@ -22,13 +22,11 @@ struct FamiliarSearchProviderTests {
         #expect(FamiliarSearchKeychainStore.service == "com.isaachuo.familiar.search-provider-api-keys.v1")
     }
 
-    @Test("DuckDuckGo adapter uses the fixed HTML host and existing parser")
+    @Test("DuckDuckGo adapter uses Lite first on mobile networks")
     func duckDuckGoFixture() async throws {
         let transport = FamiliarFixtureSearchTransport(responses: [
             .init(statusCode: 200, headers: ["content-type": "text/html; charset=utf-8"], body: Data("""
-            <html><body><div class="results--main">
-              <div class="result"><a class="result__a" href="https://example.com/result">Fixture result</a><a class="result__snippet">Fixture snippet</a></div>
-            </div></body></html>
+            <html><body><table><tr><td><a class="result-link" href="https://example.com/result">Fixture result</a></td></tr></table></body></html>
             """.utf8))
         ])
         let provider = FamiliarDuckDuckGoSearchProvider(transport: transport)
@@ -40,12 +38,48 @@ struct FamiliarSearchProviderTests {
         let requests = await transport.recordedRequests()
 
         #expect(requests.count == 1)
-        #expect(requests[0].url?.host == "html.duckduckgo.com")
-        #expect(requests[0].httpMethod == "POST")
-        #expect(String(data: requests[0].httpBody ?? Data(), encoding: .utf8) == "q=swift%20language")
+        #expect(requests[0].url?.host == "lite.duckduckgo.com")
+        #expect(requests[0].httpMethod == "GET")
+        #expect(URLComponents(url: requests[0].url!, resolvingAgainstBaseURL: false)?.queryItems?.first?.value == "swift language")
         #expect(response.providerID == "duckduckgo")
         #expect(response.results.first?.title == "Fixture result")
-        #expect(response.results.first?.snippet == "Fixture snippet")
+    }
+
+    @Test("DuckDuckGo falls back to its HTML shape without changing provider")
+    func duckDuckGoShapeFallback() async throws {
+        let transport = FamiliarFixtureSearchTransport(responses: [
+            .init(statusCode: 503, headers: [:], body: Data()),
+            .init(statusCode: 200, headers: ["content-type": "text/html"], body: Data("""
+            <html><body><div class="results--main"><div class="result">
+              <a class="result__a" href="https://example.com/html">HTML result</a>
+            </div></div></body></html>
+            """.utf8))
+        ])
+        let provider = FamiliarDuckDuckGoSearchProvider(transport: transport)
+        let response = try await provider.search(request: .init(query: "fixture", maximumResults: 2), apiKey: nil)
+        #expect(response.providerID == "duckduckgo")
+        #expect(response.results.first?.title == "HTML result")
+        #expect(await transport.recordedRequests().map { $0.url?.host } == ["lite.duckduckgo.com", "html.duckduckgo.com"])
+    }
+
+    @Test("Bing adapter maps direct public result links")
+    func bingFixture() async throws {
+        let transport = FamiliarFixtureSearchTransport(responses: [
+            .init(statusCode: 200, headers: ["content-type": "text/html"], body: Data("""
+            <html><body><ol><li class="b_algo"><div class="b_algoheader">
+              <a href="https://example.com/beijing"><h2>Beijing guide</h2></a>
+            </div><div class="b_caption"><p>Public information.</p></div></li></ol></body></html>
+            """.utf8))
+        ])
+        let response = try await FamiliarBingSearchProvider(transport: transport).search(
+            request: .init(query: "北京", maximumResults: 3),
+            apiKey: nil
+        )
+        let request = try #require(await transport.recordedRequests().first)
+        #expect(request.url?.host == "www.bing.com")
+        #expect(response.providerID == "bing")
+        #expect(response.results.first?.url == "https://example.com/beijing")
+        #expect(response.results.first?.snippet == "Public information.")
     }
 
     @Test("Brave adapter authenticates by header and maps normal web results")

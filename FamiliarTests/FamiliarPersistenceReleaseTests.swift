@@ -9,8 +9,8 @@ struct FamiliarPersistenceReleaseTests {
     @MainActor
     func releaseSchemaBaseline() {
         #expect(FamiliarReleaseSchema.versionIdentifier == Schema.Version(1, 0, 0))
-        #expect(FamiliarReleaseSchema.models.count == 33)
-        #expect(FamiliarModelContainer.currentSchema.entities.count == 33)
+        #expect(FamiliarReleaseSchema.models.count == 36)
+        #expect(FamiliarModelContainer.currentSchema.entities.count == 36)
         #expect(FamiliarStoreProfile.development.storeName == "FamiliarDevelopment")
         #expect(FamiliarStoreProfile.release.storeName == "Familiar")
     }

@@ -63,6 +63,20 @@ struct FamiliarWebTests {
         #expect(results[1].displayURL == "swift.org")
     }
 
+    @Test("Bing HTML parser ignores internal links and keeps direct sources")
+    func bingHTML() throws {
+        let html = """
+        <html><body><ol>
+          <li class="b_algo"><div class="b_algoheader"><a href="https://example.com/beijing"><h2>Beijing</h2></a></div><div class="b_caption"><p>City guide.</p></div></li>
+          <li class="b_algo"><h2><a href="https://www.bing.com/internal">Internal</a></h2></li>
+        </ol></body></html>
+        """
+        let results = try FamiliarWebContentService.parseBingHTML(html, maximumResults: 5)
+        #expect(results.count == 1)
+        #expect(results.first?.title == "Beijing")
+        #expect(results.first?.snippet == "City guide.")
+    }
+
     @Test("Readable HTML extractor removes navigation and scripts")
     func readableHTML() throws {
         let html = """

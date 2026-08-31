@@ -43,6 +43,45 @@ struct FamiliarWP6WP7Tests {
         #expect(throws: FamiliarRunRecoveryService.Error.self) { try service.beginInvocation(idempotencyKey: "run:call", runtimeID: "run", toolCallID: "call", toolName: "fixture", arguments: "{}", assistantTurnID: "run:turn:0", activityID: "tool:run:call", in: container.mainContext) }
     }
 
+    @Test("Project Skill and Capability bindings narrow a Run without granting new tools")
+    @MainActor
+    func projectBindings() throws {
+        let container = try FamiliarTestStore.make(name: "ProjectRuntimeBindings")
+        let context = container.mainContext
+        let project = FamiliarProject(name: "Runtime")
+        context.insert(project)
+        let skill = try FamiliarSkillService().install(.init(
+            format: "familiar.skill",
+            formatVersion: 1,
+            id: "word-report",
+            version: "1.0.0",
+            name: "Word Report",
+            description: "Generate reports",
+            instructions: "Generate a validated Word report.",
+            allowedTools: ["web_fetch", "artifact_publish"],
+            examples: []
+        ), in: context)
+        let service = FamiliarProjectService()
+        try service.setSkill(skill.id, enabled: true, projectID: project.id, in: context)
+        let snapshots = try service.boundSkillSnapshots(projectID: project.id, in: context)
+        #expect(snapshots.map(\.stableID) == ["word-report"])
+
+        let manifests = [
+            FamiliarToolManifest(name: "web_fetch", title: "Fetch", description: "Fetch", parameters: .init(type: .object), effect: .read, risk: .low),
+            FamiliarToolManifest(name: "shell_execute", title: "Shell", description: "Shell", parameters: .init(type: .object), effect: .reversibleWrite, risk: .high),
+            FamiliarToolManifest(name: "task_plan", title: "Plan", description: "Plan", parameters: .init(type: .object), effect: .read, risk: .low)
+        ]
+        try service.setCapability(
+            "shell_execute",
+            enabled: false,
+            allCapabilityIDs: manifests.map(\.id),
+            projectID: project.id,
+            in: context
+        )
+        let filtered = try service.filterCapabilities(manifests, projectID: project.id, in: context)
+        #expect(filtered.map(\.name).sorted() == ["task_plan", "web_fetch"])
+    }
+
     @Test("Interrupted runs are finalized and in-flight invocations cancelled")
     @MainActor
     func recoverInterruptedRuns() throws {

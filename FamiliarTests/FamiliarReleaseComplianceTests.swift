@@ -62,6 +62,24 @@ struct FamiliarReleaseComplianceTests {
         #expect(rust.contains("LICENSE AND NOTICE TEXTS"))
     }
 
+    @Test("iSH rootfs installer accepts only the canonical empty tar root entry")
+    func rootfsArchiveRootEntryContract() throws {
+        let bridge = try source("Vendor/ISHRuntime/Bridge/ISHKernel.m")
+        #expect(bridge.contains("relative.length == 0 && type == '5' && size == 0"))
+        #expect(bridge.contains("if (!FamiliarISHSafeArchivePath(relative))"))
+        #expect(bridge.contains("generic_mkdirat(AT_PWD, \"/workspace\", 0755)"))
+        let archiveListing = try source("Scripts/prepare-ish-rootfs.sh")
+        #expect(archiveListing.contains("tar -czf \"$OUTPUT_ARCHIVE\" -C \"$FAKEFS_DIRECTORY\" ."))
+    }
+
+    @Test("Dynamic AI colors are safe for SwiftUI async rendering")
+    func dynamicColorIsolation() throws {
+        let theme = try source("Familiar/Support/FamiliarTheme.swift")
+        #expect(theme.contains("nonisolated enum FamiliarAISurfaceColor"))
+        #expect(theme.contains("private nonisolated extension UIColor"))
+        #expect(!theme.contains("@MainActor\nenum FamiliarAISurfaceColor"))
+    }
+
     private var repositoryRoot: URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

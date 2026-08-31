@@ -161,6 +161,96 @@ struct FamiliarWorkspaceShellTests {
         #expect(try !store.shellSettingsURL(in: workspaceID).path.contains("Runtime"))
     }
 
+    @Test("Python package source setting defaults to PyPI and accepts only catalog sources")
+    func pythonPackageSourceSettings() throws {
+        let suiteName = "FamiliarPythonPackageSourceTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settings = FamiliarPythonPackageSourceSettingsStore(defaults: defaults)
+
+        #expect(settings.selectedSource.id == FamiliarPythonPackageSource.officialID)
+        settings.save(selectedSourceID: FamiliarPythonPackageSource.tunaID)
+        #expect(settings.selectedSource.id == FamiliarPythonPackageSource.tunaID)
+        #expect(settings.selectedSource.indexURL.absoluteString == "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple")
+        settings.save(selectedSourceID: "untrusted-custom-source")
+        #expect(settings.selectedSource.id == FamiliarPythonPackageSource.officialID)
+    }
+
+    @Test("Project environments persist while ordinary chat environments are task scoped")
+    func environmentLifetime() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "FamiliarEnvironmentLifetime-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = FamiliarWorkspaceStore(rootURL: root, quotaBytes: 2 * 1_024 * 1_024)
+        let projectID = UUID()
+        let projectView = try store.prepareShellTaskView(
+            taskID: UUID(),
+            workspaceID: .project(projectID),
+            resources: [],
+            attachments: []
+        )
+        try Data("project".utf8).write(to: projectView.environment.appendingPathComponent("marker.txt"))
+        try store.removeShellTaskView(projectView)
+        #expect(FileManager.default.fileExists(
+            atPath: try store.projectEnvironmentURL(projectID).appendingPathComponent("marker.txt").path
+        ))
+
+        let conversationView = try store.prepareShellTaskView(
+            taskID: UUID(),
+            workspaceID: .conversation(UUID()),
+            resources: [],
+            attachments: []
+        )
+        let ephemeralEnvironment = conversationView.environment
+        try Data("temporary".utf8).write(to: ephemeralEnvironment.appendingPathComponent("marker.txt"))
+        try store.removeShellTaskView(conversationView)
+        #expect(!FileManager.default.fileExists(atPath: ephemeralEnvironment.path))
+    }
+
+    @Test("Staged Project environment replaces the old environment atomically")
+    func environmentCommit() throws {
+        let (root, store, workspaceID) = makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: root) }
+        guard case .project(let projectID) = workspaceID else { return }
+        let original = try store.projectEnvironmentURL(projectID)
+        try Data("old".utf8).write(to: original.appendingPathComponent("version.txt"))
+        let staging = try store.prepareShellTaskView(
+            taskID: UUID(),
+            workspaceID: workspaceID,
+            resources: [],
+            attachments: [],
+            useStagingEnvironment: true
+        )
+        try Data("new".utf8).write(to: staging.environment.appendingPathComponent("version.txt"))
+        try store.commitProjectEnvironment(from: staging, projectID: projectID)
+        #expect(try String(contentsOf: original.appendingPathComponent("version.txt"), encoding: .utf8) == "new")
+        try store.removeShellTaskView(staging)
+        #expect(try String(contentsOf: original.appendingPathComponent("version.txt"), encoding: .utf8) == "new")
+    }
+
+    @Test("Shell preflight automatically allows only offline checkpointed commands")
+    func shellPreflight() async throws {
+        let (root, store, workspaceID) = makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let tool = FamiliarShellTool(
+            executor: FamiliarShellFixtureExecutor(status: .succeeded, output: "", writesOutput: false),
+            workspaceStore: store
+        )
+        let context = FamiliarToolContext(workspaceID: workspaceID)
+        let offline = try await tool.preflight(.init(command: "python3 analyze.py", timeoutSeconds: nil), context: context)
+        #expect(offline.disposition == .automatic)
+        let install = try await tool.preflight(.init(command: "pip install python-docx", timeoutSeconds: nil), context: context)
+        guard case .denied = install.disposition else {
+            Issue.record("Package installation must be denied from shell_execute")
+            return
+        }
+        try store.setShellNetworkEnabled(true, in: workspaceID)
+        let networkEnabled = try await tool.preflight(.init(command: "python3 analyze.py", timeoutSeconds: nil), context: context)
+        #expect(networkEnabled.disposition == .requiresApproval)
+    }
+
     @Test("Writable task usage tracks Outputs and Work without exposing other directories")
     func writableTaskUsage() throws {
         let (root, store, workspaceID) = makeWorkspace()

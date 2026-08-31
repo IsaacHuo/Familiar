@@ -205,4 +205,71 @@ struct FamiliarProjectWorkspaceTests {
         #expect(try context.fetch(FetchDescriptor<FamiliarContextSnapshotRecord>()).count == 1)
         #expect(try context.fetch(FetchDescriptor<FamiliarEventKitUndoRecord>()).count == 1)
     }
+
+    @Test("Generated document validators reject false files and accept real DOCX and HTML")
+    func generatedArtifactValidation() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let docx = repository.appendingPathComponent("Vendor/AnyDocBridgeRust/tests/fixtures/sample.docx")
+        let receipt = try FamiliarArtifactValidator.validate(fileURL: docx, format: .docx)
+        #expect(receipt.format == .docx)
+        #expect(receipt.checks.contains("office-package-readable"))
+
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "FamiliarArtifactValidation-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let fake = root.appendingPathComponent("fake.docx")
+        try Data("not a document".utf8).write(to: fake)
+        #expect(throws: FamiliarArtifactError.self) {
+            _ = try FamiliarArtifactValidator.validate(fileURL: fake, format: .docx)
+        }
+
+        let html = root.appendingPathComponent("report.html")
+        try Data("<html><body><h1>Beijing</h1><p>Sources</p></body></html>".utf8).write(to: html)
+        let htmlReceipt = try FamiliarArtifactValidator.validate(
+            fileURL: html,
+            format: .html,
+            requiredText: ["Beijing", "Sources"]
+        )
+        #expect(htmlReceipt.format == .html)
+    }
+
+    @Test("artifact_publish registers only a validated real output")
+    func publishValidatedArtifact() async throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = repository.appendingPathComponent("Vendor/AnyDocBridgeRust/tests/fixtures/sample.docx")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "FamiliarArtifactPublish-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        let workspace = FamiliarWorkspaceStore(rootURL: root.appendingPathComponent("Workspaces"))
+        let artifactStore = FamiliarArtifactStore(rootURL: root.appendingPathComponent("Artifacts"))
+        let projectID = UUID()
+        _ = try workspace.write(
+            Data(contentsOf: source),
+            relativePath: "Outputs/report.docx",
+            in: .project(projectID)
+        )
+        let tool = FamiliarArtifactPublishTool(workspaceStore: workspace, artifactStore: artifactStore)
+        let outcome = try await tool.execute(
+            .init(path: "Outputs/report.docx", title: "Beijing Report", format: .docx, requiredText: nil),
+            context: .init(runID: "run", projectID: projectID, workspaceID: .project(projectID))
+        )
+        guard case .action(let proposal) = outcome else {
+            Issue.record("Expected a reversible publish proposal")
+            return
+        }
+        let committed = try await proposal.commit()
+        let descriptor = try #require(committed.result.artifact)
+        #expect(descriptor.format == .docx)
+        #expect(descriptor.validationReceipt?.checks.contains("office-package-readable") == true)
+        #expect(artifactStore.url(relativePath: descriptor.relativePath) != nil)
+    }
 }
