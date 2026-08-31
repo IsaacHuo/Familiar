@@ -37,14 +37,22 @@
     <true/>
     <key>NSCameraUsageDescription</key>
     <string>Familiar uses the camera to add a photo draft to your message.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Familiar scans only for the Bluetooth service UUIDs you explicitly request and never connects automatically.</string>
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>Familiar reads calendar events you ask about and adds an event only after you confirm its preview.</string>
-    <key>NSContactsUsageDescription</key>
-    <string>Familiar searches contacts only when you ask and only after you approve access.</string>
-    <key>NSLocationWhenInUseUsageDescription</key>
+	<key>NSContactsUsageDescription</key>
+	<string>Familiar searches contacts only when you ask and only after you approve access.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Familiar reads only the health activity summaries you explicitly request and never writes health data.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
     <string>Familiar requests a single foreground location only when your task needs it.</string>
-    <key>NSPhotoLibraryAddUsageDescription</key>
-    <string>Familiar saves a Workspace image to Photos only after you approve the exact output.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Familiar saves a Workspace image to Photos only after you approve the exact output.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Familiar reads recent photo metadata only when you ask, respects limited access, and does not read image pixels without a separate selection.</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Familiar searches the Apple Music catalog only when you ask and never plays or changes your library automatically.</string>
     <key>NSRemindersFullAccessUsageDescription</key>
     <string>Familiar reads reminders you ask about and adds a reminder only after you confirm its preview.</string>
     <key>NSMicrophoneUsageDescription</key>
