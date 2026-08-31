@@ -29,6 +29,73 @@ final class FamiliarPinnedItemRecord {
     }
 }
 
+@Model
+final class FamiliarProjectEnvironmentRecord {
+    @Attribute(.unique) var projectID: UUID
+    var revision: UUID
+    var stateRawValue: String
+    var requestedPackagesJSON: String
+    var pythonVersion: String
+    var resolvedPackagesJSON: String
+    var lockHash: String
+    var byteSize: Int64
+    var preparedAt: Date
+
+    init(receipt: FamiliarEnvironmentReceipt) throws {
+        projectID = receipt.projectID
+        revision = receipt.revision
+        stateRawValue = receipt.state.rawValue
+        requestedPackagesJSON = String(decoding: try JSONEncoder().encode(receipt.requestedPackages), as: UTF8.self)
+        pythonVersion = receipt.lock.pythonVersion
+        resolvedPackagesJSON = String(decoding: try JSONEncoder().encode(receipt.lock.resolvedPackages), as: UTF8.self)
+        lockHash = receipt.lock.contentHash
+        byteSize = receipt.byteSize
+        preparedAt = receipt.preparedAt
+    }
+
+    var state: FamiliarRuntimeEnvironmentState {
+        FamiliarRuntimeEnvironmentState(rawValue: stateRawValue) ?? .failed
+    }
+}
+
+@Model
+final class FamiliarProjectSkillBindingRecord {
+    @Attribute(.unique) var bindingKey: String
+    var projectID: UUID
+    var skillID: UUID
+    var enabled: Bool
+    var createdAt: Date
+    var updatedAt: Date
+
+    init(projectID: UUID, skillID: UUID, enabled: Bool = true, now: Date = Date()) {
+        bindingKey = "\(projectID.uuidString):\(skillID.uuidString)"
+        self.projectID = projectID
+        self.skillID = skillID
+        self.enabled = enabled
+        createdAt = now
+        updatedAt = now
+    }
+}
+
+@Model
+final class FamiliarProjectCapabilityBindingRecord {
+    @Attribute(.unique) var bindingKey: String
+    var projectID: UUID
+    var capabilityID: String
+    var enabled: Bool
+    var createdAt: Date
+    var updatedAt: Date
+
+    init(projectID: UUID, capabilityID: String, enabled: Bool = true, now: Date = Date()) {
+        bindingKey = "\(projectID.uuidString):\(capabilityID)"
+        self.projectID = projectID
+        self.capabilityID = capabilityID
+        self.enabled = enabled
+        createdAt = now
+        updatedAt = now
+    }
+}
+
 nonisolated enum FamiliarModelSchema {
     static let models: [any PersistentModel.Type] = FamiliarSchemaV3.models + [
         FamiliarArtifact.self,
@@ -51,7 +118,10 @@ nonisolated enum FamiliarModelSchema {
         FamiliarResponseBlockRecord.self,
         FamiliarClarificationRecord.self,
         FamiliarContextAttachmentReference.self,
-        FamiliarEventKitUndoMutationRecord.self
+        FamiliarEventKitUndoMutationRecord.self,
+        FamiliarProjectEnvironmentRecord.self,
+        FamiliarProjectSkillBindingRecord.self,
+        FamiliarProjectCapabilityBindingRecord.self
     ]
 
     static var schema: Schema { Schema(models) }

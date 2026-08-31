@@ -82,6 +82,103 @@ struct FamiliarProjectService {
         try save(context)
     }
 
+    func persistEnvironment(_ receipt: FamiliarEnvironmentReceipt, in context: ModelContext) throws {
+        let projectID = receipt.projectID
+        if let existing = try context.fetch(FetchDescriptor<FamiliarProjectEnvironmentRecord>(
+            predicate: #Predicate { $0.projectID == projectID }
+        )).first {
+            existing.revision = receipt.revision
+            existing.stateRawValue = receipt.state.rawValue
+            existing.requestedPackagesJSON = String(decoding: try JSONEncoder().encode(receipt.requestedPackages), as: UTF8.self)
+            existing.pythonVersion = receipt.lock.pythonVersion
+            existing.resolvedPackagesJSON = String(decoding: try JSONEncoder().encode(receipt.lock.resolvedPackages), as: UTF8.self)
+            existing.lockHash = receipt.lock.contentHash
+            existing.byteSize = receipt.byteSize
+            existing.preparedAt = receipt.preparedAt
+        } else {
+            context.insert(try FamiliarProjectEnvironmentRecord(receipt: receipt))
+        }
+        try save(context)
+    }
+
+    func boundSkillSnapshots(projectID: UUID, in context: ModelContext) throws -> [FamiliarSkillSnapshot] {
+        let bindings = try context.fetch(FetchDescriptor<FamiliarProjectSkillBindingRecord>(
+            predicate: #Predicate { $0.projectID == projectID && $0.enabled }
+        ))
+        let skillIDs = Set(bindings.map(\.skillID))
+        return try context.fetch(FetchDescriptor<FamiliarSkill>())
+            .filter { skillIDs.contains($0.id) }
+            .map { try FamiliarSkillService().snapshot(skillID: $0.id, in: context) }
+            .sorted { $0.stableID < $1.stableID }
+    }
+
+    func filterCapabilities(
+        _ manifests: [FamiliarToolManifest],
+        projectID: UUID?,
+        in context: ModelContext
+    ) throws -> [FamiliarToolManifest] {
+        guard let projectID else { return manifests }
+        let bindings = try context.fetch(FetchDescriptor<FamiliarProjectCapabilityBindingRecord>(
+            predicate: #Predicate { $0.projectID == projectID }
+        ))
+        guard !bindings.isEmpty else { return manifests }
+        let enabled = Set(bindings.filter(\.enabled).map(\.capabilityID))
+        let core: Set<String> = ["task_plan", "ask_user", "skill_list", "skill_read", "environment_status"]
+        return manifests.filter { core.contains($0.name) || enabled.contains($0.id) }
+    }
+
+    func setSkill(
+        _ skillID: UUID,
+        enabled: Bool,
+        projectID: UUID,
+        in context: ModelContext
+    ) throws {
+        let key = "\(projectID.uuidString):\(skillID.uuidString)"
+        if let binding = try context.fetch(FetchDescriptor<FamiliarProjectSkillBindingRecord>(
+            predicate: #Predicate { $0.bindingKey == key }
+        )).first {
+            binding.enabled = enabled
+            binding.updatedAt = Date()
+        } else {
+            context.insert(FamiliarProjectSkillBindingRecord(projectID: projectID, skillID: skillID, enabled: enabled))
+        }
+        try save(context)
+    }
+
+    func setCapability(
+        _ capabilityID: String,
+        enabled: Bool,
+        allCapabilityIDs: [String],
+        projectID: UUID,
+        in context: ModelContext
+    ) throws {
+        let existing = try context.fetch(FetchDescriptor<FamiliarProjectCapabilityBindingRecord>(
+            predicate: #Predicate { $0.projectID == projectID }
+        ))
+        if existing.isEmpty {
+            for id in Set(allCapabilityIDs) {
+                context.insert(FamiliarProjectCapabilityBindingRecord(
+                    projectID: projectID,
+                    capabilityID: id,
+                    enabled: id == capabilityID ? enabled : true
+                ))
+            }
+        } else {
+            let key = "\(projectID.uuidString):\(capabilityID)"
+            if let binding = existing.first(where: { $0.bindingKey == key }) {
+                binding.enabled = enabled
+                binding.updatedAt = Date()
+            } else {
+                context.insert(FamiliarProjectCapabilityBindingRecord(
+                    projectID: projectID,
+                    capabilityID: capabilityID,
+                    enabled: enabled
+                ))
+            }
+        }
+        try save(context)
+    }
+
     func permanentlyDelete(_ project: FamiliarProject, in context: ModelContext) throws {
         guard !project.agentRuns.contains(where: { $0.status == .running }) else {
             throw FamiliarProjectServiceError.projectHasRunningRun
@@ -111,11 +208,23 @@ struct FamiliarProjectService {
             let authorizationRules = try context.fetch(FetchDescriptor<FamiliarAuthorizationRuleRecord>(
                 predicate: #Predicate { $0.projectID == projectID }
             ))
+            let environments = try context.fetch(FetchDescriptor<FamiliarProjectEnvironmentRecord>(
+                predicate: #Predicate { $0.projectID == projectID }
+            ))
+            let skillBindings = try context.fetch(FetchDescriptor<FamiliarProjectSkillBindingRecord>(
+                predicate: #Predicate { $0.projectID == projectID }
+            ))
+            let capabilityBindings = try context.fetch(FetchDescriptor<FamiliarProjectCapabilityBindingRecord>(
+                predicate: #Predicate { $0.projectID == projectID }
+            ))
             artifacts.forEach { context.delete($0) }
             mcpBindings.forEach { context.delete($0) }
             memoryItems.forEach { context.delete($0) }
             authorizationGrants.forEach { context.delete($0) }
             authorizationRules.forEach { context.delete($0) }
+            environments.forEach { context.delete($0) }
+            skillBindings.forEach { context.delete($0) }
+            capabilityBindings.forEach { context.delete($0) }
             _ = try FamiliarPinService().stageRemoval(.project, targetIDs: [projectID], in: context)
             context.delete(project)
             try context.save()

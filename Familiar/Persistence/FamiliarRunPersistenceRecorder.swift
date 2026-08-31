@@ -113,6 +113,73 @@ final class FamiliarRunPersistenceRecorder {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
+    func recordLoadedSkill(
+        runtimeID: String,
+        skill: FamiliarSkillSnapshot,
+        at date: Date,
+        context: ModelContext
+    ) throws {
+        guard let run = fetchRun(runtimeID: runtimeID, in: context),
+              let snapshotID = run.contextSnapshot?.id
+        else { return }
+        let existing = try context.fetch(FetchDescriptor<FamiliarRunSkillSnapshotRecord>(
+            predicate: #Predicate { $0.runtimeID == runtimeID }
+        ))
+        guard !existing.contains(where: { $0.stableID == skill.stableID && $0.contentHash == skill.contentHash }) else { return }
+        let allowedToolsData = try JSONEncoder().encode(skill.allowedTools)
+        context.insert(FamiliarRunSkillSnapshotRecord(
+            runID: run.id,
+            runtimeID: runtimeID,
+            contextSnapshotID: snapshotID,
+            projectID: run.project?.id,
+            sequence: existing.count,
+            stableID: skill.stableID,
+            version: skill.version,
+            name: skill.name,
+            contentHash: skill.contentHash,
+            allowedToolsJSON: String(decoding: allowedToolsData, as: UTF8.self),
+            createdAt: date
+        ))
+        try context.save()
+    }
+
+    func recordRunPhase(
+        _ phase: FamiliarRunPhase,
+        runtimeID: String,
+        eventSequence: Int,
+        at date: Date,
+        context: ModelContext
+    ) throws {
+        guard fetchRun(runtimeID: runtimeID, in: context) != nil else { return }
+        let value: String = switch phase {
+        case .starting: "starting"
+        case .compactingContext: "compactingContext"
+        case .planning: "planning"
+        case .preparingEnvironment: "preparingEnvironment"
+        case .executing: "executing"
+        case .validating: "validating"
+        case .repairing(let attempt): "repairing:\(attempt)"
+        case .delivering: "delivering"
+        case .reasoning: "reasoning"
+        case .responding: "responding"
+        case .executingActivities(let names): "executingActivities:\(names.joined(separator: ","))"
+        case .awaitingApproval: "awaitingApproval"
+        case .awaitingClarification: "awaitingClarification"
+        }
+        context.insert(FamiliarActivityRecord(
+            activityID: "phase:\(runtimeID):\(eventSequence)",
+            runtimeID: runtimeID,
+            assistantTurnID: "\(runtimeID):phase",
+            kind: .runtimeNotice,
+            phase: .succeeded,
+            summary: value,
+            sequence: eventSequence,
+            startedAt: date,
+            endedAt: date
+        ))
+        try context.save()
+    }
+
     func recordActivityStarted(
         _ activity: FamiliarRuntimeActivity,
         runtimeID: String,

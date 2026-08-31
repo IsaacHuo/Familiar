@@ -189,3 +189,105 @@ struct FamiliarSkillService {
         }
     }
 }
+
+nonisolated struct FamiliarSkillListTool: FamiliarTool {
+    struct Input: Decodable, Sendable {}
+    private struct Output: Encodable {
+        let skills: [Metadata]
+    }
+    private struct Metadata: Encodable {
+        let id: String
+        let version: String
+        let name: String
+        let allowedTools: [String]
+    }
+
+    let manifest = FamiliarToolManifest(
+        name: "skill_list",
+        title: "List Project Skills",
+        description: "List metadata for Skills attached to the current Project. Skill bodies are not loaded until skill_read is called.",
+        parameters: .init(type: .object, properties: [:], required: []),
+        effect: .read,
+        risk: .low,
+        dataDomains: ["project.skills"],
+        privacyLabels: ["metadata-only"],
+        supportsParallelism: false,
+        requiredScopes: ["project"]
+    )
+
+    func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
+        let metadata = context.availableSkills.map {
+            Metadata(id: $0.stableID, version: $0.version, name: $0.name, allowedTools: $0.allowedTools)
+        }
+        let records = metadata.map { skill in
+            FamiliarToolPresentationPayload.Record(id: skill.id, fields: [
+                .init(name: "name", value: skill.name),
+                .init(name: "version", value: skill.version),
+                .init(name: "allowedTools", value: skill.allowedTools.joined(separator: ", "))
+            ])
+        }
+        return .result(.init(envelope: try .init(
+            model: Output(skills: metadata),
+            presentation: .recordCollection(.init(
+                summary: metadata.isEmpty ? "当前 Project 没有可用 Skill。" : "已列出当前 Project 可按需加载的 Skill。",
+                recordType: "projectSkill",
+                records: records
+            ))
+        )))
+    }
+}
+
+nonisolated struct FamiliarSkillReadTool: FamiliarTool {
+    struct Input: Decodable, Sendable { let id: String }
+    private struct Output: Encodable {
+        let id: String
+        let version: String
+        let contentHash: String
+        let instructions: String
+        let allowedTools: [String]
+    }
+
+    let manifest = FamiliarToolManifest(
+        name: "skill_read",
+        title: "Load Project Skill",
+        description: "Load one attached Project Skill during planning. Loading freezes its version and narrows subsequent execution to its allowed tools plus core planning and delivery tools.",
+        parameters: .init(
+            type: .object,
+            properties: ["id": .init(type: .string, description: "Stable Skill identifier from skill_list.")],
+            required: ["id"]
+        ),
+        effect: .read,
+        risk: .low,
+        dataDomains: ["project.skills"],
+        privacyLabels: ["instruction-only", "run-snapshot"],
+        supportsParallelism: false,
+        requiredScopes: ["project"]
+    )
+
+    func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
+        let stableID = input.id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let skill = context.availableSkills.first(where: { $0.stableID == stableID }) else {
+            throw FamiliarSkillServiceError.unavailable
+        }
+        let output = Output(
+            id: skill.stableID,
+            version: skill.version,
+            contentHash: skill.contentHash,
+            instructions: skill.instructions,
+            allowedTools: skill.allowedTools
+        )
+        return .result(.init(
+            envelope: try .init(
+                model: output,
+                presentation: .document(.init(
+                    summary: "已为本次 Run 加载 Skill：\(skill.name)",
+                    title: skill.name,
+                    text: skill.instructions,
+                    mimeType: "text/plain",
+                    truncated: false
+                ))
+            ),
+            loadedSkill: skill
+        ))
+    }
+}
