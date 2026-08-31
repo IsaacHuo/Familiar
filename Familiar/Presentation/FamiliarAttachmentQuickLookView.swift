@@ -1,13 +1,26 @@
 import QuickLook
 import SwiftUI
+import WebKit
 
 struct FamiliarAttachmentPreviewView: View {
     @Environment(\.dismiss) private var dismiss
     let url: URL
+    let format: FamiliarArtifactFormat?
+
+    init(url: URL, format: FamiliarArtifactFormat? = nil) {
+        self.url = url
+        self.format = format
+    }
 
     var body: some View {
         NavigationStack {
-            FamiliarAttachmentQuickLookView(url: url)
+            Group {
+                if format == .html {
+                    FamiliarLocalHTMLPreviewView(url: url)
+                } else {
+                    FamiliarAttachmentQuickLookView(url: url)
+                }
+            }
                 .ignoresSafeArea(edges: .bottom)
                 .navigationTitle(url.lastPathComponent)
                 .navigationBarTitleDisplayMode(.inline)
@@ -19,6 +32,23 @@ struct FamiliarAttachmentPreviewView: View {
                     }
                 }
         }
+    }
+}
+
+private struct FamiliarLocalHTMLPreviewView: UIViewRepresentable {
+    let url: URL
+
+    func makeUIView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = false
+        return WKWebView(frame: .zero, configuration: configuration)
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        guard let source = try? String(contentsOf: url, encoding: .utf8) else { return }
+        let policy = "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:;\">"
+        webView.loadHTMLString(policy + source, baseURL: nil)
     }
 }
 

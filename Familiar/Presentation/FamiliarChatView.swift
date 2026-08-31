@@ -39,6 +39,7 @@ struct FamiliarChatView: View {
     @FocusState private var isComposerFocused: Bool
     private let toolRegistry: FamiliarToolRegistry
     private let searchService: FamiliarWebSearchService
+    private let pythonPackageSourceSettings: FamiliarPythonPackageSourceSettingsStore
     private let workspaceStore: FamiliarWorkspaceStore
     private let shellRuntimeStatus: FamiliarShellRuntimeStatus
     @Binding private var pendingSystemEntry: FamiliarSystemEntryRequest?
@@ -50,6 +51,7 @@ struct FamiliarChatView: View {
         _controller = State(initialValue: FamiliarChatController(dependencies: dependencies))
         toolRegistry = dependencies.registry
         searchService = dependencies.searchService
+        pythonPackageSourceSettings = dependencies.pythonPackageSourceSettings
         workspaceStore = dependencies.workspaceStore
         shellRuntimeStatus = dependencies.shellRuntimeStatus
         _pendingSystemEntry = pendingSystemEntry
@@ -169,6 +171,7 @@ struct FamiliarChatView: View {
                     initialRoute: route,
                     registry: toolRegistry,
                     searchService: searchService,
+                    pythonPackageSourceSettings: pythonPackageSourceSettings,
                     workspaceStore: workspaceStore,
                     workspaceID: controller.selectedProjectID.map(FamiliarWorkspaceID.project)
                         ?? controller.selectedConversationID.map(FamiliarWorkspaceID.conversation),

@@ -73,8 +73,7 @@ nonisolated enum FamiliarTheme {
 /// Beautiful UI's semantic palette translated to dynamic iOS colors. These
 /// tokens are intentionally scoped to AI response surfaces; navigation and
 /// system controls continue to use native materials and Liquid Glass.
-@MainActor
-enum FamiliarAISurfaceColor {
+nonisolated enum FamiliarAISurfaceColor {
     static let page = dynamic(light: 0xFAFAFB, dark: 0x17181A)
     static let canvas = dynamic(light: 0xF1F2F3, dark: 0x1C1D1F)
     static let surface = dynamic(light: 0xFFFFFF, dark: 0x232427)
@@ -126,7 +125,7 @@ nonisolated enum FamiliarAISurfaceMetric {
     static let timelineWidth: CGFloat = 780
 }
 
-private extension UIColor {
+private nonisolated extension UIColor {
     convenience init(rgb: UInt32) {
         self.init(
             red: CGFloat((rgb >> 16) & 0xFF) / 255,

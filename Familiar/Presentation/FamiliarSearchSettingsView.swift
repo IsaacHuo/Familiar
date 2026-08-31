@@ -145,7 +145,10 @@ struct FamiliarSearchSettingsView: View {
                 descriptor.displayName
             )
         }
-        return String(localized: "settings.search.cost.duckduckgo", defaultValue: "DuckDuckGo does not require an API key in Familiar. Its service terms still apply.")
+        return String(
+            format: String(localized: "settings.search.cost.no_key", defaultValue: "%@ does not require an API key in Familiar. Its service terms still apply."),
+            descriptor.displayName
+        )
     }
 
     private func save() {

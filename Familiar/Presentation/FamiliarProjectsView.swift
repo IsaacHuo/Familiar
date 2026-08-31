@@ -235,6 +235,41 @@ private struct FamiliarProjectDetailView: View {
 
             Section(String(localized: "project.context", defaultValue: "Project Context")) {
                 NavigationLink {
+                    FamiliarProjectEnvironmentView(projectID: project.id)
+                } label: {
+                    FamiliarProjectContextRow(
+                        title: String(localized: "project.environment", defaultValue: "Environment"),
+                        detail: String(localized: "project.environment.detail", defaultValue: "Isolated Linux dependencies and verified lock"),
+                        symbol: "shippingbox",
+                        count: nil
+                    )
+                }
+
+                NavigationLink {
+                    FamiliarProjectSkillsView(projectID: project.id)
+                } label: {
+                    FamiliarProjectContextRow(
+                        title: String(localized: "settings.skills", defaultValue: "Skills"),
+                        detail: String(localized: "project.skills.context_detail", defaultValue: "Instruction-only Skills available for on-demand loading"),
+                        symbol: "wand.and.stars",
+                        count: nil
+                    )
+                }
+
+                if let registry {
+                    NavigationLink {
+                        FamiliarProjectCapabilitiesView(projectID: project.id, registry: registry)
+                    } label: {
+                        FamiliarProjectContextRow(
+                            title: String(localized: "project.capabilities", defaultValue: "Capabilities"),
+                            detail: String(localized: "project.capabilities.detail", defaultValue: "Tools this Project may expose to the Agent"),
+                            symbol: "switch.2",
+                            count: nil
+                        )
+                    }
+                }
+
+                NavigationLink {
                     FamiliarProjectConversationsView(
                         conversations: sortedConversations,
                         onSelect: { onConversationRequest(.open(conversationID: $0.id)) }
@@ -321,7 +356,7 @@ private struct FamiliarProjectDetailView: View {
             }
         }
         .sheet(item: $previewDocument) { document in
-            FamiliarAttachmentPreviewView(url: document.url)
+            FamiliarAttachmentPreviewView(url: document.url, format: document.format)
         }
         .confirmationDialog(
             String(localized: "resource.delete.title"),
@@ -464,12 +499,12 @@ private struct FamiliarProjectDetailView: View {
         guard let version = FamiliarProjectResourceService.latestVersion(of: resource),
               let url = FamiliarProjectResourceService().quickLookURL(for: version)
         else { return }
-        previewDocument = FamiliarProjectPreviewDocument(url: url)
+        previewDocument = FamiliarProjectPreviewDocument(url: url, format: nil)
     }
 
     private func previewArtifact(_ artifact: FamiliarArtifact) {
         guard let url = FamiliarArtifactService().exportURL(for: artifact) else { return }
-        previewDocument = FamiliarProjectPreviewDocument(url: url)
+        previewDocument = FamiliarProjectPreviewDocument(url: url, format: artifact.format)
     }
 
     private func importResource(_ result: Result<[URL], Error>) {
@@ -539,6 +574,120 @@ private struct FamiliarProjectDetailView: View {
 
 }
 
+private struct FamiliarProjectEnvironmentView: View {
+    @Query(sort: \FamiliarProjectEnvironmentRecord.preparedAt, order: .reverse)
+    private var records: [FamiliarProjectEnvironmentRecord]
+    let projectID: UUID
+
+    var body: some View {
+        List {
+            if let record = records.first(where: { $0.projectID == projectID }) {
+                Section(String(localized: "project.environment", defaultValue: "Environment")) {
+                    LabeledContent(String(localized: "environment.state", defaultValue: "State"), value: record.state.rawValue)
+                    LabeledContent(String(localized: "environment.python", defaultValue: "Python"), value: record.pythonVersion)
+                    LabeledContent(String(localized: "environment.revision", defaultValue: "Revision"), value: record.revision.uuidString)
+                    LabeledContent(String(localized: "environment.size", defaultValue: "Size"), value: ByteCountFormatter.string(fromByteCount: record.byteSize, countStyle: .file))
+                    LabeledContent(String(localized: "environment.lock", defaultValue: "Lock"), value: String(record.lockHash.prefix(16)))
+                }
+                Section(String(localized: "environment.packages", defaultValue: "Resolved Packages")) {
+                    ForEach(decodedPackages(record), id: \.self) { package in
+                        Text(package).font(.body.monospaced())
+                    }
+                }
+            } else {
+                ContentUnavailableView(
+                    String(localized: "environment.not_prepared", defaultValue: "Environment not prepared"),
+                    systemImage: "shippingbox",
+                    description: Text(String(localized: "environment.not_prepared.detail", defaultValue: "The Agent can propose dependencies with environment_prepare from a Project Chat."))
+                )
+            }
+        }
+        .navigationTitle(String(localized: "project.environment", defaultValue: "Environment"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func decodedPackages(_ record: FamiliarProjectEnvironmentRecord) -> [String] {
+        guard let data = record.resolvedPackagesJSON.data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([String].self, from: data)) ?? []
+    }
+}
+
+private struct FamiliarProjectSkillsView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \FamiliarSkill.name) private var skills: [FamiliarSkill]
+    @Query private var allBindings: [FamiliarProjectSkillBindingRecord]
+    let projectID: UUID
+
+    var body: some View {
+        List {
+            if skills.isEmpty {
+                ContentUnavailableView(String(localized: "settings.skills.empty", defaultValue: "No installed skills"), systemImage: "wand.and.stars")
+            }
+            ForEach(skills) { skill in
+                Toggle(isOn: Binding(
+                    get: { isEnabled(skill.id) },
+                    set: { enabled in
+                        try? FamiliarProjectService().setSkill(skill.id, enabled: enabled, projectID: projectID, in: modelContext)
+                    }
+                )) {
+                    VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
+                        Text(skill.name)
+                        Text(skill.descriptionText).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .navigationTitle(String(localized: "settings.skills", defaultValue: "Skills"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func isEnabled(_ skillID: UUID) -> Bool {
+        allBindings.first { $0.projectID == projectID && $0.skillID == skillID }?.enabled == true
+    }
+}
+
+private struct FamiliarProjectCapabilitiesView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query private var allBindings: [FamiliarProjectCapabilityBindingRecord]
+    let projectID: UUID
+    let registry: FamiliarToolRegistry
+    @State private var manifests: [FamiliarToolManifest] = []
+
+    var body: some View {
+        List(manifests, id: \.id) { manifest in
+            Toggle(isOn: Binding(
+                get: { isEnabled(manifest.id) },
+                set: { enabled in
+                    try? FamiliarProjectService().setCapability(
+                        manifest.id,
+                        enabled: enabled,
+                        allCapabilityIDs: manifests.map(\.id),
+                        projectID: projectID,
+                        in: modelContext
+                    )
+                }
+            )) {
+                VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
+                    Text(manifest.title)
+                    Text(manifest.description).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                }
+            }
+            .disabled(coreCapabilities.contains(manifest.name))
+        }
+        .navigationTitle(String(localized: "project.capabilities", defaultValue: "Capabilities"))
+        .navigationBarTitleDisplayMode(.inline)
+        .task { manifests = await registry.manifests() }
+    }
+
+    private let coreCapabilities: Set<String> = ["task_plan", "ask_user", "skill_list", "skill_read", "environment_status"]
+
+    private func isEnabled(_ id: String) -> Bool {
+        let projectBindings = allBindings.filter { $0.projectID == projectID }
+        guard !projectBindings.isEmpty else { return true }
+        return projectBindings.first { $0.capabilityID == id }?.enabled == true
+    }
+}
+
 private struct FamiliarProjectHero: View {
     let project: FamiliarProject
 
@@ -568,7 +717,7 @@ private struct FamiliarProjectContextRow: View {
     let title: String
     let detail: String
     let symbol: String
-    let count: Int
+    let count: Int?
 
     var body: some View {
         HStack(spacing: FamiliarSpacing.medium) {
@@ -589,9 +738,11 @@ private struct FamiliarProjectContextRow: View {
 
             Spacer(minLength: FamiliarSpacing.small)
 
-            Text("\(count)")
-                .font(FamiliarTypography.metadata)
-                .foregroundStyle(.tertiary)
+            if let count {
+                Text("\(count)")
+                    .font(FamiliarTypography.metadata)
+                    .foregroundStyle(.tertiary)
+            }
         }
         .padding(.vertical, FamiliarSpacing.xSmall)
     }
@@ -729,7 +880,7 @@ private struct FamiliarProjectArtifactRow: View {
         HStack(spacing: FamiliarSpacing.medium) {
             Button(action: onPreview) {
                 HStack(spacing: FamiliarSpacing.medium) {
-                    Image(systemName: artifact.format == .markdown ? "doc.richtext" : "doc.text")
+                    Image(systemName: artifactIcon)
                         .foregroundStyle(FamiliarTheme.accent)
                     VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                         Text(artifact.title).foregroundStyle(.primary)
@@ -759,6 +910,17 @@ private struct FamiliarProjectArtifactRow: View {
                     )
             }
             .buttonStyle(.borderless)
+        }
+    }
+
+    private var artifactIcon: String {
+        switch artifact.format {
+        case .markdown: "doc.richtext"
+        case .plainText: "doc.text"
+        case .docx: "doc.badge.gearshape"
+        case .pdf: "doc.fill"
+        case .xlsx: "tablecells"
+        case .html: "chevron.left.forwardslash.chevron.right"
         }
     }
 }
@@ -1002,6 +1164,7 @@ private struct FamiliarProjectResourceEntryView: View {
 private struct FamiliarProjectPreviewDocument: Identifiable {
     let id = UUID()
     let url: URL
+    let format: FamiliarArtifactFormat?
 }
 
 private extension FamiliarProjectResourceService {

@@ -1938,7 +1938,7 @@ private struct FamiliarWriteReceipt: View {
         .padding(FamiliarAISurfaceMetric.spaceM)
         .background(FamiliarAISurfaceColor.successTint, in: RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.card, style: .continuous))
         .sheet(isPresented: Binding(get: { previewURL != nil }, set: { if !$0 { previewURL = nil } })) {
-            if let previewURL { FamiliarAttachmentPreviewView(url: previewURL) }
+            if let previewURL { FamiliarAttachmentPreviewView(url: previewURL, format: surface.artifact?.format) }
         }
     }
 

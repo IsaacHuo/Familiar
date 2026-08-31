@@ -411,7 +411,13 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         default: .planning
         }
         descriptor.title = switch phase {
-        case .starting, .reasoning: String(localized: "agent.status.thinking")
+        case .starting, .planning, .reasoning: String(localized: "agent.status.thinking")
+        case .compactingContext: String(localized: "runtime.phase.compacting_context", defaultValue: "Compacting context")
+        case .preparingEnvironment: String(localized: "runtime.phase.preparing_environment", defaultValue: "Preparing environment")
+        case .executing: String(localized: "runtime.phase.executing", defaultValue: "Executing")
+        case .validating: String(localized: "runtime.phase.validating", defaultValue: "Validating deliverables")
+        case .repairing(let attempt): String(format: String(localized: "runtime.phase.repairing", defaultValue: "Repairing · %lld/2"), attempt)
+        case .delivering: String(localized: "runtime.phase.delivering", defaultValue: "Delivering")
         case .responding: String(localized: "agent.status.responding")
         case .awaitingApproval: String(localized: "agent.status.awaiting_confirmation")
         case .awaitingClarification: String(localized: "clarification.awaiting", defaultValue: "Waiting for your answer")
@@ -695,6 +701,11 @@ nonisolated enum FamiliarToolPresentationName {
         case "photos_save_output": String(localized: "tool.photos_save_output", defaultValue: "Save image to Photos")
         case "prepare_file_export": String(localized: "tool.prepare_file_export", defaultValue: "Prepare file export")
         case "shell_execute": String(localized: "tool.shell_execute", defaultValue: "Run Workspace Shell")
+        case "environment_status": String(localized: "tool.environment_status", defaultValue: "Inspect Project Environment")
+        case "environment_prepare": String(localized: "tool.environment_prepare", defaultValue: "Prepare Project Environment")
+        case "skill_list": String(localized: "tool.skill_list", defaultValue: "List Project Skills")
+        case "skill_read": String(localized: "tool.skill_read", defaultValue: "Load Project Skill")
+        case "artifact_publish": String(localized: "tool.artifact_publish", defaultValue: "Publish Artifact")
         case "workspace_list": String(localized: "tool.workspace_list", defaultValue: "List workspace files")
         case "workspace_read": String(localized: "tool.workspace_read", defaultValue: "Read workspace file")
         case "workspace_search": String(localized: "tool.workspace_search", defaultValue: "Search workspace files")

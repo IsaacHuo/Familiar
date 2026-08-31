@@ -293,12 +293,7 @@ final class FamiliarChatController {
             errorMessage = String(localized: "attachment.error.model_unsupported")
             return
         }
-        let priorCharacterCount = messages.reduce(into: 0) { count, message in
-            count += message.content.count
-            count += message.attachments.reduce(0) { $0 + $1.extractedText.count }
-        }
-        let requestCharacterCount = priorCharacterCount
-            + prompt.count
+        let requestCharacterCount = prompt.count
             + combinedAttachments.reduce(0) { $0 + $1.extractedText.count }
             + (visualEvidence ?? []).reduce(0) { $0 + $1.renderedText.count }
             + invokedSkills.reduce(0) { $0 + $1.instructions.count }
@@ -384,7 +379,7 @@ final class FamiliarChatController {
         draftImages = []
         reloadMessages(in: context)
         let requestMessages = messages
-        let contextSeed = makeContextSeed(conversation: conversation, skills: invokedSkills)
+        let contextSeed = makeContextSeed(conversation: conversation, skills: invokedSkills, context: context)
         selectedSkillID = nil
         let responseID = UUID()
         isSending = true
@@ -918,9 +913,14 @@ final class FamiliarChatController {
         var runOutcome: FamiliarRunOutcome?
         var separatesNextReasoningSummary = false
         do {
-            let manifests = settings.selectedModel.capabilities.supportsTools
+            let availableManifests = settings.selectedModel.capabilities.supportsTools
                 ? await dependencies.registry.manifests()
                 : []
+            let manifests = try FamiliarProjectService().filterCapabilities(
+                availableManifests,
+                projectID: contextSeed.projectID,
+                in: context
+            )
             let contextSnapshot = try FamiliarProjectContextAssembler.assemble(
                 seed: contextSeed,
                 settings: settings,
@@ -952,7 +952,15 @@ final class FamiliarChatController {
                 }
                 surfaces.apply(event)
                 switch event.payload {
-                case .runPhaseChanged, .assistantTurnStarted:
+                case .runPhaseChanged(let phase):
+                    try? runRecorder.recordRunPhase(
+                        phase,
+                        runtimeID: event.runID,
+                        eventSequence: event.sequence,
+                        at: event.timestamp,
+                        context: context
+                    )
+                case .assistantTurnStarted:
                     break
                 case .responseTextDelta(let delta):
                     noteFirstToken(runtimeID: event.runID, timestamp: event.timestamp, context: context)
@@ -1357,6 +1365,17 @@ final class FamiliarChatController {
             if let descriptor = event.artifact {
                 try FamiliarArtifactService().persist(descriptor, in: context)
             }
+            if let receipt = event.environmentReceipt {
+                try FamiliarProjectService().persistEnvironment(receipt, in: context)
+            }
+            if let skill = event.loadedSkill {
+                try runRecorder.recordLoadedSkill(
+                    runtimeID: event.runID,
+                    skill: skill,
+                    at: event.producedAt,
+                    context: context
+                )
+            }
             if let project = fetchConversation(id: conversationID, in: context)?.project {
                 let service = FamiliarProjectResourceService()
                 for capture in event.sources.contains(where: { $0.kind == .fetchedPage }) ? event.webCaptures : [] {
@@ -1479,7 +1498,8 @@ final class FamiliarChatController {
 
     private func makeContextSeed(
         conversation: FamiliarConversation,
-        skills: [FamiliarSkillSnapshot]
+        skills: [FamiliarSkillSnapshot],
+        context: ModelContext
     ) -> FamiliarProjectContextSeed {
         let project = conversation.project
         let resources = (project?.resources ?? []).compactMap { resource -> FamiliarContextResource? in
@@ -1498,13 +1518,17 @@ final class FamiliarChatController {
                 extractedTextHash: version.extractedTextHash
             )
         }
+        let availableSkills = project.flatMap {
+            try? FamiliarProjectService().boundSkillSnapshots(projectID: $0.id, in: context)
+        } ?? []
         return FamiliarProjectContextSeed(
             projectID: project?.id,
             projectName: project?.name,
             conversationID: conversation.id,
             projectInstruction: project?.instruction?.text,
             resources: resources,
-            skills: skills
+            skills: skills,
+            availableSkills: availableSkills
         )
     }
 

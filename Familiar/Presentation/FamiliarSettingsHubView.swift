@@ -12,6 +12,7 @@ import UniformTypeIdentifiers
 enum FamiliarSettingsRoute: String, Hashable {
     case modelService
     case searchService
+    case pythonPackageSource
     case appearance
     case tools
     case shellRuntime
@@ -32,6 +33,7 @@ struct FamiliarSettingsView: View {
     let initialRoute: FamiliarSettingsRoute?
     let registry: FamiliarToolRegistry
     let searchService: FamiliarWebSearchService
+    let pythonPackageSourceSettings: FamiliarPythonPackageSourceSettingsStore
     let workspaceStore: FamiliarWorkspaceStore
     let workspaceID: FamiliarWorkspaceID?
     let shellRuntimeStatus: FamiliarShellRuntimeStatus
@@ -45,6 +47,7 @@ struct FamiliarSettingsView: View {
         initialRoute: FamiliarSettingsRoute? = nil,
         registry: FamiliarToolRegistry,
         searchService: FamiliarWebSearchService,
+        pythonPackageSourceSettings: FamiliarPythonPackageSourceSettingsStore,
         workspaceStore: FamiliarWorkspaceStore,
         workspaceID: FamiliarWorkspaceID?,
         shellRuntimeStatus: FamiliarShellRuntimeStatus,
@@ -54,6 +57,7 @@ struct FamiliarSettingsView: View {
         self.initialRoute = initialRoute
         self.registry = registry
         self.searchService = searchService
+        self.pythonPackageSourceSettings = pythonPackageSourceSettings
         self.workspaceStore = workspaceStore
         self.workspaceID = workspaceID
         self.shellRuntimeStatus = shellRuntimeStatus
@@ -98,6 +102,13 @@ struct FamiliarSettingsView: View {
                         subtitle: String(localized: "settings.shell.detail", defaultValue: "Alpine Linux in the current Familiar Workspace"),
                         symbol: "terminal.fill",
                         color: .gray
+                    )
+                    settingsLink(
+                        .pythonPackageSource,
+                        title: String(localized: "settings.python_source.title", defaultValue: "Python Package Source"),
+                        subtitle: pythonPackageSourceSettings.selectedSource.displayName,
+                        symbol: "shippingbox.fill",
+                        color: .orange
                     )
                     settingsLink(
                         .authorizations,
@@ -238,6 +249,8 @@ struct FamiliarSettingsView: View {
             )
         case .searchService:
             FamiliarSearchSettingsView(searchService: searchService)
+        case .pythonPackageSource:
+            FamiliarPythonPackageSourceSettingsView(store: pythonPackageSourceSettings)
         case .appearance:
             FamiliarAppearanceSettingsView()
         case .tools:
@@ -271,6 +284,67 @@ struct FamiliarSettingsView: View {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
         return String(format: String(localized: "settings.about.version", defaultValue: "Version %@ (%@)"), version, build)
+    }
+}
+
+private struct FamiliarPythonPackageSourceSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let store: FamiliarPythonPackageSourceSettingsStore
+    @State private var selectedSourceID: String
+
+    init(store: FamiliarPythonPackageSourceSettingsStore) {
+        self.store = store
+        _selectedSourceID = State(initialValue: store.selectedSource.id)
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                Picker(
+                    String(localized: "settings.python_source.picker", defaultValue: "Package Source"),
+                    selection: $selectedSourceID
+                ) {
+                    ForEach(FamiliarPythonPackageSource.all) { source in
+                        Text(source.displayName).tag(source.id)
+                    }
+                }
+                .pickerStyle(.inline)
+            } footer: {
+                Text(String(localized: "settings.python_source.footer", defaultValue: "environment_prepare uses only the selected HTTPS source. The approval card and environment receipt record the exact index URL."))
+            }
+
+            Section(String(localized: "settings.python_source.selected", defaultValue: "Selected Source")) {
+                LabeledContent(
+                    String(localized: "settings.python_source.index_url", defaultValue: "Index URL"),
+                    value: selectedSource.indexURL.absoluteString
+                )
+                Link(
+                    String(localized: "settings.python_source.website", defaultValue: "Source website and help"),
+                    destination: selectedSource.websiteURL
+                )
+            }
+
+            Section {
+                Text(String(localized: "settings.python_source.security", defaultValue: "Changing the source affects future environment preparations only. Existing Project environments remain pinned to their recorded lock and source."))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .navigationTitle(String(localized: "settings.python_source.title", defaultValue: "Python Package Source"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button(String(localized: "common.save")) {
+                    store.save(selectedSourceID: selectedSourceID)
+                    dismiss()
+                }
+                .fontWeight(.semibold)
+            }
+        }
+    }
+
+    private var selectedSource: FamiliarPythonPackageSource {
+        FamiliarPythonPackageSource.resolved(selectedSourceID)
     }
 }
 
@@ -324,6 +398,11 @@ private struct FamiliarShellRuntimeSettingsView: View {
             }
 
             Section {
+                if case .failed = runtimeStatus.phase {
+                    Button(String(localized: "settings.shell.retry", defaultValue: "Retry Runtime Preparation")) {
+                        runtimeStatus.retry()
+                    }
+                }
                 Button(
                     runtimeStatus.resetScheduled
                         ? String(localized: "settings.shell.reset_scheduled", defaultValue: "Runtime reset scheduled")
