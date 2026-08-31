@@ -66,9 +66,9 @@ full access 允许 / 拒绝 / restricted；查询时间范围与文字条件；�
 
 - 验证统一 Chat 顶栏的设置、工作区、模型和新对话入口；普通/项目工作区恢复各自最近会话，抽屉按置顶、可折叠项目和普通最近会话分区。
 - 抽屉、设置、Run timeline 与工具清单在中英文、VoiceOver 和极端 Dynamic Type 下可操作。
-- 验证单一 `FamiliarReleaseSchema` 的 33 实体、无 migration plan、Debug/Release store 分离、文件 store 重开，以及用户确认后的显式恢复；测试阶段不保留旧 store。
+- 验证单一 `FamiliarReleaseSchema` 的 36 实体、无 migration plan、Debug/Release store 分离、文件 store 重开，以及用户确认后的显式恢复；测试阶段不保留旧 store。
 - 创建/编辑/归档项目并拒绝重复项目名称；创建普通与项目聊天，确认项目指令只进入项目聊天；历史 Run 项目归属符合启动时快照。
-- 从 Composer 显式选择 Skill，确认只影响下一次 Run，工具范围按 snapshot 收窄，后续 Run 不自动继承；当前不验收 Project binding 自动注入或 Skill 导入 UI，因为两者尚未实现。
+- 从 Composer 显式选择 Skill，确认只影响下一次 Run；为 Project 绑定候选 Skill，确认只暴露 metadata，`skill_read` 至多加载一个并冻结 snapshot/收窄工具，且不会自动注入或扩大 Capability。
 - 导入文本 PDF、扫描 PDF 和至少一种 Office 文档，确认进度、OCR、Quick Look、文件保护、两条项目聊天共享资料及超预算提示。
 - 删除单条消息不删除资源；删除资源后预览不可用；删除项目后聊天/历史 Run 保留并脱离，资源与指令删除。
 - 断网/取消/模型失败后 Run ContextSnapshot 元数据和资源 hash 引用仍可读取，且记录中没有完整资源抽取文本。
@@ -100,6 +100,14 @@ Share Extension（Notes/Safari/Files 来源、文件协调、签名环境）、D
 - **当前测试阶段**：Debug `FamiliarDevelopment.store` 与 Release `Familiar.store` 共享唯一 `FamiliarReleaseSchema`；旧 store 不支持迁移，schema 变化时直接重建，Keychain 保留。
 - **公开发布前**：若决定开始保留用户数据，再单独冻结首个公开 schema 和后续升级策略。
 
+### 2.9 Complex Task Golden Task
+
+- 在 Project Chat 输入“搜索北京的公开资料，整理城市简介、三处代表性地点和实用出行提示，生成一份中文 Word 文档，并在文末列出实际读取的来源链接”。
+- 至少两个来源必须经 `web_fetch` 成功读取；只出现在 search result 的页面不得写成已读取来源。
+- 分别选择官方 PyPI 与清华 TUNA，确认 `environment_prepare` 审批卡、可信安装命令和 receipt 使用同一个准确索引地址；空 Project Environment 时批准 `python-docx` 依赖方案，确认依赖只进入当前 Project，其他 Project 不可见，App 重启后 lock/receipt 保持。
+- 使用真实 iSH 生成 DOCX，`artifact_publish` 必须返回 AnyDoc validation receipt、字节数和 SHA-256；缺失或损坏文件不得完成 Run。
+- 在真机 Quick Look 打开，通过 Share Sheet 保存到 Files 并重新打开。分别执行冷启动、缓存 Environment、强制退出后重启三条路径。
+
 ## 3. UI 验证矩阵
 
 - iOS 18 和 iOS 26。
@@ -128,7 +136,7 @@ Share Extension（Notes/Safari/Files 来源、文件协调、签名环境）、D
 
 ### 数据
 
-- 单一 `FamiliarReleaseSchema` 的 33 实体、无 migration plan、Debug/Release store profile 和文件 store 重开测试通过。
+- 单一 `FamiliarReleaseSchema` 的 36 实体、无 migration plan、Debug/Release store profile 和文件 store 重开测试通过。
 - 会话、附件和工具终态重启后可读取；删除会话后附件清理通过。
 - Development store 不迁移到 Release store；测试阶段旧 store 可直接废弃，显式恢复保留 Keychain。
 - 公开发布前重新决定并记录持久化兼容策略；当前代码不携带未使用的 migration chain。

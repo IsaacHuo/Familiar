@@ -96,7 +96,7 @@ FastVLM 当前暂停提供，不显示安装入口，也不参与图片自动路
 
 ### 4.8 显式使用 Skill
 
-用户可以在普通聊天或项目聊天的 Composer 中显式选择一个已安装 Skill。当前选择只作用于下一次 Run，发送后清除；Skill 只注入指令并收窄该次 Run 的 Tool Scope，不能授予权限或绕过确认。当前没有 Project SkillBinding，也没有 Skill 文件导入界面。
+用户可以在普通聊天或项目聊天的 Composer 中显式选择一个已安装 Skill，选择只作用于下一次 Run。Project 也可绑定候选 Skill；Run 开始时仅暴露 metadata，Agent 在 planning 阶段通过 `skill_read` 按需加载至多一个。两条路径都只注入指令并收窄 Tool Scope，不能授予权限或绕过确认；当前仍没有 Skill 目录导入、scripts、references 或 assets。
 
 ## 5. 产品原则
 
@@ -228,7 +228,7 @@ Provider 原生能力、设备端预处理和可选本地模型是不同的数�
 6. API Key 只进入 Keychain 和对应 Provider 请求。
 7. 隐私用途说明与实际调用一致。
 8. 内置模型 ID 失效时允许用户输入有效模型 ID，界面保持可恢复。
-9. SwiftData 启动路径使用单一 `FamiliarReleaseSchema` 的当前 33 实体，不配置 migration plan；Debug/Release store 分离，测试阶段不支持旧 store。
+9. SwiftData 启动路径使用单一 `FamiliarReleaseSchema` 的当前 36 实体，不配置 migration plan；Debug/Release store 分离，测试阶段不支持旧 store。
 10. EventKit、相机、Apple Vision、Speech 和安全作用域文件完成真机验收。
 11. 通知权限只在用户明确开启时请求；关闭后不再安排 Familiar 通知，并清理待处理与已投递通知。
 12. Spotlight 结果只暴露受保护的本地会话标题和 UUID，点击后能回到存在的本地会话；删除会话后对应结果被清理。

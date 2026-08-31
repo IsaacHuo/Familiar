@@ -27,23 +27,23 @@ DeepSeek   Native Tools   ShellTool
 ## 2. Phase 1：Native Tools 与 Workspace 底座
 
 - EventKit 覆盖日历和提醒的查询、创建、修改、完成、删除；写入前只生成结构化预览，批准后才访问和修改系统数据。
-- 删除和 Shell 只允许一次性授权；取消不写入。EventKit 保存 mutation 前置快照，支持跨重启 Undo。
+- 删除、联网/危险 Shell 与 Environment prepare 只允许一次性授权；离线、Workspace-only、checkpointed Shell 可经动态 preflight 自动执行。EventKit 保存 mutation 前置快照，支持跨重启 Undo。
 - Contacts 根据调用参数选择最小字段；Photos 只保存 Workspace 明确输出且使用 add-only 权限；文件只通过用户导入或系统导出/分享流转。
 - Workspace 防止路径逃逸和最终 symlink，按 Run 投影不可变 Resource/Attachment 为 Shell 只读输入，Outputs 可写，Work 任务结束清理。
-- SwiftData 直接使用当前 33 实体的单一 Release Schema；不提供旧测试 store migration，schema 变化时破坏性重建。
+- SwiftData 直接使用当前 36 实体的单一 Release Schema；不提供旧测试 store migration，schema 变化时破坏性重建。
 
 ## 3. Phase 2：真实 iSH Runtime
 
 - 固定 `OpenMinis/ish-arm64` commit `54ca185b77f170e12fd353fcd7443232f6cb73fd`。
 - 固定 Alpine 3.24.0 aarch64，并在准备脚本中校验官方 SHA-256 与签名；rootfs 预装 Python 3、Git、jq、zip/unzip、证书和基础文本工具。
 - 生成 arm64 iPhoneOS 与 arm64 iPhoneSimulator XCFramework；生产 target 使用 headless bridge，不接入 Terminal UI 或 Native Offload。
-- guest 只看到 `/workspace/files`、`/workspace/outputs`、`/workspace/work`；Keychain、Metadata、Checkpoint、其他 Workspace 和系统敏感数据不挂载。
-- Shell 每次精确审批，默认断网；即使用户按 Workspace 开启网络，socket policy 仍阻止监听、loopback、局域网、link-local、multicast 与 Bonjour，并限制连接数和传输量。
+- guest 只看到 `/workspace/files`、`/workspace/outputs`、`/workspace/work`、`/workspace/env`；Keychain、Metadata、Checkpoint、其他 Workspace 和系统敏感数据不挂载。
+- Shell 默认断网；联网或危险命令精确审批，依赖安装只能走声明式 `environment_prepare`。socket policy 仍阻止监听、loopback、局域网、link-local、multicast 与 Bonjour，并限制连接数和传输量。
 - 执行限制包括 180 秒、16 processes、512 MiB guest memory、1 MiB output、128 MiB 单文件和 500 MiB Workspace。失败、取消、超时或超限恢复 writable checkpoint。
 
 ## 4. Phase 3：统一体验与发布收口
 
-- DeepSeek 与 35 个 Native/Specialized/Shell Tools 走同一个 AgentLoop；Runtime 不判断具体 Provider 或 Tool 类型。
+- DeepSeek 与最多 40 个 Native/Specialized/Environment/Shell Tools 走同一个 AgentLoop；Runtime 不判断具体 Provider 或 Tool 类型。
 - Chat timeline 显示 Shell command、工作目录、网络状态、执行状态、有界 stdout/stderr、Workspace diff、输出文件和 Undo。
 - Settings 的 Shell Runtime 页面显示准备状态、rootfs、当前 Workspace 网络开关、资源限制、重置和 GPL/iSH 源码入口。
 - 中英文权限、工具、Shell、错误、导出与许可文案保持 key parity；README、PrivacyInfo、第三方清单和 `state/` 只描述已经接线的能力。

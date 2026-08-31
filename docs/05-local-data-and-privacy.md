@@ -60,11 +60,11 @@
 | App Intent 文本 | 用户在 Siri / Shortcuts / Spotlight 明确提供 | 仅作为进程内 handoff 和新草稿短暂存在，发送后进入本地消息记录 | Ask / Process 通过当前选择的 BYOK Provider 发送；Open 不发送 | 未发送草稿被拒绝覆盖；成功提交后沿用会话生命周期 |
 | 本地通知状态 | Agent Run 终态 | iOS 通知中心保存通用文案和本地 Run / 会话 UUID；开关保存在 UserDefaults | 无 Familiar 服务或远程推送目的地 | 用户关闭功能时清理 Familiar 待处理与已投递通知；系统也可按自身策略清理 |
 | Spotlight 会话索引 | 本地 SwiftData 会话 | Core Spotlight `.complete` 保护索引；最多 80 字符标题、更新时间和会话 UUID | 无 Familiar 服务或公开 Web 索引目的地 | 随当前会话集合重建；重命名更新，删除会话后清理对应结果 |
-| Shell 输入与输出 | 当前 ContextSnapshot、Agent command 和运行结果 | task-scoped 只读 Files、Workspace Outputs、临时 Work；command/result/diff 随工具记录 | 默认无；用户开启当前 Workspace 网络后仅允许受 policy 约束的公共目标 | Files 随 Run view 清理；Work 结束清理；Outputs 与 Workspace 生命周期一致 |
+| Shell 输入、环境与输出 | 当前 ContextSnapshot、声明依赖、Agent command 和运行结果 | task-scoped 只读 Files、Workspace Outputs、临时 Work；Project 持久 Environment 或普通 Chat 临时 Environment；command/result/diff/lock receipt 随工具记录 | 默认无；依赖方案批准后访问用户在设置中选择的 PyPI HTTPS 软件源，其他联网 Shell 仍单独审批 | Files/Work/普通 Chat Environment 随 Run view 清理；Project Environment、Outputs 与 Workspace 生命周期一致 |
 
 ## 3. SwiftData 与 store 策略
 
-当前使用单一 `FamiliarReleaseSchema` 的 33 个 SwiftData 实体，不配置 migration plan。项目仍在无人使用的测试阶段，旧测试 store 不受支持，schema 不兼容时直接重建。Debug 使用 `FamiliarDevelopment.store`，Release 使用 `Familiar.store`；完整实体模型与 store 地址见 `state/ARCHITECTURE.md` 第 5 节。数据模型设计约束：
+当前使用单一 `FamiliarReleaseSchema` 的 36 个 SwiftData 实体，不配置 migration plan。项目仍在无人使用的测试阶段，旧测试 store 不受支持，schema 不兼容时直接重建。Debug 使用 `FamiliarDevelopment.store`，Release 使用 `Familiar.store`；完整实体模型与 store 地址见 `state/ARCHITECTURE.md` 第 5 节。数据模型设计约束：
 
 - 关系删除规则使用 cascade；附件 / 项目资源 / Artifact 文件由控制器显式清理。
 - Project 名称在本地 store 中全局唯一，比较时不区分大小写。
