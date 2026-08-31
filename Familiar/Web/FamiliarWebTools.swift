@@ -22,7 +22,8 @@ nonisolated struct FamiliarWebSearchTool: FamiliarTool {
         effect: .read,
         risk: .sensitive,
         requirements: [],
-        supportsParallelism: true
+        supportsParallelism: false,
+        maximumExecutionDuration: 25
     )
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
@@ -58,7 +59,8 @@ nonisolated struct FamiliarWebFetchTool: FamiliarTool {
         effect: .read,
         risk: .sensitive,
         requirements: [],
-        supportsParallelism: true
+        supportsParallelism: false,
+        maximumExecutionDuration: 35
     )
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {

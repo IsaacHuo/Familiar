@@ -36,6 +36,13 @@ nonisolated enum FamiliarSearchProviderCatalog {
             websiteURL: URL(string: "https://duckduckgo.com/")!
         ),
         .init(
+            id: "bing",
+            displayName: "Bing",
+            requiresAPIKey: false,
+            apiKeyPlaceholder: "",
+            websiteURL: URL(string: "https://www.bing.com/")!
+        ),
+        .init(
             id: "brave",
             displayName: "Brave Search",
             requiresAPIKey: true,
@@ -62,7 +69,7 @@ nonisolated enum FamiliarSearchProviderCatalog {
     /// available for deterministic contract tests until their real-key release
     /// smoke tests are complete.
     static var releaseVisible: [FamiliarSearchProviderDescriptor] {
-        all.filter { $0.id == defaultProviderID }
+        all.filter { ["duckduckgo", "bing"].contains($0.id) }
     }
 
     static func descriptor(for id: String) -> FamiliarSearchProviderDescriptor? {

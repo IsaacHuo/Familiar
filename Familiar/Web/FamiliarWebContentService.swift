@@ -148,6 +148,44 @@ nonisolated struct FamiliarWebContentService: Sendable {
         return output
     }
 
+    static func parseBingHTML(_ html: String, maximumResults: Int) throws -> [FamiliarWebSearchResult] {
+        let lowercased = html.lowercased()
+        if lowercased.contains("b_captcha") || lowercased.contains("verify you are human") {
+            throw FamiliarWebError.searchUnavailable
+        }
+        let document = try SwiftSoup.parse(html)
+        let nodes = try document.select("li.b_algo")
+        guard !nodes.isEmpty() else {
+            if lowercased.contains("no results") || lowercased.contains("没有与此相关的结果") { return [] }
+            throw FamiliarWebError.searchUnavailable
+        }
+        var seen = Set<String>()
+        var output: [FamiliarWebSearchResult] = []
+        for node in nodes.array() {
+            guard output.count < maximumResults,
+                  let link = try node.select(".b_algoheader > a, h2 a").first(),
+                  let normalized = try? FamiliarWebURLPolicy.normalize(try link.attr("href")),
+                  normalized.host?.hasSuffix("bing.com") != true,
+                  seen.insert(normalized.absoluteString).inserted
+            else { continue }
+            let title = String(try link.text().trimmingCharacters(in: .whitespacesAndNewlines).prefix(300))
+            guard !title.isEmpty else { continue }
+            let snippet = try node.select(".b_caption p").first().map {
+                String(try $0.text().trimmingCharacters(in: .whitespacesAndNewlines).prefix(600))
+            }
+            output.append(.init(
+                sourceID: FamiliarSourceIdentifier.make(for: normalized),
+                position: output.count + 1,
+                title: title,
+                url: normalized.absoluteString,
+                displayURL: normalized.host ?? normalized.absoluteString,
+                snippet: snippet
+            ))
+        }
+        guard !output.isEmpty else { throw FamiliarWebError.searchUnavailable }
+        return output
+    }
+
     private func validate(_ response: FamiliarRestrictedHTTPResponse) throws {
         if response.statusCode == 429 { throw FamiliarWebError.rateLimited }
         guard (200..<300).contains(response.statusCode) else { throw FamiliarWebError.httpError(response.statusCode) }

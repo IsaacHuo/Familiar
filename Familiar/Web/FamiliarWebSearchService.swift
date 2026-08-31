@@ -12,6 +12,7 @@ nonisolated struct FamiliarWebSearchService: Sendable {
             keyStore: FamiliarSearchKeychainAPIKeyStore(),
             providers: [
                 FamiliarDuckDuckGoSearchProvider(transport: transport),
+                FamiliarBingSearchProvider(transport: transport),
                 FamiliarBraveSearchProvider(transport: transport),
                 FamiliarTavilySearchProvider(transport: transport),
                 FamiliarExaSearchProvider(transport: transport)

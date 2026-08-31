@@ -203,7 +203,7 @@ nonisolated struct FamiliarRestrictedHTTPClient: Sendable {
         var lines = [
             "\(method) \(target) HTTP/1.1",
             "Host: \(host)",
-            "User-Agent: Familiar/1 iOS",
+            "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1 Familiar/1",
             "Accept: text/html,application/xhtml+xml,text/plain;q=0.9",
             "Accept-Encoding: identity",
             "Connection: close"
