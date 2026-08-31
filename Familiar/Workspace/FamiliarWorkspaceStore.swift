@@ -28,6 +28,7 @@ nonisolated struct FamiliarWorkspacePaths: Sendable {
     let work: URL
     let tasks: URL
     let checkpoints: URL
+    let environment: URL
 }
 
 nonisolated struct FamiliarWorkspaceEntry: Equatable, Sendable {
@@ -58,6 +59,8 @@ nonisolated struct FamiliarWorkspaceTaskView: Equatable, Sendable {
     let files: URL
     let outputs: URL
     let work: URL
+    let environment: URL
+    let environmentIsPersistent: Bool
 }
 
 nonisolated enum FamiliarWorkspaceCheckpointScope: Sendable {
@@ -139,7 +142,10 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         let work = runtime.appendingPathComponent("Work", isDirectory: true)
         let tasks = runtime.appendingPathComponent("Tasks", isDirectory: true)
         let checkpoints = runtime.appendingPathComponent("Checkpoints", isDirectory: true)
-        for directory in [root, metadata, files, outputs, runtime, work, tasks, checkpoints] {
+        let environment = runtime.appendingPathComponent("Environment", isDirectory: true)
+        var directories = [root, metadata, files, outputs, runtime, work, tasks, checkpoints]
+        if case .project = id { directories.append(environment) }
+        for directory in directories {
             try ensureDirectory(directory)
         }
         return FamiliarWorkspacePaths(
@@ -150,7 +156,8 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
             runtime: runtime,
             work: work,
             tasks: tasks,
-            checkpoints: checkpoints
+            checkpoints: checkpoints,
+            environment: environment
         )
     }
 
@@ -162,7 +169,8 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         taskID: UUID,
         workspaceID: FamiliarWorkspaceID,
         resources: [FamiliarToolContext.Resource],
-        attachments: [FamiliarToolContext.Attachment]
+        attachments: [FamiliarToolContext.Attachment],
+        useStagingEnvironment: Bool = false
     ) throws -> FamiliarWorkspaceTaskView {
         let paths = try prepare(workspaceID)
         let taskRoot = paths.tasks.appendingPathComponent(taskID.uuidString.lowercased(), isDirectory: true)
@@ -171,9 +179,20 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         }
         let inputs = taskRoot.appendingPathComponent("Files", isDirectory: true)
         let work = taskRoot.appendingPathComponent("Work", isDirectory: true)
+        let environmentIsPersistent: Bool
+        let environment: URL
+        switch workspaceID {
+        case .project where !useStagingEnvironment:
+            environmentIsPersistent = true
+            environment = paths.environment
+        case .project, .conversation:
+            environmentIsPersistent = false
+            environment = taskRoot.appendingPathComponent("Environment", isDirectory: true)
+        }
         do {
             try ensureDirectory(inputs)
             try ensureDirectory(work)
+            try ensureDirectory(environment)
             for resource in resources {
                 let directory = inputs
                     .appendingPathComponent("Resources", isDirectory: true)
@@ -217,7 +236,9 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
             root: taskRoot,
             files: inputs,
             outputs: paths.outputs,
-            work: work
+            work: work,
+            environment: environment,
+            environmentIsPersistent: environmentIsPersistent
         )
     }
 
@@ -229,6 +250,46 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         guard fileManager.fileExists(atPath: view.root.path) else { return }
         try makeTreeWritable(view.root)
         try fileManager.removeItem(at: view.root)
+    }
+
+    func projectEnvironmentURL(_ projectID: UUID) throws -> URL {
+        let paths = try prepare(.project(projectID))
+        guard isConfined(paths.environment, below: paths.runtime),
+              !isSymbolicLink(paths.environment)
+        else { throw FamiliarWorkspaceError.invalidTaskView }
+        return paths.environment
+    }
+
+    func commitProjectEnvironment(
+        from view: FamiliarWorkspaceTaskView,
+        projectID: UUID
+    ) throws {
+        guard view.workspaceID == .project(projectID),
+              !view.environmentIsPersistent,
+              isConfined(view.environment, below: view.root),
+              !isSymbolicLink(view.environment)
+        else { throw FamiliarWorkspaceError.invalidTaskView }
+        try assertNoSymbolicLinks(below: view.environment)
+        let paths = try prepare(.project(projectID))
+        let backup = paths.runtime.appendingPathComponent(
+            "Environment.backup-\(UUID().uuidString.lowercased())",
+            isDirectory: true
+        )
+        do {
+            if fileManager.fileExists(atPath: paths.environment.path) {
+                try fileManager.moveItem(at: paths.environment, to: backup)
+            }
+            try fileManager.moveItem(at: view.environment, to: paths.environment)
+            if fileManager.fileExists(atPath: backup.path) {
+                try fileManager.removeItem(at: backup)
+            }
+        } catch {
+            if !fileManager.fileExists(atPath: paths.environment.path),
+               fileManager.fileExists(atPath: backup.path) {
+                try? fileManager.moveItem(at: backup, to: paths.environment)
+            }
+            throw error
+        }
     }
 
     func removeWorkspace(_ id: FamiliarWorkspaceID) throws {
@@ -355,7 +416,10 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
 
         var totalBytes: Int64 = 0
         var largestFileBytes: Int64 = 0
-        for root in [view.outputs, view.work] {
+        let roots = view.environmentIsPersistent
+            ? [view.outputs, view.work]
+            : [view.outputs, view.work, view.environment]
+        for root in roots {
             guard let enumerator = fileManager.enumerator(
                 at: root,
                 includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey],

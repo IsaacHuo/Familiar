@@ -10,6 +10,7 @@ extern NSNotificationName const ISHProcessExitedNotification;
 @property(atomic, readonly) BOOL isBooted;
 
 - (int)bootWithRootPath:(NSString *)rootPath;
+- (BOOL)configureDNS;
 - (BOOL)installRootfsArchive:(NSString *)archivePath
                destination:(NSString *)destinationPath
                      error:(NSError * _Nullable * _Nullable)error;

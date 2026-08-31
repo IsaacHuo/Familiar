@@ -1,4 +1,142 @@
+import CryptoKit
 import Foundation
+
+nonisolated struct FamiliarPythonPackageSource: Identifiable, Equatable, Sendable {
+    static let officialID = "pypi"
+    static let tunaID = "tuna"
+    static let defaultID = officialID
+
+    static let all: [Self] = [
+        .init(
+            id: officialID,
+            displayName: "PyPI",
+            indexURL: URL(string: "https://pypi.org/simple")!,
+            websiteURL: URL(string: "https://pypi.org/")!
+        ),
+        .init(
+            id: tunaID,
+            displayName: "清华大学 TUNA",
+            indexURL: URL(string: "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple")!,
+            websiteURL: URL(string: "https://mirrors.tuna.tsinghua.edu.cn/help/pypi/")!
+        )
+    ]
+
+    let id: String
+    let displayName: String
+    let indexURL: URL
+    let websiteURL: URL
+
+    static func resolved(_ id: String?) -> Self {
+        all.first { $0.id == id } ?? all[0]
+    }
+}
+
+nonisolated final class FamiliarPythonPackageSourceSettingsStore: @unchecked Sendable {
+    static let sourceDefaultsKey = "familiar.python-package-source.v1"
+
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    var selectedSource: FamiliarPythonPackageSource {
+        FamiliarPythonPackageSource.resolved(defaults.string(forKey: Self.sourceDefaultsKey))
+    }
+
+    func save(selectedSourceID: String) {
+        defaults.set(
+            FamiliarPythonPackageSource.resolved(selectedSourceID).id,
+            forKey: Self.sourceDefaultsKey
+        )
+    }
+}
+
+nonisolated enum FamiliarRuntimeEnvironmentState: String, Codable, Equatable, Sendable {
+    case notPrepared
+    case preparing
+    case ready
+    case failed
+}
+
+nonisolated struct FamiliarEnvironmentPlan: Codable, Equatable, Sendable {
+    let projectID: UUID
+    let packages: [String]
+    let packageIndex: String
+    let maximumBytes: Int64
+}
+
+nonisolated struct FamiliarEnvironmentLock: Codable, Equatable, Sendable {
+    let pythonVersion: String
+    let resolvedPackages: [String]
+    let contentHash: String
+}
+
+nonisolated struct FamiliarEnvironmentReceipt: Codable, Equatable, Sendable {
+    static let currentSchemaVersion = 2
+
+    let schemaVersion: Int
+    let projectID: UUID
+    let revision: UUID
+    let state: FamiliarRuntimeEnvironmentState
+    let requestedPackages: [String]
+    let packageIndex: String
+    let lock: FamiliarEnvironmentLock
+    let byteSize: Int64
+    let preparedAt: Date
+}
+
+nonisolated enum FamiliarEnvironmentError: LocalizedError, Sendable {
+    case projectRequired
+    case invalidPackages
+    case installationFailed(String)
+    case invalidReceipt
+    case dnsFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .projectRequired: "Environment 只能由 Project 长期维护。"
+        case .invalidPackages: "Environment 依赖声明无效。"
+        case .installationFailed(let detail): "Environment 准备失败：\(detail)"
+        case .invalidReceipt: "Environment 安装结果无法验证。"
+        case .dnsFailed: "Environment 无法解析 PyPI 域名，请检查当前网络后重试。"
+        }
+    }
+
+    var code: String {
+        switch self {
+        case .dnsFailed: "environment_dns_failed"
+        case .projectRequired: "environment_project_required"
+        case .invalidPackages: "environment_invalid_packages"
+        case .installationFailed: "environment_installation_failed"
+        case .invalidReceipt: "environment_invalid_receipt"
+        }
+    }
+
+    var isRetryable: Bool {
+        switch self {
+        case .dnsFailed, .installationFailed: true
+        case .projectRequired, .invalidPackages, .invalidReceipt: false
+        }
+    }
+}
+
+nonisolated struct FamiliarEnvironmentStore: Sendable {
+    static let receiptFilename = "familiar-environment.json"
+
+    let workspaceStore: FamiliarWorkspaceStore
+
+    func receipt(projectID: UUID) throws -> FamiliarEnvironmentReceipt? {
+        let environment = try workspaceStore.projectEnvironmentURL(projectID)
+        let url = environment.appendingPathComponent(Self.receiptFilename, isDirectory: false)
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+        guard values.isRegularFile == true, values.isSymbolicLink != true else {
+            throw FamiliarEnvironmentError.invalidReceipt
+        }
+        return try JSONDecoder().decode(FamiliarEnvironmentReceipt.self, from: Data(contentsOf: url))
+    }
+}
 
 nonisolated struct FamiliarShellTool: FamiliarTool {
     struct Input: Decodable, Sendable {
@@ -56,7 +194,8 @@ nonisolated struct FamiliarShellTool: FamiliarTool {
         supportsRecovery: true,
         supportsParallelism: false,
         requiredScopes: ["workspace"],
-        executionClass: .shell
+        executionClass: .shell,
+        maximumExecutionDuration: FamiliarShellLimits.iOS.maximumTimeout
     )
 
     init(
@@ -69,6 +208,23 @@ nonisolated struct FamiliarShellTool: FamiliarTool {
         self.shellPolicy = shellPolicy
     }
 
+    func preflight(
+        _ input: Input,
+        context: FamiliarToolContext
+    ) async throws -> FamiliarToolAuthorizationAssessment {
+        guard let workspaceID = context.workspaceID else { throw FamiliarWorkspaceError.invalidPath }
+        let command = input.command.trimmingCharacters(in: .whitespacesAndNewlines)
+        let networkPolicy = try workspaceStore.shellSettings(in: workspaceID).networkPolicy
+        return switch shellPolicy.evaluate(command: command, networkPolicy: networkPolicy) {
+        case .deny(let reason): .init(disposition: .denied(reason), effect: manifest.effect, risk: .high, reason: reason)
+        case .requiresConfirmation(let reason): .init(disposition: .requiresApproval, effect: manifest.effect, risk: .high, reason: reason)
+        case .allow where networkPolicy.enabled:
+            .init(disposition: .requiresApproval, effect: manifest.effect, risk: .sensitive, reason: "当前 Workspace 已开放网络，命令需要确认。")
+        case .allow:
+            .init(disposition: .automatic, effect: manifest.effect, risk: .low, reason: "离线命令仅访问当前 Workspace，并受 checkpoint 保护。")
+        }
+    }
+
     func execute(
         _ input: Input,
         context: FamiliarToolContext
@@ -79,15 +235,11 @@ nonisolated struct FamiliarShellTool: FamiliarTool {
         let command = input.command.trimmingCharacters(in: .whitespacesAndNewlines)
         let settings = try workspaceStore.shellSettings(in: workspaceID)
         let networkPolicy = settings.networkPolicy
-        let policyDetail: String
-        switch shellPolicy.evaluate(command: command, networkPolicy: networkPolicy) {
-        case .deny(let reason):
+        let assessment = try await preflight(input, context: context)
+        if case .denied(let reason) = assessment.disposition {
             throw FamiliarShellPolicyError.denied(reason)
-        case .allow:
-            policyDetail = "命令通过 ShellPolicy 检查，但仍需要本次单独确认。"
-        case .requiresConfirmation(let reason):
-            policyDetail = reason
         }
+        let policyDetail = assessment.reason
         let timeout = boundedTimeout(input.timeoutSeconds)
         return .action(FamiliarActionProposal(
             title: "确认运行 Shell 命令",
@@ -103,7 +255,7 @@ nonisolated struct FamiliarShellTool: FamiliarTool {
             target: workspaceID.directoryName,
             targetKey: "shell-once:\(context.idempotencyKey)",
             effect: manifest.effect,
-            risk: manifest.risk,
+            risk: assessment.risk,
             consequence: "命令只能读取本次 Context 输入，并可修改当前 Workspace Outputs 与本次临时 Work。",
             undoPolicy: .currentSession,
             idempotencyKey: context.idempotencyKey,
@@ -331,5 +483,308 @@ nonisolated enum FamiliarShellPolicyError: LocalizedError, Sendable {
         switch self {
         case .denied(let reason): reason
         }
+    }
+}
+
+nonisolated struct FamiliarEnvironmentStatusTool: FamiliarTool {
+    struct Input: Decodable, Sendable {}
+
+    private struct Output: Encodable {
+        let state: FamiliarRuntimeEnvironmentState
+        let revision: UUID?
+        let pythonVersion: String?
+        let packages: [String]
+        let packageIndex: String
+        let byteSize: Int64?
+        let preparedAt: Date?
+    }
+
+    let store: FamiliarEnvironmentStore
+    let manifest = FamiliarToolManifest(
+        name: "environment_status",
+        title: "Inspect Project Environment",
+        description: "Inspect the current Project's isolated Linux dependency environment before preparing or using packages.",
+        parameters: .init(type: .object, properties: [:], required: []),
+        effect: .read,
+        risk: .low,
+        dataDomains: ["project.environment"],
+        privacyLabels: ["project-only", "read-only"],
+        supportsParallelism: false,
+        requiredScopes: ["project"],
+        executionClass: .specializedLocal
+    )
+
+    init(workspaceStore: FamiliarWorkspaceStore) {
+        store = FamiliarEnvironmentStore(workspaceStore: workspaceStore)
+    }
+
+    func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
+        guard let projectID = context.projectID else { throw FamiliarEnvironmentError.projectRequired }
+        let receipt = try store.receipt(projectID: projectID)
+        let output = Output(
+            state: receipt?.state ?? .notPrepared,
+            revision: receipt?.revision,
+            pythonVersion: receipt?.lock.pythonVersion,
+            packages: receipt?.lock.resolvedPackages ?? [],
+            packageIndex: receipt?.packageIndex
+                ?? FamiliarPythonPackageSourceSettingsStore().selectedSource.indexURL.absoluteString,
+            byteSize: receipt?.byteSize,
+            preparedAt: receipt?.preparedAt
+        )
+        let records = (receipt?.lock.resolvedPackages ?? []).enumerated().map { index, package in
+            FamiliarToolPresentationPayload.Record(
+                id: "package-\(index)",
+                fields: [.init(name: "package", value: package)]
+            )
+        }
+        return .result(.init(envelope: try .init(
+            model: output,
+            presentation: .recordCollection(.init(
+                summary: receipt == nil ? "Project Environment 尚未准备。" : "Project Environment 已验证。",
+                recordType: "environmentPackage",
+                records: records
+            ))
+        )))
+    }
+}
+
+nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
+    struct Input: Decodable, Sendable {
+        let packages: [String]
+    }
+
+    private struct Output: Encodable {
+        let state: FamiliarRuntimeEnvironmentState
+        let revision: UUID
+        let pythonVersion: String
+        let packages: [String]
+        let packageIndex: String
+        let lockHash: String
+        let byteSize: Int64
+    }
+
+    private static let maximumPackageCount = 16
+    private static let maximumEnvironmentBytes: Int64 = 300 * 1_024 * 1_024
+
+    let executor: any FamiliarShellExecutor
+    let workspaceStore: FamiliarWorkspaceStore
+    let environmentStore: FamiliarEnvironmentStore
+    let packageSourceSettings: FamiliarPythonPackageSourceSettingsStore
+    let manifest = FamiliarToolManifest(
+        name: "environment_prepare",
+        title: "Prepare Project Environment",
+        description: "Install a declarative list of Python packages into the current Project's isolated environment. Do not pass shell commands. Familiar constructs and audits the installation command.",
+        parameters: .init(
+            type: .object,
+            properties: [
+                "packages": .init(type: .array, description: "PyPI package names, optionally pinned with ==version. Use python-docx for Word document generation.")
+            ],
+            required: ["packages"]
+        ),
+        effect: .destructiveWrite,
+        risk: .high,
+        dataDomains: ["project.environment"],
+        networkDomains: ["pypi.org", "files.pythonhosted.org", "mirrors.tuna.tsinghua.edu.cn"],
+        privacyLabels: ["project-only", "explicit-package-plan", "one-shot-approval"],
+        supportsIdempotency: true,
+        supportsCancellation: true,
+        supportsRecovery: true,
+        supportsParallelism: false,
+        requiredScopes: ["project"],
+        executionClass: .specializedLocal,
+        maximumExecutionDuration: FamiliarShellLimits.iOS.maximumTimeout
+    )
+
+    init(
+        executor: any FamiliarShellExecutor,
+        workspaceStore: FamiliarWorkspaceStore,
+        packageSourceSettings: FamiliarPythonPackageSourceSettingsStore = FamiliarPythonPackageSourceSettingsStore()
+    ) {
+        self.executor = executor
+        self.workspaceStore = workspaceStore
+        self.packageSourceSettings = packageSourceSettings
+        environmentStore = FamiliarEnvironmentStore(workspaceStore: workspaceStore)
+    }
+
+    func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
+        guard let projectID = context.projectID,
+              context.workspaceID == .project(projectID)
+        else { throw FamiliarEnvironmentError.projectRequired }
+        let packages = try normalizedPackages(input.packages)
+        let packageSource = packageSourceSettings.selectedSource
+        if let existing = try environmentStore.receipt(projectID: projectID),
+           existing.state == .ready,
+           Set(existing.requestedPackages) == Set(packages) {
+            return .result(try result(existing))
+        }
+        let plan = FamiliarEnvironmentPlan(
+            projectID: projectID,
+            packages: packages,
+            packageIndex: packageSource.indexURL.absoluteString,
+            maximumBytes: Self.maximumEnvironmentBytes
+        )
+        return .action(.init(
+            title: "准备 Project Environment",
+            fields: [
+                .init(id: "packages", label: "Packages", type: .text, value: packages.joined(separator: ", ")),
+                .init(id: "index", label: "Package Index", type: .url, value: plan.packageIndex),
+                .init(id: "network", label: "Public Network", type: .boolean, value: "true"),
+                .init(id: "maximum_size", label: "Maximum Size", type: .number, value: String(Self.maximumEnvironmentBytes))
+            ],
+            target: projectID.uuidString,
+            targetKey: "environment:\(projectID.uuidString):\(Self.hash(packages.joined(separator: "\n")))",
+            effect: manifest.effect,
+            risk: manifest.risk,
+            consequence: "将从设置中选择的软件源下载，并在当前 Project 的隔离 Environment 中安装这些依赖；旧 Environment 仅在新环境验证成功后替换。",
+            undoPolicy: .unavailable,
+            idempotencyKey: context.idempotencyKey,
+            allowedAuthorizationDurations: [.once],
+            commit: {
+                try await prepare(plan: plan, context: context)
+            }
+        ))
+    }
+
+    private func prepare(
+        plan: FamiliarEnvironmentPlan,
+        context: FamiliarToolContext
+    ) async throws -> FamiliarCommittedAction {
+        let taskID = UUID()
+        let view = try workspaceStore.prepareShellTaskView(
+            taskID: taskID,
+            workspaceID: .project(plan.projectID),
+            resources: [],
+            attachments: [],
+            useStagingEnvironment: true
+        )
+        defer { try? workspaceStore.removeShellTaskView(view) }
+        let packageArguments = plan.packages.joined(separator: " ")
+        let command = "mkdir -p /workspace/env/site-packages && "
+            + "python3 -m pip install --isolated --disable-pip-version-check --no-input "
+            + "--index-url \(plan.packageIndex) --target /workspace/env/site-packages \(packageArguments) && "
+            + "python3 -m pip freeze --path /workspace/env/site-packages > /workspace/env/requirements.lock && "
+            + "python3 --version > /workspace/env/python-version.txt"
+        let request = FamiliarShellRequest(
+            taskID: taskID,
+            command: command,
+            workspaceID: .project(plan.projectID),
+            workspaceView: view,
+            timeout: executor.limits.maximumTimeout,
+            runID: context.runID,
+            toolCallID: context.toolCallID,
+            networkPolicy: .publicInternet
+        )
+        var finalResult: FamiliarShellResult?
+        for try await event in executor.execute(request) {
+            try Task.checkCancellation()
+            switch event {
+            case .started:
+                await context.reportProgress(.status("正在准备 Project Environment"))
+            case .standardOutput(let value):
+                await context.reportProgress(.standardOutput(value))
+            case .standardError(let value):
+                await context.reportProgress(.standardError(value))
+            case .finished(let result):
+                finalResult = result
+            }
+        }
+        guard let finalResult, finalResult.status == .succeeded else {
+            let detail = finalResult?.standardError ?? "iSH 未返回成功终态。"
+            if detail.contains("NameResolutionError") || detail.contains("Failed to resolve") {
+                throw FamiliarEnvironmentError.dnsFailed
+            }
+            throw FamiliarEnvironmentError.installationFailed(detail)
+        }
+        let lockURL = view.environment.appendingPathComponent("requirements.lock", isDirectory: false)
+        let versionURL = view.environment.appendingPathComponent("python-version.txt", isDirectory: false)
+        guard let lockText = try? String(contentsOf: lockURL, encoding: .utf8),
+              let pythonVersion = try? String(contentsOf: versionURL, encoding: .utf8),
+              !pythonVersion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { throw FamiliarEnvironmentError.invalidReceipt }
+        let resolvedPackages = lockText.split(whereSeparator: \.isNewline).map(String.init).sorted()
+        let lock = FamiliarEnvironmentLock(
+            pythonVersion: pythonVersion.trimmingCharacters(in: .whitespacesAndNewlines),
+            resolvedPackages: resolvedPackages,
+            contentHash: Self.hash(lockText)
+        )
+        let byteSize = try directorySize(view.environment)
+        guard byteSize > 0, byteSize <= plan.maximumBytes else {
+            throw FamiliarShellExecutorError.resourceLimitExceeded("Project Environment 超过允许大小。")
+        }
+        let receipt = FamiliarEnvironmentReceipt(
+            schemaVersion: FamiliarEnvironmentReceipt.currentSchemaVersion,
+            projectID: plan.projectID,
+            revision: UUID(),
+            state: .ready,
+            requestedPackages: plan.packages,
+            packageIndex: plan.packageIndex,
+            lock: lock,
+            byteSize: byteSize,
+            preparedAt: Date()
+        )
+        let receiptURL = view.environment.appendingPathComponent(FamiliarEnvironmentStore.receiptFilename, isDirectory: false)
+        try JSONEncoder().encode(receipt).write(to: receiptURL, options: [.atomic])
+        try workspaceStore.commitProjectEnvironment(from: view, projectID: plan.projectID)
+        return .init(result: try result(receipt))
+    }
+
+    private func result(_ receipt: FamiliarEnvironmentReceipt) throws -> FamiliarToolExecutionResult {
+        let output = Output(
+            state: receipt.state,
+            revision: receipt.revision,
+            pythonVersion: receipt.lock.pythonVersion,
+            packages: receipt.lock.resolvedPackages,
+            packageIndex: receipt.packageIndex,
+            lockHash: receipt.lock.contentHash,
+            byteSize: receipt.byteSize
+        )
+        let records = receipt.lock.resolvedPackages.enumerated().map { index, package in
+            FamiliarToolPresentationPayload.Record(id: "package-\(index)", fields: [
+                .init(name: "package", value: package)
+            ])
+        }
+        return .init(
+            envelope: try .init(
+                model: output,
+                presentation: .recordCollection(.init(
+                    summary: "Project Environment 已准备并验证。",
+                    recordType: "environmentPackage",
+                    records: records
+                ))
+            ),
+            environmentReceipt: receipt
+        )
+    }
+
+    private func normalizedPackages(_ values: [String]) throws -> [String] {
+        guard !values.isEmpty, values.count <= Self.maximumPackageCount else {
+            throw FamiliarEnvironmentError.invalidPackages
+        }
+        let pattern = #"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}(==[A-Za-z0-9][A-Za-z0-9._+!-]{0,63})?$"#
+        let packages = Array(Set(values.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        })).sorted()
+        guard packages.count == values.count,
+              packages.allSatisfy({ $0.range(of: pattern, options: .regularExpression) != nil })
+        else { throw FamiliarEnvironmentError.invalidPackages }
+        return packages
+    }
+
+    private func directorySize(_ root: URL) throws -> Int64 {
+        guard let enumerator = FileManager.default.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]
+        ) else { return 0 }
+        var total: Int64 = 0
+        for case let url as URL in enumerator {
+            let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
+            guard values.isSymbolicLink != true else { throw FamiliarWorkspaceError.symbolicLinkNotAllowed }
+            if values.isRegularFile == true { total += Int64(values.fileSize ?? 0) }
+        }
+        return total
+    }
+
+    private static func hash(_ value: String) -> String {
+        SHA256.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 }

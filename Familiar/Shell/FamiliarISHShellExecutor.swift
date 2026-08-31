@@ -1,4 +1,5 @@
 #if os(iOS)
+import CryptoKit
 import Foundation
 #if canImport(FamiliarISHRuntime)
 @preconcurrency import FamiliarISHRuntime
@@ -79,10 +80,16 @@ nonisolated final class FamiliarISHShellExecutor: FamiliarShellExecutor, @unchec
                     let paths = try workspaceStore.prepare(request.workspaceID)
                     let view = request.workspaceView
                     let taskRoot = paths.tasks.standardizedFileURL.path + "/"
+                    let expectedEnvironment = paths.environment.standardizedFileURL
+                    let environmentIsValid = view.environmentIsPersistent
+                        ? view.environment.standardizedFileURL == expectedEnvironment
+                        : view.environment.standardizedFileURL.path.hasPrefix(view.root.standardizedFileURL.path + "/")
                     guard view.workspaceID == request.workspaceID,
                           view.taskID == request.taskID,
                           view.root.standardizedFileURL.path.hasPrefix(taskRoot),
-                          view.outputs.standardizedFileURL == paths.outputs.standardizedFileURL
+                          view.outputs.standardizedFileURL == paths.outputs.standardizedFileURL,
+                          environmentIsValid,
+                          (try? view.environment.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true
                     else { throw FamiliarWorkspaceError.invalidTaskView }
                     let mounts = [
                         FamiliarISHMount(
@@ -98,6 +105,11 @@ nonisolated final class FamiliarISHShellExecutor: FamiliarShellExecutor, @unchec
                         FamiliarISHMount(
                             hostURL: view.work,
                             guestPath: "/workspace/work",
+                            writable: true
+                        ),
+                        FamiliarISHMount(
+                            hostURL: view.environment,
+                            guestPath: "/workspace/env",
                             writable: true
                         )
                     ]
@@ -317,7 +329,30 @@ nonisolated final class FamiliarRealISHBridge: FamiliarISHBridge, @unchecked Sen
 }
 
 private actor FamiliarRealISHRuntimeState {
-    private var prepared = false
+    private enum Phase: Equatable {
+        case notInstalled
+        case installing
+        case booting
+        case ready
+        case running(UUID)
+        case failed(String)
+    }
+
+    private struct InstallationMarker: Codable, Equatable {
+        static let schemaVersion = 1
+
+        let schemaVersion: Int
+        let distribution: String
+        let architecture: String
+        let rootfsVersion: String
+        let ishCommit: String
+        let archiveHash: String
+    }
+
+    private static let rootfsVersion = "3.24.0"
+    private static let ishCommit = "54ca185b77f170e12fd353fcd7443232f6cb73fd"
+
+    private var phase: Phase = .notInstalled
     private var activeTaskID: UUID?
     private var activePID: Int32?
     private var activeMounts: [String] = []
@@ -325,50 +360,75 @@ private actor FamiliarRealISHRuntimeState {
     private var activeContinuation: AsyncThrowingStream<FamiliarISHProcessEvent, Error>.Continuation?
 
     func prepare(configuration _: FamiliarISHRuntimeConfiguration) throws {
-        if prepared { return }
+        if phase == .ready { return }
+        if case .running = phase { return }
         let fileManager = FileManager.default
-        guard let archive = Bundle.main.url(
-            forResource: "alpine-3.24.0-aarch64-fakefs",
-            withExtension: "tar.gz"
-        ) else {
-            throw FamiliarShellExecutorError.unavailable
-        }
-        let support = try fileManager.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        ).appendingPathComponent("Familiar/ShellRuntime", isDirectory: true)
-        let installed = support.appendingPathComponent("alpine-3.24.0-aarch64", isDirectory: true)
-        let marker = installed.appendingPathComponent("meta.db", isDirectory: false)
-        let dataDirectory = installed.appendingPathComponent("data", isDirectory: true)
-        if FamiliarShellRuntimeReset.isScheduled,
-           fileManager.fileExists(atPath: installed.path) {
-            try fileManager.removeItem(at: installed)
-        }
-        if !fileManager.fileExists(atPath: marker.path)
-            || !fileManager.fileExists(atPath: dataDirectory.path) {
-            let staging = support.appendingPathComponent("staging-\(UUID().uuidString)", isDirectory: true)
-            defer { try? fileManager.removeItem(at: staging) }
-            try fileManager.createDirectory(at: support, withIntermediateDirectories: true)
-            try ISHKernel.shared.installRootfsArchive(
-                archive.path,
-                destination: staging.path
-            )
-            if fileManager.fileExists(atPath: installed.path) {
-                try fileManager.removeItem(at: installed)
+        do {
+            guard let archive = Bundle.main.url(
+                forResource: "alpine-3.24.0-aarch64-fakefs",
+                withExtension: "tar.gz"
+            ) else {
+                throw FamiliarShellExecutorError.unavailable
             }
-            try fileManager.moveItem(at: staging, to: installed)
-            var values = URLResourceValues()
-            values.isExcludedFromBackup = true
-            var installedURL = installed
-            try? installedURL.setResourceValues(values)
-            FamiliarShellRuntimeReset.clear()
+            let archiveHash = try Self.sha256(of: archive)
+            let expectedMarker = InstallationMarker(
+                schemaVersion: InstallationMarker.schemaVersion,
+                distribution: "Alpine",
+                architecture: "arm64",
+                rootfsVersion: Self.rootfsVersion,
+                ishCommit: Self.ishCommit,
+                archiveHash: archiveHash
+            )
+            let support = try fileManager.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            ).appendingPathComponent("Familiar/ShellRuntime", isDirectory: true)
+            let installed = support.appendingPathComponent("alpine-3.24.0-aarch64", isDirectory: true)
+            let installationMarker = installed.appendingPathComponent("familiar-installation.json", isDirectory: false)
+            let fakeFSMarker = installed.appendingPathComponent("meta.db", isDirectory: false)
+            let dataDirectory = installed.appendingPathComponent("data", isDirectory: true)
+            let storedMarker = try? JSONDecoder().decode(
+                InstallationMarker.self,
+                from: Data(contentsOf: installationMarker)
+            )
+            let installationIsValid = storedMarker == expectedMarker
+                && fileManager.fileExists(atPath: fakeFSMarker.path)
+                && fileManager.fileExists(atPath: dataDirectory.path)
+            if FamiliarShellRuntimeReset.isScheduled || !installationIsValid {
+                phase = .installing
+                let staging = support.appendingPathComponent("staging-\(UUID().uuidString)", isDirectory: true)
+                defer { try? fileManager.removeItem(at: staging) }
+                try fileManager.createDirectory(at: support, withIntermediateDirectories: true)
+                try ISHKernel.shared.installRootfsArchive(
+                    archive.path,
+                    destination: staging.path
+                )
+                let markerData = try JSONEncoder().encode(expectedMarker)
+                try markerData.write(
+                    to: staging.appendingPathComponent("familiar-installation.json", isDirectory: false),
+                    options: [.atomic]
+                )
+                if fileManager.fileExists(atPath: installed.path) {
+                    try fileManager.removeItem(at: installed)
+                }
+                try fileManager.moveItem(at: staging, to: installed)
+                var values = URLResourceValues()
+                values.isExcludedFromBackup = true
+                var installedURL = installed
+                try? installedURL.setResourceValues(values)
+                FamiliarShellRuntimeReset.clear()
+            }
+            phase = .booting
+            guard ISHKernel.shared.boot(withRootPath: installed.path) == 0 else {
+                throw FamiliarShellExecutorError.unavailable
+            }
+            phase = .ready
+        } catch {
+            phase = .failed(error.localizedDescription)
+            throw error
         }
-        guard ISHKernel.shared.boot(withRootPath: installed.path) == 0 else {
-            throw FamiliarShellExecutorError.unavailable
-        }
-        prepared = true
     }
 
     func start(
@@ -380,8 +440,12 @@ private actor FamiliarRealISHRuntimeState {
         timeout: TimeInterval,
         continuation: AsyncThrowingStream<FamiliarISHProcessEvent, Error>.Continuation
     ) throws {
-        guard prepared else { throw FamiliarShellExecutorError.unavailable }
+        guard phase == .ready else { throw FamiliarShellExecutorError.unavailable }
         guard activeTaskID == nil else { throw FamiliarShellExecutorError.alreadyRunning }
+
+        if networkPolicy.enabled, !ISHKernel.shared.configureDNS() {
+            throw FamiliarShellExecutorError.networkConfigurationFailed
+        }
 
         for mount in mounts {
             let result = ISHKernel.shared.bindMountPath(
@@ -411,29 +475,21 @@ private actor FamiliarRealISHRuntimeState {
         completionGate = gate
         activeContinuation = continuation
         activeTaskID = taskID
-        let wrappedCommand = "ulimit -u 16; ulimit -v 524288; ulimit -f 262144; cd -- \(Self.shellQuote(workingDirectory)) && \(command)"
+        phase = .running(taskID)
+        let wrappedCommand = "ulimit -u 16; ulimit -v 524288; ulimit -f 262144; "
+            + "export VIRTUAL_ENV=/workspace/env; export PATH=/workspace/env/bin:$PATH; "
+            + "export PYTHONPATH=/workspace/env/site-packages${PYTHONPATH:+:$PYTHONPATH}; "
+            + "cd -- \(Self.shellQuote(workingDirectory)) && \(command)"
+        let callbacks = FamiliarISHProcessCallbackBox(
+            gate: gate,
+            continuation: continuation,
+            state: self,
+            taskID: taskID
+        )
         let pid = ISHShellExecutor.executeCommand(
             wrappedCommand,
-            lineCallback: { line, isStandardError in
-                guard !gate.isFinished else { return }
-                let data = Data((line + "\n").utf8)
-                continuation.yield(isStandardError ? .standardError(data) : .standardOutput(data))
-            },
-            completion: { result in
-                guard gate.finish() else { return }
-                Task {
-                    let counters = FamiliarISHNetworkController.counters()
-                    continuation.yield(.networkStatistics(.init(
-                        openedConnections: Int(counters.openedConnections),
-                        peakConcurrentConnections: Int(counters.peakConcurrentConnections),
-                        bytesReceived: Int64(clamping: counters.bytesReceived),
-                        bytesSent: Int64(clamping: counters.bytesSent)
-                    )))
-                    continuation.yield(.exited(Int32(result.exitCode)))
-                    self.finish(taskID: taskID)
-                    continuation.finish()
-                }
-            }
+            lineCallback: callbacks.lineCallback,
+            completion: callbacks.completion
         )
         guard pid > 0 else {
             gate.finish()
@@ -476,6 +532,7 @@ private actor FamiliarRealISHRuntimeState {
         activeTaskID = nil
         completionGate = nil
         activeContinuation = nil
+        phase = .ready
         FamiliarISHNetworkController.configureEnabled(
             false,
             maximumConcurrentConnections: 0,
@@ -485,8 +542,71 @@ private actor FamiliarRealISHRuntimeState {
         )
     }
 
+    fileprivate func finishFromCallback(taskID: UUID) {
+        finish(taskID: taskID)
+    }
+
     private static func shellQuote(_ value: String) -> String {
         "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    private static func sha256(of url: URL) throws -> String {
+        let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+/// Objective-C invokes iSH callbacks on queues it owns. Constructing those
+/// blocks inside an actor-isolated method makes Swift 6 attach the actor's
+/// executor precondition to the block itself, which aborts before the block can
+/// hop back to the actor. This nonisolated box owns truly nonisolated blocks and
+/// uses a detached task as the explicit trampoline back to runtime state.
+private nonisolated final class FamiliarISHProcessCallbackBox: @unchecked Sendable {
+    private let gate: FamiliarISHCompletionGate
+    private let continuation: AsyncThrowingStream<FamiliarISHProcessEvent, Error>.Continuation
+    private let state: FamiliarRealISHRuntimeState
+    private let taskID: UUID
+
+    init(
+        gate: FamiliarISHCompletionGate,
+        continuation: AsyncThrowingStream<FamiliarISHProcessEvent, Error>.Continuation,
+        state: FamiliarRealISHRuntimeState,
+        taskID: UUID
+    ) {
+        self.gate = gate
+        self.continuation = continuation
+        self.state = state
+        self.taskID = taskID
+    }
+
+    var lineCallback: ISHShellLineCallback {
+        { [self] line, isStandardError in
+            guard !gate.isFinished else { return }
+            let data = Data((line + "\n").utf8)
+            continuation.yield(isStandardError ? .standardError(data) : .standardOutput(data))
+        }
+    }
+
+    var completion: ISHShellCompletionCallback {
+        { [self] result in
+            guard gate.finish() else { return }
+            let exitCode = Int32(result.exitCode)
+            let continuation = continuation
+            let state = state
+            let taskID = taskID
+            Task.detached {
+                let counters = FamiliarISHNetworkController.counters()
+                continuation.yield(.networkStatistics(.init(
+                    openedConnections: Int(counters.openedConnections),
+                    peakConcurrentConnections: Int(counters.peakConcurrentConnections),
+                    bytesReceived: Int64(clamping: counters.bytesReceived),
+                    bytesSent: Int64(clamping: counters.bytesSent)
+                )))
+                continuation.yield(.exited(exitCode))
+                await state.finishFromCallback(taskID: taskID)
+                continuation.finish()
+            }
+        }
     }
 }
 

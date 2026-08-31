@@ -1,6 +1,7 @@
 #import "ISHKernel.h"
 
 #include <pthread.h>
+#include <netdb.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <sys/stat.h>
@@ -13,10 +14,12 @@
 #include "kernel/calls.h"
 #include "kernel/fs.h"
 #include "fs/fake.h"
+#include "fs/fd.h"
 #include "fs/dev.h"
 #include "fs/devices.h"
 #include "fs/path.h"
 #include "fs/tty.h"
+#include "FamiliarISHNetworkPolicy.h"
 
 NSNotificationName const ISHProcessExitedNotification = @"FamiliarISHProcessExited";
 
@@ -97,6 +100,11 @@ static void FamiliarISHHandleProcessExit(struct task *task, int code) {
         generic_mknodat(AT_PWD, "/dev/full", S_IFCHR | 0666, dev_make(MEM_MAJOR, DEV_FULL_MINOR));
         generic_mknodat(AT_PWD, "/dev/random", S_IFCHR | 0666, dev_make(MEM_MAJOR, DEV_RANDOM_MINOR));
         generic_mknodat(AT_PWD, "/dev/urandom", S_IFCHR | 0666, dev_make(MEM_MAJOR, DEV_URANDOM_MINOR));
+        // Bind mounts are represented by symlinks below the fakefs data root.
+        // The bundled Alpine minirootfs does not contain /workspace, so create
+        // the shared parent before any per-task Files/Outputs/Work/Environment
+        // mount is installed.
+        generic_mkdirat(AT_PWD, "/workspace", 0755);
 
         do_mount(&procfs, "proc", "/proc", "", 0);
         do_mount(&devptsfs, "devpts", "/dev/pts", "", 0);
@@ -105,8 +113,51 @@ static void FamiliarISHHandleProcessExit(struct task *task, int code) {
         sock_tmp_prefix = strdup(socketPrefix.fileSystemRepresentation);
         exit_hook = FamiliarISHHandleProcessExit;
         _isBooted = YES;
+        [self configureDNS];
         return 0;
     }
+}
+
+- (BOOL)configureDNS {
+    if (!self.isBooted) return NO;
+    familiar_ish_network_refresh_dns_servers();
+    struct sockaddr_storage servers[8] = {0};
+    size_t count = familiar_ish_network_copy_dns_servers(servers, 8);
+    NSMutableString *configuration = [NSMutableString string];
+    char address[NI_MAXHOST];
+    for (size_t index = 0; index < count; index++) {
+        struct sockaddr *server = (struct sockaddr *)&servers[index];
+        socklen_t length = server->sa_len;
+        if (length == 0) continue;
+        if (getnameinfo(
+                server,
+                length,
+                address,
+                sizeof(address),
+                NULL,
+                0,
+                NI_NUMERICHOST
+            ) == 0) {
+            [configuration appendFormat:@"nameserver %s\n", address];
+        }
+    }
+    if (configuration.length == 0) return NO;
+
+    struct task *savedCurrent = current;
+    current = pid_get_task(1);
+    struct fd *fd = generic_open(
+        "/etc/resolv.conf",
+        O_WRONLY_ | O_CREAT_ | O_TRUNC_,
+        0666
+    );
+    BOOL succeeded = NO;
+    if (!IS_ERR(fd)) {
+        size_t length = [configuration lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+        succeeded = fd->ops->write(fd, configuration.UTF8String, length) == (ssize_t)length;
+        fd_close(fd);
+    }
+    current = savedCurrent;
+    return succeeded;
 }
 
 - (BOOL)installRootfsArchive:(NSString *)archivePath
@@ -146,6 +197,15 @@ static void FamiliarISHHandleProcessExit(struct task *task, int code) {
         char linkBuffer[101] = {0};
         memcpy(linkBuffer, header + 157, 100);
         NSString *linkTarget = [NSString stringWithUTF8String:linkBuffer] ?: @"";
+
+        // `tar -C <root> .` emits a leading `./` directory entry. After the
+        // normalization above that entry is the empty string: it represents
+        // the already-created destination root and has no payload. Accept only
+        // that exact zero-length directory entry; every other empty path stays
+        // rejected by FamiliarISHSafeArchivePath.
+        if (relative.length == 0 && type == '5' && size == 0) {
+            continue;
+        }
 
         if (!FamiliarISHSafeArchivePath(relative)) {
             succeeded = NO;

@@ -240,7 +240,8 @@ nonisolated enum FamiliarContainerRuntimeFactory {
             config.mounts = LinuxContainer.defaultMounts() + [
                 .share(source: workspaceView.files.path, destination: "/workspace/files", options: ["ro"]),
                 .share(source: workspaceView.outputs.path, destination: "/workspace/outputs"),
-                .share(source: workspaceView.work.path, destination: "/workspace/work")
+                .share(source: workspaceView.work.path, destination: "/workspace/work"),
+                .share(source: workspaceView.environment.path, destination: "/workspace/env")
             ]
             config.useInit = true
         }

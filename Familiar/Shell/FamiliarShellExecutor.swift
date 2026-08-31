@@ -13,6 +13,7 @@ final class FamiliarShellRuntimeStatus {
 
     private(set) var phase: Phase
     private(set) var resetScheduled = false
+    private var retryHandler: (@MainActor @Sendable () -> Void)?
 
     init(phase: Phase) {
         self.phase = phase
@@ -22,6 +23,15 @@ final class FamiliarShellRuntimeStatus {
 
     func markReady() { phase = .ready }
     func markFailed(_ message: String) { phase = .failed(message) }
+    func markPreparing() { phase = .preparing }
+    func configureRetry(_ handler: @escaping @MainActor @Sendable () -> Void) {
+        retryHandler = handler
+    }
+    func retry() {
+        guard case .failed = phase else { return }
+        markPreparing()
+        retryHandler?()
+    }
     func scheduleReset() {
         FamiliarShellRuntimeReset.schedule()
         resetScheduled = true
@@ -226,6 +236,7 @@ nonisolated enum FamiliarShellExecutorError: LocalizedError, Sendable {
     case invalidTimeout
     case outputLimitExceeded
     case resourceLimitExceeded(String)
+    case networkConfigurationFailed
 
     var errorDescription: String? {
         switch self {
@@ -234,6 +245,7 @@ nonisolated enum FamiliarShellExecutorError: LocalizedError, Sendable {
         case .invalidTimeout: "Shell 超时设置无效。"
         case .outputLimitExceeded: "Shell 输出超过允许的大小。"
         case .resourceLimitExceeded(let reason): "Shell 资源限制：\(reason)"
+        case .networkConfigurationFailed: "Linux Environment 无法读取当前网络的 DNS 配置。"
         }
     }
 }

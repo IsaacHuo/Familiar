@@ -2,6 +2,9 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <netdb.h>
+#include <os/lock.h>
+#include <resolv.h>
 #include <stdatomic.h>
 
 static atomic_bool gEnabled;
@@ -14,6 +17,74 @@ static atomic_ullong gActive;
 static atomic_ullong gPeak;
 static atomic_ullong gReceived;
 static atomic_ullong gSent;
+static os_unfair_lock gDNSLock = OS_UNFAIR_LOCK_INIT;
+static struct sockaddr_storage gDNSServers[8];
+static size_t gDNSServerCount;
+
+void familiar_ish_network_refresh_dns_servers(void) {
+    struct __res_state resolver;
+    struct sockaddr_storage values[8] = {0};
+    size_t count = 0;
+    if (res_ninit(&resolver) == EXIT_SUCCESS) {
+        union res_sockaddr_union servers[8];
+        int found = res_getservers(&resolver, servers, 8);
+        for (int index = 0; index < found && count < 8; index++) {
+            struct sockaddr *address = (struct sockaddr *)&servers[index].sin;
+            socklen_t length = address->sa_len;
+            if (length == 0 || length > sizeof(struct sockaddr_storage)) continue;
+            memcpy(&values[count], address, length);
+            count += 1;
+        }
+        res_nclose(&resolver);
+    }
+    os_unfair_lock_lock(&gDNSLock);
+    memcpy(gDNSServers, values, sizeof(values));
+    gDNSServerCount = count;
+    os_unfair_lock_unlock(&gDNSLock);
+}
+
+size_t familiar_ish_network_copy_dns_servers(
+    struct sockaddr_storage *servers,
+    size_t capacity
+) {
+    os_unfair_lock_lock(&gDNSLock);
+    size_t count = MIN(gDNSServerCount, capacity);
+    if (servers != NULL && count > 0) {
+        memcpy(servers, gDNSServers, count * sizeof(struct sockaddr_storage));
+    }
+    os_unfair_lock_unlock(&gDNSLock);
+    return count;
+}
+
+static bool FamiliarISHIsAllowedDNS(const struct sockaddr *address, socklen_t length) {
+    if (address == NULL) return false;
+    uint16_t port = 0;
+    if (address->sa_family == AF_INET && length >= sizeof(struct sockaddr_in)) {
+        port = ntohs(((const struct sockaddr_in *)address)->sin_port);
+    } else if (address->sa_family == AF_INET6 && length >= sizeof(struct sockaddr_in6)) {
+        port = ntohs(((const struct sockaddr_in6 *)address)->sin6_port);
+    }
+    if (port != 53) return false;
+
+    bool matches = false;
+    os_unfair_lock_lock(&gDNSLock);
+    for (size_t index = 0; index < gDNSServerCount && !matches; index++) {
+        const struct sockaddr *candidate = (const struct sockaddr *)&gDNSServers[index];
+        if (candidate->sa_family != address->sa_family) continue;
+        if (address->sa_family == AF_INET) {
+            matches = ((const struct sockaddr_in *)candidate)->sin_addr.s_addr
+                == ((const struct sockaddr_in *)address)->sin_addr.s_addr;
+        } else if (address->sa_family == AF_INET6) {
+            matches = memcmp(
+                &((const struct sockaddr_in6 *)candidate)->sin6_addr,
+                &((const struct sockaddr_in6 *)address)->sin6_addr,
+                sizeof(struct in6_addr)
+            ) == 0;
+        }
+    }
+    os_unfair_lock_unlock(&gDNSLock);
+    return matches;
+}
 
 static bool FamiliarISHIsPrivateIPv4(uint32_t networkAddress) {
     uint32_t value = ntohl(networkAddress);
@@ -52,6 +123,7 @@ void familiar_ish_network_configure(
     uint64_t maximumBytesReceived,
     uint64_t maximumBytesSent
 ) {
+    familiar_ish_network_refresh_dns_servers();
     atomic_store(&gEnabled, enabled);
     atomic_store(&gMaximumConcurrent, maximumConcurrentConnections);
     atomic_store(&gMaximumTotal, maximumTotalConnections);
@@ -84,6 +156,9 @@ bool familiar_ish_network_allow_connect(const struct sockaddr *address, socklen_
     }
     if (!atomic_load(&gEnabled)) {
         return false;
+    }
+    if (FamiliarISHIsAllowedDNS(address, length)) {
+        return true;
     }
     if (address->sa_family == AF_INET && length >= sizeof(struct sockaddr_in)) {
         return !FamiliarISHIsPrivateIPv4(((const struct sockaddr_in *)address)->sin_addr.s_addr);

@@ -18,8 +18,15 @@ nonisolated struct FamiliarShellPolicy: Sendable {
             return .deny(reason: "命令为空或超过长度限制。")
         }
 
+        if matches(packageInstallPattern, in: normalized) {
+            return .deny(reason: "依赖安装只能通过 environment_prepare 执行。")
+        }
+
         if matches(networkPattern, in: normalized), !networkPolicy.enabled {
             return .deny(reason: "当前 Workspace 未开启 Shell 网络访问。")
+        }
+        if matches(networkPattern, in: normalized), networkPolicy.enabled {
+            return .requiresConfirmation(reason: "命令将访问公开网络。")
         }
         if networkPolicy.enabled, matches(networkListenerPattern, in: normalized) {
             return .deny(reason: "Shell 不允许监听端口或启动网络服务。")
@@ -50,7 +57,11 @@ nonisolated struct FamiliarShellPolicy: Sendable {
     }
 
     private var networkPattern: String {
-        #"(^|[;&|]\s*)(curl|wget|ssh|scp|sftp|nc|ncat|socat|telnet|ftp)\b|\b(git\s+(clone|fetch|pull|push)|pip3?\s+install|npm\s+(install|ci)|pnpm\s+install|yarn\s+install|apk\s+add|apt(-get)?\s+install)\b"#
+        #"(^|[;&|]\s*)(curl|wget|ssh|scp|sftp|nc|ncat|socat|telnet|ftp)\b|\bgit\s+(clone|fetch|pull|push)\b"#
+    }
+
+    private var packageInstallPattern: String {
+        #"\b(pip3?|python3?\s+-m\s+pip)\s+install\b|\b(npm\s+(install|ci)|pnpm\s+install|yarn\s+install|apk\s+add|apt(-get)?\s+install)\b"#
     }
 
     private var networkListenerPattern: String {

@@ -25,6 +25,11 @@ extern void familiar_ish_network_socket_closed(int guestDomain);
 extern bool familiar_ish_network_record_receive(uint64_t count);
 extern bool familiar_ish_network_record_send(uint64_t count);
 extern FamiliarISHNetworkCounters familiar_ish_network_counters(void);
+extern void familiar_ish_network_refresh_dns_servers(void);
+extern size_t familiar_ish_network_copy_dns_servers(
+    struct sockaddr_storage *servers,
+    size_t capacity
+);
 
 #ifdef __OBJC__
 #import <Foundation/Foundation.h>

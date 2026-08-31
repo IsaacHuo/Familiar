@@ -20,6 +20,18 @@ index 38c8ed4..4dc27c3 100644
 @@ -405,0 +414,2 @@ int_t sys_listen(fd_t sock_fd, int_t backlog) {
 +    if (!familiar_ish_network_allow_listen(sock->socket.domain))
 +        return _EACCES;
+@@ -624,0 +635,5 @@ int_t sys_sendto(fd_t sock_fd, addr_t buffer_addr, dword_t len, dword_t flags, addr_t sockaddr_addr, dword_t sockaddr_len) {
++    if (sockaddr_addr
++            && !familiar_ish_network_allow_connect((const struct sockaddr *) &sockaddr, (socklen_t) sockaddr_len)) {
++        err = _EACCES;
++        goto error;
++    }
+@@ -630,0 +646,2 @@ int_t sys_sendto(fd_t sock_fd, addr_t buffer_addr, dword_t len, dword_t flags, addr_t sockaddr_addr, dword_t sockaddr_len) {
++    if (res > 0 && !familiar_ish_network_record_send((uint64_t) res))
++        return _EFBIG;
+@@ -788,0 +807,2 @@ int_t sys_recvfrom(fd_t sock_fd, addr_t buffer_addr, dword_t len, dword_t flags, addr_t sockaddr_addr, addr_t sockaddr_len_addr) {
++    if (res > 0 && !familiar_ish_network_record_receive((uint64_t) res))
++        return _EFBIG;
 @@ -1484 +1494,7 @@ static ssize_t sock_read(struct fd *fd, void *buf, size_t size) {
 -        if (res >= 0) { err = (int)res; break; }
 +        if (res >= 0) {
