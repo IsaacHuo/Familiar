@@ -148,6 +148,7 @@ nonisolated struct FamiliarToolManifest: Codable, Equatable, Sendable {
     let supportsParallelism: Bool
     let requiredScopes: [String]
     let executionClass: FamiliarToolExecutionClass
+    let maximumExecutionDuration: TimeInterval?
 
     init(
         id: String? = nil,
@@ -169,7 +170,8 @@ nonisolated struct FamiliarToolManifest: Codable, Equatable, Sendable {
         supportsRecovery: Bool = false,
         supportsParallelism: Bool = false,
         requiredScopes: [String] = [],
-        executionClass: FamiliarToolExecutionClass = .specializedLocal
+        executionClass: FamiliarToolExecutionClass = .specializedLocal,
+        maximumExecutionDuration: TimeInterval? = nil
     ) {
         self.id = id ?? name
         self.version = version
@@ -191,6 +193,7 @@ nonisolated struct FamiliarToolManifest: Codable, Equatable, Sendable {
         self.supportsParallelism = supportsParallelism
         self.requiredScopes = requiredScopes.sorted()
         self.executionClass = executionClass
+        self.maximumExecutionDuration = maximumExecutionDuration
     }
 }
 

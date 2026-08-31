@@ -15,6 +15,7 @@ nonisolated struct FamiliarTaskPlanTool: FamiliarTool {
         let planID: String
         let title: String
         let tasks: [FamiliarToolPresentationPayload.TaskItem]
+        let expectedDeliverables: [FamiliarDeliverableSpec]?
     }
 
     let manifest = FamiliarToolManifest(
@@ -27,6 +28,7 @@ nonisolated struct FamiliarTaskPlanTool: FamiliarTool {
                 "planID": .init(type: .string, description: "Stable identifier reused for updates to this plan."),
                 "title": .init(type: .string, description: "Plan title."),
                 "tasks": .init(type: .array, description: "Tasks in display order. Each item requires stable string id, title, and status pending|running|completed|failed; detail and real progress from 0 to 1 are optional. Omit progress when unknown.")
+                ,"expectedDeliverables": .init(type: .array, description: "Optional deliverables with stable id, title, and format markdown|plainText|docx|pdf|xlsx|html.")
             ],
             required: ["planID", "title", "tasks"]
         ),
@@ -46,8 +48,16 @@ nonisolated struct FamiliarTaskPlanTool: FamiliarTool {
         else {
             throw FamiliarPresentationToolError.invalidInput("Task IDs must be unique and progress must be between 0 and 1 when supplied.")
         }
-        let payload = FamiliarToolPresentationPayload.TaskList(planID: planID, title: title, tasks: input.tasks)
-        return .result(.init(envelope: try .init(model: input, presentation: .taskList(payload))))
+        let deliverables = input.expectedDeliverables ?? []
+        let formats = Set(FamiliarArtifactFormat.allCases.map(\.rawValue))
+        guard Set(deliverables.map(\.id)).count == deliverables.count,
+              deliverables.allSatisfy({ !$0.id.isEmpty && !$0.title.isEmpty && formats.contains($0.format) })
+        else { throw FamiliarPresentationToolError.invalidInput("Deliverables require unique IDs, titles, and supported formats.") }
+        let payload = FamiliarToolPresentationPayload.TaskList(planID: planID, title: title, tasks: input.tasks, expectedDeliverables: deliverables)
+        return .result(.init(
+            envelope: try .init(model: input, presentation: .taskList(payload)),
+            deliverables: deliverables
+        ))
     }
 }
 

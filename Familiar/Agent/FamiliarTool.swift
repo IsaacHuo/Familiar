@@ -12,6 +12,18 @@ nonisolated public enum FamiliarToolRisk: String, Codable, Sendable {
     case high
 }
 
+nonisolated public struct FamiliarDeliverableSpec: Codable, Equatable, Sendable, Identifiable {
+    public let id: String
+    public let title: String
+    public let format: String
+
+    public init(id: String, title: String, format: String) {
+        self.id = id
+        self.title = title
+        self.format = format
+    }
+}
+
 nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, Sendable {
     public static let currentSchemaVersion = 3
 
@@ -221,11 +233,13 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         public let planID: String
         public let title: String
         public let tasks: [TaskItem]
+        public let expectedDeliverables: [FamiliarDeliverableSpec]?
 
-        public init(planID: String, title: String, tasks: [TaskItem]) {
+        public init(planID: String, title: String, tasks: [TaskItem], expectedDeliverables: [FamiliarDeliverableSpec]? = nil) {
             self.planID = planID
             self.title = title
             self.tasks = tasks
+            self.expectedDeliverables = expectedDeliverables
         }
     }
 
@@ -589,6 +603,12 @@ nonisolated enum FamiliarCapabilityRequirement: String, Codable, Hashable, Senda
     case remindersFullAccess
     case contactsRead
     case locationWhenInUse
+    case weatherKit
+    case photoLibraryRead
+    case healthActivityRead
+    case musicCatalogRead
+    case bluetoothScan
+    case userNotifications
 }
 
 nonisolated enum FamiliarCapabilityAvailability: Equatable, Sendable {
@@ -634,6 +654,7 @@ nonisolated struct FamiliarToolContext: Sendable {
     let workspaceID: FamiliarWorkspaceID?
     let resources: [Resource]
     let attachments: [Attachment]
+    let availableSkills: [FamiliarSkillSnapshot]
     private let progressReporter: ProgressReporter?
 
     init(
@@ -644,6 +665,7 @@ nonisolated struct FamiliarToolContext: Sendable {
         workspaceID: FamiliarWorkspaceID? = nil,
         resources: [Resource] = [],
         attachments: [Attachment] = [],
+        availableSkills: [FamiliarSkillSnapshot] = [],
         progressReporter: ProgressReporter? = nil
     ) {
         self.runID = runID
@@ -653,6 +675,7 @@ nonisolated struct FamiliarToolContext: Sendable {
         self.workspaceID = workspaceID
         self.resources = resources
         self.attachments = attachments
+        self.availableSkills = availableSkills
         self.progressReporter = progressReporter
     }
 
@@ -669,13 +692,19 @@ nonisolated struct FamiliarToolExecutionResult: Sendable {
     let sources: [FamiliarSource]
     let webCaptures: [FamiliarWebCapture]
     let artifact: FamiliarArtifactDescriptor?
+    let environmentReceipt: FamiliarEnvironmentReceipt?
+    let loadedSkill: FamiliarSkillSnapshot?
+    let deliverables: [FamiliarDeliverableSpec]
 
-    init(envelope: FamiliarToolResultEnvelope, artifactIdentifier: String? = nil, sources: [FamiliarSource] = [], webCaptures: [FamiliarWebCapture] = [], artifact: FamiliarArtifactDescriptor? = nil) {
+    init(envelope: FamiliarToolResultEnvelope, artifactIdentifier: String? = nil, sources: [FamiliarSource] = [], webCaptures: [FamiliarWebCapture] = [], artifact: FamiliarArtifactDescriptor? = nil, environmentReceipt: FamiliarEnvironmentReceipt? = nil, loadedSkill: FamiliarSkillSnapshot? = nil, deliverables: [FamiliarDeliverableSpec] = []) {
         self.envelope = envelope
         self.artifactIdentifier = artifactIdentifier
         self.sources = sources
         self.webCaptures = webCaptures
         self.artifact = artifact
+        self.environmentReceipt = environmentReceipt
+        self.loadedSkill = loadedSkill
+        self.deliverables = deliverables
     }
 
     var modelContent: String { envelope.modelContent }
@@ -744,6 +773,31 @@ nonisolated enum FamiliarToolOutcome: Sendable {
     case clarification(FamiliarClarificationProposal)
 }
 
+nonisolated enum FamiliarToolAuthorizationDisposition: Equatable, Sendable {
+    case automatic
+    case requiresApproval
+    case denied(String)
+}
+
+nonisolated struct FamiliarToolAuthorizationAssessment: Equatable, Sendable {
+    let disposition: FamiliarToolAuthorizationDisposition
+    let effect: FamiliarToolEffect
+    let risk: FamiliarToolRisk
+    let reason: String
+
+    static func manifestDefault(_ manifest: FamiliarToolManifest) -> Self {
+        let disposition: FamiliarToolAuthorizationDisposition = manifest.effect == .read && manifest.risk != .high
+            ? .automatic
+            : .requiresApproval
+        return .init(
+            disposition: disposition,
+            effect: manifest.effect,
+            risk: manifest.risk,
+            reason: manifest.description
+        )
+    }
+}
+
 nonisolated protocol FamiliarCapabilityProviding: Sendable {
     func availability(for requirement: FamiliarCapabilityRequirement) async -> FamiliarCapabilityAvailability
     func request(_ requirement: FamiliarCapabilityRequirement) async throws
@@ -754,36 +808,66 @@ nonisolated protocol FamiliarTool: Sendable {
 
     var manifest: FamiliarToolManifest { get }
 
+    func preflight(
+        _ input: Input,
+        context: FamiliarToolContext
+    ) async throws -> FamiliarToolAuthorizationAssessment
+
     func execute(
         _ input: Input,
         context: FamiliarToolContext
     ) async throws -> FamiliarToolOutcome
 }
 
+nonisolated extension FamiliarTool {
+    func preflight(
+        _ input: Input,
+        context: FamiliarToolContext
+    ) async throws -> FamiliarToolAuthorizationAssessment {
+        .manifestDefault(manifest)
+    }
+}
+
 nonisolated struct AnyFamiliarTool: Sendable {
     let manifest: FamiliarToolManifest
+    private let preflightClosure: @Sendable (Data, FamiliarToolContext) async throws -> FamiliarToolAuthorizationAssessment
     private let executeClosure: @Sendable (Data, FamiliarToolContext) async throws -> FamiliarToolOutcome
 
     init<T: FamiliarTool>(_ tool: T) {
         manifest = tool.manifest
+        preflightClosure = { data, context in
+            let input = try JSONDecoder().decode(T.Input.self, from: data)
+            return try await tool.preflight(input, context: context)
+        }
         executeClosure = { data, context in
             let input = try JSONDecoder().decode(T.Input.self, from: data)
             return try await tool.execute(input, context: context)
         }
     }
 
+    func preflight(arguments: String, context: FamiliarToolContext) async throws -> FamiliarToolAuthorizationAssessment {
+        try await decode(arguments: arguments) { data in
+            try await preflightClosure(data, context)
+        }
+    }
+
     func execute(arguments: String, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
+        try await decode(arguments: arguments) { data in
+            try await executeClosure(data, context)
+        }
+    }
+
+    private func decode<T: Sendable>(
+        arguments: String,
+        operation: (Data) async throws -> T
+    ) async throws -> T {
         let normalized = arguments.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let data = (normalized.isEmpty ? "{}" : normalized).data(using: .utf8) else {
             throw FamiliarToolRegistryError.invalidArguments(manifest.name)
         }
-        do {
-            return try await executeClosure(data, context)
-        } catch let error as DecodingError {
-            throw FamiliarToolRegistryError.argumentDecodingFailed(
-                tool: manifest.name,
-                reason: error.localizedDescription
-            )
+        do { return try await operation(data) }
+        catch let error as DecodingError {
+            throw FamiliarToolRegistryError.argumentDecodingFailed(tool: manifest.name, reason: error.localizedDescription)
         }
     }
 }
@@ -850,6 +934,11 @@ actor FamiliarToolRegistry {
         toolsByName[tool.manifest.name] = tool
     }
 
+    func registerIfAbsent(_ tool: AnyFamiliarTool) throws {
+        guard toolsByName[tool.manifest.name] == nil else { return }
+        toolsByName[tool.manifest.name] = tool
+    }
+
     func manifest(named name: String) throws -> FamiliarToolManifest {
         guard let tool = toolsByName[name] else { throw FamiliarToolRegistryError.toolNotFound(name) }
         return tool.manifest
@@ -893,5 +982,14 @@ actor FamiliarToolRegistry {
     ) async throws -> FamiliarToolOutcome {
         guard let tool = toolsByName[name] else { throw FamiliarToolRegistryError.toolNotFound(name) }
         return try await tool.execute(arguments: arguments, context: context)
+    }
+
+    func preflight(
+        name: String,
+        arguments: String,
+        context: FamiliarToolContext
+    ) async throws -> FamiliarToolAuthorizationAssessment {
+        guard let tool = toolsByName[name] else { throw FamiliarToolRegistryError.toolNotFound(name) }
+        return try await tool.preflight(arguments: arguments, context: context)
     }
 }

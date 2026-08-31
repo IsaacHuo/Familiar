@@ -53,6 +53,11 @@ nonisolated enum FamiliarRuntimeFailure {
     static func kind(for error: any Error) -> FamiliarRuntimeFailureKind {
         if error is CancellationError { return .cancelled }
         if let agent = error as? FamiliarAgentError { return kind(for: agent) }
+        if error is FamiliarToolExecutionTimeout { return .network }
+        if let environment = error as? FamiliarEnvironmentError {
+            if case .dnsFailed = environment { return .network }
+            return .toolResult
+        }
         if let tool = error as? FamiliarToolRegistryError { return kind(for: tool) }
         if let provider = error as? FamiliarProviderRequestError { return kind(for: provider) }
         if let web = error as? FamiliarWebError {
@@ -70,11 +75,12 @@ nonisolated enum FamiliarRuntimeFailure {
         case .invalidToolCall: .toolArgument
         case .incompleteResponse: .incompleteResponse
         case .maxIterationsExceeded: .maxIterations
-        case .contextTooLarge: .contextTooLarge
+        case .contextTooLarge, .contextCompactionFailed: .contextTooLarge
         case .toolArgumentsTooLarge: .toolArgument
         case .toolResultTooLarge: .toolResult
         case .maxToolCallsExceeded: .maxToolCalls
         case .durationExceeded: .durationExceeded
+        case .missingDeliverables: .toolResult
         }
     }
 
