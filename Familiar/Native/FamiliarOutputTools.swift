@@ -47,8 +47,25 @@ nonisolated protocol FamiliarPhotoLibrarySaving: Sendable {
     func saveImage(at fileURL: URL) async throws -> String?
 }
 
+nonisolated struct FamiliarPhotoAssetMetadata: Codable, Equatable, Sendable, Identifiable {
+    let id: String
+    let mediaType: String
+    let createdAtISO8601: String?
+    let latitude: Double?
+    let longitude: Double?
+    let pixelWidth: Int
+    let pixelHeight: Int
+    let isFavorite: Bool
+}
+
+nonisolated protocol FamiliarPhotoLibraryReading: Sendable {
+    func readAvailability() async -> FamiliarCapabilityAvailability
+    func requestReadAccess() async throws
+    func recentAssets(limit: Int, imagesOnly: Bool) async throws -> [FamiliarPhotoAssetMetadata]
+}
+
 #if os(iOS)
-actor FamiliarPhotoLibraryService: FamiliarPhotoLibrarySaving {
+actor FamiliarPhotoLibraryService: FamiliarPhotoLibrarySaving, FamiliarPhotoLibraryReading {
     func addAuthorization() -> FamiliarPhotoLibraryAddAuthorization {
         Self.authorization(PHPhotoLibrary.authorizationStatus(for: .addOnly))
     }
@@ -63,6 +80,56 @@ actor FamiliarPhotoLibraryService: FamiliarPhotoLibrarySaving {
             localIdentifier = PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: fileURL)?.placeholderForCreatedAsset?.localIdentifier
         }
         return localIdentifier
+    }
+
+    func readAvailability() -> FamiliarCapabilityAvailability {
+        switch PHPhotoLibrary.authorizationStatus(for: .readWrite) {
+        case .authorized, .limited: .available
+        case .notDetermined: .requestable
+        case .denied, .restricted: .unavailable(reason: "照片读取权限不可用，请在系统设置中允许访问或选择有限照片。")
+        @unknown default: .unavailable(reason: "照片读取权限状态未知。")
+        }
+    }
+
+    func requestReadAccess() async throws {
+        let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        guard status == .authorized || status == .limited else {
+            throw FamiliarToolRegistryError.capabilityUnavailable("用户未允许读取照片。")
+        }
+    }
+
+    func recentAssets(limit: Int, imagesOnly: Bool) async throws -> [FamiliarPhotoAssetMetadata] {
+        guard case .available = readAvailability() else {
+            throw FamiliarToolRegistryError.capabilityUnavailable("照片读取权限尚未授予。")
+        }
+        let options = PHFetchOptions()
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        options.fetchLimit = min(max(limit, 1), 50)
+        let result = imagesOnly
+            ? PHAsset.fetchAssets(with: .image, options: options)
+            : PHAsset.fetchAssets(with: options)
+        var values: [FamiliarPhotoAssetMetadata] = []
+        result.enumerateObjects { asset, _, stop in
+            let mediaType: String = switch asset.mediaType {
+            case .image: "image"
+            case .video: "video"
+            case .audio: "audio"
+            case .unknown: "unknown"
+            @unknown default: "unknown"
+            }
+            values.append(.init(
+                id: asset.localIdentifier,
+                mediaType: mediaType,
+                createdAtISO8601: asset.creationDate?.ISO8601Format(),
+                latitude: asset.location?.coordinate.latitude,
+                longitude: asset.location?.coordinate.longitude,
+                pixelWidth: asset.pixelWidth,
+                pixelHeight: asset.pixelHeight,
+                isFavorite: asset.isFavorite
+            ))
+            if values.count >= options.fetchLimit { stop.pointee = true }
+        }
+        return values
     }
 
     private static func authorization(_ status: PHAuthorizationStatus) -> FamiliarPhotoLibraryAddAuthorization {
@@ -156,6 +223,59 @@ nonisolated struct FamiliarPhotosSaveOutputTool: FamiliarTool {
                 ))
             }
         ))
+    }
+}
+
+nonisolated struct FamiliarPhotosRecentMetadataTool: FamiliarTool {
+    struct Input: Decodable, Sendable {
+        let limit: Int?
+        let imagesOnly: Bool?
+    }
+
+    let photos: any FamiliarPhotoLibraryReading
+    let manifest = FamiliarToolManifest(
+        name: "photos_recent_metadata",
+        title: "读取最近照片信息",
+        description: "经明确授权后读取照片图库中最近项目的时间、媒体类型、尺寸及可用的位置元数据。不会读取图片像素、导出原图或遍历超过 50 项；有限照片权限会被尊重。",
+        parameters: .init(type: .object, properties: [
+            "limit": .init(type: .integer, description: "返回 1 到 50 项，默认 10"),
+            "imagesOnly": .init(type: .boolean, description: "是否只返回图片，默认 true")
+        ], required: []),
+        effect: .read,
+        risk: .high,
+        requirements: [.photoLibraryRead],
+        dataDomains: ["photos.metadata"],
+        privacyLabels: ["photos", "location-metadata"],
+        supportsParallelism: false,
+        executionClass: .native
+    )
+
+    func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
+        let assets = try await photos.recentAssets(
+            limit: input.limit ?? 10,
+            imagesOnly: input.imagesOnly ?? true
+        )
+        let records = assets.map { asset in
+            var fields: [FamiliarToolPresentationPayload.RecordField] = [
+                .init(name: "mediaType", value: asset.mediaType),
+                .init(name: "dimensions", value: "\(asset.pixelWidth)×\(asset.pixelHeight)"),
+                .init(name: "favorite", value: String(asset.isFavorite))
+            ]
+            if let date = asset.createdAtISO8601 { fields.append(.init(name: "createdAt", value: date)) }
+            if let latitude = asset.latitude, let longitude = asset.longitude {
+                fields.append(.init(name: "latitude", value: String(latitude)))
+                fields.append(.init(name: "longitude", value: String(longitude)))
+            }
+            return FamiliarToolPresentationPayload.Record(id: asset.id, fields: fields)
+        }
+        return .result(.init(envelope: try FamiliarToolResultEnvelope(
+            model: assets,
+            presentation: .recordCollection(.init(
+                summary: "已读取 \(assets.count) 项照片元数据。",
+                recordType: "photoAssetMetadata",
+                records: records
+            ))
+        )))
     }
 }
 

@@ -284,7 +284,8 @@ public actor FamiliarEventKitService: FamiliarEventKitServicing {
         switch requirement {
         case .calendarFullAccess: authorization = FamiliarEventKitAuthorization(EKEventStore.authorizationStatus(for: .event))
         case .remindersFullAccess: authorization = FamiliarEventKitAuthorization(EKEventStore.authorizationStatus(for: .reminder))
-        case .contactsRead, .locationWhenInUse:
+        case .contactsRead, .locationWhenInUse, .weatherKit, .photoLibraryRead,
+             .healthActivityRead, .musicCatalogRead, .bluetoothScan, .userNotifications:
             return .unavailable(reason: "此设备能力需要对应的 Native Service。")
         }
         switch authorization {
@@ -302,7 +303,8 @@ public actor FamiliarEventKitService: FamiliarEventKitServicing {
             switch requirement {
             case .calendarFullAccess: try await requestFullAccess(for: .events)
             case .remindersFullAccess: try await requestFullAccess(for: .reminders)
-            case .contactsRead, .locationWhenInUse:
+            case .contactsRead, .locationWhenInUse, .weatherKit, .photoLibraryRead,
+                 .healthActivityRead, .musicCatalogRead, .bluetoothScan, .userNotifications:
                 throw FamiliarToolRegistryError.capabilityUnavailable("此设备能力需要对应的 Native Service。")
             }
         }

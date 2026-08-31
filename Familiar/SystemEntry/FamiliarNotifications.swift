@@ -80,6 +80,54 @@ enum FamiliarNotificationService {
         return updatedState
     }
 
+    static func capabilityAvailability() async -> FamiliarCapabilityAvailability {
+        switch await authorizationState() {
+        case .enabled: .available
+        case .notDetermined, .unknown: .requestable
+        case .denied: .unavailable(reason: "通知权限不可用，请在系统设置中允许通知。")
+        }
+    }
+
+    static func requestToolAuthorization() async throws {
+        let center = UNUserNotificationCenter.current()
+        let granted = try await center.requestAuthorization(options: [.alert, .sound])
+        guard granted else {
+            throw FamiliarToolRegistryError.capabilityUnavailable("用户未允许通知。")
+        }
+    }
+
+    static func scheduleAgentNotification(
+        identifier: String,
+        title: String,
+        body: String,
+        fireAt: Date
+    ) async throws -> FamiliarScheduledNotification {
+        let interval = fireAt.timeIntervalSinceNow
+        guard interval > 0 else { throw FamiliarAppleDeviceToolError.invalidFutureDate }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.categoryIdentifier = categoryIdentifier
+        content.threadIdentifier = "familiar.agent"
+        content.sound = .default
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(interval, 1), repeats: false)
+        try await UNUserNotificationCenter.current().add(.init(
+            identifier: identifier,
+            content: content,
+            trigger: trigger
+        ))
+        return .init(
+            identifier: identifier,
+            title: title,
+            body: body,
+            fireAtISO8601: fireAt.ISO8601Format()
+        )
+    }
+
+    static func removeAgentNotification(identifier: String) {
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
+    }
+
     static func scheduleCompletedRun(conversationID: UUID, runID: UUID?) async {
         await schedule(
             identifier: "familiar.run.completed.\((runID ?? conversationID).uuidString)",

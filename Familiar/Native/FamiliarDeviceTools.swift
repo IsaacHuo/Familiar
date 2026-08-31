@@ -457,6 +457,10 @@ nonisolated struct FamiliarDeviceCapabilityProvider: FamiliarCapabilityProviding
     let eventKit: any FamiliarEventKitServicing
     let contacts: any FamiliarContactsServicing
     let location: any FamiliarLocationServicing
+    let photos: any FamiliarPhotoLibraryReading
+    let health: any FamiliarHealthServicing
+    let music: any FamiliarMusicServicing
+    let bluetooth: any FamiliarBluetoothServicing
 
     func availability(for requirement: FamiliarCapabilityRequirement) async -> FamiliarCapabilityAvailability {
         switch requirement {
@@ -466,6 +470,19 @@ nonisolated struct FamiliarDeviceCapabilityProvider: FamiliarCapabilityProviding
             await contacts.availability()
         case .locationWhenInUse:
             await location.availability()
+        case .weatherKit:
+            if #available(iOS 16.0, *) { .available }
+            else { .unavailable(reason: "WeatherKit 需要 iOS 16 或更高版本。") }
+        case .photoLibraryRead:
+            await photos.readAvailability()
+        case .healthActivityRead:
+            await health.availability()
+        case .musicCatalogRead:
+            await music.availability()
+        case .bluetoothScan:
+            await bluetooth.availability()
+        case .userNotifications:
+            await FamiliarNotificationService.capabilityAvailability()
         }
     }
 
@@ -477,6 +494,18 @@ nonisolated struct FamiliarDeviceCapabilityProvider: FamiliarCapabilityProviding
             try await contacts.requestAccess()
         case .locationWhenInUse:
             try await location.requestAccess()
+        case .weatherKit:
+            return
+        case .photoLibraryRead:
+            try await photos.requestReadAccess()
+        case .healthActivityRead:
+            try await health.requestAccess()
+        case .musicCatalogRead:
+            try await music.requestAccess()
+        case .bluetoothScan:
+            try await bluetooth.requestAccess()
+        case .userNotifications:
+            try await FamiliarNotificationService.requestToolAuthorization()
         }
     }
 }

@@ -11,8 +11,16 @@ struct FamiliarAppDependencies {
     let eventKit: FamiliarEventKitService
     let contacts: FamiliarContactsService
     let location: FamiliarLocationService
+    let map: FamiliarMapService
+    let weather: FamiliarWeatherService
+    let photoLibrary: FamiliarPhotoLibraryService
+    let health: FamiliarHealthService
+    let music: FamiliarMusicService
+    let naturalLanguage: FamiliarNaturalLanguageService
+    let bluetooth: FamiliarBluetoothService
     let clipboard: FamiliarClipboardService
     let searchService: FamiliarWebSearchService
+    let pythonPackageSourceSettings: FamiliarPythonPackageSourceSettingsStore
     let workspaceStore: FamiliarWorkspaceStore
     let shellRuntimeStatus: FamiliarShellRuntimeStatus
     let visionProcessor = FamiliarVisionProcessor()
@@ -22,9 +30,17 @@ struct FamiliarAppDependencies {
         eventKit = FamiliarEventKitService()
         contacts = FamiliarContactsService()
         location = FamiliarLocationService()
+        map = FamiliarMapService()
+        weather = FamiliarWeatherService()
+        photoLibrary = FamiliarPhotoLibraryService()
+        health = FamiliarHealthService()
+        music = FamiliarMusicService()
+        naturalLanguage = FamiliarNaturalLanguageService()
+        bluetooth = FamiliarBluetoothService()
         clipboard = FamiliarClipboardService()
         let web = FamiliarWebContentService()
         searchService = FamiliarWebSearchService()
+        pythonPackageSourceSettings = FamiliarPythonPackageSourceSettingsStore()
         workspaceStore = FamiliarWorkspaceStore()
         confirmationCoordinator = FamiliarToolConfirmationCoordinator()
         clarificationCoordinator = FamiliarClarificationCoordinator()
@@ -32,7 +48,6 @@ struct FamiliarAppDependencies {
         policy = FamiliarExecutionPolicy()
         undoStore = FamiliarUndoStore()
         let outputResolver = FamiliarWorkspaceOutputResolver(store: workspaceStore)
-        let photoLibrary = FamiliarPhotoLibraryService()
         let shellRuntime = Self.makeShellRuntime(workspaceStore: workspaceStore)
         shellRuntimeStatus = FamiliarShellRuntimeStatus(
             phase: shellRuntime == nil ? .unavailable : .preparing
@@ -41,6 +56,13 @@ struct FamiliarAppDependencies {
             let tools: [AnyFamiliarTool] = [
                 AnyFamiliarTool(FamiliarCurrentDateTimeTool()),
                 AnyFamiliarTool(FamiliarAppInformationTool()),
+                AnyFamiliarTool(FamiliarMapSearchTool(service: map)),
+                AnyFamiliarTool(FamiliarWeatherForecastTool(service: weather)),
+                AnyFamiliarTool(FamiliarNaturalLanguageAnalyzeTool(service: naturalLanguage)),
+                AnyFamiliarTool(FamiliarHealthActivitySummaryTool(service: health)),
+                AnyFamiliarTool(FamiliarMusicCatalogSearchTool(service: music)),
+                AnyFamiliarTool(FamiliarBluetoothScanTool(service: bluetooth)),
+                AnyFamiliarTool(FamiliarScheduleNotificationTool()),
                 AnyFamiliarTool(FamiliarWebSearchTool(service: searchService)),
                 AnyFamiliarTool(FamiliarWebFetchTool(service: web)),
                 AnyFamiliarTool(FamiliarResourceListTool()),
@@ -52,6 +74,7 @@ struct FamiliarAppDependencies {
                 AnyFamiliarTool(FamiliarWorkspaceWriteTool(store: workspaceStore)),
                 AnyFamiliarTool(FamiliarWorkspaceImageListTool(store: workspaceStore)),
                 AnyFamiliarTool(FamiliarPhotosSaveOutputTool(resolver: outputResolver, photos: photoLibrary)),
+                AnyFamiliarTool(FamiliarPhotosRecentMetadataTool(photos: photoLibrary)),
                 AnyFamiliarTool(FamiliarPrepareFileExportTool(resolver: outputResolver)),
                 AnyFamiliarTool(FamiliarSpotlightSearchTool(indexer: .shared)),
                 AnyFamiliarTool(FamiliarContactsSearchTool(service: contacts)),
@@ -63,8 +86,11 @@ struct FamiliarAppDependencies {
                 AnyFamiliarTool(FamiliarPresentRecommendationTool()),
                 AnyFamiliarTool(FamiliarPresentInsightTool()),
                 AnyFamiliarTool(FamiliarAskUserTool()),
+                AnyFamiliarTool(FamiliarSkillListTool()),
+                AnyFamiliarTool(FamiliarSkillReadTool()),
                 AnyFamiliarTool(FamiliarArtifactWriteTool(store: FamiliarArtifactStore())),
                 AnyFamiliarTool(FamiliarArtifactEditTool(store: FamiliarArtifactStore())),
+                AnyFamiliarTool(FamiliarArtifactPublishTool(workspaceStore: workspaceStore)),
                 AnyFamiliarTool(FamiliarCalendarEventsTool(service: eventKit)),
                 AnyFamiliarTool(FamiliarCreateCalendarEventTool(service: eventKit)),
                 AnyFamiliarTool(FamiliarUpdateCalendarEventTool(service: eventKit)),
@@ -79,7 +105,11 @@ struct FamiliarAppDependencies {
                 capabilities: FamiliarDeviceCapabilityProvider(
                     eventKit: eventKit,
                     contacts: contacts,
-                    location: location
+                    location: location,
+                    photos: photoLibrary,
+                    health: health,
+                    music: music,
+                    bluetooth: bluetooth
                 )
             )
         } catch {
@@ -88,15 +118,31 @@ struct FamiliarAppDependencies {
         if let shellRuntime {
             let registry = registry
             let status = shellRuntimeStatus
-            Task {
-                do {
-                    try await shellRuntime.executor.prepare()
-                    try await registry.register(shellRuntime.tool)
-                    status.markReady()
-                } catch {
-                    status.markFailed(error.localizedDescription)
+            let runtimeWorkspaceStore = workspaceStore
+            let runtimePackageSourceSettings = pythonPackageSourceSettings
+            let prepareRuntime: @MainActor @Sendable () -> Void = {
+                Task {
+                    do {
+                        try await shellRuntime.executor.prepare()
+                        try await registry.registerIfAbsent(AnyFamiliarTool(
+                            FamiliarEnvironmentStatusTool(workspaceStore: runtimeWorkspaceStore)
+                        ))
+                        try await registry.registerIfAbsent(AnyFamiliarTool(
+                            FamiliarEnvironmentPrepareTool(
+                                executor: shellRuntime.executor,
+                                workspaceStore: runtimeWorkspaceStore,
+                                packageSourceSettings: runtimePackageSourceSettings
+                            )
+                        ))
+                        try await registry.registerIfAbsent(shellRuntime.tool)
+                        status.markReady()
+                    } catch {
+                        status.markFailed(error.localizedDescription)
+                    }
                 }
             }
+            status.configureRetry(prepareRuntime)
+            prepareRuntime()
         }
     }
 
