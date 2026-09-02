@@ -8,6 +8,8 @@ nonisolated enum FamiliarMotion {
     static let micro = Animation.easeOut(duration: 0.16)
     /// Discrete state transitions: queued -> running -> succeeded -> failed.
     static let state = Animation.smooth(duration: 0.28)
+    /// Inline disclosure expands from its existing top edge without travel.
+    static let expansion = Animation.smooth(duration: 0.24)
     /// Spatial movement: card expansion, detail presentation, position change.
     static let spatial = Animation.spring(duration: 0.42, bounce: 0.12)
     /// Drawer and composer snap-to-detent.

@@ -24,7 +24,7 @@ struct FamiliarMessageTimeline: View {
     let agentRuns: [FamiliarAgentRunSnapshot]
     let surfaces: [FamiliarSurfaceDescriptor]
     let streamingMessageID: UUID?
-    let streamingText: String
+    let streamingResponseBlocks: [FamiliarLiveResponseBlock]
     let streamingReasoningSummary: String
     let availableUndoKeys: Set<String>
     let completedUndoKeys: Set<String>
@@ -80,7 +80,7 @@ struct FamiliarMessageTimeline: View {
                                     message: nil,
                                     run: run,
                                     surfaces: FamiliarSurfaceStore.projectedSurfaces(for: run),
-                                    streamingText: "",
+                                    streamingResponseBlocks: [],
                                     streamingReasoningSummary: "",
                                     availableUndoKeys: availableUndoKeys,
                                     completedUndoKeys: completedUndoKeys,
@@ -94,12 +94,12 @@ struct FamiliarMessageTimeline: View {
                             }
                         }
 
-                        if !surfaces.isEmpty || !streamingText.isEmpty || !streamingReasoningSummary.isEmpty {
+                        if !surfaces.isEmpty || !streamingResponseBlocks.isEmpty || !streamingReasoningSummary.isEmpty {
                             FamiliarAssistantTurn(
                                 message: nil,
                                 run: nil,
                                 surfaces: surfaces,
-                                streamingText: streamingText,
+                                streamingResponseBlocks: streamingResponseBlocks,
                                 streamingReasoningSummary: streamingReasoningSummary,
                                 availableUndoKeys: availableUndoKeys,
                                 completedUndoKeys: completedUndoKeys,
@@ -133,7 +133,7 @@ struct FamiliarMessageTimeline: View {
                     isFollowingLatest = bottomY <= viewport.size.height + 120
                 }
                 .onChange(of: messages.count) { _, _ in scrollToLatest(proxy) }
-                .onChange(of: streamingText) { _, _ in scrollToLatest(proxy, animated: false) }
+                .onChange(of: streamingResponseBlocks) { _, _ in scrollToLatest(proxy, animated: false) }
                 .onChange(of: streamingReasoningSummary) { _, _ in scrollToLatest(proxy, animated: false) }
                 .onChange(of: surfaces) { _, _ in scrollToLatest(proxy) }
                 .overlay(alignment: .bottomTrailing) {
@@ -213,7 +213,7 @@ private struct FamiliarMessageRow: View {
                     message: message,
                     run: run,
                     surfaces: run.map(FamiliarSurfaceStore.projectedSurfaces) ?? [],
-                    streamingText: "",
+                    streamingResponseBlocks: [],
                     streamingReasoningSummary: "",
                     availableUndoKeys: availableUndoKeys,
                     completedUndoKeys: completedUndoKeys,
@@ -306,7 +306,7 @@ private struct FamiliarAssistantTurn: View {
     let message: FamiliarMessageSnapshot?
     let run: FamiliarAgentRunSnapshot?
     let surfaces: [FamiliarSurfaceDescriptor]
-    let streamingText: String
+    let streamingResponseBlocks: [FamiliarLiveResponseBlock]
     let streamingReasoningSummary: String
     let availableUndoKeys: Set<String>
     let completedUndoKeys: Set<String>
@@ -321,41 +321,6 @@ private struct FamiliarAssistantTurn: View {
 
     private var runID: String? { run?.id ?? surfaces.first?.runID }
     private var status: FamiliarSurfaceDescriptor? { surfaces.first { $0.kind == .runStatus } }
-    private var toolChipStatus: FamiliarSurfaceDescriptor? {
-        if let status { return status }
-        guard let run else { return nil }
-        let phase: FamiliarSurfacePhase = switch run.status {
-        case .running: .running
-        case .completed: .succeeded
-        case .failed: .failed
-        case .cancelled: .cancelled
-        }
-        return FamiliarSurfaceDescriptor(
-            id: "tool-chips-status:\(run.id)",
-            runID: run.id,
-            kind: .runStatus,
-            placement: .topLevel,
-            phase: phase,
-            title: String(localized: "agent.status.thinking"),
-            startedAt: run.startedAt,
-            finishedAt: run.finishedAt
-        )
-    }
-    private var trace: FamiliarSurfaceDescriptor? { surfaces.first { $0.kind == .activityTrace } }
-    private var traceItems: [FamiliarSurfaceDescriptor] { surfaces.filter { $0.placement == .trace } }
-    private var interventionItems: [FamiliarSurfaceDescriptor] {
-        surfaces.filter { $0.placement == .topLevel && $0.kind != .runStatus && $0.kind != .activityTrace }
-            .filter { $0.kind == .approval || $0.kind == .clarification || $0.kind == .failure }
-    }
-    private var responseAccessoryItems: [FamiliarSurfaceDescriptor] {
-        surfaces.filter { $0.placement == .topLevel && $0.kind != .runStatus && $0.kind != .activityTrace }
-            .filter {
-                $0.kind != .approval
-                    && $0.kind != .clarification
-                    && $0.kind != .failure
-                    && $0.kind != .toolSummary
-            }
-    }
     private var reasoningSummary: String? {
         let value = streamingReasoningSummary.isEmpty
             ? message?.responseBlocks.first(where: { $0.kind == .reasoningSummary })?.content ?? ""
@@ -364,18 +329,13 @@ private struct FamiliarAssistantTurn: View {
     }
 
     private var searchSurfaces: [FamiliarSurfaceDescriptor] { surfaces.filter { $0.kind == .search } }
-    private var toolChipSurfaces: [FamiliarSurfaceDescriptor] {
-        surfaces.filter {
-            $0.toolName != nil
-                && $0.toolCallID != nil
-                && $0.kind != .runStatus
-                && $0.kind != .activityTrace
-        }
+    private var toolSurfaces: [FamiliarSurfaceDescriptor] {
+        surfaces.filter { $0.kind != .runStatus && $0.kind != .activityTrace }
     }
     private var taskSurfaces: [FamiliarSurfaceDescriptor] { surfaces.filter { $0.kind == .taskList } }
     private var hasThinkingContent: Bool {
         reasoningSummary != nil
-            || (toolChipSurfaces.isEmpty && !searchSurfaces.isEmpty)
+            || (toolSurfaces.isEmpty && !searchSurfaces.isEmpty)
             || !taskSurfaces.isEmpty
     }
 
@@ -405,7 +365,7 @@ private struct FamiliarAssistantTurn: View {
             )
         }
 
-        if toolChipSurfaces.isEmpty,
+        if toolSurfaces.isEmpty,
            let search = searchSurfaces.first,
            let searchContent = searchPayload(search),
            !searchContent.results.isEmpty {
@@ -493,10 +453,53 @@ private struct FamiliarAssistantTurn: View {
         )
     }
 
+    private var contentBlocks: [FamiliarAssistantContentBlock] {
+        var blocks = toolSurfaces.map(FamiliarAssistantContentBlock.surface)
+        if status == nil, let reasoning = reasoningSummary {
+            blocks.append(.reasoning(
+                id: "reasoning:\(runID ?? "message")",
+                title: String(localized: "reasoning.summary", defaultValue: "Reasoning summary"),
+                content: reasoning
+            ))
+        }
+        if streamingResponseBlocks.isEmpty {
+            let markdownBlocks = (message?.responseBlocks ?? run?.responseBlocks ?? []).filter { $0.kind == .markdown }
+            if markdownBlocks.isEmpty, let message, !message.content.isEmpty {
+                blocks.append(.markdown(
+                    id: "message:\(message.id.uuidString)",
+                    order: (toolSurfaces.map(\.sequence).max() ?? -1) + 1,
+                    content: message.content,
+                    isStreaming: false
+                ))
+            } else {
+                blocks += markdownBlocks.map {
+                    .markdown(
+                        id: "response-block:\($0.id.uuidString)",
+                        order: $0.order,
+                        content: $0.content,
+                        isStreaming: false
+                    )
+                }
+            }
+        } else {
+            blocks += streamingResponseBlocks.map {
+                .markdown(
+                    id: "live-response-block:\($0.id.uuidString)",
+                    order: $0.order,
+                    content: $0.content,
+                    isStreaming: $0.isStreaming
+                )
+            }
+        }
+        return blocks.sorted {
+            if $0.order != $1.order { return $0.order < $1.order }
+            return $0.id < $1.id
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceM) {
-            if toolChipSurfaces.isEmpty,
-               let status,
+            if let status,
                (!status.phase.isTerminal || hasThinkingContent) {
                 FamiliarThinkingState(
                     content: thinkingContent(status: status),
@@ -505,55 +508,33 @@ private struct FamiliarAssistantTurn: View {
                 )
             }
 
-            if !toolChipSurfaces.isEmpty {
-                FamiliarToolChips(
-                    surfaces: toolChipSurfaces,
-                    status: toolChipStatus,
-                    reasoningSummary: reasoningSummary
-                )
+            ForEach(contentBlocks) { block in
+                switch block {
+                case .markdown(_, _, let content, let isStreaming):
+                    if !content.isEmpty {
+                        FamiliarMarkdownWebView(
+                            markdown: content,
+                            sources: isStreaming ? [] : message?.sources ?? [],
+                            isStreaming: isStreaming
+                        )
+                    }
+                case .reasoning(_, let title, let content):
+                    FamiliarReasoningSummaryDisclosure(title: title, content: content)
+                case .surface(let surface):
+                    FamiliarExecutionBlock(
+                        surface: adjustedUndoPhase(surface),
+                        canUndo: canUndo(surface),
+                        onResolveApproval: onResolveApproval,
+                        onResolveClarification: onResolveClarification,
+                        onInsertPrompt: onInsertPrompt,
+                        onUndo: { onUndo(surface.runID, surface.toolCallID ?? "") },
+                        onRetry: surface.kind == .failure ? retryAction : nil
+                    )
+                }
             }
 
-            ForEach(interventionItems) { surface in
-                FamiliarTurnSurface(
-                    surface: adjustedUndoPhase(surface),
-                    canUndo: canUndo(surface),
-                    onResolveApproval: onResolveApproval,
-                    onResolveClarification: onResolveClarification,
-                    onInsertPrompt: onInsertPrompt,
-                    onUndo: { onUndo(surface.runID, surface.toolCallID ?? "") },
-                    onRetry: surface.kind == .failure ? retryAction : nil
-                )
-            }
-
-            if !streamingText.isEmpty {
-                FamiliarMarkdownWebView(
-                    markdown: streamingText,
-                    sources: [],
-                    isStreaming: true
-                )
-            } else if let message, !message.content.isEmpty {
-                FamiliarMarkdownWebView(markdown: message.content, sources: message.sources)
-            }
-
-            ForEach(responseAccessoryItems) { surface in
-                FamiliarTurnSurface(
-                    surface: adjustedUndoPhase(surface),
-                    canUndo: canUndo(surface),
-                    onResolveApproval: onResolveApproval,
-                    onResolveClarification: onResolveClarification,
-                    onInsertPrompt: onInsertPrompt,
-                    onUndo: { onUndo(surface.runID, surface.toolCallID ?? "") },
-                    onRetry: nil
-                )
-            }
-
-            if let trace, trace.context != nil || !traceItems.isEmpty {
-                FamiliarActivityTrace(
-                    surface: trace,
-                    items: traceItems,
-                    finishedAt: run?.finishedAt,
-                    metrics: replyMetrics
-                )
+            if let metrics = replyMetrics {
+                FamiliarRunActivitySummary(metrics: metrics, toolCount: toolSurfaces.count)
             }
 
             if let message {
@@ -586,6 +567,101 @@ private struct FamiliarAssistantTurn: View {
         return { onRetryRecovery(runID) }
     }
 
+}
+
+private enum FamiliarAssistantContentBlock: Identifiable {
+    case markdown(id: String, order: Int, content: String, isStreaming: Bool)
+    case reasoning(id: String, title: String, content: String)
+    case surface(FamiliarSurfaceDescriptor)
+
+    var id: String {
+        switch self {
+        case .markdown(let id, _, _, _): id
+        case .reasoning(let id, _, _): id
+        case .surface(let surface): "surface:\(surface.id)"
+        }
+    }
+
+    var order: Int {
+        switch self {
+        case .markdown(_, let order, _, _): order
+        case .reasoning: -1
+        case .surface(let surface): surface.sequence
+        }
+    }
+}
+
+private struct FamiliarReasoningSummaryDisclosure: View {
+    let title: String
+    let content: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(reduceMotion ? nil : FamiliarMotion.expansion) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: FamiliarIconSize.compact, weight: .semibold))
+                        .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
+                    Text(title)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
+                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                }
+                .frame(minHeight: FamiliarControlSize.minimumHitTarget)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(isExpanded
+                                ? String(localized: "common.expanded", defaultValue: "Expanded")
+                                : String(localized: "common.collapsed", defaultValue: "Collapsed"))
+
+            if isExpanded {
+                Text(content)
+                    .font(.caption)
+                    .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, FamiliarAISurfaceMetric.icon)
+                    .padding(.bottom, FamiliarAISurfaceMetric.spaceXS)
+                    .transition(.opacity)
+            }
+        }
+        .animation(reduceMotion ? nil : FamiliarMotion.expansion, value: isExpanded)
+    }
+}
+
+private struct FamiliarRunActivitySummary: View {
+    let metrics: FamiliarReplyMetrics
+    let toolCount: Int
+
+    var body: some View {
+        HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
+            Image(systemName: "waveform.path.ecg")
+            Text(String(localized: "message.operation_trace", defaultValue: "Activity"))
+            if toolCount > 0 {
+                Text(toolCount, format: .number)
+                    .monospacedDigit()
+            }
+            if let duration = metrics.duration {
+                Text(duration, format: .number.precision(.fractionLength(1)))
+                    .monospacedDigit()
+                Text("s")
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
+        .accessibilityElement(children: .combine)
+    }
 }
 
 private struct FamiliarShimmerLabel: View {
@@ -864,6 +940,176 @@ private struct FamiliarThinkingDot: View {
     }
 }
 
+private struct FamiliarExecutionBlock: View {
+    let surface: FamiliarSurfaceDescriptor
+    let canUndo: Bool
+    let onResolveApproval: (UUID, FamiliarToolConfirmationDecision) -> Void
+    let onResolveClarification: (UUID, FamiliarClarificationResolution) -> Void
+    let onInsertPrompt: (String) -> Void
+    let onUndo: () -> Void
+    let onRetry: (() -> Void)?
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isExpanded = false
+
+    var body: some View {
+        if usesFullSurface {
+            FamiliarTurnSurface(
+                surface: surface,
+                canUndo: canUndo,
+                onResolveApproval: onResolveApproval,
+                onResolveClarification: onResolveClarification,
+                onInsertPrompt: onInsertPrompt,
+                onUndo: onUndo,
+                onRetry: onRetry
+            )
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                Button {
+                    guard hasDetails else { return }
+                    withAnimation(reduceMotion ? nil : FamiliarMotion.expansion) {
+                        isExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: FamiliarAISurfaceMetric.spaceM) {
+                        Image(systemName: symbol)
+                            .font(.system(size: FamiliarIconSize.standard, weight: .medium))
+                            .foregroundStyle(iconColor)
+                            .frame(width: FamiliarAISurfaceMetric.icon)
+                        Text(surface.title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(FamiliarAISurfaceColor.ink)
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: FamiliarAISurfaceMetric.spaceS)
+                        if let count {
+                            Text(count, format: .number)
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
+                        }
+                        if hasDetails {
+                            Image(systemName: "chevron.down")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
+                                .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: FamiliarControlSize.minimumHitTarget, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!hasDetails)
+                .accessibilityValue(
+                    hasDetails
+                        ? (isExpanded
+                            ? String(localized: "common.expanded", defaultValue: "Expanded")
+                            : String(localized: "common.collapsed", defaultValue: "Collapsed"))
+                        : phaseTitle
+                )
+
+                if isExpanded, hasDetails {
+                    detail
+                        .padding(.leading, FamiliarAISurfaceMetric.icon + FamiliarAISurfaceMetric.spaceM)
+                        .padding(.bottom, FamiliarAISurfaceMetric.spaceS)
+                        .transition(.opacity)
+                }
+            }
+            .animation(reduceMotion ? nil : FamiliarMotion.expansion, value: isExpanded)
+            .accessibilityElement(children: .contain)
+        }
+    }
+
+    private var usesFullSurface: Bool {
+        switch surface.kind {
+        case .approval, .clarification, .failure, .mutationReceipt, .artifact,
+             .taskList, .recommendation, .insight, .code, .share, .shell, .diff:
+            true
+        case .runStatus, .activityTrace, .toolSummary, .search, .context, .records:
+            false
+        }
+    }
+
+    private var hasDetails: Bool {
+        guard let content = surface.resultEnvelope?.presentation.content else {
+            return !(surface.detail?.isEmpty ?? true)
+        }
+        switch content {
+        case .scalar, .mutationReceipt, .artifactMutation: return false
+        default: return true
+        }
+    }
+
+    private var count: Int? {
+        guard let content = surface.resultEnvelope?.presentation.content else { return nil }
+        return switch content {
+        case .searchResults(let value): value.results.count
+        case .contextMatches(let value): value.matches.count
+        case .recordCollection(let value): value.records.count
+        case .taskList(let value): value.tasks.count
+        default: nil
+        }
+    }
+
+    private var symbol: String {
+        switch surface.phase {
+        case .queued, .planning, .running: "circle.dotted"
+        case .awaitingApproval: "hand.raised.fill"
+        case .awaitingClarification: "questionmark.bubble"
+        case .succeeded: surface.kind == .records ? "list.bullet.rectangle" : "checkmark.circle"
+        case .failed: "exclamationmark.circle"
+        case .cancelled: "xmark.circle"
+        case .undone: "arrow.uturn.backward.circle"
+        }
+    }
+
+    private var iconColor: Color {
+        switch surface.phase {
+        case .failed: FamiliarAISurfaceColor.failure
+        case .cancelled, .undone: FamiliarAISurfaceColor.inkTertiary
+        case .succeeded: FamiliarAISurfaceColor.ink
+        default: FamiliarAISurfaceColor.accent
+        }
+    }
+
+    private var phaseTitle: String {
+        switch surface.phase {
+        case .queued: String(localized: "tool_chips.phase.queued", defaultValue: "Queued")
+        case .planning: String(localized: "agent.status.thinking", defaultValue: "Thinking")
+        case .running: String(localized: "tool_chips.phase.running", defaultValue: "Running")
+        case .awaitingApproval: String(localized: "agent.status.awaiting_confirmation", defaultValue: "Awaiting approval")
+        case .awaitingClarification: String(localized: "clarification.awaiting", defaultValue: "Waiting for your answer")
+        case .succeeded: String(localized: "settings.runs.completed", defaultValue: "Completed")
+        case .failed: String(localized: "settings.runs.failed", defaultValue: "Failed")
+        case .cancelled: String(localized: "settings.runs.cancelled", defaultValue: "Cancelled")
+        case .undone: String(localized: "common.undone", defaultValue: "Undone")
+        }
+    }
+
+    @ViewBuilder
+    private var detail: some View {
+        if let content = surface.resultEnvelope?.presentation.content {
+            switch content {
+            case .searchResults, .document:
+                FamiliarTypedResult(surface: surface, showsHeader: false)
+            case .contextMatches(let matches):
+                ForEach(matches.matches.prefix(3), id: \.versionID) { match in
+                    FamiliarContextChunk(match: match)
+                }
+            case .recordCollection(let collection):
+                ForEach(collection.records.prefix(3), id: \.id) { record in
+                    FamiliarRecordRow(record: record)
+                }
+            default:
+                EmptyView()
+            }
+        } else if let value = surface.detail, !value.isEmpty {
+            Text(value)
+                .font(.caption)
+                .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+                .textSelection(.enabled)
+        }
+    }
+}
+
 private struct FamiliarTurnSurface: View {
     let surface: FamiliarSurfaceDescriptor
     let canUndo: Bool
@@ -901,7 +1147,11 @@ private struct FamiliarTurnSurface: View {
             case .toolSummary:
                 EmptyView()
             case .context:
-                FamiliarContextMatchesSurface(surface: surface)
+                if case .contextMatches = surface.resultEnvelope?.presentation.content {
+                    FamiliarContextMatchesSurface(surface: surface)
+                } else {
+                    FamiliarTypedResult(surface: surface)
+                }
             case .records:
                 FamiliarRecordCollectionSurface(surface: surface)
             case .search:
@@ -1928,6 +2178,12 @@ private struct FamiliarWriteReceipt: View {
                 }
             }
 
+            if let authorizationSummary {
+                Label(authorizationSummary, systemImage: surface.automaticAuthorization ? "checkmark.shield.fill" : "hand.raised")
+                    .font(.caption)
+                    .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+            }
+
             if canUndo {
                 Button(String(localized: "common.undo"), action: onUndo)
                     .font(.subheadline.weight(.semibold))
@@ -1939,6 +2195,19 @@ private struct FamiliarWriteReceipt: View {
         .background(FamiliarAISurfaceColor.successTint, in: RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.card, style: .continuous))
         .sheet(isPresented: Binding(get: { previewURL != nil }, set: { if !$0 { previewURL = nil } })) {
             if let previewURL { FamiliarAttachmentPreviewView(url: previewURL, format: surface.artifact?.format) }
+        }
+    }
+
+    private var authorizationSummary: String? {
+        if surface.automaticAuthorization {
+            return String(localized: "project.run.authorization.automatic", defaultValue: "Allowed by a remembered authorization")
+        }
+        guard surface.approvalDecision == .approved else { return nil }
+        return switch surface.approvalScope {
+        case .once: String(localized: "authorization.once", defaultValue: "Only Once")
+        case .session: String(localized: "authorization.session", defaultValue: "Allow This Session")
+        case .always: String(localized: "authorization.always", defaultValue: "Always Allow")
+        case nil: String(localized: "approval.sent", defaultValue: "Approved")
         }
     }
 
@@ -2062,14 +2331,17 @@ private struct FamiliarContextTrace: View {
 private struct FamiliarTypedResult: View {
     let surface: FamiliarSurfaceDescriptor
     var readURLs: Set<String> = []
+    var showsHeader: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceS) {
-            HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
-                Image(systemName: symbol).frame(width: FamiliarAISurfaceMetric.icon)
-                Text(surface.title).font(.caption.weight(.semibold))
+            if showsHeader {
+                HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
+                    Image(systemName: symbol).frame(width: FamiliarAISurfaceMetric.icon)
+                    Text(surface.title).font(.caption.weight(.semibold))
+                }
+                .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
             }
-            .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
             if let content = surface.resultEnvelope?.presentation.content { contentView(content) }
             else if let detail = surface.detail { Text(detail).font(.caption).foregroundStyle(FamiliarAISurfaceColor.inkSecondary) }
         }
@@ -2252,7 +2524,7 @@ private struct FamiliarAssistantFooter: View {
                                 .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
                         }
                         .padding(.horizontal, FamiliarAISurfaceMetric.spaceXS)
-                        .frame(minHeight: 28)
+                        .frame(minHeight: FamiliarControlSize.minimumHitTarget)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -2267,7 +2539,7 @@ private struct FamiliarAssistantFooter: View {
 
             if sourcesOpen {
                 FamiliarInlineSources(sources: message.sources)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity)
             }
 
             FamiliarFollowUps(onInsertPrompt: onInsertPrompt)

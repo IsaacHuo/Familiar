@@ -48,6 +48,7 @@ nonisolated enum FamiliarSurfacePhase: String, Sendable, Equatable {
 nonisolated struct FamiliarSurfaceDescriptor: Identifiable, Sendable, Equatable {
     let id: String
     let runID: String
+    var sequence: Int
     var assistantTurnID: String?
     var kind: FamiliarSurfaceKind
     var placement: FamiliarSurfacePlacement
@@ -64,6 +65,9 @@ nonisolated struct FamiliarSurfaceDescriptor: Identifiable, Sendable, Equatable 
     var approvalConsequence: String?
     var approvalUndoPolicy: FamiliarApprovalUndoPolicy?
     var approvalAllowedAuthorizationDurations: [FamiliarAuthorizationDuration]
+    var approvalDecision: FamiliarApprovalDecision?
+    var approvalScope: FamiliarApprovalScope?
+    var automaticAuthorization: Bool
     var clarificationRequestID: UUID?
     var clarificationOptions: [FamiliarClarificationOption]
     var clarificationAllowsCustom: Bool
@@ -77,6 +81,7 @@ nonisolated struct FamiliarSurfaceDescriptor: Identifiable, Sendable, Equatable 
     init(
         id: String,
         runID: String,
+        sequence: Int = 0,
         assistantTurnID: String? = nil,
         kind: FamiliarSurfaceKind,
         placement: FamiliarSurfacePlacement,
@@ -93,6 +98,9 @@ nonisolated struct FamiliarSurfaceDescriptor: Identifiable, Sendable, Equatable 
         approvalConsequence: String? = nil,
         approvalUndoPolicy: FamiliarApprovalUndoPolicy? = nil,
         approvalAllowedAuthorizationDurations: [FamiliarAuthorizationDuration] = [.once, .session, .always],
+        approvalDecision: FamiliarApprovalDecision? = nil,
+        approvalScope: FamiliarApprovalScope? = nil,
+        automaticAuthorization: Bool = false,
         clarificationRequestID: UUID? = nil,
         clarificationOptions: [FamiliarClarificationOption] = [],
         clarificationAllowsCustom: Bool = false,
@@ -105,6 +113,7 @@ nonisolated struct FamiliarSurfaceDescriptor: Identifiable, Sendable, Equatable 
     ) {
         self.id = id
         self.runID = runID
+        self.sequence = sequence
         self.assistantTurnID = assistantTurnID
         self.kind = kind
         self.placement = placement
@@ -121,6 +130,9 @@ nonisolated struct FamiliarSurfaceDescriptor: Identifiable, Sendable, Equatable 
         self.approvalConsequence = approvalConsequence
         self.approvalUndoPolicy = approvalUndoPolicy
         self.approvalAllowedAuthorizationDurations = approvalAllowedAuthorizationDurations
+        self.approvalDecision = approvalDecision
+        self.approvalScope = approvalScope
+        self.automaticAuthorization = automaticAuthorization
         self.clarificationRequestID = clarificationRequestID
         self.clarificationOptions = clarificationOptions
         self.clarificationAllowsCustom = clarificationAllowsCustom
@@ -139,6 +151,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
     private var descriptors: [String: FamiliarSurfaceDescriptor] = [:]
     private var order: [String] = []
     private var approvalToolIDs: [UUID: String] = [:]
+    private var eventSequence = 0
 
     var orderedSurfaces: [FamiliarSurfaceDescriptor] {
         order.compactMap { descriptors[$0] }
@@ -177,11 +190,14 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
     }
 
     mutating func apply(_ event: FamiliarRuntimeEvent) {
+        eventSequence = event.sequence
         switch event.payload {
         case .runPhaseChanged(let phase):
             updateRunStatus(runID: event.runID, phase: phase, at: event.timestamp)
         case .assistantTurnStarted(let id, _):
             ensureTrace(runID: event.runID, assistantTurnID: id, context: nil, startedAt: event.timestamp)
+        case .assistantTurnCompleted:
+            break
         case .activityStarted(let activity):
             beginTool(runID: event.runID, assistantTurnID: event.assistantTurnID, toolCallID: activity.id, toolName: activity.toolName, effect: activity.effect, at: activity.startedAt)
         case .activityProgress(let progress):
@@ -229,7 +245,11 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         let resultsByActivity = Dictionary(uniqueKeysWithValues: run.toolResults.map { ($0.activityID, $0) })
         for activity in run.activities where activity.kind == .tool {
             if let approval = approvalsByActivity[activity.activityID], approval.decision == nil {
-                upsert(approvalDescriptor(approval, runID: run.id, phase: .awaitingApproval))
+                if activity.phase.isTerminal {
+                    upsert(approvalDescriptor(approval, runID: run.id, phase: surfacePhase(activity.phase), sequence: activity.sequence, isInterrupted: true))
+                } else {
+                    upsert(approvalDescriptor(approval, runID: run.id, phase: .awaitingApproval, sequence: activity.sequence))
+                }
                 continue
             }
             if let clarification = clarificationsByActivity[activity.activityID] {
@@ -241,16 +261,16 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             if activity.effect == .read {
                 if let result, let envelope = result.envelope {
                     let placement: FamiliarSurfacePlacement = isTopLevelPresentation(envelope.presentation.name) ? .topLevel : .trace
-                    upsert(resultDescriptor(activity: activity, envelope: envelope, placement: placement, artifact: nil))
+                    upsert(applyingApproval(approvalsByActivity[activity.activityID], to: resultDescriptor(activity: activity, envelope: envelope, placement: placement, artifact: nil)))
                 } else {
-                    upsert(toolDescriptor(activity: activity))
+                    upsert(applyingApproval(approvalsByActivity[activity.activityID], to: toolDescriptor(activity: activity)))
                 }
             } else if phase == .failed || phase == .cancelled {
-                upsert(failureDescriptor(activity: activity, phase: phase))
+                upsert(applyingApproval(approvalsByActivity[activity.activityID], to: failureDescriptor(activity: activity, phase: phase)))
             } else if let result, let envelope = result.envelope {
-                upsert(resultDescriptor(activity: activity, envelope: envelope, placement: .topLevel, artifact: nil))
+                upsert(applyingApproval(approvalsByActivity[activity.activityID], to: resultDescriptor(activity: activity, envelope: envelope, placement: .topLevel, artifact: nil)))
             } else {
-                upsert(toolDescriptor(activity: activity))
+                upsert(applyingApproval(approvalsByActivity[activity.activityID], to: toolDescriptor(activity: activity)))
             }
         }
         for activity in run.activities where activity.kind == .runtimeNotice && activity.activityID.contains(":retrying:") {
@@ -290,6 +310,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         upsert(.init(
             id: toolID(runID, toolCallID),
             runID: runID,
+            sequence: eventSequence,
             assistantTurnID: assistantTurnID,
             kind: .toolSummary,
             placement: effect == .read ? .trace : .topLevel,
@@ -317,6 +338,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         upsert(.init(
             id: id,
             runID: request.runID,
+            sequence: eventSequence,
             assistantTurnID: assistantTurnID,
             kind: .approval,
             placement: .topLevel,
@@ -341,7 +363,13 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         descriptor.kind = .toolSummary
         descriptor.phase = decision.isConfirmed ? .running : .cancelled
         descriptor.approvalRequestID = nil
-        descriptor.approvalFields = []
+        descriptor.approvalDecision = decision.isConfirmed ? .approved : .cancelled
+        descriptor.approvalScope = switch decision.authorizationDuration {
+        case .once: .once
+        case .session: .session
+        case .always: .always
+        case nil: nil
+        }
         descriptor.detail = decision.isConfirmed ? nil : String(localized: "tool.cancelled_by_user")
         upsert(descriptor)
     }
@@ -350,6 +378,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         upsert(.init(
             id: clarificationID(request.runID, request.id),
             runID: request.runID,
+            sequence: eventSequence,
             assistantTurnID: assistantTurnID,
             kind: .clarification,
             placement: .topLevel,
@@ -380,15 +409,15 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         let phase = surfacePhase(event.status)
         guard event.effect != .read else { return }
         if phase == .failed || phase == .cancelled {
-            upsert(failureDescriptor(activity: transientActivity(event, phase: phase), phase: phase))
+            upsert(applyingApprovalRequest(event.automaticApprovalRequest, to: failureDescriptor(activity: transientActivity(event, phase: phase), phase: phase)))
         } else {
-            upsert(toolDescriptor(activity: transientActivity(event, phase: phase)))
+            upsert(applyingApprovalRequest(event.automaticApprovalRequest, to: toolDescriptor(activity: transientActivity(event, phase: phase))))
         }
     }
 
     private mutating func showResult(_ event: FamiliarToolResultProduced) {
         ensureTrace(runID: event.runID, assistantTurnID: event.assistantTurnID, context: nil, startedAt: event.producedAt)
-        let activity = FamiliarActivitySnapshot(activityID: toolID(event.runID, event.toolCallID), parentID: traceID(event.runID), assistantTurnID: event.assistantTurnID, kind: .tool, effect: event.effect, phase: .succeeded, toolName: event.toolName, toolCallID: event.toolCallID, summary: event.toolName, detail: nil, progress: 1, resultRecordID: nil, approvalRecordID: nil, sequence: 0, startedAt: descriptors[toolID(event.runID, event.toolCallID)]?.startedAt ?? event.producedAt, endedAt: event.producedAt)
+        let activity = FamiliarActivitySnapshot(activityID: toolID(event.runID, event.toolCallID), parentID: traceID(event.runID), assistantTurnID: event.assistantTurnID, kind: .tool, effect: event.effect, phase: .succeeded, toolName: event.toolName, toolCallID: event.toolCallID, summary: event.toolName, detail: nil, progress: 1, resultRecordID: nil, approvalRecordID: nil, sequence: descriptors[toolID(event.runID, event.toolCallID)]?.sequence ?? eventSequence, startedAt: descriptors[toolID(event.runID, event.toolCallID)]?.startedAt ?? event.producedAt, endedAt: event.producedAt)
         let placement: FamiliarSurfacePlacement = event.effect == .read && !isTopLevelPresentation(event.envelope.presentation.name) ? .trace : .topLevel
         let result = resultDescriptor(activity: activity, envelope: event.envelope, placement: placement, artifact: event.artifact)
         if result.id != activity.activityID {
@@ -471,28 +500,50 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
     }
 
     private mutating func upsert(_ descriptor: FamiliarSurfaceDescriptor) {
-        if descriptors[descriptor.id] == nil { order.append(descriptor.id) }
+        var descriptor = descriptor
+        if let existing = descriptors[descriptor.id] {
+            descriptor.sequence = existing.sequence
+            if descriptor.approvalFields.isEmpty, !existing.approvalFields.isEmpty {
+                descriptor.approvalFields = existing.approvalFields
+                descriptor.approvalTarget = existing.approvalTarget
+                descriptor.approvalRisk = existing.approvalRisk
+                descriptor.approvalConsequence = existing.approvalConsequence
+                descriptor.approvalUndoPolicy = existing.approvalUndoPolicy
+                descriptor.approvalAllowedAuthorizationDurations = existing.approvalAllowedAuthorizationDurations
+                descriptor.approvalDecision = existing.approvalDecision
+                descriptor.approvalScope = existing.approvalScope
+                descriptor.automaticAuthorization = existing.automaticAuthorization
+            }
+        } else {
+            order.append(descriptor.id)
+        }
         descriptors[descriptor.id] = descriptor
     }
 
-    private func approvalDescriptor(_ approval: FamiliarApprovalSnapshot, runID: String, phase: FamiliarSurfacePhase) -> FamiliarSurfaceDescriptor {
+    private func approvalDescriptor(_ approval: FamiliarApprovalSnapshot, runID: String, phase: FamiliarSurfacePhase, sequence: Int, isInterrupted: Bool = false) -> FamiliarSurfaceDescriptor {
         .init(
             id: approval.activityID,
             runID: runID,
+            sequence: sequence,
             assistantTurnID: approval.assistantTurnID,
             kind: .approval,
             placement: .topLevel,
             phase: phase,
             title: FamiliarToolPresentationName.title(for: approval.toolName),
+            detail: isInterrupted ? String(localized: "approval.interrupted", defaultValue: "This approval was interrupted and can no longer be answered.") : nil,
             toolCallID: approval.toolCallID,
             toolName: approval.toolName,
             effect: approval.effect,
-            approvalRequestID: approval.id,
+            approvalRequestID: isInterrupted ? nil : approval.id,
             approvalFields: approval.fields,
             approvalTarget: approval.target,
             approvalRisk: approval.risk,
             approvalConsequence: approval.consequence,
             approvalUndoPolicy: approval.undoPolicy,
+            approvalAllowedAuthorizationDurations: approval.allowedAuthorizationDurations,
+            approvalDecision: approval.decision,
+            approvalScope: approval.scope,
+            automaticAuthorization: approval.automaticAuthorization,
             startedAt: approval.requestedAt,
             finishedAt: approval.resolvedAt
         )
@@ -530,6 +581,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         .init(
             id: activity.activityID,
             runID: runtimeID(from: activity.activityID),
+            sequence: activity.sequence,
             assistantTurnID: activity.assistantTurnID,
             kind: .toolSummary,
             placement: activity.effect == .read ? .trace : .topLevel,
@@ -548,6 +600,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         .init(
             id: activity.activityID,
             runID: runtimeID(from: activity.activityID),
+            sequence: activity.sequence,
             assistantTurnID: activity.assistantTurnID,
             kind: .failure,
             placement: .topLevel,
@@ -567,6 +620,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         return .init(
             id: resultSurfaceID(activity: activity, envelope: envelope),
             runID: runtimeID(from: activity.activityID),
+            sequence: activity.sequence,
             assistantTurnID: activity.assistantTurnID,
             kind: isFileExport ? .share : surfaceKind(envelope.presentation.name, hasArtifact: artifact != nil),
             placement: isFileExport ? .topLevel : placement,
@@ -595,6 +649,8 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             toolCallID: event.toolCallID,
             summary: event.toolName,
             detail: event.detail,
+            failureCode: event.failureCode,
+            failureRetryable: event.failureRetryable,
             progress: 1,
             resultRecordID: nil,
             approvalRecordID: nil,
@@ -673,6 +729,41 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
     private func runtimeID(from activityID: String) -> String {
         let parts = activityID.split(separator: ":", maxSplits: 2)
         return parts.count > 1 ? String(parts[1]) : activityID
+    }
+
+    private func applyingApproval(_ approval: FamiliarApprovalSnapshot?, to descriptor: FamiliarSurfaceDescriptor) -> FamiliarSurfaceDescriptor {
+        guard let approval else { return descriptor }
+        var descriptor = descriptor
+        descriptor.approvalFields = approval.fields
+        descriptor.approvalTarget = approval.target
+        descriptor.approvalRisk = approval.risk
+        descriptor.approvalConsequence = approval.consequence
+        descriptor.approvalUndoPolicy = approval.undoPolicy
+        descriptor.approvalAllowedAuthorizationDurations = approval.allowedAuthorizationDurations
+        descriptor.approvalDecision = approval.decision
+        descriptor.approvalScope = approval.scope
+        descriptor.automaticAuthorization = approval.automaticAuthorization
+        return descriptor
+    }
+
+    private func applyingApprovalRequest(_ request: FamiliarToolConfirmationRequest?, to descriptor: FamiliarSurfaceDescriptor) -> FamiliarSurfaceDescriptor {
+        guard let request else { return descriptor }
+        var descriptor = descriptor
+        descriptor.approvalFields = request.fields
+        descriptor.approvalTarget = request.target
+        descriptor.approvalRisk = request.risk
+        descriptor.approvalConsequence = request.consequence
+        descriptor.approvalUndoPolicy = request.undoPolicy
+        descriptor.approvalAllowedAuthorizationDurations = request.allowedAuthorizationDurations
+        descriptor.approvalDecision = .approved
+        descriptor.approvalScope = switch request.automaticAuthorizationScope {
+        case .once: .once
+        case .session: .session
+        case .always: .always
+        case nil: nil
+        }
+        descriptor.automaticAuthorization = request.automaticAuthorization
+        return descriptor
     }
 
 }

@@ -52,7 +52,7 @@ struct FamiliarAppearanceSettingsView: View {
 }
 
 nonisolated enum FamiliarTheme {
-    static let accent = Color(red: 0.10, green: 0.53, blue: 0.98)
+    static let accent = Color(uiColor: .systemBlue)
     static let displayCornerRadius: CGFloat = 62
     static let brandViolet = Color(red: 0.55, green: 0.44, blue: 0.98)
     static let brandGlow = LinearGradient(
@@ -86,9 +86,9 @@ nonisolated enum FamiliarAISurfaceColor {
     static let line = dynamic(light: 0xECEDEF, dark: 0x2E3033)
     static let lineStrong = dynamic(light: 0xE0E2E5, dark: 0x3A3C40)
     static let field = dynamic(light: 0xF2F2F3, dark: 0x2B2C2F)
-    static let accent = dynamic(light: 0x0285FF, dark: 0x3D9AFF)
-    static let accentInk = dynamic(light: 0x0170DD, dark: 0x7EC0FF)
-    static let accentTint = dynamic(light: 0xE9F3FF, dark: 0x253E59)
+    static let accent = Color(uiColor: .systemBlue)
+    static let accentInk = Color(uiColor: .systemBlue)
+    static let accentTint = Color(uiColor: .systemBlue).opacity(0.12)
     static let success = dynamic(light: 0x189A4D, dark: 0x3DBB72)
     static let successTint = dynamic(light: 0xE8F5ED, dark: 0x203D2C)
     static let warning = dynamic(light: 0xEF720C, dark: 0xF68F3C)

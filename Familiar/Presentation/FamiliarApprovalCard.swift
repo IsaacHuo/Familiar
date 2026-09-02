@@ -6,396 +6,212 @@ struct FamiliarApprovalCard: View {
 
     @AccessibilityFocusState private var isAccessibilityFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var step = 0
-    @State private var previousStep = 0
-    @State private var selectedDecision: FamiliarToolConfirmationDecision?
-    @State private var isOpen = true
-    @State private var didSubmit = false
+    @State private var selectedDecision: FamiliarToolConfirmationDecision
     @State private var submittedDecision: FamiliarToolConfirmationDecision?
 
-    private let stepCount = 2
+    init(
+        surface: FamiliarSurfaceDescriptor,
+        onResolve: @escaping (UUID, FamiliarToolConfirmationDecision) -> Void
+    ) {
+        self.surface = surface
+        self.onResolve = onResolve
+        _selectedDecision = State(initialValue: Self.defaultDecision(for: surface))
+    }
 
     var body: some View {
         Group {
-            if didSubmit {
-                submittedState
-            } else if isOpen {
-                approvalCard
+            if let submittedDecision {
+                submittedState(submittedDecision)
+            } else if surface.approvalRequestID == nil {
+                interruptedState
             } else {
-                reopenButton
+                approvalCard
             }
         }
-        .frame(maxWidth: 320, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityFocused($isAccessibilityFocused)
         .onAppear { isAccessibilityFocused = true }
     }
 
-    private var reopenButton: some View {
-        Button {
-            withAnimation(reduceMotion ? nil : FamiliarMotion.state) {
-                isOpen = true
-            }
-        } label: {
-            Text(String(localized: "approval.open", defaultValue: "Open approval"))
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(FamiliarAISurfaceColor.ink)
-                .padding(.horizontal, FamiliarAISurfaceMetric.spaceM)
-                .frame(minHeight: FamiliarControlSize.minimumHitTarget)
-                .background(
-                    FamiliarAISurfaceColor.surface,
-                    in: RoundedRectangle(cornerRadius: FamiliarRadius.control, style: .continuous)
-                )
-                .shadow(color: Color.black.opacity(0.06), radius: 4, y: 2)
+    private var interruptedState: some View {
+        HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
+            Image(systemName: "questionmark.circle.fill")
+                .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
+            Text(surface.detail ?? String(localized: "approval.interrupted", defaultValue: "This approval was interrupted and can no longer be answered."))
+                .font(.subheadline)
+                .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("approval.open")
+        .frame(minHeight: FamiliarControlSize.minimumHitTarget)
+        .padding(.horizontal, FamiliarAISurfaceMetric.spaceM)
+        .background(FamiliarAISurfaceColor.inset, in: Capsule())
+        .accessibilityIdentifier("approval.interrupted")
     }
 
     private var approvalCard: some View {
-        VStack(spacing: 0) {
-            ZStack(alignment: .topTrailing) {
-                stepContent
-                    .padding(FamiliarAISurfaceMetric.spaceL)
-                    .padding(.trailing, FamiliarAISurfaceMetric.spaceL)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Button {
-                    withAnimation(reduceMotion ? nil : FamiliarMotion.micro) {
-                        isOpen = false
-                    }
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
-                        .frame(
-                            width: FamiliarControlSize.minimumHitTarget,
-                            height: FamiliarControlSize.minimumHitTarget
-                        )
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(localized: "common.close"))
-                .accessibilityIdentifier("approval.dismiss")
-            }
-            .animation(reduceMotion ? nil : FamiliarMotion.spatial, value: step)
-
-            footer
+        VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceL) {
+            heading
+            approvalFields
+            policySummary
+            authorizationScope
+            actions
         }
-        .background(FamiliarAISurfaceColor.surface)
-        .clipShape(RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous))
+        .padding(FamiliarAISurfaceMetric.spaceL)
+        .background(
+            FamiliarAISurfaceColor.surface,
+            in: RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous)
+        )
         .overlay {
             RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous)
                 .stroke(FamiliarAISurfaceColor.line, lineWidth: FamiliarAISurfaceMetric.hairline)
         }
-        .shadow(color: Color.black.opacity(0.06), radius: 8, y: 3)
-        .transition(.opacity.combined(with: .move(edge: .bottom)))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("approval.card")
     }
 
-    @ViewBuilder
-    private var stepContent: some View {
-        if step == 0 {
-            reviewStep
-                .id("approval-review")
-                .transition(stepTransition)
-        } else {
-            scopeStep
-                .id("approval-scope")
-                .transition(stepTransition)
+    private var heading: some View {
+        HStack(alignment: .top, spacing: FamiliarAISurfaceMetric.spaceM) {
+            Image(systemName: riskSymbol)
+                .font(.system(size: FamiliarIconSize.standard, weight: .semibold))
+                .foregroundStyle(riskColor)
+                .frame(width: FamiliarControlSize.compactVisual, height: FamiliarControlSize.compactVisual)
+                .background(riskColor.opacity(0.12), in: Circle())
+            VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
+                Text(surface.title)
+                    .font(.headline)
+                    .foregroundStyle(FamiliarAISurfaceColor.ink)
+                if let target = surface.approvalTarget, !target.isEmpty {
+                    Text(target)
+                        .font(.subheadline)
+                        .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+                }
+            }
         }
     }
 
-    private var reviewStep: some View {
-        VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceM) {
-            heading(title: surface.title, detail: surface.approvalTarget)
-
-            VStack(spacing: FamiliarAISurfaceMetric.spaceXS) {
+    @ViewBuilder
+    private var approvalFields: some View {
+        if !surface.approvalFields.isEmpty {
+            VStack(spacing: 0) {
                 ForEach(Array(surface.approvalFields.enumerated()), id: \.element.id) { index, field in
                     if index > 0 {
-                        Rectangle()
-                            .fill(FamiliarAISurfaceColor.line)
-                            .frame(height: FamiliarAISurfaceMetric.hairline)
+                        Divider()
                     }
-                    ViewThatFits(in: .horizontal) {
-                        HStack(alignment: .firstTextBaseline, spacing: FamiliarAISurfaceMetric.spaceM) {
-                            approvalFieldLabel(field.label)
-                                .frame(width: 82, alignment: .leading)
-                            approvalFieldValue(field.formattedValue)
-                        }
-                        VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
-                            approvalFieldLabel(field.label)
-                            approvalFieldValue(field.formattedValue)
-                        }
+                    LabeledContent {
+                        Text(field.formattedValue)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(FamiliarAISurfaceColor.ink)
+                            .multilineTextAlignment(.trailing)
+                            .textSelection(.enabled)
+                    } label: {
+                        Text(field.label)
+                            .font(.subheadline)
+                            .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
                     }
-                    .padding(.horizontal, FamiliarAISurfaceMetric.spaceS)
-                    .frame(minHeight: 36)
+                    .padding(.horizontal, FamiliarAISurfaceMetric.spaceM)
+                    .frame(minHeight: FamiliarControlSize.minimumHitTarget)
                 }
             }
-            .padding(FamiliarAISurfaceMetric.spaceXS)
             .background(
                 FamiliarAISurfaceColor.inset,
-                in: RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.card, style: .continuous)
+                in: RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.control, style: .continuous)
             )
+        }
+    }
 
+    private var policySummary: some View {
+        VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceS) {
+            Label(riskTitle, systemImage: riskSymbol)
             if let consequence = surface.approvalConsequence, !consequence.isEmpty {
-                Text(consequence)
-                    .font(.caption)
-                    .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Label(consequence, systemImage: "exclamationmark.circle")
+            }
+            if let undoPolicy = surface.approvalUndoPolicy {
+                Label(undoTitle(undoPolicy), systemImage: undoPolicy == .unavailable ? "arrow.uturn.backward.slash" : "arrow.uturn.backward")
             }
         }
+        .font(.caption)
+        .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
-    private var scopeStep: some View {
-        VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceM) {
-            heading(
-                title: String(
-                    localized: "approval.scope.question",
-                    defaultValue: "How long should Familiar allow this action?"
-                ),
-                detail: surface.title
-            )
-
-            VStack(spacing: FamiliarAISurfaceMetric.spaceXS) {
-                ForEach(authorizationOptions) { option in
-                    Button {
-                        withAnimation(reduceMotion ? nil : FamiliarMotion.micro) {
-                            selectedDecision = option.decision
-                        }
-                    } label: {
-                        HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
-                            selectionMark(isSelected: selectedDecision == option.decision)
-                            Text(option.title)
-                                .font(.subheadline)
-                                .foregroundStyle(
-                                    selectedDecision == option.decision
-                                        ? FamiliarAISurfaceColor.ink
-                                        : FamiliarAISurfaceColor.inkSecondary
-                                )
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.horizontal, FamiliarAISurfaceMetric.spaceS)
-                        .frame(minHeight: FamiliarControlSize.minimumHitTarget)
-                        .contentShape(
-                            RoundedRectangle(
-                                cornerRadius: FamiliarAISurfaceRadius.control,
-                                style: .continuous
+    @ViewBuilder
+    private var authorizationScope: some View {
+        if authorizationOptions.count > 1 {
+            VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceS) {
+                Text(String(localized: "approval.scope.question", defaultValue: "How long should Familiar allow this action?"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+                VStack(spacing: FamiliarAISurfaceMetric.spaceXS) {
+                    ForEach(authorizationOptions) { option in
+                        Button {
+                            withAnimation(reduceMotion ? nil : FamiliarMotion.micro) {
+                                selectedDecision = option.decision
+                            }
+                        } label: {
+                            HStack(spacing: FamiliarAISurfaceMetric.spaceM) {
+                                Image(systemName: selectedDecision == option.decision ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(selectedDecision == option.decision ? FamiliarAISurfaceColor.accent : FamiliarAISurfaceColor.inkTertiary)
+                                Text(option.title)
+                                    .font(.subheadline)
+                                    .foregroundStyle(FamiliarAISurfaceColor.ink)
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, FamiliarAISurfaceMetric.spaceM)
+                            .frame(minHeight: FamiliarControlSize.minimumHitTarget)
+                            .contentShape(Rectangle())
+                            .background(
+                                selectedDecision == option.decision ? FamiliarAISurfaceColor.accentTint : Color.clear,
+                                in: RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.control, style: .continuous)
                             )
-                        )
-                        .background(
-                            selectedDecision == option.decision
-                                ? FamiliarAISurfaceColor.hover
-                                : Color.clear,
-                            in: RoundedRectangle(
-                                cornerRadius: FamiliarAISurfaceRadius.control,
-                                style: .continuous
-                            )
-                        )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(selectedDecision == option.decision ? .isSelected : [])
+                        .accessibilityIdentifier("approval.scope.\(option.id)")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(
-                        selectedDecision == option.decision ? .isSelected : []
-                    )
-                    .accessibilityIdentifier("approval.scope.\(option.id)")
                 }
             }
         }
     }
 
-    private func heading(title: String, detail: String?) -> some View {
-        VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(FamiliarAISurfaceColor.ink)
-                .fixedSize(horizontal: false, vertical: true)
-            if let detail, !detail.isEmpty {
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+    private var actions: some View {
+        HStack(spacing: FamiliarAISurfaceMetric.spaceM) {
+            Button(String(localized: "common.cancel")) {
+                resolve(.cancelled)
             }
-        }
-        .padding(.trailing, FamiliarControlSize.compactVisual)
-    }
-
-    private func selectionMark(isSelected: Bool) -> some View {
-        ZStack {
-            Circle()
-                .stroke(
-                    isSelected ? FamiliarAISurfaceColor.ink : FamiliarAISurfaceColor.lineStrong,
-                    lineWidth: 1.5
-                )
-                .frame(width: 18, height: 18)
-            Circle()
-                .fill(FamiliarAISurfaceColor.ink)
-                .frame(width: 8, height: 8)
-                .scaleEffect(isSelected ? 1 : 0.25)
-                .opacity(isSelected ? 1 : 0)
-        }
-    }
-
-    private var footer: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: FamiliarAISurfaceMetric.spaceM) {
-                stepNavigator
-                Spacer(minLength: 0)
-                footerActions
-            }
-            VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
-                stepNavigator
-                footerActions
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-        }
-        .padding(.horizontal, FamiliarAISurfaceMetric.spaceM)
-        .padding(.vertical, FamiliarAISurfaceMetric.spaceXS)
-        .background(FamiliarAISurfaceColor.inset)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(FamiliarAISurfaceColor.line)
-                .frame(height: FamiliarAISurfaceMetric.hairline)
-        }
-    }
-
-    private var stepNavigator: some View {
-        HStack(spacing: FamiliarAISurfaceMetric.spaceXS) {
-            stepButton(
-                symbol: "chevron.up",
-                label: String(localized: "approval.previous", defaultValue: "Previous step"),
-                disabled: step == 0
-            ) {
-                goTo(step - 1)
-            }
-            Text("\(step + 1) / \(stepCount)")
-                .font(.caption.monospacedDigit().weight(.medium))
-                .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
-                .contentTransition(.numericText(countsDown: step < previousStep))
-                .animation(reduceMotion ? nil : FamiliarMotion.state, value: step)
-            stepButton(
-                symbol: "chevron.down",
-                label: String(localized: "approval.next", defaultValue: "Next step"),
-                disabled: step == stepCount - 1
-            ) {
-                goTo(step + 1)
-            }
-        }
-    }
-
-    private var footerActions: some View {
-        HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
-            Button(String(localized: "approval.skip", defaultValue: "Skip")) {
-                if step < stepCount - 1 {
-                    goTo(step + 1)
-                } else {
-                    resolve(.cancelled)
-                }
-            }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
-            .buttonStyle(.plain)
+            .buttonStyle(.bordered)
+            .controlSize(.large)
             .frame(minHeight: FamiliarControlSize.minimumHitTarget)
 
-            Button {
-                if step < stepCount - 1 {
-                    goTo(step + 1)
-                } else if let selectedDecision {
-                    resolve(selectedDecision)
-                }
-            } label: {
-                HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
-                    Text(
-                        step == stepCount - 1
-                            ? String(localized: "approval.approve", defaultValue: "Approve")
-                            : String(localized: "common.continue")
-                    )
-                    Image(systemName: "return")
-                        .font(.system(size: 11, weight: .semibold))
-                }
+            Button(String(localized: "approval.approve", defaultValue: "Approve")) {
+                resolve(selectedDecision)
             }
-            .buttonStyle(FamiliarApprovalPrimaryButtonStyle())
-            .disabled(step == stepCount - 1 && selectedDecision == nil)
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .tint(FamiliarAISurfaceColor.accent)
+            .frame(maxWidth: .infinity, minHeight: FamiliarControlSize.minimumHitTarget)
+            .accessibilityIdentifier("approval.confirm")
         }
     }
 
-    private func stepButton(
-        symbol: String,
-        label: String,
-        disabled: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 12, weight: .semibold))
-                .frame(
-                    width: FamiliarControlSize.minimumHitTarget,
-                    height: FamiliarControlSize.minimumHitTarget
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
-        .disabled(disabled)
-        .opacity(disabled ? 0.3 : 1)
-        .accessibilityLabel(label)
-    }
-
-    private var submittedState: some View {
+    private func submittedState(_ decision: FamiliarToolConfirmationDecision) -> some View {
         HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
-            Image(systemName: submittedDecision == .cancelled ? "xmark" : "checkmark")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(Color.white)
-                .frame(width: 20, height: 20)
-                .background(submittedDecision == .cancelled ? FamiliarAISurfaceColor.inkTertiary : FamiliarAISurfaceColor.success, in: Circle())
-            Text(submittedDecision == .cancelled
-                 ? String(localized: "approval.skipped", defaultValue: "Approval skipped")
-                 : String(localized: "approval.sent", defaultValue: "Approval sent"))
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(submittedDecision == .cancelled ? FamiliarAISurfaceColor.inkSecondary : FamiliarAISurfaceColor.success)
+            Image(systemName: decision == .cancelled ? "xmark.circle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(decision == .cancelled ? FamiliarAISurfaceColor.inkTertiary : FamiliarAISurfaceColor.success)
+            Text(decision == .cancelled
+                 ? String(localized: "approval.skipped", defaultValue: "Approval cancelled")
+                 : String(localized: "approval.sent", defaultValue: "Approved"))
+                .font(.subheadline.weight(.semibold))
         }
-        .padding(.leading, FamiliarAISurfaceMetric.spaceXS)
-        .padding(.trailing, FamiliarAISurfaceMetric.spaceM)
-        .frame(minHeight: 32)
-        .background(submittedDecision == .cancelled ? FamiliarAISurfaceColor.inset : FamiliarAISurfaceColor.successTint, in: Capsule())
-        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+        .frame(minHeight: FamiliarControlSize.minimumHitTarget)
+        .transition(.opacity)
         .accessibilityIdentifier("approval.sent")
-    }
-
-    private var stepTransition: AnyTransition {
-        guard !reduceMotion else { return .identity }
-        let movingForward = step >= previousStep
-        return .asymmetric(
-            insertion: .opacity.combined(with: .move(edge: movingForward ? .bottom : .top)),
-            removal: .opacity.combined(with: .move(edge: movingForward ? .top : .bottom))
-        )
-    }
-
-    private func goTo(_ next: Int) {
-        previousStep = step
-        withAnimation(reduceMotion ? nil : FamiliarMotion.spatial) {
-            step = min(max(next, 0), stepCount - 1)
-        }
     }
 
     private var authorizationOptions: [FamiliarApprovalOption] {
         let all: [FamiliarApprovalOption] = [
-            .init(
-                id: "once",
-                title: String(localized: "authorization.once", defaultValue: "Only Once"),
-                decision: .confirmedOnce
-            ),
-            .init(
-                id: "session",
-                title: String(
-                    localized: "authorization.session",
-                    defaultValue: "Allow This Session"
-                ),
-                decision: .confirmed
-            ),
-            .init(
-                id: "always",
-                title: String(localized: "authorization.always", defaultValue: "Always Allow"),
-                decision: .confirmedAlways
-            ),
+            .init(id: "once", title: String(localized: "authorization.once", defaultValue: "Only Once"), decision: .confirmedOnce),
+            .init(id: "session", title: String(localized: "authorization.session", defaultValue: "Allow This Session"), decision: .confirmed),
+            .init(id: "always", title: String(localized: "authorization.always", defaultValue: "Always Allow"), decision: .confirmedAlways)
         ]
         return all.filter { option in
             guard let duration = option.decision.authorizationDuration else { return false }
@@ -403,27 +219,54 @@ struct FamiliarApprovalCard: View {
         }
     }
 
-    private func approvalFieldLabel(_ label: String) -> some View {
-        Text(label)
-            .font(.caption)
-            .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+    private var riskSymbol: String {
+        switch surface.approvalRisk {
+        case .high: "exclamationmark.triangle.fill"
+        case .sensitive: "hand.raised.fill"
+        case .low, nil: "checkmark.shield.fill"
+        }
     }
 
-    private func approvalFieldValue(_ value: String) -> some View {
-        Text(value)
-            .font(.caption.weight(.medium))
-            .foregroundStyle(FamiliarAISurfaceColor.ink)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .textSelection(.enabled)
+    private var riskColor: Color {
+        switch surface.approvalRisk {
+        case .high: FamiliarAISurfaceColor.failure
+        case .sensitive: FamiliarAISurfaceColor.warning
+        case .low, nil: FamiliarAISurfaceColor.accent
+        }
+    }
+
+    private var riskTitle: String {
+        switch surface.approvalRisk {
+        case .high: String(localized: "approval.risk.high", defaultValue: "High-risk action")
+        case .sensitive: String(localized: "approval.risk.sensitive", defaultValue: "Uses sensitive data")
+        case .low, nil: String(localized: "approval.risk.low", defaultValue: "Low-risk action")
+        }
+    }
+
+    private func undoTitle(_ policy: FamiliarApprovalUndoPolicy) -> String {
+        switch policy {
+        case .durable: String(localized: "approval.undo.durable", defaultValue: "Can be undone after the app restarts")
+        case .currentSession: String(localized: "approval.undo.session", defaultValue: "Can be undone during this session")
+        case .unavailable: String(localized: "approval.undo.unavailable", defaultValue: "This action cannot be undone")
+        }
     }
 
     private func resolve(_ decision: FamiliarToolConfirmationDecision) {
         guard let id = surface.approvalRequestID else { return }
-        submittedDecision = decision
-        withAnimation(reduceMotion ? nil : FamiliarMotion.reveal) {
-            didSubmit = true
+        withAnimation(reduceMotion ? nil : FamiliarMotion.state) {
+            submittedDecision = decision
         }
         onResolve(id, decision)
+    }
+
+    private static func defaultDecision(for surface: FamiliarSurfaceDescriptor) -> FamiliarToolConfirmationDecision {
+        if surface.approvalAllowedAuthorizationDurations.contains(.once) {
+            return .confirmedOnce
+        }
+        if surface.approvalAllowedAuthorizationDurations.contains(.session) {
+            return .confirmed
+        }
+        return .confirmedAlways
     }
 }
 
@@ -431,22 +274,4 @@ private struct FamiliarApprovalOption: Identifiable {
     let id: String
     let title: String
     let decision: FamiliarToolConfirmationDecision
-}
-
-private struct FamiliarApprovalPrimaryButtonStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(FamiliarAISurfaceColor.surface)
-            .padding(.leading, FamiliarAISurfaceMetric.spaceM)
-            .padding(.trailing, FamiliarAISurfaceMetric.spaceS)
-            .frame(minHeight: FamiliarControlSize.minimumHitTarget)
-            .background(FamiliarAISurfaceColor.ink, in: Capsule())
-            .opacity(isEnabled ? (configuration.isPressed ? 0.82 : 1) : 0.42)
-            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
-            .animation(FamiliarMotion.micro, value: configuration.isPressed)
-    }
 }

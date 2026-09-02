@@ -17,7 +17,13 @@ final class FamiliarChatController {
     var draft = ""
     var draftImages: [FamiliarDraftImage] = []
     var draftAttachments: [FamiliarAttachmentDraft] = []
-    var streamingText = ""
+    var streamingResponseBlocks: [FamiliarLiveResponseBlock] = []
+    var streamingText: String {
+        streamingResponseBlocks
+            .map { $0.content.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n\n")
+    }
     var streamingReasoningSummary = ""
     private var replyFirstTokenAt: Date?
     var streamingMessageID: UUID?
@@ -780,6 +786,8 @@ final class FamiliarChatController {
                                 toolCallID: $0.toolCallID,
                                 summary: $0.summary,
                                 detail: $0.detail,
+                                failureCode: $0.failureCode,
+                                failureRetryable: $0.failureRetryable,
                                 progress: $0.progress,
                                 resultRecordID: $0.resultRecordID,
                                 approvalRecordID: $0.approvalRecordID,
@@ -805,6 +813,10 @@ final class FamiliarChatController {
                                 risk: record.risk,
                                 consequence: record.consequence,
                                 undoPolicy: record.undoPolicy,
+                                allowedAuthorizationDurations: (try? JSONDecoder().decode(
+                                    [FamiliarAuthorizationDuration].self,
+                                    from: Data(record.allowedAuthorizationDurationsJSON.utf8)
+                                )) ?? [.once],
                                 decision: record.decision,
                                 scope: record.scope,
                                 requestedAt: record.requestedAt,
@@ -960,11 +972,56 @@ final class FamiliarChatController {
                         at: event.timestamp,
                         context: context
                     )
-                case .assistantTurnStarted:
-                    break
+                case .assistantTurnStarted(let assistantTurnID, _):
+                    if !streamingResponseBlocks.contains(where: { $0.assistantTurnID == assistantTurnID }) {
+                        streamingResponseBlocks.append(.init(
+                            assistantTurnID: assistantTurnID,
+                            order: event.sequence,
+                            startedAt: event.timestamp
+                        ))
+                    }
+                case .assistantTurnCompleted(let assistantTurnID, _, let text):
+                    if let index = streamingResponseBlocks.firstIndex(where: { $0.assistantTurnID == assistantTurnID }) {
+                        if streamingResponseBlocks[index].content.isEmpty {
+                            streamingResponseBlocks[index].content = text
+                        }
+                        streamingResponseBlocks[index].isStreaming = false
+                        let block = streamingResponseBlocks[index]
+                        let content = block.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !content.isEmpty {
+                            do {
+                                _ = try runRecorder.recordResponseBlock(
+                                    id: block.id,
+                                    runtimeID: event.runID,
+                                    assistantTurnID: assistantTurnID,
+                                    messageID: nil,
+                                    kind: .markdown,
+                                    state: .completed,
+                                    content: content,
+                                    payloadJSON: #"{"format":"markdown"}"#,
+                                    order: block.order,
+                                    startedAt: block.startedAt,
+                                    endedAt: event.timestamp,
+                                    context: context
+                                )
+                            } catch {
+                                errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
+                            }
+                        }
+                    }
                 case .responseTextDelta(let delta):
                     noteFirstToken(runtimeID: event.runID, timestamp: event.timestamp, context: context)
-                    streamingText += delta
+                    guard let assistantTurnID = event.assistantTurnID else { throw FamiliarAgentError.incompleteResponse }
+                    if let index = streamingResponseBlocks.firstIndex(where: { $0.assistantTurnID == assistantTurnID }) {
+                        streamingResponseBlocks[index].content += delta
+                    } else {
+                        streamingResponseBlocks.append(.init(
+                            assistantTurnID: assistantTurnID,
+                            order: event.sequence,
+                            startedAt: event.timestamp,
+                            content: delta
+                        ))
+                    }
                 case .reasoningSummaryDelta(let delta):
                     noteFirstToken(runtimeID: event.runID, timestamp: event.timestamp, context: context)
                     if separatesNextReasoningSummary, !streamingReasoningSummary.isEmpty {
@@ -1101,7 +1158,10 @@ final class FamiliarChatController {
             let nextSequence = nextConversationSequence(in: conversation)
             guard let runtimeID = activeRuntimeID else { throw FamiliarAgentError.incompleteResponse }
             let assistantTurnID = completedAssistantTurnID ?? "\(runtimeID):turn:response"
-            let responseBlockID = UUID()
+            let completedBlocks = streamingResponseBlocks.filter {
+                !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+            let responseBlockID = completedBlocks.last?.id ?? UUID()
             let assistantMessage = FamiliarMessage(
                 id: responseID,
                 role: .assistant,
@@ -1125,22 +1185,43 @@ final class FamiliarChatController {
                     state: .completed,
                     content: reasoning,
                     payloadJSON: #"{"format":"plainText"}"#,
+                    order: completedBlocks.first?.order ?? 0,
                     endedAt: Date(),
                     context: context
                 )
             }
-            _ = try runRecorder.recordResponseBlock(
-                id: responseBlockID,
-                runtimeID: runtimeID,
-                assistantTurnID: assistantTurnID,
-                messageID: responseID,
-                kind: .markdown,
-                state: .completed,
-                content: answer,
-                payloadJSON: #"{"format":"markdown"}"#,
-                endedAt: Date(),
-                context: context
-            )
+            if completedBlocks.isEmpty {
+                _ = try runRecorder.recordResponseBlock(
+                    id: responseBlockID,
+                    runtimeID: runtimeID,
+                    assistantTurnID: assistantTurnID,
+                    messageID: responseID,
+                    kind: .markdown,
+                    state: .completed,
+                    content: answer,
+                    payloadJSON: #"{"format":"markdown"}"#,
+                    order: 0,
+                    endedAt: Date(),
+                    context: context
+                )
+            } else {
+                for block in completedBlocks {
+                    _ = try runRecorder.recordResponseBlock(
+                        id: block.id,
+                        runtimeID: runtimeID,
+                        assistantTurnID: block.assistantTurnID,
+                        messageID: responseID,
+                        kind: .markdown,
+                        state: .completed,
+                        content: block.content.trimmingCharacters(in: .whitespacesAndNewlines),
+                        payloadJSON: #"{"format":"markdown"}"#,
+                        order: block.order,
+                        startedAt: block.startedAt,
+                        endedAt: Date(),
+                        context: context
+                    )
+                }
+            }
             for (sequence, source) in (completedResponse?.sources ?? []).enumerated() {
                 context.insert(FamiliarSourceRecord(
                     sourceID: source.id,
@@ -1259,7 +1340,7 @@ final class FamiliarChatController {
     }
 
     private func resetTransientRunState() {
-        streamingText = ""
+        streamingResponseBlocks = []
         streamingReasoningSummary = ""
         replyFirstTokenAt = nil
         streamingMessageID = nil

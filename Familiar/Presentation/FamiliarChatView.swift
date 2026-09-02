@@ -185,7 +185,8 @@ struct FamiliarChatView: View {
                 FamiliarProjectsView(
                     initialProjectID: projectID,
                     registry: toolRegistry,
-                    onConversationRequest: handleProjectConversationRequest
+                    onConversationRequest: handleProjectConversationRequest,
+                    onDeleteConversations: { controller.delete($0, in: modelContext) }
                 )
             }
         }
@@ -615,7 +616,7 @@ struct FamiliarChatView: View {
                 agentRuns: controller.agentRuns,
                 surfaces: controller.surfaces.orderedSurfaces,
                 streamingMessageID: controller.streamingMessageID,
-                streamingText: controller.streamingText,
+                streamingResponseBlocks: controller.streamingResponseBlocks,
                 streamingReasoningSummary: controller.streamingReasoningSummary,
                 availableUndoKeys: controller.availableUndoKeys,
                 completedUndoKeys: controller.completedUndoKeys,

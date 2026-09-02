@@ -60,11 +60,11 @@ struct FamiliarToolChips: View {
 
                     if diffsVisible, !diffs.isEmpty {
                         diffChips
-                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                            .transition(.opacity)
                     }
                 }
                 .padding(.top, FamiliarAISurfaceMetric.spaceXS)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
         .frame(maxWidth: 320, alignment: .leading)
@@ -282,11 +282,10 @@ private struct FamiliarToolChipRow: View {
                 }
                 .padding(.leading, FamiliarAISurfaceMetric.spaceS)
                 .padding(.bottom, FamiliarAISurfaceMetric.spaceXS)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
         .opacity(isVisible ? 1 : 0)
-        .offset(y: reduceMotion || isVisible ? 0 : 5)
         .animation(
             reduceMotion ? nil : FamiliarMotion.reveal.delay(min(Double(index) * 0.08, 0.4)),
             value: isVisible
