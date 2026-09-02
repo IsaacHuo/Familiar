@@ -262,6 +262,7 @@ nonisolated struct FamiliarApprovalSnapshot: Identifiable, Equatable, Sendable {
     let risk: FamiliarToolRisk
     let consequence: String
     let undoPolicy: FamiliarApprovalUndoPolicy
+    let allowedAuthorizationDurations: [FamiliarAuthorizationDuration]
     let decision: FamiliarApprovalDecision?
     let scope: FamiliarApprovalScope?
     let requestedAt: Date
@@ -281,12 +282,54 @@ nonisolated struct FamiliarActivitySnapshot: Identifiable, Equatable, Sendable {
     let toolCallID: String?
     let summary: String
     let detail: String?
+    let failureCode: String?
+    let failureRetryable: Bool?
     let progress: Double?
     let resultRecordID: UUID?
     let approvalRecordID: UUID?
     let sequence: Int
     let startedAt: Date
     let endedAt: Date?
+
+    init(
+        activityID: String,
+        parentID: String?,
+        assistantTurnID: String,
+        kind: FamiliarActivityKind,
+        effect: FamiliarToolEffect?,
+        phase: FamiliarActivityPhase,
+        toolName: String?,
+        toolCallID: String?,
+        summary: String,
+        detail: String?,
+        failureCode: String? = nil,
+        failureRetryable: Bool? = nil,
+        progress: Double?,
+        resultRecordID: UUID?,
+        approvalRecordID: UUID?,
+        sequence: Int,
+        startedAt: Date,
+        endedAt: Date?
+    ) {
+        self.activityID = activityID
+        self.parentID = parentID
+        self.assistantTurnID = assistantTurnID
+        self.kind = kind
+        self.effect = effect
+        self.phase = phase
+        self.toolName = toolName
+        self.toolCallID = toolCallID
+        self.summary = summary
+        self.detail = detail
+        self.failureCode = failureCode
+        self.failureRetryable = failureRetryable
+        self.progress = progress
+        self.resultRecordID = resultRecordID
+        self.approvalRecordID = approvalRecordID
+        self.sequence = sequence
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+    }
 }
 
 nonisolated struct FamiliarResponseBlockSnapshot: Identifiable, Equatable, Sendable {
@@ -302,6 +345,31 @@ nonisolated struct FamiliarResponseBlockSnapshot: Identifiable, Equatable, Senda
     let startedAt: Date
     let endedAt: Date?
     let contentHash: String
+}
+
+nonisolated struct FamiliarLiveResponseBlock: Identifiable, Equatable, Sendable {
+    let id: UUID
+    let assistantTurnID: String
+    let order: Int
+    let startedAt: Date
+    var content: String
+    var isStreaming: Bool
+
+    init(
+        id: UUID = UUID(),
+        assistantTurnID: String,
+        order: Int,
+        startedAt: Date,
+        content: String = "",
+        isStreaming: Bool = true
+    ) {
+        self.id = id
+        self.assistantTurnID = assistantTurnID
+        self.order = order
+        self.startedAt = startedAt
+        self.content = content
+        self.isStreaming = isStreaming
+    }
 }
 
 nonisolated struct FamiliarModelSwitchSnapshot: Identifiable, Equatable, Sendable {

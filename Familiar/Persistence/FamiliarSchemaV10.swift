@@ -28,6 +28,8 @@ enum FamiliarSchemaV10: VersionedSchema {
         var toolCallID: String?
         var summary: String
         var detail: String?
+        var failureCode: String?
+        var failureRetryable: Bool?
         var progress: Double?
         var resultRecordID: UUID?
         var approvalRecordID: UUID?
@@ -48,6 +50,8 @@ enum FamiliarSchemaV10: VersionedSchema {
             toolCallID: String? = nil,
             summary: String,
             detail: String? = nil,
+            failureCode: String? = nil,
+            failureRetryable: Bool? = nil,
             progress: Double? = nil,
             resultRecordID: UUID? = nil,
             approvalRecordID: UUID? = nil,
@@ -67,6 +71,8 @@ enum FamiliarSchemaV10: VersionedSchema {
             self.toolCallID = toolCallID
             self.summary = summary
             self.detail = detail
+            self.failureCode = failureCode
+            self.failureRetryable = failureRetryable
             self.progress = progress
             self.resultRecordID = resultRecordID
             self.approvalRecordID = approvalRecordID
@@ -158,6 +164,7 @@ enum FamiliarSchemaV10: VersionedSchema {
         var riskRawValue: String
         var consequence: String
         var undoPolicyRawValue: String
+        var allowedAuthorizationDurationsJSON: String
         var decisionRawValue: String?
         var scopeRawValue: String?
         var requestedAt: Date
@@ -178,6 +185,7 @@ enum FamiliarSchemaV10: VersionedSchema {
             risk: FamiliarToolRisk,
             consequence: String,
             undoPolicy: FamiliarApprovalUndoPolicy,
+            allowedAuthorizationDurationsJSON: String = "[]",
             decision: FamiliarApprovalDecision? = nil,
             scope: FamiliarApprovalScope? = nil,
             requestedAt: Date,
@@ -197,6 +205,7 @@ enum FamiliarSchemaV10: VersionedSchema {
             riskRawValue = risk.rawValue
             self.consequence = consequence
             undoPolicyRawValue = undoPolicy.rawValue
+            self.allowedAuthorizationDurationsJSON = allowedAuthorizationDurationsJSON
             decisionRawValue = decision?.rawValue
             scopeRawValue = scope?.rawValue
             self.requestedAt = requestedAt

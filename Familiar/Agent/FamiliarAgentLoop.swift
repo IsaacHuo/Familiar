@@ -65,8 +65,10 @@ nonisolated struct FamiliarRuntimeActivityCompletion: Sendable {
     let artifactIdentifier: String?
     let undoAvailable: Bool
     let automaticApprovalRequest: FamiliarToolConfirmationRequest?
+    let failureCode: String?
+    let failureRetryable: Bool?
 
-    init(runID: String, toolCallID: String, toolName: String, effect: FamiliarToolEffect, assistantTurnID: String, detail: String, confirmation: FamiliarPersistedConfirmationResult, status: FamiliarToolRunTerminalStatus, startedAt: Date, finishedAt: Date, artifactIdentifier: String?, undoAvailable: Bool, automaticApprovalRequest: FamiliarToolConfirmationRequest?) {
+    init(runID: String, toolCallID: String, toolName: String, effect: FamiliarToolEffect, assistantTurnID: String, detail: String, confirmation: FamiliarPersistedConfirmationResult, status: FamiliarToolRunTerminalStatus, startedAt: Date, finishedAt: Date, artifactIdentifier: String?, undoAvailable: Bool, automaticApprovalRequest: FamiliarToolConfirmationRequest?, failureCode: String? = nil, failureRetryable: Bool? = nil) {
         self.runID = runID
         self.toolCallID = toolCallID
         self.toolName = toolName
@@ -80,6 +82,8 @@ nonisolated struct FamiliarRuntimeActivityCompletion: Sendable {
         self.artifactIdentifier = artifactIdentifier
         self.undoAvailable = undoAvailable
         self.automaticApprovalRequest = automaticApprovalRequest
+        self.failureCode = failureCode
+        self.failureRetryable = failureRetryable
     }
 }
 
@@ -140,6 +144,7 @@ nonisolated struct FamiliarRuntimeNotice: Equatable, Sendable {
 nonisolated enum FamiliarRuntimeEventPayload: Sendable {
     case runPhaseChanged(FamiliarRunPhase)
     case assistantTurnStarted(id: String, index: Int)
+    case assistantTurnCompleted(id: String, index: Int, text: String)
     case responseTextDelta(String)
     case reasoningSummaryDelta(String)
     case reasoningSummaryCompleted(String)
@@ -359,6 +364,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
             await emitter.emit(.assistantTurnStarted(id: assistantTurnID, index: iteration))
             let request = FamiliarModelRequest(model: contextSnapshot.modelID, messages: messages, tools: manifests)
             let round = try await streamRound(request: request, emitter: emitter, deadline: deadline)
+            await emitter.emit(.assistantTurnCompleted(id: assistantTurnID, index: iteration, text: round.text))
             visibleResponse += round.text
             if round.finishReason == .length || round.finishReason == .unknown { throw FamiliarAgentError.incompleteResponse }
             let calls = try round.pendingCalls.sorted { $0.key < $1.key }.map { try $0.value.completed() }
@@ -652,6 +658,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                 }
                 if !automaticallyAllowed, !hasGrant,
                    let duration = approvalDecision.authorizationDuration,
+                   duration != .once,
                    proposal.allowedAuthorizationDurations.contains(duration),
                    let authorizationRuntime {
                     try await authorizationRuntime.issueAuthorization(duration: duration, manifest: manifest, arguments: call.arguments, projectID: contextSnapshot.projectID, targetKey: proposal.targetKey, evidence: proposal.title)
@@ -712,7 +719,8 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         } catch FamiliarAgentError.durationExceeded {
             throw FamiliarAgentError.durationExceeded
         } catch {
-            let completion = activityCompletion(runID: runID, call: call, manifest: manifest, assistantTurnID: assistantTurnID, detail: error.localizedDescription, confirmation: .notRequired, status: .failed, startedAt: item.startedAt, automaticApprovalRequest: automaticApprovalRequest)
+            let failure = FamiliarRuntimeFailure.kind(for: error)
+            let completion = activityCompletion(runID: runID, call: call, manifest: manifest, assistantTurnID: assistantTurnID, detail: error.localizedDescription, confirmation: .notRequired, status: .failed, startedAt: item.startedAt, automaticApprovalRequest: automaticApprovalRequest, failureCode: failure.code, failureRetryable: failure.isRetryable)
             await emitter.emit(.activityCompleted(completion))
             if call.name == "environment_prepare" {
                 throw error
@@ -776,8 +784,8 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         return decision
     }
 
-    private func activityCompletion(runID: String, call: FamiliarToolCall, manifest: FamiliarToolManifest, assistantTurnID: String, detail: String, confirmation: FamiliarPersistedConfirmationResult, status: FamiliarToolRunTerminalStatus, startedAt: Date, finishedAt: Date = Date(), artifactIdentifier: String? = nil, undoAvailable: Bool = false, automaticApprovalRequest: FamiliarToolConfirmationRequest? = nil) -> FamiliarRuntimeActivityCompletion {
-        .init(runID: runID, toolCallID: call.id, toolName: call.name, effect: manifest.effect, assistantTurnID: assistantTurnID, detail: detail, confirmation: confirmation, status: status, startedAt: startedAt, finishedAt: finishedAt, artifactIdentifier: artifactIdentifier, undoAvailable: undoAvailable, automaticApprovalRequest: automaticApprovalRequest)
+    private func activityCompletion(runID: String, call: FamiliarToolCall, manifest: FamiliarToolManifest, assistantTurnID: String, detail: String, confirmation: FamiliarPersistedConfirmationResult, status: FamiliarToolRunTerminalStatus, startedAt: Date, finishedAt: Date = Date(), artifactIdentifier: String? = nil, undoAvailable: Bool = false, automaticApprovalRequest: FamiliarToolConfirmationRequest? = nil, failureCode: String? = nil, failureRetryable: Bool? = nil) -> FamiliarRuntimeActivityCompletion {
+        .init(runID: runID, toolCallID: call.id, toolName: call.name, effect: manifest.effect, assistantTurnID: assistantTurnID, detail: detail, confirmation: confirmation, status: status, startedAt: startedAt, finishedAt: finishedAt, artifactIdentifier: artifactIdentifier, undoAvailable: undoAvailable, automaticApprovalRequest: automaticApprovalRequest, failureCode: failureCode, failureRetryable: failureRetryable)
     }
 
     private static func retryDelay(attempt: Int) -> TimeInterval {

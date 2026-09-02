@@ -248,6 +248,8 @@ final class FamiliarRunPersistenceRecorder {
         activity.phase = activityPhase(for: event.status)
         activity.summary = event.toolName
         activity.detail = event.detail.isEmpty ? nil : event.detail
+        activity.failureCode = event.failureCode
+        activity.failureRetryable = event.failureRetryable
         activity.progress = 1
         activity.endedAt = event.finishedAt
         if let automatic = event.automaticApprovalRequest {
@@ -473,24 +475,34 @@ final class FamiliarRunPersistenceRecorder {
         content: String,
         payloadJSON: String = "{}",
         schemaVersion: Int = 1,
+        order: Int? = nil,
+        startedAt: Date? = nil,
         endedAt: Date,
         context: ModelContext
     ) throws -> FamiliarResponseBlockRecord? {
         guard let run = fetchRun(runtimeID: runtimeID, in: context) else { return nil }
         let descriptor = FetchDescriptor<FamiliarResponseBlockRecord>(predicate: #Predicate { $0.id == id })
-        if let existing = try context.fetch(descriptor).first { return existing }
+        if let existing = try context.fetch(descriptor).first {
+            if existing.messageID == nil, let messageID {
+                existing.messageID = messageID
+                run.responseBlockID = existing.id
+                if state == .completed { run.responseMessageID = messageID }
+                try context.save()
+            }
+            return existing
+        }
         let block = FamiliarResponseBlockRecord(
             id: id,
             runtimeID: runtimeID,
             assistantTurnID: assistantTurnID,
             messageID: messageID,
             kind: kind,
-            order: nextBlockOrder(runtimeID: runtimeID, context: context),
+            order: order ?? nextBlockOrder(runtimeID: runtimeID, context: context),
             state: state,
             content: content,
             payloadJSON: payloadJSON,
             schemaVersion: schemaVersion,
-            startedAt: run.startedAt,
+            startedAt: startedAt ?? run.startedAt,
             endedAt: endedAt,
             contentHash: Self.sha256(content)
         )
@@ -554,6 +566,7 @@ final class FamiliarRunPersistenceRecorder {
         let descriptor = FetchDescriptor<FamiliarApprovalRecord>(predicate: #Predicate { $0.id == request.id })
         if let existing = try? context.fetch(descriptor).first { return existing }
         let fieldsJSON = Self.encodedJSON(request.fields) ?? "[]"
+        let durationsJSON = Self.encodedJSON(request.allowedAuthorizationDurations) ?? "[]"
         let record = FamiliarApprovalRecord(
             id: request.id,
             runtimeID: request.runID,
@@ -568,6 +581,7 @@ final class FamiliarRunPersistenceRecorder {
             risk: request.risk,
             consequence: request.consequence,
             undoPolicy: request.undoPolicy,
+            allowedAuthorizationDurationsJSON: durationsJSON,
             requestedAt: requestedAt,
             automaticAuthorization: request.automaticAuthorization
         )
