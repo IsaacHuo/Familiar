@@ -4,7 +4,75 @@
 
 ---
 
-## 2026-09-02 · 第 1 轮：只读审计与基线
+## 2026-09-03 · 第 2 轮：P0 六个垂直切片
+
+### 已完成
+
+1. **Runtime 就绪契约**（`cdf68cd`）：`environment_status` 改为无条件注册——它只读磁盘 receipt，此前却被 iSH guest 启动门控，rootfs 缺失时永不注册。新增 `FamiliarToolRegistry.availabilityReport()` 保留 `.unavailable(reason:)` 的真实原因（`manifests()` 此前直接丢弃），并接到发送路径，渲染为 `<unavailable_capabilities>` 系统提示段落，要求模型报告缺失能力而不是静默改用其他手段猜测。
+2. **Settings 死控件**（`633deb6`）：删除 `FamiliarModelServiceSettingsView` 中 4 个 `body` 从不渲染的 section（system prompt、privacy、notifications、brand header），以及随之失效的状态、hook 与 UIKit import。更严重的是该页 `.task` 仍会在未授权时静默 `setEnabled(false)`——一个没有可见通知控件的页面会关掉通知，属真实 bug，已一并移除。Shell 限制展示改为从 `FamiliarShellLimits.iOS` 派生。
+3. **执行预算可配置且真实生效**（`5bbd462`）：`maximumIterations` / `maximumToolCalls` / `maximumDuration` 此前只是 `FamiliarAgentLoop` 初始化器默认值，`makeRuntime` 一个都不传，只有测试能覆写。新增 `FamiliarExecutionBudget` 并接到设置页 stepper（范围与 `normalized` 的钳制一致）。`FamiliarSettings` 改为显式宽松解码：合成初始化器遇到缺失键会 throw，而 `load()` 任何失败都回落默认值，会静默丢掉用户已存的模型与 system prompt。
+4. **Memory 运行时**（`0d6f0d4`、`4cb9dd7`、`3571531`、`ac877fb`）：
+   - 修三个既有缺陷：去重键改为按 scope 与其所有者派生（此前内容级全局匹配，跨 Project 同句互相覆盖）；`lastUsedAt` 在 search 实际选中的行上写入（此前从不赋值，排序永久退化为 `updatedAt`）；`confidence` 真实存储并参与排序，用户确认的记忆优先于更新的 Agent 提议。
+   - Context Compiler：选中的记忆经 seed 进入冻结 ContextSnapshot，渲染为 `<remembered>` 段落并明确「不是指令、不能创建授权、与当前消息冲突时以当前消息为准」；受硬字符预算约束，超出的整条跳过而不截断（截断会让模型读到一个不同的事实）。
+   - `memory_search` 只读本次冻结的记忆，避免工具与提示在运行中对「记得什么」产生分歧；`memory_remember` 返回审批提案，写入请求经 tool result 旁路由 controller 落盘，模型无法自行写入。审批只允许 `.once`，且声明 undo 不可用而非承诺一个 nonisolated 工具无法执行的 durable undo。敏感内容在工具边界与持久化边界双重拒绝。
+   - Settings 新增 Memory 页：开关、按 scope 与来源列出每条记忆、编辑、滑动删除、二次确认的全部删除。编辑会重写派生的去重键，否则下一次同内容写入不会被识别为同一条记忆。
+5. **`artifact_read`**（`6db2d73`）：已发布的 Artifact 此前 Agent 读不回来（无该工具，`workspace_read` 只看 Workspace 副本且拒绝非 UTF-8），发布 DOCX 后唯一证据是 publish receipt。新工具对 Markdown/文本/HTML 原样返回，DOCX/PDF/XLSX 经 AnyDoc 解析；截断会显式上报，因为以为读全了的模型会去修改一份它只看过一部分的文档。
+6. **每 Project 模型覆盖**（`c6252a7`）：`FamiliarProject` 新增可选 `modelIDOverride`（`nil` 表示跟随全局，不默认具体 ID，避免把项目静默钉在用户从未为它选择的模型上）。覆盖在 `requestSettings` 固定之前应用，这要求把项目解析提前——晚于图片、文档与上下文预算校验会用一个本次运行并不使用的模型去做校验。未知 ID 在服务边界拒绝，已存的过期 ID 回落全局。
+7. **测试基础设施修复**（`b440f97`）：见下文「测试结果」。
+
+### 修改文件
+
+生产代码：`Familiar/Agent/{FamiliarTool,FamiliarAgentLoop,FamiliarProjectContextAssembler}.swift`、`Familiar/App/FamiliarAppDependencies.swift`、`Familiar/Domain/FamiliarChatModels.swift`、`Familiar/Memory/{FamiliarMemoryService,FamiliarMemoryTools}.swift`、`Familiar/Artifacts/FamiliarArtifactTool.swift`、`Familiar/Persistence/{FamiliarSchemaV3,FamiliarProjectService}.swift`、`Familiar/Presentation/{FamiliarChatController,FamiliarSettingsView,FamiliarSettingsHubView,FamiliarProjectsView}.swift`、中英 `Localizable.strings`。
+
+测试与脚本：`FamiliarTests/{FamiliarMemoryTests,FamiliarBaselineTests,FamiliarWP1Tests,FamiliarEventKitPolicyTests,FamiliarProjectTests,FamiliarProjectWorkspaceTests,FamiliarPersistenceReleaseTests,FamiliarBenchmarkTests,FamiliarNativeFirstArchitectureTests}.swift`、`Scripts/run-release-test-suites.sh`、`logs/swiftdata-test-fixture-must-retain-modelcontainer.md`。
+
+新增文件：`Familiar/Memory/FamiliarMemoryTools.swift`、`FamiliarTests/FamiliarMemoryTests.swift`、`logs/swiftdata-test-fixture-must-retain-modelcontainer.md`。
+
+### 测试结果（已实际执行）
+
+- **全量套件通过**：`Scripts/run-release-test-suites.sh 5E9F91D1-73AE-4236-AD61-9244CE4B3A63 <dd>`，29 个 suite 串行逐个执行 + `FamiliarUITests`，最终输出 `All release test suites passed`（退出码 0）。
+- 构建：独立 DerivedData、Debug、arm64 iOS Simulator（`iPhone 17 Pro Max` / OS 26.5）`build-for-testing` 成功，无 Swift 诊断、无警告。
+- 中英 `Localizable.strings` 经 `plutil -lint` 通过，key 集合完全一致（786/786）。`git diff --check` 通过。
+- 本轮修掉的三类测试问题：
+  1. `FamiliarAppleNativeToolTests`、`FamiliarNativeOutputToolTests`、`FamiliarWorkspaceShellTests` 存在但**从未进入** `run-release-test-suites.sh` 清单，此前每次「全量」都在静默跳过它们；现已对齐到 29/29。
+  2. `weather-capability-gate`：benchmark harness 把 fake EventKit service 当作整个 registry 的能力提供者且对所有 requirement 一律返回 `.available`，因此这个场景根本观察不到拒绝。fake 改为接受显式的不可用 requirement 集合。
+  3. `poster-image-preflight`：`startSending` 先查 Keychain，而 harness 从不写 Key，所以该场景在 guard 处就返回、从未到达它要测的 preflight。现补写 Key；在 `CODE_SIGNING_ALLOWED=NO` 下 Keychain 返回 `errSecMissingEntitlement (-34018)` 时，记录为**显式 unverified 终态**而不是一条看起来像覆盖的绿色结果。
+  4. `shellPolicy()`：断言期望「开启 Workspace 联网后出站命令自动执行」，与 `state/ARCHITECTURE.md:109` 记录的「只有离线、Workspace-only、checkpointed 命令自动执行，联网/危险命令审批」相矛盾，属过期断言，已更正为 `.requiresConfirmation`。
+- 另有一处过期断言：`FamiliarPersistenceReleaseTests` 期望 36 个实体，而在途提交 `5eefbf7` 新增 `FamiliarAlarmUndoRecord` 后实为 37，已更正（切片 4a 一并提交）。
+- 调试过程中记录了一条可复用日志 `logs/swiftdata-test-fixture-must-retain-modelcontainer.md`：新增的 Memory 测试全部以 `signal trap` 崩溃且无任何断言失败，根因是夹具写成 `try FamiliarTestStore.make().mainContext`，容器未被持有即释放。同类问题在 `state/CURRENT.md` 的 2026-08-28 条目已出现过一次，属复发。
+
+### 尚未验证（`device-unverified`）
+
+- 真实 DeepSeek Key 的认证、模型列表、流式、取消、Tool Call 与 ToolResult 回填。
+- iSH guest 真实冷启动、`python-docx` 安装、取消、网络边界与资源限制；因此**DOCX 生产**半程仍未验证。
+- Keychain 相关行为在验证构建中无法覆盖（`CODE_SIGNING_ALLOWED=NO` 导致 test host 缺少 `application-identifier` entitlement）。`poster-image-preflight` 已按此显式标记 unverified。
+- Apple Framework 工具的真实系统授权（WeatherKit entitlement、HealthKit/PhotoKit/MusicKit/CoreBluetooth 授权、AlarmKit 需 iOS 26.1 设备）。
+- 本轮新增 UI（Execution Limits、Memory 设置页、Project 模型选择器）的视觉、VoiceOver、Dynamic Type 与深色模式表现；Quick Look 能否渲染生成的 DOCX。
+- 未启动 Simulator 做视觉验收，未执行 Simulator smoke（按当前阶段策略）。
+
+### 当前阻塞
+
+无不可逆阻塞。外部凭据与真机缺失均以 Fake Adapter + `device-unverified` 标记绕过。
+
+### 下一步最高优先级
+
+1. **Artifact 版本**：`FamiliarArtifact` 仍无版本字段（对比 `FamiliarResourceVersion` 确有 `version: Int`），`artifact_edit` 只保留同会话内存 undo。这是场景一步骤 13「继续修改并生成新版本」剩下的唯一代码缺口。
+2. **Orchestrator 持久化执行状态**：`RunResumeCursorRecord` 与 `ToolInvocationRecord` 仍只写不读，`recoverInterruptedRuns` 做的是终结而非恢复。在实现续跑前，`paused` 与 `resumable` 不得出现在 UI 或文档中。
+3. **Plan → Task → Step 真实状态机**：`FamiliarRunPhase` 目前仍是展示标签，`task_plan` 产出的 `TaskList` 无任何调度器读取，交付物靠对最后一条用户消息做关键词匹配推断。
+4. **Runtime `degraded` 状态**：两个生命周期枚举仍未统一，也都没有部分能力的表示。
+5. **Dynamic Type**：全仓库仍是 0 处适配。
+
+### 北京介绍 Word 闭环状态
+
+**仍未闭环，但缺口从 3 个减到 2 个。**
+
+| 半程 | 结论 |
+|---|---|
+| 校验、发布、审计 | `verified-by-tests`（真实 AnyDoc 解析 `sample.docx`） |
+| **回读产物** | 本轮新增 `artifact_read`，已 `verified-by-tests`（publish → read 经真实 Rust 桥往返） |
+| 生产 DOCX | `device-unverified`，无原生 Swift OOXML writer，依赖 iSH guest |
+| 生成新版本 | 仍缺失，Artifact 无版本表示 |
+
 
 ### 已完成
 

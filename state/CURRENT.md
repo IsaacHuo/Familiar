@@ -10,6 +10,8 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 
 ## Recently Completed
 
+- **P0 成品化六个垂直切片**：`environment_status` 改为无条件注册（它只读磁盘 receipt，此前被 iSH guest 启动门控，rootfs 缺失时永不注册）；`FamiliarToolRegistry.availabilityReport()` 保留 `.unavailable(reason:)` 的真实原因并注入 `<unavailable_capabilities>`，工具不可用不再只是从模型工具列表中静默消失。删除模型服务页 4 个 `body` 从不渲染的 section，并修掉其中「无可见通知控件却在未授权时静默关闭通知」的真实 bug；Shell 限制展示改为从 `FamiliarShellLimits.iOS` 派生。三个 Agent 预算（步数/工具调用/时长）与 Shell 超时接入持久化设置并真实到达 `FamiliarAgentLoop`，此前只有测试能覆写。Memory 从「活 schema + 死代码」变为完整运行时：修掉 scope 去重、`lastUsedAt`、`confidence` 三个既有缺陷，新增 `memory_search`/`memory_remember`（只读冻结记忆；写入走审批提案且仅 `.once`，请求经 tool result 旁路落盘）、受硬字符预算约束的 Context Compiler 注入，以及带来源、编辑与删除的设置页。新增 `artifact_read`，Agent 终于能回读自己发布的 DOCX。`FamiliarProject` 新增可选模型覆盖，并在 `requestSettings` 固定之前应用，否则图片/文档/上下文预算校验会用一个本次运行并不使用的模型。
+
 - **预算耗尽不再终结 Run**：工具调用预算与最后一轮迭代此前都以 `throw` 结束运行，导致「工具调用次数过多，已停止本次任务」并作废此前所有成功的工具结果。现改为收尾信号：超预算的那一次调用回结构化 `tool_budget_exhausted` 失败，随后的请求把 tools 收窄为空并追加系统消息要求立即基于已有信息作答并说明未完成项；发 `budgetExhausted` runtime notice 供审计。迭代耗尽只在确实没有任何正文可交付时才失败。删除不可达的 `FamiliarAgentError.maxToolCallsExceeded`，修正两条把「预算用尽」说成「已停止任务」的误导文案，notice 的实时与历史投影按 kind 区分标题（此前均渲染为 Retrying，且历史回放会整条丢弃预算通知）。
 
 - **Apple Native Tool Layer 收口**：审计确认 WeatherKit、HealthKit、PhotoKit、MapKit、MusicKit、CoreBluetooth、NaturalLanguage、UserNotifications 早已实现并注册，本轮不是“建层”而是把边缘接完。新增 `weather_history`（WeatherKit 历史区间，解除“照片→天气”硬阻塞）与 AlarmKit `alarm_schedule`/`alarm_cancel`/`alarm_list`（iOS 26.1 门控、alert-only presentation、durable undo，Schema 36→37，注册表 49 静态 + 3 条件）。`FamiliarJSONSchema` 破坏性扩展 `items`/`minimum`/`maximum`/`minItems`/`maxItems`/`default`，全部 8 处无元素类型的数组参数修复，manifest 统一走共享 `FamiliarToolSchema` DSL 与 `FamiliarToolDefaults`。敏感 read（health/photos/bluetooth）由 `preflight` 提供真实读取范围并接入 `authorizationRuntime` 的仅这次/本会话授权，不再每次以 `access_scope = description` 重复打断。错误契约改为 `FamiliarStructuredToolError` 协议，删除生产恒为 `nil` 的 policy 授权重载。工具图标改为显式表，删除 `contains` 启发式。合规改为机制化：`FamiliarCapabilityRequirement` 声明 plist key/entitlement/privacy 类型，契约测试从 `allCases` 反查，补齐缺失 usage description 与中英 parity、Health/Fitness/Photos/OtherData 隐私条目、权限页 4 行状态。去重 ISO8601（修复 `notification_schedule` 不接受小数秒的真实不一致）与 12 处 sha256。系统提示改为显式领域路由。
@@ -57,6 +59,8 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 
 ## Verification Evidence
 
+- 2026-09-03：P0 六个切片接线后，独立 DerivedData 的 Debug arm64 iOS Simulator（`iPhone 17 Pro Max` / OS 26.5）`build-for-testing` 成功且无 Swift 诊断。**本轮实际执行了全量测试**：`Scripts/run-release-test-suites.sh` 的 29 个 suite 逐个串行执行 + `FamiliarUITests`，最终输出 `All release test suites passed`（退出码 0）。中英 `Localizable.strings` 经 `plutil -lint` 通过且 key 集合完全一致（786/786），`git diff --check` 通过。修掉四处此前掩盖真实状态的测试问题：`FamiliarAppleNativeToolTests`、`FamiliarNativeOutputToolTests`、`FamiliarWorkspaceShellTests` 从未进入发布清单（每次「全量」都在静默跳过，现已对齐 29/29）；benchmark harness 把 fake EventKit 当作整个 registry 的能力提供者且一律返回 `.available`，导致 `weather-capability-gate` 根本观察不到拒绝；`poster-image-preflight` 因 harness 从不写 Keychain 而在 API Key guard 处就返回、从未到达它要测的 preflight（现补写 Key，且在 `CODE_SIGNING_ALLOWED=NO` 下 Keychain 返回 `errSecMissingEntitlement` 时记录为显式 unverified 终态，而不是一条看起来像覆盖的绿色结果）；`shellPolicy()` 期望「开启 Workspace 联网后出站命令自动执行」，与「只有离线、Workspace-only、checkpointed 命令自动执行」相矛盾。按项目约束未启动 Simulator，因此本轮新增 UI（执行限制、Memory、Project 模型选择器）的视觉、VoiceOver、Dynamic Type 与深色模式仍需真机验收。
+
 - 2026-09-02：Apple Native Tool Layer 收口后，独立 DerivedData 的 Debug arm64 iOS Simulator `build-for-testing` 成功，App、Share Extension、Widget 与两个测试 target 均完成编译且无 Swift 诊断。中英 `Localizable.strings` 与 `InfoPlist.strings` 经 `plutil -lint` 通过且 key 集合完全一致（753/753、13/13），`git diff --check` 通过。按项目约束未启动 Simulator，因此**本轮未执行任何测试**：新增的 `FamiliarAppleNativeToolTests`、合规反查契约测试与 `native-weather-report` benchmark 只验证了可编译。另需注意 `FamiliarBaselineTests` 的工具名断言自 2026-08-31 新增原生工具起即已失效（`snapshot()` 不过滤可用性，必然返回全部注册工具），本轮已改为集合 + `executionClass` 分组有序断言；2026-08-28 的“24 套全部通过”发生在该断言失效之前，与其不矛盾。
 
 - 2026-09-02：聊天有序块与 Run 审计收敛改动后，独立 DerivedData 的 Debug arm64 generic iOS Simulator `build-for-testing` 成功且无警告；`FamiliarRuntimeTests`、`FamiliarSurfaceTests`、`FamiliarAssistantTurnPersistenceTests`、`FamiliarUIFeedbackTests`、`FamiliarPlanCompletionTests` 与 `FamiliarPersistenceReleaseTests` 共 45 项全部通过。中英 strings plist `plutil` lint 与 `git diff --check` 通过。按项目约束未启动 Simulator 做视觉验收；确认卡、展开动效与审计详情仍需真机人工验收。
@@ -84,6 +88,13 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 
 ## Known Problems
 
+- **Artifact 无版本表示**：`FamiliarArtifact` 没有 version 字段（对比 `FamiliarResourceVersion` 确有 `version: Int`），`artifact_edit` 只保留同会话内存 undo。「继续修改并生成新版本」因此仍未闭环。
+- **Run 无跨重启续跑**：`RunResumeCursorRecord` 与 `ToolInvocationRecord` 只写不读，`recoverInterruptedRuns` 做的是终结而非恢复。统一状态词表中的 `paused` 与 `resumable` 没有任何真实产生路径，在实现续跑前不得出现在 UI 或文档中。
+- **没有 Plan → Task → Step 状态机**：`FamiliarRunPhase` 是展示标签，循环里没有该类型的状态变量或转移表；`task_plan` 产出的 `TaskList` 无任何调度器读取；交付物靠对最后一条用户消息做中英关键词匹配推断。
+- **Runtime 缺少 `degraded` 状态**：UI 侧与 iSH 内部两个生命周期枚举互不同步，且都没有部分能力可用的表示。
+- **Dynamic Type 全仓库 0 处适配**：无 `dynamicTypeSize`/`ScaledMetric`/`sizeCategory`，同时存在固定点数与固定 frame。
+- Keychain 相关行为在验证构建中不可覆盖：`CODE_SIGNING_ALLOWED=NO` 使 test host 缺少 `application-identifier` entitlement，`SecItem*` 返回 `errSecMissingEntitlement (-34018)`。依赖 Keychain 的场景只能标记为 unverified。
+
 - Apple Framework 工具全部只完成编译与 fake-service 契约测试。WeatherKit 真实可用性额外依赖签名 entitlement 与 provisioning，Simulator 构建证明不了；`weather_history` 的历史覆盖与 Apple Weather 配额未在真实账户验证；HealthKit/PhotoKit/MusicKit/CoreBluetooth 需真实系统授权；AlarmKit 需 iOS 26.1 设备。
 - 用户观察到的“查天气没走 WeatherKit”**根因仍未证实**。已修掉最可能的原因（`.weatherKit` availability 此前只判断 `#available(iOS 16)` 就声称可用，真实故障要到调用时才暴露，模型随后退回 `web_search`），但缺少 Run trace 对照，需真机带 trace 复现一次。
 - `alarm_schedule` 的 durable undo 可从 `FamiliarAlarmUndoRecord` 重建取消动作，但跨重启撤销与“已响铃后取消”的系统行为未真机验证。
@@ -98,7 +109,7 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 - 真机验收未完成：EventKit 权限、真实文档/OCR、相机、Speech、Share/Deep Link/通知/Spotlight/Intents/Widget/Control 均依赖真机。
 - iOS CI 远程首次结果**尚未确认**（本地解析通过，GitHub Actions 未触发或未记录）。
 - `FamiliarRunRecoveryService` 的 CapabilitySnapshot/Cursor 与 ToolInvocation 生命周期已接入；字节级中断续跑仍未实现。
-- Memory 自动/显式 Runtime 工具、Remote MCP 和可靠后台承接仍未实现，按后续层次推进。
+- Memory Runtime（`memory_search`/`memory_remember`、Context Compiler 注入、设置页管理）已实现并有确定性测试；真机上多轮任务的实际打断次数未人工验收。Remote MCP 和可靠后台承接仍未实现。
 - 后台承接未实现：`BGContinuedProcessingTask` 仅适用于 iOS 26+；当前通知只报告进程内实际到达的终态。
 - EventKit 写入幂等与跨重启 Undo 已实现但未真机验证；系统 save 后进程立即终止的边界仍未验证。
 - FastVLMRuntime/MLX 已从 iOS target 与 Package graph 移除；`Vendor/` 研究源码不进入 App 包。
@@ -106,8 +117,11 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 
 ## Next
 
-1. 连接 `hwf`，复用设备 Keychain 中的 DeepSeek Key，先验证签名安装、iSH 冷启动、Environment prepare 与离线 Shell；不导出或记录 API Key。
-2. 在 Project Chat 执行北京资料 Golden Task：真实 `web_search`/至少两次成功 `web_fetch` → `python-docx` → `artifact_publish` → AnyDoc receipt → Quick Look → Share to Files。
-3. 分别验证空环境冷启动、缓存环境和强制退出后重启；任何失败必须停在真实 phase，不能产生成功 Artifact 或虚假完成回答。
-4. 修复真实冒烟暴露的问题后冻结当前“唯一启用 Provider 为 DeepSeek”的 iOS 实验基线；分别记录构建、测试执行和真机结论。Search、Share、系统入口和无障碍继续按风险逐项验收，FastVLM 不进入本轮。
-5. Core AI、MCP、自动 Memory 与后台执行保持在本版范围之外；不在本轮恢复本地路由 UI。iSH/Shell 只修复真机验收暴露的问题，不扩展为宿主文件系统或 Native capability bridge。
+1. **Artifact 版本**：给 `FamiliarArtifact` 增加真实版本表示。这是场景「继续修改并生成新版本」剩下的唯一代码缺口，且不依赖真机。
+2. **Orchestrator 持久化执行状态**：把已在写入的 cursor/invocation 真正读回，实现跨重启续跑；在此之前 `paused`/`resumable` 不得进入 UI 或文档。
+3. **Plan → Task → Step 真实状态机**：让 `task_plan` 产出的计划真正驱动执行，交付物不再靠关键词匹配推断。
+4. 连接 `hwf`，复用设备 Keychain 中的 DeepSeek Key，先验证签名安装、iSH 冷启动、Environment prepare 与离线 Shell；不导出或记录 API Key。
+5. 在 Project Chat 执行北京资料 Golden Task：真实 `web_search`/至少两次成功 `web_fetch` → `python-docx` → `artifact_publish` → AnyDoc receipt → Quick Look → Share to Files。
+6. 分别验证空环境冷启动、缓存环境和强制退出后重启；任何失败必须停在真实 phase，不能产生成功 Artifact 或虚假完成回答。
+7. 修复真实冒烟暴露的问题后冻结当前“唯一启用 Provider 为 DeepSeek”的 iOS 实验基线；分别记录构建、测试执行和真机结论。Search、Share、系统入口和无障碍继续按风险逐项验收，FastVLM 不进入本轮。
+8. Core AI、MCP 与后台执行保持在本版范围之外；不在本轮恢复本地路由 UI。Memory 已进入本版范围并完成运行时接线，仅剩真机打断体验验收。iSH/Shell 只修复真机验收暴露的问题，不扩展为宿主文件系统或 Native capability bridge。
