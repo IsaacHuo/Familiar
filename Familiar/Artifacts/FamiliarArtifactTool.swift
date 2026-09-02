@@ -216,6 +216,14 @@ nonisolated struct FamiliarArtifactPublishTool: FamiliarTool {
         let title: String
         let format: FamiliarArtifactFormat
         let requiredText: [String]?
+        /// Identifier of the Artifact this file replaces. Supplying it makes the new file
+        /// the next version of the same deliverable instead of an unrelated one.
+        ///
+        /// Declared `var` rather than `let` with a default: a `let` carrying an initial
+        /// value is excluded from the synthesized Decodable conformance, so the model's
+        /// argument would be silently dropped and the parameter would be dead. As an
+        /// optional `var` it is decoded and still defaults to nil for callers.
+        var supersedes: String?
     }
 
     private struct Output: Encodable {
@@ -245,7 +253,8 @@ nonisolated struct FamiliarArtifactPublishTool: FamiliarTool {
                 "requiredText": .stringArray(
                     "Optional strings that must be present in the parsed document content.",
                     itemDescription: "A short literal string expected in the parsed content."
-                )
+                ),
+                "supersedes": .string("Identifier of the Artifact this file replaces, beginning with artifact_. Supply it when revising a file you already published so the result becomes the next version of the same deliverable.")
             ],
             required: ["path", "title", "format"]
         ),
@@ -278,6 +287,15 @@ nonisolated struct FamiliarArtifactPublishTool: FamiliarTool {
         )
         let id = UUID()
         let identifier = "artifact_" + id.uuidString
+        // A malformed predecessor is rejected rather than ignored: silently publishing an
+        // unrelated first version would lose the revision history the caller asked for.
+        let supersedesArtifactID: UUID? = try input.supersedes
+            .map { value -> UUID in
+                guard value.hasPrefix("artifact_"),
+                      let parsed = UUID(uuidString: String(value.dropFirst("artifact_".count)))
+                else { throw FamiliarArtifactError.invalidIdentifier }
+                return parsed
+            }
         let filename = title.hasSuffix("." + input.format.filenameExtension)
             ? title
             : title + "." + input.format.filenameExtension
@@ -313,6 +331,7 @@ nonisolated struct FamiliarArtifactPublishTool: FamiliarTool {
                     identifier: identifier,
                     projectID: projectID,
                     title: title,
+                    supersedesArtifactID: supersedesArtifactID,
                     format: input.format,
                     relativePath: imported.path,
                     byteSize: imported.byteSize,

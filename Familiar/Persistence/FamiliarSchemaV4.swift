@@ -13,6 +13,11 @@ enum FamiliarSchemaV4: VersionedSchema {
         @Attribute(.unique) var id: UUID
         var projectID: UUID
         var identifier: String
+        /// Groups the successive versions of one logical deliverable. Each version is its
+        /// own row and its own directory, because the store keys files by artifact ID and
+        /// overwriting in place would destroy the previous version's bytes.
+        var lineageID: UUID
+        var version: Int
         var title: String
         var formatRawValue: String
         var relativePath: String
@@ -32,6 +37,7 @@ enum FamiliarSchemaV4: VersionedSchema {
 
         init(
             id: UUID = UUID(), projectID: UUID, identifier: String, title: String,
+            lineageID: UUID? = nil, version: Int = 1,
             format: FamiliarArtifactFormat = .markdown, relativePath: String,
             byteSize: Int64, contentHash: String, source: FamiliarArtifactSource = .generated,
             sourceURLString: String? = nil, sourceResourceID: UUID? = nil,
@@ -40,6 +46,9 @@ enum FamiliarSchemaV4: VersionedSchema {
             validationReceiptJSON: String? = nil, createdAt: Date = Date(), updatedAt: Date = Date()
         ) {
             self.id = id; self.projectID = projectID; self.identifier = identifier; self.title = title
+            // Defaults to this row's own id: a first version is the origin of its lineage,
+            // so an artifact created without an explicit lineage is still well-formed.
+            self.lineageID = lineageID ?? id; self.version = version
             formatRawValue = format.rawValue; self.relativePath = relativePath; self.byteSize = byteSize
             self.contentHash = contentHash; sourceKindRawValue = source.rawValue
             self.sourceURLString = sourceURLString; self.sourceResourceID = sourceResourceID

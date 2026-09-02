@@ -38,6 +38,10 @@ nonisolated struct FamiliarArtifactDescriptor: Sendable, Equatable {
     let identifier: String
     let projectID: UUID
     let title: String
+    /// The artifact this one replaces, if any. Tools are `nonisolated` and cannot query
+    /// the store, so they name the predecessor and the service resolves its lineage and
+    /// the next version number. `nil` means a first version that starts its own lineage.
+    let supersedesArtifactID: UUID?
     let format: FamiliarArtifactFormat
     let relativePath: String
     let byteSize: Int64
@@ -57,6 +61,7 @@ nonisolated struct FamiliarArtifactDescriptor: Sendable, Equatable {
         identifier: String,
         projectID: UUID,
         title: String,
+        supersedesArtifactID: UUID? = nil,
         format: FamiliarArtifactFormat,
         relativePath: String,
         byteSize: Int64,
@@ -75,6 +80,7 @@ nonisolated struct FamiliarArtifactDescriptor: Sendable, Equatable {
         self.identifier = identifier
         self.projectID = projectID
         self.title = title
+        self.supersedesArtifactID = supersedesArtifactID
         self.format = format
         self.relativePath = relativePath
         self.byteSize = byteSize
@@ -283,8 +289,15 @@ struct FamiliarArtifactService {
             try context.save()
             return
         }
+        // Lineage and version are resolved here rather than trusted from the descriptor:
+        // the tools are nonisolated and cannot query the store, so a tool-supplied number
+        // would collide as soon as two revisions of the same deliverable are published.
+        let predecessor = descriptor.supersedesArtifactID.flatMap { storedArtifact(id: $0, in: context) }
+        let lineageID = predecessor?.lineageID
+        let version = lineageID.map { nextVersion(inLineage: $0, in: context) } ?? 1
         let artifact = FamiliarArtifact(id: descriptor.id, projectID: descriptor.projectID, identifier: descriptor.identifier,
-            title: descriptor.title, format: descriptor.format, relativePath: descriptor.relativePath,
+            title: descriptor.title, lineageID: lineageID, version: version,
+            format: descriptor.format, relativePath: descriptor.relativePath,
             byteSize: descriptor.byteSize, contentHash: descriptor.contentHash, source: descriptor.source,
             sourceURLString: descriptor.sourceURLString, sourceResourceID: descriptor.sourceResourceID,
             sourceResourceVersionID: descriptor.sourceResourceVersionID, sourceCaptureID: descriptor.sourceCaptureID,
@@ -294,6 +307,28 @@ struct FamiliarArtifactService {
             })
         context.insert(artifact)
         do { try context.save() } catch { context.rollback(); try? store.remove(projectID: descriptor.projectID, artifactID: descriptor.id); throw error }
+    }
+
+    func storedArtifact(id: UUID, in context: ModelContext) -> FamiliarArtifact? {
+        (try? context.fetch(FetchDescriptor<FamiliarArtifact>(predicate: #Predicate { $0.id == id })))?.first
+    }
+
+    /// One past the highest version already stored in that lineage, so a revision never
+    /// reuses a number even if an earlier version was deleted.
+    func nextVersion(inLineage lineageID: UUID, in context: ModelContext) -> Int {
+        let existing = (try? context.fetch(FetchDescriptor<FamiliarArtifact>(
+            predicate: #Predicate { $0.lineageID == lineageID }
+        ))) ?? []
+        return (existing.map(\.version).max() ?? 0) + 1
+    }
+
+    /// The current version of a logical deliverable. Older versions stay on disk and in
+    /// the store, so previewing or exporting a superseded version still works.
+    func latestVersion(inLineage lineageID: UUID, in context: ModelContext) -> FamiliarArtifact? {
+        let existing = (try? context.fetch(FetchDescriptor<FamiliarArtifact>(
+            predicate: #Predicate { $0.lineageID == lineageID }
+        ))) ?? []
+        return existing.max { $0.version < $1.version }
     }
 
     func delete(_ artifact: FamiliarArtifact, in context: ModelContext) throws {

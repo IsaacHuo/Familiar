@@ -317,4 +317,66 @@ struct FamiliarProjectWorkspaceTests {
         #expect(result.envelope.modelContent.contains("AnyDoc"))
         #expect(result.envelope.modelContent.contains("\"truncated\":false"))
     }
+
+    @Test("Revising a published Artifact adds a version instead of destroying the old one")
+    @MainActor
+    func artifactVersioning() throws {
+        let container = try FamiliarTestStore.make()
+        let context = container.mainContext
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "FamiliarArtifactVersions-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        let service = FamiliarArtifactService(store: FamiliarArtifactStore(rootURL: root))
+        let projectID = UUID()
+
+        let firstID = UUID()
+        try service.persist(descriptor(id: firstID, projectID: projectID, title: "Beijing", supersedes: nil), in: context)
+        let first = try #require(service.storedArtifact(id: firstID, in: context))
+        // A first version is the origin of its own lineage, so it is well-formed on its own.
+        #expect(first.version == 1)
+        #expect(first.lineageID == firstID)
+
+        let secondID = UUID()
+        try service.persist(descriptor(id: secondID, projectID: projectID, title: "Beijing", supersedes: firstID), in: context)
+        let second = try #require(service.storedArtifact(id: secondID, in: context))
+        #expect(second.version == 2)
+        #expect(second.lineageID == firstID)
+
+        // The previous version must survive: the store keys files by artifact ID, so each
+        // version keeps its own row and its own bytes rather than being overwritten.
+        #expect(try context.fetch(FetchDescriptor<FamiliarArtifact>()).count == 2)
+        #expect(service.storedArtifact(id: firstID, in: context)?.version == 1)
+        #expect(service.latestVersion(inLineage: firstID, in: context)?.id == secondID)
+
+        let thirdID = UUID()
+        try service.persist(descriptor(id: thirdID, projectID: projectID, title: "Beijing", supersedes: secondID), in: context)
+        #expect(service.storedArtifact(id: thirdID, in: context)?.version == 3)
+        #expect(service.storedArtifact(id: thirdID, in: context)?.lineageID == firstID)
+
+        // Deleting a middle version must not let a later revision reuse its number.
+        try service.delete(second, in: context)
+        #expect(service.nextVersion(inLineage: firstID, in: context) == 4)
+    }
+
+    private func descriptor(id: UUID, projectID: UUID, title: String, supersedes: UUID?) -> FamiliarArtifactDescriptor {
+        FamiliarArtifactDescriptor(
+            id: id,
+            identifier: "artifact_" + id.uuidString,
+            projectID: projectID,
+            title: title,
+            supersedesArtifactID: supersedes,
+            format: .markdown,
+            relativePath: "Projects/\(projectID.uuidString)/Artifacts/\(id.uuidString)/\(title).md",
+            byteSize: 12,
+            contentHash: String(repeating: "a", count: 64),
+            source: .generated,
+            sourceURLString: nil,
+            sourceResourceID: nil,
+            sourceResourceVersionID: nil,
+            sourceCaptureID: nil,
+            createdByRunID: "run"
+        )
+    }
 }
