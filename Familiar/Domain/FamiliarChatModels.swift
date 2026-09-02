@@ -511,6 +511,20 @@ nonisolated struct FamiliarSettings: Codable, Equatable, Sendable {
         return value.isEmpty ? Self.defaultValue.systemPrompt : String(value.prefix(3_000))
     }
 
+    /// Applies a Project's model override, but only if the provider still offers that
+    /// model. A stale or removed ID falls back to the global selection rather than
+    /// pinning the Project to a model the app can no longer resolve, which would fail at
+    /// send time instead of at the moment the model disappeared.
+    func applyingProjectModelOverride(_ overrideModelID: String?) -> FamiliarSettings {
+        guard let trimmed = overrideModelID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty,
+              selectedProvider.curatedModels.contains(where: { $0.id == trimmed })
+        else { return self }
+        var value = self
+        value.modelID = trimmed
+        return value
+    }
+
     mutating func updateConfiguration(_ configuration: FamiliarProviderConfiguration) {
         providerConfigurations[providerID] = configuration
     }

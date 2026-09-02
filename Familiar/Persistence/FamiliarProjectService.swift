@@ -5,12 +5,14 @@ enum FamiliarProjectServiceError: LocalizedError, Equatable {
     case emptyName
     case duplicateName
     case projectHasRunningRun
+    case unknownModel
 
     var errorDescription: String? {
         switch self {
         case .emptyName: String(localized: "project.error.empty_name")
         case .duplicateName: String(localized: "project.error.duplicate_name")
         case .projectHasRunningRun: String(localized: "project.error.running")
+        case .unknownModel: String(localized: "project.error.unknown_model", defaultValue: "That model is no longer available.")
         }
     }
 }
@@ -73,6 +75,23 @@ struct FamiliarProjectService {
             context.insert(FamiliarProjectInstruction(text: value, createdAt: now, updatedAt: now, project: project))
         }
         project.updatedAt = now
+        try save(context)
+    }
+
+    /// An empty value clears the override so the Project follows the global selection.
+    /// Unknown IDs are rejected rather than stored, because a stored ID the provider no
+    /// longer offers would only surface as a failure at send time.
+    func updateModelOverride(_ project: FamiliarProject, modelID: String, in context: ModelContext) throws {
+        let value = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.isEmpty {
+            project.modelIDOverride = nil
+        } else {
+            guard FamiliarProviderCatalog.deepSeek.curatedModels.contains(where: { $0.id == value }) else {
+                throw FamiliarProjectServiceError.unknownModel
+            }
+            project.modelIDOverride = value
+        }
+        project.updatedAt = Date()
         try save(context)
     }
 

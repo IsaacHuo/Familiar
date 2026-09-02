@@ -211,7 +211,12 @@ final class FamiliarChatController {
         let prompt = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty || !draftAttachments.isEmpty || !draftImages.isEmpty || preparedImageDrafts?.isEmpty == false else { return }
 
-        let requestSettings = settings
+        // Resolved before requestSettings because the Project override has to be in
+        // place for the image, document and context-budget gates below; applying it later
+        // would validate the request against a model the run will not use.
+        let selectedProject = selectedConversation(in: context)?.project
+            ?? selectedProjectID.flatMap { fetchProject(id: $0, in: context) }
+        let requestSettings = settings.applyingProjectModelOverride(selectedProject?.modelIDOverride)
         guard let descriptor = requestSettings.resolvedProvider else {
             errorMessage = String(
                 format: String(localized: "error.provider.invalid_configuration"),
@@ -280,8 +285,6 @@ final class FamiliarChatController {
             }
             return
         }
-        let selectedProject = selectedConversation(in: context)?.project
-            ?? selectedProjectID.flatMap { fetchProject(id: $0, in: context) }
         let invokedSkills: [FamiliarSkillSnapshot]
         do {
             if let selectedSkillID {

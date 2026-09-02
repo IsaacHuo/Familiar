@@ -293,6 +293,10 @@ enum FamiliarSchemaV3: VersionedSchema {
         var name: String
         var summary: String
         var statusRawValue: String
+        /// Optional per-Project model. `nil` means follow the global selection, which is
+        /// why this is not defaulted to a concrete ID: a stored ID would silently pin the
+        /// Project to a model the user never chose for it.
+        var modelIDOverride: String?
         var createdAt: Date
         var updatedAt: Date
         @Relationship(deleteRule: .nullify, inverse: \FamiliarConversation.project)

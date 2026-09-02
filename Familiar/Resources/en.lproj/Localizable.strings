@@ -722,6 +722,10 @@
 "settings.shell.unavailable" = "Runtime assets are not available in this build";
 "settings.shell.network" = "Allow public internet in this Workspace";
 "settings.shell.network.footer" = "Off by default. Approved Environment plans may download declared packages from PyPI. Shell never receives model API keys, Keychain data, cookies, or access to local-network services.";
+"project.model" = "Model";
+"project.model.follow_global" = "Follow global setting";
+"project.model.footer" = "Runs started in this project use this model. Everything else keeps the global selection.";
+"project.error.unknown_model" = "That model is no longer available.";
 "settings.memory.title" = "Memory";
 "settings.memory.detail.on" = "Remembers confirmed preferences and facts";
 "settings.memory.detail.off" = "Off · stored memories are kept but unused";

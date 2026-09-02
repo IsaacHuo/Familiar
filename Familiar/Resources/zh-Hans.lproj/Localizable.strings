@@ -722,6 +722,10 @@
 "settings.shell.unavailable" = "此构建未包含可用的运行资产";
 "settings.shell.network" = "允许此 Workspace 访问公共互联网";
 "settings.shell.network.footer" = "默认关闭。批准 Environment 方案后可从 PyPI 下载声明依赖；Shell 不会获得模型 API Key、Keychain、Cookie 或局域网服务访问权。";
+"project.model" = "模型";
+"project.model.follow_global" = "跟随全局设置";
+"project.model.footer" = "在该项目中发起的运行使用此模型，其他场景仍使用全局选择。";
+"project.error.unknown_model" = "该模型已不可用。";
 "settings.memory.title" = "记忆";
 "settings.memory.detail.on" = "记住你确认过的偏好和事实";
 "settings.memory.detail.off" = "已关闭 · 已保存的记忆仍保留但不使用";

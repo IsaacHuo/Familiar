@@ -246,4 +246,38 @@ struct FamiliarProjectTests {
         let systemPrompt = try #require(await capture.systemPrompt)
         #expect(systemPrompt.contains(instruction))
     }
+
+    @Test("A project model override is persisted, applied, and rejects unknown models")
+    @MainActor
+    func projectModelOverride() throws {
+        let container = try FamiliarTestStore.make()
+        let context = container.mainContext
+        let service = FamiliarProjectService()
+        let project = try service.create(name: "Beijing", summary: "", in: context)
+        let alternate = try #require(FamiliarProviderCatalog.deepSeek.curatedModels.last)
+
+        #expect(project.modelIDOverride == nil)
+        try service.updateModelOverride(project, modelID: alternate.id, in: context)
+        #expect(project.modelIDOverride == alternate.id)
+
+        // The override must reach the settings the run actually uses, not just the row.
+        let applied = FamiliarSettings.defaultValue.applyingProjectModelOverride(project.modelIDOverride)
+        #expect(applied.modelID == alternate.id)
+        #expect(applied.selectedModel.id == alternate.id)
+
+        // An empty value clears the override back to the global selection.
+        try service.updateModelOverride(project, modelID: "  ", in: context)
+        #expect(project.modelIDOverride == nil)
+        #expect(FamiliarSettings.defaultValue.applyingProjectModelOverride(nil).modelID == FamiliarSettings.defaultValue.modelID)
+
+        // Storing an ID the provider no longer offers would only surface as a failure at
+        // send time, so it is refused here instead.
+        #expect(throws: FamiliarProjectServiceError.unknownModel) {
+            try service.updateModelOverride(project, modelID: "deepseek-removed-model", in: context)
+        }
+        #expect(project.modelIDOverride == nil)
+        // A stale value that somehow reached the store still falls back rather than
+        // pinning the run to an unresolvable model.
+        #expect(FamiliarSettings.defaultValue.applyingProjectModelOverride("deepseek-removed-model").modelID == FamiliarSettings.defaultValue.modelID)
+    }
 }

@@ -1504,6 +1504,8 @@ private struct FamiliarProjectEditorView: View {
     @State private var name: String
     @State private var summary: String
     @State private var instruction: String
+    /// Empty string means "follow the global selection", which is the stored `nil`.
+    @State private var modelIDOverride: String
     @State private var errorMessage: String?
 
     init(destination: FamiliarProjectEditorDestination, onSave: @escaping (FamiliarProject) -> Void) {
@@ -1514,10 +1516,12 @@ private struct FamiliarProjectEditorView: View {
             _name = State(initialValue: "")
             _summary = State(initialValue: "")
             _instruction = State(initialValue: "")
+            _modelIDOverride = State(initialValue: "")
         case .edit(let project):
             _name = State(initialValue: project.name)
             _summary = State(initialValue: project.summary)
             _instruction = State(initialValue: project.instruction?.text ?? "")
+            _modelIDOverride = State(initialValue: project.modelIDOverride ?? "")
         }
     }
 
@@ -1529,6 +1533,16 @@ private struct FamiliarProjectEditorView: View {
                         .textInputAutocapitalization(.sentences)
                     TextField(String(localized: "project.summary"), text: $summary, axis: .vertical)
                         .lineLimit(2...6)
+                }
+                Section {
+                    Picker(String(localized: "project.model", defaultValue: "Model"), selection: $modelIDOverride) {
+                        Text(String(localized: "project.model.follow_global", defaultValue: "Follow global setting")).tag("")
+                        ForEach(FamiliarProviderCatalog.deepSeek.curatedModels) { model in
+                            Text(model.displayName).tag(model.id)
+                        }
+                    }
+                } footer: {
+                    Text(String(localized: "project.model.footer", defaultValue: "Runs started in this project use this model. Everything else keeps the global selection."))
                 }
                 Section(String(localized: "project.instruction")) {
                     TextEditor(text: $instruction)
@@ -1587,6 +1601,7 @@ private struct FamiliarProjectEditorView: View {
                 try service.update(existing, name: name, summary: summary, in: modelContext)
                 project = existing
             }
+            try service.updateModelOverride(project, modelID: modelIDOverride, in: modelContext)
             try service.updateInstruction(project, text: instruction, in: modelContext)
             onSave(project)
         } catch {
