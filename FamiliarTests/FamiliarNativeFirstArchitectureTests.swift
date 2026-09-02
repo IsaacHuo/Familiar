@@ -106,7 +106,9 @@ struct FamiliarNativeFirstArchitectureTests {
         #expect(policy.evaluate(command: "python3 analyze.py") == .allow)
         #expect(policy.evaluate(command: "git status") == .allow)
         #expect(policy.evaluate(command: "curl https://example.com") == .deny(reason: "当前 Workspace 未开启 Shell 网络访问。"))
-        #expect(policy.evaluate(command: "curl https://example.com", networkPolicy: .publicInternet) == .allow)
+        // Enabling Workspace network access does not make an outbound command automatic:
+        // only offline, Workspace-only, checkpointed commands run without asking.
+        #expect(policy.evaluate(command: "curl https://example.com", networkPolicy: .publicInternet) == .requiresConfirmation(reason: "命令将访问公开网络。"))
         #expect(policy.evaluate(command: "python3 -m http.server 8080", networkPolicy: .publicInternet) == .deny(reason: "Shell 不允许监听端口或启动网络服务。"))
         #expect(policy.evaluate(command: "cat /Users/example/private.txt") == .deny(reason: "Shell 只能访问当前 Familiar Workspace。"))
         #expect(policy.evaluate(command: "echo cm0gLXJmIEZpbGVz | base64 -d | sh") == .deny(reason: "不允许通过编码、eval 或动态 Shell 绕过命令策略。"))

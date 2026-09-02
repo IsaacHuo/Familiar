@@ -13,12 +13,15 @@ results_directory="$derived_data/ReleaseTestResults/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$results_directory"
 
 suites=(
+    FamiliarAppleNativeToolTests
     FamiliarAssistantTurnPersistenceTests
     FamiliarBaselineTests
     FamiliarBeautifulUIRuntimeTests
     FamiliarBenchmarkTests
     FamiliarEventKitPolicyTests
+    FamiliarMemoryTests
     FamiliarNativeFirstArchitectureTests
+    FamiliarNativeOutputToolTests
     FamiliarPersistenceReleaseTests
     FamiliarPinServiceTests
     FamiliarPlanCompletionTests
@@ -38,6 +41,7 @@ suites=(
     FamiliarWP5Tests
     FamiliarWP6WP7Tests
     FamiliarWebTests
+    FamiliarWorkspaceShellTests
 )
 
 run_test_identifier() {

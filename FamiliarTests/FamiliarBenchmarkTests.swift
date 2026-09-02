@@ -231,9 +231,19 @@ private struct FamiliarBenchmarkProvider: FamiliarModelProvider {
 
 private actor FamiliarBenchmarkEventKitService: FamiliarEventKitServicing {
     private var commits: [String: FamiliarWriteCommitResult] = [:]
+    /// This fake is the capability provider for the whole benchmark registry, so a
+    /// blanket `.available` would expose every capability in every scenario. The
+    /// capability-gate scenarios need a requirement to actually be denied.
+    private let unavailableRequirements: Set<FamiliarCapabilityRequirement>
+
+    init(unavailableRequirements: Set<FamiliarCapabilityRequirement> = []) {
+        self.unavailableRequirements = unavailableRequirements
+    }
 
     func availability(for requirement: FamiliarCapabilityRequirement) -> FamiliarCapabilityAvailability {
-        .available
+        unavailableRequirements.contains(requirement)
+            ? .unavailable(reason: "Benchmark denied \(requirement.rawValue).")
+            : .available
     }
 
     func request(_ requirement: FamiliarCapabilityRequirement) {}
@@ -516,7 +526,11 @@ struct FamiliarBenchmarkTests {
 
         let startedAt = Date()
         let recorder = FamiliarBenchmarkRequestRecorder()
-        let eventKit = FamiliarBenchmarkEventKitService()
+        // The gate scenario asserts the model is never offered a weather tool, so the
+        // requirement has to be denied rather than merely absent from the fixture.
+        let eventKit = FamiliarBenchmarkEventKitService(
+            unavailableRequirements: scenario == .weatherCapabilityGate ? [.weatherKit] : []
+        )
         let photoLibrary = FamiliarBenchmarkPhotoLibrary()
         let weather = FamiliarBenchmarkWeatherService()
         let confirmationCoordinator = FamiliarToolConfirmationCoordinator()
@@ -676,6 +690,23 @@ struct FamiliarBenchmarkTests {
     @MainActor
     private func imagePreflightResult() throws -> FamiliarBenchmarkResult {
         let startedAt = Date()
+        // startSending checks the Keychain before any image import or Vision work, so
+        // without a key this scenario returns at the guard and never reaches the preflight
+        // it exists to measure. The guard itself is covered by FamiliarUIFeedbackTests.
+        let providerID = FamiliarProviderCatalog.deepSeek.id
+        let hadExistingKey = FamiliarKeychainStore.isConfigured(for: providerID)
+        if !hadExistingKey {
+            do {
+                try FamiliarKeychainStore.save("benchmark-fixture-key", for: providerID)
+            } catch FamiliarKeychainError.unexpectedStatus(errSecMissingEntitlement) {
+                // The verification build uses CODE_SIGNING_ALLOWED=NO, so the test host has
+                // no application-identifier entitlement and the Keychain is unusable.
+                // Reported as unverified rather than passed: faking a key here, or dropping
+                // the assertions, would claim coverage this environment cannot provide.
+                return unverifiedPreflightResult(startedAt: startedAt)
+            }
+        }
+        defer { if !hadExistingKey { try? FamiliarKeychainStore.delete(for: providerID) } }
         let container = try FamiliarTestStore.make()
         let controller = FamiliarChatController(dependencies: FamiliarAppDependencies())
         controller.draft = "把海报加到日历"
@@ -699,6 +730,22 @@ struct FamiliarBenchmarkTests {
             terminalStatuses: ["vision-preflight"],
             durationMilliseconds: Int(Date().timeIntervalSince(startedAt) * 1_000),
             failures: failures
+        )
+    }
+
+    /// Recorded as an explicit unverified outcome rather than a pass with no checks: the
+    /// scenario's assertions never ran, so the printed diagnostic has to say so instead of
+    /// leaving a green line that looks like coverage.
+    @MainActor
+    private func unverifiedPreflightResult(startedAt: Date) -> FamiliarBenchmarkResult {
+        FamiliarBenchmarkResult(
+            scenario: .posterImagePreflight,
+            modelRounds: 0,
+            toolSequence: [],
+            approvalSequence: [],
+            terminalStatuses: ["unverified:keychain-unavailable-without-code-signing"],
+            durationMilliseconds: Int(Date().timeIntervalSince(startedAt) * 1_000),
+            failures: []
         )
     }
 
