@@ -91,7 +91,7 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 - Artifact 版本已实现（`lineageID` + `version`，每版独立行与独立目录），Project 列表与首页摘要按谱系折叠、旧版本可进入历史页预览与分享。`artifact_edit` 仍只保留同会话内存 undo，不产生新版本；版本历史页的视觉与无障碍表现未真机验收。
 - **Run 无跨重启续跑**：`RunResumeCursorRecord` 与 `ToolInvocationRecord` 只写不读，`recoverInterruptedRuns` 做的是终结而非恢复。统一状态词表中的 `paused` 与 `resumable` 没有任何真实产生路径，在实现续跑前不得出现在 UI 或文档中。
 - **没有 Plan → Task → Step 状态机**：`FamiliarRunPhase` 是展示标签，循环里没有该类型的状态变量或转移表；`task_plan` 产出的 `TaskList` 无任何调度器读取；交付物靠对最后一条用户消息做中英关键词匹配推断。
-- **Runtime 缺少 `degraded` 状态**：UI 侧与 iSH 内部两个生命周期枚举互不同步，且都没有部分能力可用的表示。
+- Runtime 不新增 `degraded` 状态（2026-09-03 决策）：`environment_status` 解除 guest 门控后，`failed(reason)` 已表示「guest 不可用但 receipt 仍可读」这一部分可用状态，再加一个 case 只是重命名、没有独立产生路径。真正缺的是把 `reason` 暴露给用户，已由设置中的 Diagnostics 页补齐。UI 侧与 iSH 内部两个生命周期枚举仍未合并为一个类型。
 - **Dynamic Type 全仓库 0 处适配**：无 `dynamicTypeSize`/`ScaledMetric`/`sizeCategory`，同时存在固定点数与固定 frame。
 - Keychain 相关行为在验证构建中不可覆盖：`CODE_SIGNING_ALLOWED=NO` 使 test host 缺少 `application-identifier` entitlement，`SecItem*` 返回 `errSecMissingEntitlement (-34018)`。依赖 Keychain 的场景只能标记为 unverified。
 

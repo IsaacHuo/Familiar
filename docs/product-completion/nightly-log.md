@@ -4,6 +4,38 @@
 
 ---
 
+## 2026-09-03 · 第 5 轮：Diagnostics 与 `degraded` 决策
+
+### 已完成
+
+- **Diagnostics 设置页**（`6bc849e`）：P0 Settings 清单第 12 项此前完全缺失。新页面复用 `registry.availabilityReport()`，因此展示给用户的不可用原因与告知模型的是同一份数据，而不是一条可能与运行时视图漂移的平行查询。逐条显示不可用工具的标题、具体原因与稳定工具名，另附 Shell Runtime phase 与当前实际提供给模型的工具数。
+- 原先的 Tools 列表只渲染「Unavailable」而丢弃原因，等于在 UI 上重复了切片 1 在 Registry 层修掉的缺陷：一个缺失能力与一个正常能力看起来没有区别。
+- **决定不新增 `degraded` 运行时状态**：`environment_status` 解除 guest 门控之后，`failed(reason)` 已经恰好表示「guest 不可用但 receipt 仍可读」这一部分可用状态——该只读工具从来不依赖 guest。再加一个 case 只是重命名，没有任何与 `failed` 不同的产生路径，属于为抽象而抽象。真正缺的不是状态枚举，而是把 `reason` 暴露给用户，这已由本页补齐。决策记录在 `architecture-contracts.md` §1.2。
+
+### 修改文件
+
+`Familiar/Presentation/FamiliarSettingsHubView.swift`、中英 `Localizable.strings`、`FamiliarTests/FamiliarUIFeedbackTests.swift`、`docs/product-completion/architecture-contracts.md`。
+
+### 测试结果（已实际执行）
+
+- 受影响套件：38 tests / 3 suites 全部通过。
+- **全量套件再次通过**：`Scripts/run-release-test-suites.sh`，29 个 suite + `FamiliarUITests`，输出 `All release test suites passed`（退出码 0）。
+- 中英 `Localizable.strings` 经 `plutil -lint` 通过且 key 完全一致（795/795），`git diff --check` 通过。
+- 新增契约测试断言该页读的是 `availabilityReport()` 而非平行查询，且确实渲染了 `tool.reason`——只显示「Unavailable」会重新引入同一个缺陷。
+
+### 尚未验证
+
+Diagnostics 页的视觉、VoiceOver、Dynamic Type 与深色模式表现需真机验收。页面内容依赖真实系统授权状态，因此在未授权的验证环境中只能看到部分原因。
+
+### 下一步最高优先级
+
+1. **Orchestrator 持久化执行状态**：cursor/invocation 仍只写不读；在实现续跑前 `paused`/`resumable` 不得进入 UI 或文档。
+2. **Plan → Task → Step 真实状态机**：`task_plan` 的计划仍不驱动执行，交付物仍靠关键词匹配推断。
+3. **Dynamic Type**：全仓库仍是 0 处适配。
+4. 两个 Shell 生命周期枚举仍未合并为单一对外类型。
+
+---
+
 ## 2026-09-03 · 第 4 轮：Artifact 版本历史 UI
 
 ### 已完成
