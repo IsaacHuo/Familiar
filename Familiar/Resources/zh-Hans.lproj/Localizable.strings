@@ -762,6 +762,9 @@
 "settings.budget.duration.minutes" = "%@ 分钟";
 "settings.budget.footer" = "对下一次运行生效。达到工具调用上限不会终结运行：Familiar 会要求模型基于已有信息作答并说明未完成的部分。超过运行时间会以真实错误结束运行。";
 "settings.budget.restore" = "恢复默认";
+"settings.shell.timeout" = "命令超时";
+"settings.shell.timeout.seconds" = "%@ 秒";
+"settings.shell.timeout.footer" = "该值同时是默认值和上限。Agent 只能请求更短的超时，不能更长。";
 "settings.shell.limits" = "资源限制";
 "settings.shell.limits.detail" = "%1$@ 秒 · %2$@ 个进程 · %3$@ 输出 · %4$@ Workspace";
 "settings.shell.source" = "iSH 源代码";

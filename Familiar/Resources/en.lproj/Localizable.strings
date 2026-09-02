@@ -762,6 +762,9 @@
 "settings.budget.duration.minutes" = "%@ min";
 "settings.budget.footer" = "Applies to the next run. Reaching the tool-call limit does not fail the run: Familiar asks the model to answer from what it already has and states what it could not finish. Exceeding the run time fails the run with a real error.";
 "settings.budget.restore" = "Restore Defaults";
+"settings.shell.timeout" = "Command timeout";
+"settings.shell.timeout.seconds" = "%@ seconds";
+"settings.shell.timeout.footer" = "This is both the default and the ceiling. The Agent may ask for less, never more.";
 "settings.shell.limits" = "Limits";
 "settings.shell.limits.detail" = "%1$@ seconds · %2$@ processes · %3$@ output · %4$@ Workspace";
 "settings.shell.source" = "iSH Source Code";

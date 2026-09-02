@@ -352,6 +352,33 @@ struct FamiliarWorkspaceShellTests {
         #expect(try store.prepare(workspaceID).tasksDirectoryIsEmpty)
     }
 
+    @Test("The configured Shell timeout is both the default and the ceiling")
+    func shellTimeoutSetting() throws {
+        // An isolated suite so the test cannot read or write the real app settings.
+        let suiteName = "FamiliarShellTimeoutTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let limits = FamiliarShellLimits.iOS
+        let store = FamiliarShellTimeoutSettingsStore(defaults: defaults)
+
+        // With nothing stored the executor default applies.
+        #expect(store.timeout(limits: limits) == limits.defaultTimeout)
+
+        store.save(45, limits: limits)
+        #expect(store.timeout(limits: limits) == 45)
+
+        // A stored or hand-edited value must never widen the timeout past what the
+        // executor enforces, in either direction.
+        store.save(limits.maximumTimeout + 10_000, limits: limits)
+        #expect(store.timeout(limits: limits) == limits.maximumTimeout)
+        store.save(0, limits: limits)
+        #expect(store.timeout(limits: limits) == 1)
+
+        // Values written by an older build bypass save(), so read must clamp too.
+        defaults.set(9_999.0, forKey: FamiliarShellTimeoutSettingsStore.defaultsKey)
+        #expect(store.timeout(limits: limits) == limits.maximumTimeout)
+    }
+
     private func makeWorkspace() -> (URL, FamiliarWorkspaceStore, FamiliarWorkspaceID) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
             "FamiliarWorkspaceShell-\(UUID().uuidString)",

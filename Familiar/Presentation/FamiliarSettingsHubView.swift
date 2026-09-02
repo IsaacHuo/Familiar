@@ -401,7 +401,10 @@ private struct FamiliarShellRuntimeSettingsView: View {
     let workspaceID: FamiliarWorkspaceID?
     let runtimeStatus: FamiliarShellRuntimeStatus
 
+    private let timeoutSettings = FamiliarShellTimeoutSettingsStore()
+
     @State private var networkEnabled = false
+    @State private var timeoutSeconds = FamiliarShellLimits.iOS.defaultTimeout
     @State private var errorMessage: String?
     @State private var asksToResetRuntime = false
 
@@ -435,9 +438,19 @@ private struct FamiliarShellRuntimeSettingsView: View {
                 Text(String(localized: "settings.shell.network.footer", defaultValue: "Off by default. Shell never receives model API keys, Keychain data, cookies, or access to local-network services."))
             }
 
-            Section(String(localized: "settings.shell.limits", defaultValue: "Limits")) {
+            Section {
+                Stepper(value: $timeoutSeconds, in: 10...FamiliarShellLimits.iOS.maximumTimeout, step: 10) {
+                    LabeledContent(
+                        String(localized: "settings.shell.timeout", defaultValue: "Command timeout"),
+                        value: String(format: String(localized: "settings.shell.timeout.seconds", defaultValue: "%@ seconds"), NSNumber(value: Int(timeoutSeconds)))
+                    )
+                }
                 Text(shellLimitsDetail)
                     .foregroundStyle(.secondary)
+            } header: {
+                Text(String(localized: "settings.shell.limits", defaultValue: "Limits"))
+            } footer: {
+                Text(String(localized: "settings.shell.timeout.footer", defaultValue: "This is both the default and the ceiling. The Agent may ask for less, never more."))
             }
 
             Section {
@@ -466,6 +479,12 @@ private struct FamiliarShellRuntimeSettingsView: View {
         }
         .navigationTitle(String(localized: "settings.shell.title", defaultValue: "Shell Runtime"))
         .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: timeoutSeconds) { _, value in
+            timeoutSettings.save(value, limits: FamiliarShellLimits.iOS)
+        }
+        .task {
+            timeoutSeconds = timeoutSettings.timeout(limits: FamiliarShellLimits.iOS)
+        }
         .task(id: workspaceID) {
             guard let workspaceID else {
                 networkEnabled = false

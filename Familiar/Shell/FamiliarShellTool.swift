@@ -51,6 +51,32 @@ nonisolated final class FamiliarPythonPackageSourceSettingsStore: @unchecked Sen
     }
 }
 
+/// User-configured Shell timeout. Acts as both the default used when the model asks for
+/// no timeout and the ceiling for what it may ask: a user who lowers the limit expects it
+/// respected, so a model-supplied value can only ever request less.
+nonisolated final class FamiliarShellTimeoutSettingsStore: @unchecked Sendable {
+    static let defaultsKey = "familiar.shell.timeout-seconds.v1"
+
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    /// Clamped on read so a stored value from an older build, or a hand-edited defaults
+    /// entry, can never widen the timeout past what the executor enforces.
+    func timeout(limits: FamiliarShellLimits) -> TimeInterval {
+        guard let stored = defaults.object(forKey: Self.defaultsKey) as? Double else {
+            return limits.defaultTimeout
+        }
+        return min(max(stored, 1), limits.maximumTimeout)
+    }
+
+    func save(_ timeout: TimeInterval, limits: FamiliarShellLimits) {
+        defaults.set(min(max(timeout, 1), limits.maximumTimeout), forKey: Self.defaultsKey)
+    }
+}
+
 nonisolated enum FamiliarRuntimeEnvironmentState: String, Codable, Equatable, Sendable {
     case notPrepared
     case preparing
@@ -167,6 +193,7 @@ nonisolated struct FamiliarShellTool: FamiliarTool {
     let executor: any FamiliarShellExecutor
     let workspaceStore: FamiliarWorkspaceStore
     let shellPolicy: FamiliarShellPolicy
+    let timeoutSettings: FamiliarShellTimeoutSettingsStore
 
     /// High risk is intentional: AgentLoop never applies session/always grants
     /// to high-risk tools, so every shell invocation is approved exactly once.
@@ -200,11 +227,13 @@ nonisolated struct FamiliarShellTool: FamiliarTool {
     init(
         executor: any FamiliarShellExecutor,
         workspaceStore: FamiliarWorkspaceStore = FamiliarWorkspaceStore(),
-        shellPolicy: FamiliarShellPolicy = FamiliarShellPolicy()
+        shellPolicy: FamiliarShellPolicy = FamiliarShellPolicy(),
+        timeoutSettings: FamiliarShellTimeoutSettingsStore = FamiliarShellTimeoutSettingsStore()
     ) {
         self.executor = executor
         self.workspaceStore = workspaceStore
         self.shellPolicy = shellPolicy
+        self.timeoutSettings = timeoutSettings
     }
 
     func preflight(
@@ -457,8 +486,13 @@ nonisolated struct FamiliarShellTool: FamiliarTool {
         )
     }
 
+    /// The user's configured timeout is both the default and the ceiling: a user who
+    /// lowers the limit expects it respected, so a model-supplied value can only request
+    /// less, never more.
     private func boundedTimeout(_ proposed: Double?) -> TimeInterval {
-        min(max(proposed ?? executor.limits.defaultTimeout, 1), executor.limits.maximumTimeout)
+        let configured = timeoutSettings.timeout(limits: executor.limits)
+        guard let proposed else { return configured }
+        return min(max(proposed, 1), configured)
     }
 
     private func boundedProgressChunk(_ chunk: String, remainingBytes: inout Int) -> String {
