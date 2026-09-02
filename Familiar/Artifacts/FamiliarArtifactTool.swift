@@ -123,6 +123,93 @@ nonisolated struct FamiliarArtifactEditTool: FamiliarTool {
     }
 }
 
+/// Reads a published Artifact back as text so the Agent can verify or revise its own
+/// deliverable. Without this, a DOCX could be published and never re-opened:
+/// `workspace_read` only sees the Workspace copy and rejects non-UTF-8 content, so the
+/// only evidence about a published binary was the publish receipt.
+nonisolated struct FamiliarArtifactReadTool: FamiliarTool {
+    struct Input: Decodable, Sendable { let identifier: String }
+
+    private struct Output: Encodable {
+        let artifactIdentifier: String
+        let filename: String
+        let extractedBy: String
+        let characterCount: Int
+        let truncated: Bool
+        let text: String
+    }
+
+    /// Well below the 48k tool-result cap, leaving room for the envelope while still
+    /// carrying a full report back to the model.
+    static let maximumCharacters = 16_000
+
+    let store: FamiliarArtifactStore
+    let manifest = FamiliarToolManifest(
+        name: "artifact_read",
+        title: "Read published Artifact",
+        description: "Read the current text of an Artifact already published in this Project. DOCX, PDF and XLSX are parsed into Markdown; Markdown, text and HTML are returned as stored. Use this to check or revise a file you produced instead of assuming its contents.",
+        parameters: .object(
+            ["identifier": .string("Artifact identifier beginning with artifact_.")],
+            required: ["identifier"]
+        ),
+        effect: .read,
+        risk: .low,
+        dataDomains: ["project.artifacts"],
+        privacyLabels: ["project-only", "read-only"],
+        supportsParallelism: true,
+        requiredScopes: ["project"],
+        executionClass: .specializedLocal
+    )
+
+    init(store: FamiliarArtifactStore = FamiliarArtifactStore()) { self.store = store }
+
+    func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
+        guard let projectID = context.projectID else { throw FamiliarArtifactError.projectRequired }
+        let artifact = try store.editableArtifact(projectID: projectID, identifier: input.identifier)
+        let (text, extractedBy) = try Self.extractText(data: artifact.data, filename: artifact.filename)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw FamiliarArtifactError.missingArtifact }
+        let truncated = trimmed.count > Self.maximumCharacters
+        let bounded = truncated ? String(trimmed.prefix(Self.maximumCharacters)) : trimmed
+        let output = Output(
+            artifactIdentifier: input.identifier,
+            filename: artifact.filename,
+            extractedBy: extractedBy,
+            characterCount: trimmed.count,
+            // Reported rather than silent: a model that believes it read the whole file
+            // would revise a document it has only partly seen.
+            truncated: truncated,
+            text: bounded
+        )
+        let summary = truncated
+            ? "已读取 \(artifact.filename) 的前 \(Self.maximumCharacters) 个字符，共 \(trimmed.count) 个字符。"
+            : "已读取 \(artifact.filename)，共 \(trimmed.count) 个字符。"
+        return .result(.init(envelope: try FamiliarToolResultEnvelope(
+            model: output,
+            presentation: .document(.init(
+                summary: summary,
+                title: artifact.filename,
+                text: bounded,
+                mimeType: "text/markdown"
+            ))
+        )))
+    }
+
+    /// Binary Office and PDF payloads go through AnyDoc; text formats are returned as
+    /// stored so a Markdown Artifact round-trips byte for byte.
+    static func extractText(data: Data, filename: String) throws -> (text: String, extractedBy: String) {
+        let fileExtension = URL(fileURLWithPath: filename).pathExtension.lowercased()
+        if ["md", "markdown", "txt", "html", "htm"].contains(fileExtension) {
+            guard let value = String(data: data, encoding: .utf8) else {
+                throw FamiliarArtifactError.contentMismatch
+            }
+            return (value, "utf8")
+        }
+        let conversion = try FamiliarAnyDocService.convert(data: data, filename: filename)
+        return (conversion.markdown, FamiliarAnyDocService.engineName)
+    }
+}
+
 nonisolated struct FamiliarArtifactPublishTool: FamiliarTool {
     struct Input: Decodable, Sendable {
         let path: String

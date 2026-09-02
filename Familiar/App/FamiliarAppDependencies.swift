@@ -98,6 +98,7 @@ struct FamiliarAppDependencies {
                 AnyFamiliarTool(FamiliarSkillReadTool()),
                 AnyFamiliarTool(FamiliarArtifactWriteTool(store: FamiliarArtifactStore())),
                 AnyFamiliarTool(FamiliarArtifactEditTool(store: FamiliarArtifactStore())),
+                AnyFamiliarTool(FamiliarArtifactReadTool(store: FamiliarArtifactStore())),
                 AnyFamiliarTool(FamiliarArtifactPublishTool(workspaceStore: workspaceStore)),
                 AnyFamiliarTool(FamiliarEnvironmentStatusTool(workspaceStore: workspaceStore)),
                 AnyFamiliarTool(FamiliarCalendarEventsTool(service: eventKit)),

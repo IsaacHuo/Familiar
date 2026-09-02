@@ -55,6 +55,7 @@ struct FamiliarBaselineTests {
         "skill_read",
         "artifact_write",
         "artifact_edit",
+        "artifact_read",
         "artifact_publish",
         // Reads only the on-disk Environment receipt, so it must never be gated on
         // the iSH guest booting: a missing rootfs previously meant it was never

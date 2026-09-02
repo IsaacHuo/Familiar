@@ -272,4 +272,49 @@ struct FamiliarProjectWorkspaceTests {
         #expect(descriptor.validationReceipt?.checks.contains("office-package-readable") == true)
         #expect(artifactStore.url(relativePath: descriptor.relativePath) != nil)
     }
+
+    @Test("artifact_read returns the text of a published DOCX so the Agent can verify it")
+    func readPublishedArtifact() async throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = repository.appendingPathComponent("Vendor/AnyDocBridgeRust/tests/fixtures/sample.docx")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "FamiliarArtifactRead-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        let workspace = FamiliarWorkspaceStore(rootURL: root.appendingPathComponent("Workspaces"))
+        let artifactStore = FamiliarArtifactStore(rootURL: root.appendingPathComponent("Artifacts"))
+        let projectID = UUID()
+        _ = try workspace.write(
+            Data(contentsOf: source),
+            relativePath: "Outputs/report.docx",
+            in: .project(projectID)
+        )
+        let publishOutcome = try await FamiliarArtifactPublishTool(workspaceStore: workspace, artifactStore: artifactStore)
+            .execute(
+                .init(path: "Outputs/report.docx", title: "Beijing Report", format: .docx, requiredText: nil),
+                context: .init(runID: "run", projectID: projectID, workspaceID: .project(projectID))
+            )
+        guard case .action(let proposal) = publishOutcome else {
+            Issue.record("Expected a reversible publish proposal")
+            return
+        }
+        let descriptor = try #require(try await proposal.commit().result.artifact)
+
+        let readOutcome = try await FamiliarArtifactReadTool(store: artifactStore).execute(
+            .init(identifier: descriptor.identifier),
+            context: .init(runID: "run", projectID: projectID, workspaceID: .project(projectID))
+        )
+        guard case .result(let result) = readOutcome else {
+            Issue.record("artifact_read must be a plain read with no approval")
+            return
+        }
+        // A published DOCX was previously unreadable by the Agent: workspace_read only
+        // sees the Workspace copy and rejects non-UTF-8 bytes, so the publish receipt was
+        // the only evidence about the delivered file.
+        #expect(result.envelope.modelContent.contains("AnyDoc"))
+        #expect(result.envelope.modelContent.contains("\"truncated\":false"))
+    }
 }
