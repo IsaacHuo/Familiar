@@ -722,6 +722,14 @@
 "settings.shell.unavailable" = "Runtime assets are not available in this build";
 "settings.shell.network" = "Allow public internet in this Workspace";
 "settings.shell.network.footer" = "Off by default. Approved Environment plans may download declared packages from PyPI. Shell never receives model API keys, Keychain data, cookies, or access to local-network services.";
+"settings.budget.title" = "Execution Limits";
+"settings.budget.detail" = "%1$@ steps · %2$@ tool calls · %3$@ min";
+"settings.budget.iterations" = "Maximum steps";
+"settings.budget.tool_calls" = "Maximum tool calls";
+"settings.budget.duration" = "Maximum run time";
+"settings.budget.duration.minutes" = "%@ min";
+"settings.budget.footer" = "Applies to the next run. Reaching the tool-call limit does not fail the run: Familiar asks the model to answer from what it already has and states what it could not finish. Exceeding the run time fails the run with a real error.";
+"settings.budget.restore" = "Restore Defaults";
 "settings.shell.limits" = "Limits";
 "settings.shell.limits.detail" = "%1$@ seconds · %2$@ processes · %3$@ output · %4$@ Workspace";
 "settings.shell.source" = "iSH Source Code";

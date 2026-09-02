@@ -171,8 +171,10 @@ struct FamiliarAppDependencies {
         for descriptor: FamiliarProviderDescriptor,
         apiKey: String,
         routePolicy: FamiliarModelRoutePolicy,
+        budget: FamiliarExecutionBudget = .defaultValue,
         authorizationRuntime: (any FamiliarAuthorizationServicing)? = nil
     ) -> FamiliarAgentLoop {
+        let normalized = budget.normalized
         let cloudProvider = FamiliarProviderFactory.makeProvider(for: descriptor, apiKey: apiKey)
         let router = FamiliarModelRouter(
             policy: routePolicy,
@@ -188,7 +190,10 @@ struct FamiliarAppDependencies {
             confirmationCoordinator: confirmationCoordinator,
             clarificationCoordinator: clarificationCoordinator,
             undoStore: undoStore,
-            authorizationRuntime: authorizationRuntime
+            authorizationRuntime: authorizationRuntime,
+            maximumIterations: normalized.maximumIterations,
+            maximumToolCalls: normalized.maximumToolCalls,
+            maximumDuration: normalized.maximumDuration
         )
     }
 }

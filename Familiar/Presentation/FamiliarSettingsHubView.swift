@@ -18,6 +18,7 @@ enum FamiliarSettingsRoute: String, Hashable {
     case pythonPackageSource
     case appearance
     case tools
+    case executionBudget
     case shellRuntime
     case authorizations
     case skills
@@ -98,6 +99,13 @@ struct FamiliarSettingsView: View {
                         subtitle: String(localized: "settings.hub.tools.detail", defaultValue: "Capabilities registered with the Agent Runtime"),
                         symbol: "puzzlepiece.extension.fill",
                         color: .blue
+                    )
+                    settingsLink(
+                        .executionBudget,
+                        title: String(localized: "settings.budget.title", defaultValue: "Execution Limits"),
+                        subtitle: executionBudgetSubtitle,
+                        symbol: "gauge.with.needle",
+                        color: .purple
                     )
                     settingsLink(
                         .shellRuntime,
@@ -258,6 +266,8 @@ struct FamiliarSettingsView: View {
             FamiliarAppearanceSettingsView()
         case .tools:
             FamiliarToolsSettingsView(registry: registry)
+        case .executionBudget:
+            FamiliarExecutionBudgetSettingsView(budget: $settings.executionBudget)
         case .shellRuntime:
             FamiliarShellRuntimeSettingsView(
                 store: workspaceStore,
@@ -281,6 +291,16 @@ struct FamiliarSettingsView: View {
         case .about:
             FamiliarAboutView()
         }
+    }
+
+    private var executionBudgetSubtitle: String {
+        let budget = settings.executionBudget.normalized
+        return String(
+            format: String(localized: "settings.budget.detail", defaultValue: "%1$@ steps · %2$@ tool calls · %3$@ min"),
+            NSNumber(value: budget.maximumIterations),
+            NSNumber(value: budget.maximumToolCalls),
+            NSNumber(value: Int((budget.maximumDuration / 60).rounded()))
+        )
     }
 
     private var appVersion: String {
@@ -822,6 +842,59 @@ private struct FamiliarSoulSettingsView: View {
         }
         .navigationTitle(String(localized: "settings.hub.soul", defaultValue: "Soul"))
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// Steppers rather than free text: the budgets are clamped by
+/// `FamiliarExecutionBudget.normalized`, and a control that can express a value the
+/// runtime silently rejects is a dead control.
+private struct FamiliarExecutionBudgetSettingsView: View {
+    @Binding var budget: FamiliarExecutionBudget
+
+    var body: some View {
+        Form {
+            Section {
+                Stepper(value: $budget.maximumIterations, in: FamiliarExecutionBudget.iterationRange) {
+                    LabeledContent(
+                        String(localized: "settings.budget.iterations", defaultValue: "Maximum steps"),
+                        value: "\(budget.maximumIterations)"
+                    )
+                }
+                Stepper(value: $budget.maximumToolCalls, in: FamiliarExecutionBudget.toolCallRange, step: 4) {
+                    LabeledContent(
+                        String(localized: "settings.budget.tool_calls", defaultValue: "Maximum tool calls"),
+                        value: "\(budget.maximumToolCalls)"
+                    )
+                }
+                Stepper(value: $budget.maximumDuration, in: FamiliarExecutionBudget.durationRange, step: 60) {
+                    LabeledContent(
+                        String(localized: "settings.budget.duration", defaultValue: "Maximum run time"),
+                        value: durationLabel
+                    )
+                }
+            } header: {
+                Text(String(localized: "settings.budget.title", defaultValue: "Execution Limits"))
+            } footer: {
+                Text(String(localized: "settings.budget.footer", defaultValue: "Applies to the next run. Reaching the tool-call limit does not fail the run: Familiar asks the model to answer from what it already has and states what it could not finish. Exceeding the run time fails the run with a real error."))
+            }
+
+            Section {
+                Button(String(localized: "settings.budget.restore", defaultValue: "Restore Defaults"), role: .destructive) {
+                    budget = .defaultValue
+                }
+                .disabled(budget == .defaultValue)
+            }
+        }
+        .navigationTitle(String(localized: "settings.budget.title", defaultValue: "Execution Limits"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var durationLabel: String {
+        let minutes = Int((budget.maximumDuration / 60).rounded())
+        return String(
+            format: String(localized: "settings.budget.duration.minutes", defaultValue: "%@ min"),
+            NSNumber(value: minutes)
+        )
     }
 }
 

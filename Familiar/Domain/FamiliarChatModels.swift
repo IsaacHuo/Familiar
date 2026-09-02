@@ -382,20 +382,96 @@ nonisolated struct FamiliarModelSwitchSnapshot: Identifiable, Equatable, Sendabl
     let createdAt: Date
 }
 
+/// User-configurable execution budgets. Every value is clamped on read so a stored
+/// entry from an older build, or a hand-edited defaults value, can never widen a
+/// budget past what the runtime is prepared to enforce.
+nonisolated struct FamiliarExecutionBudget: Codable, Equatable, Sendable {
+    var maximumIterations: Int
+    var maximumToolCalls: Int
+    var maximumDuration: TimeInterval
+
+    static let iterationRange = 2...12
+    static let toolCallRange = 4...64
+    static let durationRange: ClosedRange<TimeInterval> = 60...1_800
+
+    /// Mirrors the `FamiliarAgentLoop` initializer defaults. Both sides must agree,
+    /// otherwise the UI would present a budget the runtime does not actually apply.
+    static let defaultValue = FamiliarExecutionBudget(
+        maximumIterations: 6,
+        maximumToolCalls: 24,
+        maximumDuration: 600
+    )
+
+    var normalized: FamiliarExecutionBudget {
+        FamiliarExecutionBudget(
+            maximumIterations: min(max(maximumIterations, Self.iterationRange.lowerBound), Self.iterationRange.upperBound),
+            maximumToolCalls: min(max(maximumToolCalls, Self.toolCallRange.lowerBound), Self.toolCallRange.upperBound),
+            maximumDuration: min(max(maximumDuration, Self.durationRange.lowerBound), Self.durationRange.upperBound)
+        )
+    }
+}
+
 nonisolated struct FamiliarSettings: Codable, Equatable, Sendable {
     var providerID: String
     var modelID: String
     var modelRoutePolicy: FamiliarModelRoutePolicy
     var systemPrompt: String
     var providerConfigurations: [String: FamiliarProviderConfiguration]
+    var executionBudget: FamiliarExecutionBudget
 
     static let defaultValue = FamiliarSettings(
         providerID: FamiliarProviderCatalog.deepSeek.id,
         modelID: FamiliarProviderCatalog.deepSeek.defaultModel.id,
         modelRoutePolicy: .cloud,
         systemPrompt: String(localized: "settings.system_prompt.default"),
-        providerConfigurations: [:]
+        providerConfigurations: [:],
+        executionBudget: .defaultValue
     )
+
+    enum CodingKeys: String, CodingKey {
+        case providerID
+        case modelID
+        case modelRoutePolicy
+        case systemPrompt
+        case providerConfigurations
+        case executionBudget
+    }
+
+    /// Decoded tolerantly so settings stored by an earlier build, which have no
+    /// `executionBudget` key, still load. The synthesized initializer would throw on
+    /// the missing key, and `FamiliarSettingsStore.load` falls back to defaults on any
+    /// failure, which would silently discard the user's saved model and system prompt.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        providerID = try container.decode(String.self, forKey: .providerID)
+        modelID = try container.decode(String.self, forKey: .modelID)
+        modelRoutePolicy = try container.decode(FamiliarModelRoutePolicy.self, forKey: .modelRoutePolicy)
+        systemPrompt = try container.decode(String.self, forKey: .systemPrompt)
+        providerConfigurations = try container.decodeIfPresent(
+            [String: FamiliarProviderConfiguration].self,
+            forKey: .providerConfigurations
+        ) ?? [:]
+        executionBudget = (try container.decodeIfPresent(
+            FamiliarExecutionBudget.self,
+            forKey: .executionBudget
+        ) ?? .defaultValue).normalized
+    }
+
+    init(
+        providerID: String,
+        modelID: String,
+        modelRoutePolicy: FamiliarModelRoutePolicy,
+        systemPrompt: String,
+        providerConfigurations: [String: FamiliarProviderConfiguration],
+        executionBudget: FamiliarExecutionBudget
+    ) {
+        self.providerID = providerID
+        self.modelID = modelID
+        self.modelRoutePolicy = modelRoutePolicy
+        self.systemPrompt = systemPrompt
+        self.providerConfigurations = providerConfigurations
+        self.executionBudget = executionBudget
+    }
 
     var providerConfiguration: FamiliarProviderConfiguration {
         FamiliarProviderCatalog.configuration(

@@ -946,6 +946,7 @@ final class FamiliarChatController {
                 for: descriptor,
                 apiKey: apiKey,
                 routePolicy: settings.modelRoutePolicy,
+                budget: settings.executionBudget,
                 authorizationRuntime: FamiliarAuthorizationRuntime(context: context, sessionID: dependencies.sessionID)
             )
             var completedResponse: FamiliarCompletedResponse?

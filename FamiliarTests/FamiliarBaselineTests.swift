@@ -104,6 +104,39 @@ struct FamiliarBaselineTests {
         }
     }
 
+    @Test("Settings stored without an execution budget still decode and budgets are clamped")
+    func executionBudgetDecodingAndClamping() throws {
+        // Settings written by an earlier build have no `executionBudget` key. Throwing
+        // here would make FamiliarSettingsStore.load fall back to defaults and silently
+        // discard the user's saved model and system prompt.
+        let legacy = Data(#"""
+        {"providerID":"deepseek","modelID":"deepseek-v4-pro","modelRoutePolicy":"cloud","systemPrompt":"Legacy","providerConfigurations":{}}
+        """#.utf8)
+        let decoded = try JSONDecoder().decode(FamiliarSettings.self, from: legacy)
+        #expect(decoded.modelID == "deepseek-v4-pro")
+        #expect(decoded.systemPrompt == "Legacy")
+        #expect(decoded.executionBudget == .defaultValue)
+
+        // A stored or hand-edited value must never widen a budget past what the runtime
+        // is prepared to enforce.
+        let widened = Data(#"""
+        {"providerID":"deepseek","modelID":"deepseek-v4-pro","modelRoutePolicy":"cloud","systemPrompt":"S","providerConfigurations":{},"executionBudget":{"maximumIterations":9999,"maximumToolCalls":9999,"maximumDuration":999999}}
+        """#.utf8)
+        let clamped = try JSONDecoder().decode(FamiliarSettings.self, from: widened).executionBudget
+        #expect(clamped.maximumIterations == FamiliarExecutionBudget.iterationRange.upperBound)
+        #expect(clamped.maximumToolCalls == FamiliarExecutionBudget.toolCallRange.upperBound)
+        #expect(clamped.maximumDuration == FamiliarExecutionBudget.durationRange.upperBound)
+
+        let narrowed = FamiliarExecutionBudget(maximumIterations: 0, maximumToolCalls: 0, maximumDuration: 1).normalized
+        #expect(narrowed.maximumIterations == FamiliarExecutionBudget.iterationRange.lowerBound)
+        #expect(narrowed.maximumToolCalls == FamiliarExecutionBudget.toolCallRange.lowerBound)
+        #expect(narrowed.maximumDuration == FamiliarExecutionBudget.durationRange.lowerBound)
+
+        // The UI default must equal what FamiliarAgentLoop applies when no budget is
+        // passed, otherwise Settings would show a limit the runtime does not use.
+        #expect(FamiliarExecutionBudget.defaultValue == FamiliarExecutionBudget(maximumIterations: 6, maximumToolCalls: 24, maximumDuration: 600))
+    }
+
     @Test("Provider catalog has stable unique identifiers")
     func providerCatalogIdentifiersAreUnique() {
         let identifiers = FamiliarProviderCatalog.builtIn.map(\.id)

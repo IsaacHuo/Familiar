@@ -722,6 +722,14 @@
 "settings.shell.unavailable" = "此构建未包含可用的运行资产";
 "settings.shell.network" = "允许此 Workspace 访问公共互联网";
 "settings.shell.network.footer" = "默认关闭。批准 Environment 方案后可从 PyPI 下载声明依赖；Shell 不会获得模型 API Key、Keychain、Cookie 或局域网服务访问权。";
+"settings.budget.title" = "执行限制";
+"settings.budget.detail" = "%1$@ 步 · %2$@ 次工具调用 · %3$@ 分钟";
+"settings.budget.iterations" = "最大步数";
+"settings.budget.tool_calls" = "最大工具调用次数";
+"settings.budget.duration" = "最长运行时间";
+"settings.budget.duration.minutes" = "%@ 分钟";
+"settings.budget.footer" = "对下一次运行生效。达到工具调用上限不会终结运行：Familiar 会要求模型基于已有信息作答并说明未完成的部分。超过运行时间会以真实错误结束运行。";
+"settings.budget.restore" = "恢复默认";
 "settings.shell.limits" = "资源限制";
 "settings.shell.limits.detail" = "%1$@ 秒 · %2$@ 个进程 · %3$@ 输出 · %4$@ Workspace";
 "settings.shell.source" = "iSH 源代码";
