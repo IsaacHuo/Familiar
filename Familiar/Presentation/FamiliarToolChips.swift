@@ -604,7 +604,7 @@ private enum FamiliarToolChipProjection {
                 label: FamiliarToolPresentationName.title(for: toolName),
                 chip: chipText(surface: surface, content: content),
                 details: detailLines(surface: surface, content: content),
-                symbol: symbol(toolName: toolName, effect: surface.effect),
+                symbol: FamiliarToolPresentationName.symbol(for: toolName, effect: surface.effect),
                 phase: phase(from: group),
                 isMonospaced: isMonospaced(toolName: toolName, content: content),
                 detailIsMonospaced: isMonospaced(toolName: toolName, content: content),
@@ -835,17 +835,8 @@ private enum FamiliarToolChipProjection {
         return (additions.count, deletions.count, preview)
     }
 
-    private static func symbol(toolName: String, effect: FamiliarToolEffect?) -> String {
-        if effect == .reversibleWrite || effect == .destructiveWrite { return "pencil" }
-        if toolName.contains("search") { return "magnifyingglass" }
-        if toolName.contains("shell") { return "terminal" }
-        if toolName.contains("image") { return "photo" }
-        if toolName.contains("read") || toolName.contains("fetch") { return "doc.text" }
-        if toolName.contains("date") || toolName.contains("calendar") { return "calendar" }
-        if toolName.contains("reminder") || toolName == "task_plan" { return "checklist" }
-        return "wrench.and.screwdriver"
-    }
-
+    /// Monospacing is decided by tool family prefix, which is stable across new
+    /// tools in the same family, unlike the removed symbol heuristic.
     private static func isMonospaced(
         toolName: String,
         content: FamiliarToolPresentationPayload.Content?

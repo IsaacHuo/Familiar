@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import SwiftData
 
@@ -149,7 +148,7 @@ struct FamiliarSkillService {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(normalized)
-        let hash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        let hash = FamiliarHash.sha256(data)
         let stableID = normalized.id
         if let existing = try context.fetch(FetchDescriptor<FamiliarSkill>(predicate: #Predicate { $0.stableID == stableID })).first {
             existing.version = normalized.version; existing.name = normalized.name; existing.descriptionText = normalized.description; existing.instructions = normalized.instructions

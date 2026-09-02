@@ -150,13 +150,15 @@ nonisolated struct FamiliarArtifactPublishTool: FamiliarTool {
         name: "artifact_publish",
         title: "Publish validated Artifact",
         description: "Validate a real file already created in the current Workspace Outputs and publish it as a Project Artifact. Supports DOCX, PDF, XLSX, HTML, Markdown, and plain text. Never claim delivery before this tool succeeds.",
-        parameters: .init(
-            type: .object,
-            properties: [
-                "path": .init(type: .string, description: "Relative Outputs path such as Outputs/北京资料.docx."),
-                "title": .init(type: .string, description: "User-visible Artifact title."),
-                "format": .init(type: .string, enumValues: FamiliarArtifactFormat.allCases.map(\.rawValue)),
-                "requiredText": .init(type: .array, description: "Optional short strings that must be present in parsed document content.")
+        parameters: .object(
+            [
+                "path": .string("Relative Outputs path such as Outputs/北京资料.docx."),
+                "title": .string("User-visible Artifact title."),
+                "format": .string("Artifact format.", enumValues: FamiliarArtifactFormat.allCases.map(\.rawValue)),
+                "requiredText": .stringArray(
+                    "Optional strings that must be present in the parsed document content.",
+                    itemDescription: "A short literal string expected in the parsed content."
+                )
             ],
             required: ["path", "title", "format"]
         ),

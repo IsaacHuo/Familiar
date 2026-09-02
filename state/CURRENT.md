@@ -10,6 +10,10 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 
 ## Recently Completed
 
+- **预算耗尽不再终结 Run**：工具调用预算与最后一轮迭代此前都以 `throw` 结束运行，导致「工具调用次数过多，已停止本次任务」并作废此前所有成功的工具结果。现改为收尾信号：超预算的那一次调用回结构化 `tool_budget_exhausted` 失败，随后的请求把 tools 收窄为空并追加系统消息要求立即基于已有信息作答并说明未完成项；发 `budgetExhausted` runtime notice 供审计。迭代耗尽只在确实没有任何正文可交付时才失败。删除不可达的 `FamiliarAgentError.maxToolCallsExceeded`，修正两条把「预算用尽」说成「已停止任务」的误导文案，notice 的实时与历史投影按 kind 区分标题（此前均渲染为 Retrying，且历史回放会整条丢弃预算通知）。
+
+- **Apple Native Tool Layer 收口**：审计确认 WeatherKit、HealthKit、PhotoKit、MapKit、MusicKit、CoreBluetooth、NaturalLanguage、UserNotifications 早已实现并注册，本轮不是“建层”而是把边缘接完。新增 `weather_history`（WeatherKit 历史区间，解除“照片→天气”硬阻塞）与 AlarmKit `alarm_schedule`/`alarm_cancel`/`alarm_list`（iOS 26.1 门控、alert-only presentation、durable undo，Schema 36→37，注册表 49 静态 + 3 条件）。`FamiliarJSONSchema` 破坏性扩展 `items`/`minimum`/`maximum`/`minItems`/`maxItems`/`default`，全部 8 处无元素类型的数组参数修复，manifest 统一走共享 `FamiliarToolSchema` DSL 与 `FamiliarToolDefaults`。敏感 read（health/photos/bluetooth）由 `preflight` 提供真实读取范围并接入 `authorizationRuntime` 的仅这次/本会话授权，不再每次以 `access_scope = description` 重复打断。错误契约改为 `FamiliarStructuredToolError` 协议，删除生产恒为 `nil` 的 policy 授权重载。工具图标改为显式表，删除 `contains` 启发式。合规改为机制化：`FamiliarCapabilityRequirement` 声明 plist key/entitlement/privacy 类型，契约测试从 `allCases` 反查，补齐缺失 usage description 与中英 parity、Health/Fitness/Photos/OtherData 隐私条目、权限页 4 行状态。去重 ISO8601（修复 `notification_schedule` 不接受小数秒的真实不一致）与 12 处 sha256。系统提示改为显式领域路由。
+
 - **聊天有序块与 Run 审计收敛**：Assistant Turn 改为按 Runtime sequence 交错显示每轮 Markdown 与稳定工具执行块，查询结果默认摘要折叠并原地展开，Activity 不再承载重复明细。确认卡改为默认“仅这次”的单页系统蓝布局，明确展示风险、后果和撤销能力；修复 once 授权额外签发规则。Project Run 详情新增调用状态、参数 hash、结构化失败、授权决定、结果 hash 与冻结上下文审计。每轮正文在工具边界持久化，失败 Run 也可回放已产生内容。
 - **2026-08-31 Complex Task Runtime v1 代码纵切**：iSH 安装改用 rootfs 版本、bundle hash、固定 iSH commit 与原子 marker 校验，并显式记录 installing/booting/ready/running/failed 生命周期；Project 持久挂载 `/workspace/env`，普通 Chat Environment 随 Run 删除。新增声明式 `environment_status`/`environment_prepare`、Project Skill/Capability binding、按需 `skill_list`/`skill_read`、动态 Shell preflight、Plan/Execute/Validate/Repair/Deliver 阶段和最多两次缺失交付修复。Artifact 扩展为 Markdown/Text/DOCX/PDF/XLSX/HTML，`artifact_publish` 只登记通过签名、AnyDoc/SwiftSoup、必需正文和 hash 校验的真实 Outputs 文件；Chat/Project 复用 Quick Look/ShareLink，HTML 使用 non-persistent WebKit + CSP。当前唯一 Release Schema 为 36 实体。独立 DerivedData 的 arm64 generic Simulator `build-for-testing` 已成功；未启动 Simulator、未执行测试、未连接真机、未调用真实 DeepSeek 或真实 iSH guest。
 - **2026-08-30 DeepSeek + Native Tools + iSH 成品纵切**：EventKit 更新/完成/删除与跨重启 Undo、Photos add-only 输出、Files 导出、最小 Contacts 字段、当前单一 33 实体 Release Schema、task-scoped Shell 输入投影、Workspace 删除事务、ARM64 iSH/Alpine headless runtime、socket/资源 policy、Shell Chat Surface 和 Runtime 设置页已接入。固定 iSH commit、Alpine 3.24.0 rootfs、device/simulator XCFramework、GPLv3 源码/许可与构建脚本通过供应链校验；全新 DerivedData 的 Debug arm64 generic Simulator `build-for-testing` 与 Release generic iOS arm64 无签名 build 成功，网站构建、本地化 plist/key parity 和 `git diff --check` 通过。未启动 Simulator、未执行测试、未使用真实 DeepSeek Key；真实 iSH guest、系统权限、DeepSeek 效果、签名 Archive 与 App Review 仍由所有者验收。
@@ -53,6 +57,8 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 
 ## Verification Evidence
 
+- 2026-09-02：Apple Native Tool Layer 收口后，独立 DerivedData 的 Debug arm64 iOS Simulator `build-for-testing` 成功，App、Share Extension、Widget 与两个测试 target 均完成编译且无 Swift 诊断。中英 `Localizable.strings` 与 `InfoPlist.strings` 经 `plutil -lint` 通过且 key 集合完全一致（753/753、13/13），`git diff --check` 通过。按项目约束未启动 Simulator，因此**本轮未执行任何测试**：新增的 `FamiliarAppleNativeToolTests`、合规反查契约测试与 `native-weather-report` benchmark 只验证了可编译。另需注意 `FamiliarBaselineTests` 的工具名断言自 2026-08-31 新增原生工具起即已失效（`snapshot()` 不过滤可用性，必然返回全部注册工具），本轮已改为集合 + `executionClass` 分组有序断言；2026-08-28 的“24 套全部通过”发生在该断言失效之前，与其不矛盾。
+
 - 2026-09-02：聊天有序块与 Run 审计收敛改动后，独立 DerivedData 的 Debug arm64 generic iOS Simulator `build-for-testing` 成功且无警告；`FamiliarRuntimeTests`、`FamiliarSurfaceTests`、`FamiliarAssistantTurnPersistenceTests`、`FamiliarUIFeedbackTests`、`FamiliarPlanCompletionTests` 与 `FamiliarPersistenceReleaseTests` 共 45 项全部通过。中英 strings plist `plutil` lint 与 `git diff --check` 通过。按项目约束未启动 Simulator 做视觉验收；确认卡、展开动效与审计详情仍需真机人工验收。
 
 - 2026-08-29：集中 UI 反馈改动后，独立 DerivedData 的 Debug arm64 generic iOS Simulator `build-for-testing` 成功，App、Share Extension、Widget、`FamiliarTests` 与 `FamiliarUITests` 全部完成编译；新增 direct launch/API Key guard、图片预览/删除、Activity/Thinking、drawer haptic 与 Skill editor 静态契约测试。中英 strings plist/parity 与 `git diff --check` 通过。按项目约束未启动 Simulator；图片布局、Quick Look 关闭、抽屉触觉和 Skill 编辑仍需所有者真机验收。
@@ -77,6 +83,11 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 - 2026-08-21：同一 destination 的 `build-for-testing` 成功，`FamiliarTests` 与 `FamiliarUITests` 测试产物均已编译。构建只出现 Xcode 对无 App Intents 依赖 target 跳过 metadata extraction 的警告，没有 Swift 源码诊断。
 
 ## Known Problems
+
+- Apple Framework 工具全部只完成编译与 fake-service 契约测试。WeatherKit 真实可用性额外依赖签名 entitlement 与 provisioning，Simulator 构建证明不了；`weather_history` 的历史覆盖与 Apple Weather 配额未在真实账户验证；HealthKit/PhotoKit/MusicKit/CoreBluetooth 需真实系统授权；AlarmKit 需 iOS 26.1 设备。
+- 用户观察到的“查天气没走 WeatherKit”**根因仍未证实**。已修掉最可能的原因（`.weatherKit` availability 此前只判断 `#available(iOS 16)` 就声称可用，真实故障要到调用时才暴露，模型随后退回 `web_search`），但缺少 Run trace 对照，需真机带 trace 复现一次。
+- `alarm_schedule` 的 durable undo 可从 `FamiliarAlarmUndoRecord` 重建取消动作，但跨重启撤销与“已响铃后取消”的系统行为未真机验证。
+- 敏感 read 的仅这次/本会话授权已有确定性测试，真机上多轮任务的实际打断次数未人工验收。
 
 - DeepSeek 尚未使用真实测试 Key 完成认证、模型列表、文本流式、取消、无效 Key、无效模型、Tool Call 与 ToolResult 回填的完整冒烟；这是当前最优先缺口。
 - DeepSeek catalog 当前只包含 `deepseek-v4-flash` 与 `deepseek-v4-pro`。图片字节不发送给 DeepSeek；Apple Vision 只生成有限的本地证据文本。

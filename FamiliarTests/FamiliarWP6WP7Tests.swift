@@ -18,7 +18,7 @@ struct FamiliarWP6WP7Tests {
 
     @Test("Manifest snapshots are deterministic and grants are bound to exact arguments")
     func capabilityContract() throws {
-        let manifest = FamiliarToolManifest(name: "fixture", title: "Fixture", description: "Fixture", parameters: .init(type: .object), effect: .reversibleWrite, risk: .low)
+        let manifest = FamiliarToolManifest(name: "fixture", title: "Fixture", description: "Fixture", parameters: .object([:]), effect: .reversibleWrite, risk: .low)
         let catalog = FamiliarCapabilityCatalog(manifests: [manifest])
         let now = Date(timeIntervalSince1970: 100)
         let snapshot = catalog.snapshot(now: now)
@@ -28,7 +28,10 @@ struct FamiliarWP6WP7Tests {
         #expect(grant.isValid(for: manifest, arguments: "{}", projectID: projectID, now: now))
         #expect(!grant.isValid(for: manifest, arguments: "{\"changed\":true}", projectID: projectID, now: now))
         #expect(!grant.isValid(for: manifest, arguments: "{}", projectID: nil, now: now))
-        #expect(FamiliarExecutionPolicy().decide(manifest: manifest, availability: .available, grant: grant, arguments: "{}", projectID: projectID, now: now) == .execute)
+        // The grant contract is consumed by FamiliarRunRecoveryService for external
+        // entry points. FamiliarExecutionPolicy deliberately cannot see it, so a
+        // grant alone never turns an approval into an automatic execution.
+        #expect(FamiliarExecutionPolicy().decide(manifest: manifest, availability: .available) == .requestApproval)
     }
 
     @Test("Share, Intent, and Deep Link sources cannot issue write grants")

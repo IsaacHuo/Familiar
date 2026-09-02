@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import SwiftData
 
@@ -212,7 +211,7 @@ struct FamiliarProjectResourceService {
     }
 
     nonisolated static func sha256(_ text: String) -> String {
-        SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
+        FamiliarHash.sha256(text)
     }
 
     private func requireCopied(_ copied: FamiliarStoredResourceFile?) throws -> FamiliarStoredResourceFile {

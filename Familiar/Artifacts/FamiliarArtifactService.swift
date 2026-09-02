@@ -118,7 +118,7 @@ nonisolated struct FamiliarArtifactStore: @unchecked Sendable {
             try fileManager.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: temporary.path)
             if fileManager.fileExists(atPath: destination.path) { try fileManager.removeItem(at: destination) }
             try fileManager.moveItem(at: temporary, to: destination)
-            return (relative, sha256(data))
+            return (relative, FamiliarHash.sha256(data))
         } catch {
             try? fileManager.removeItem(at: temporary)
             throw FamiliarArtifactError.transactionFailed
@@ -256,7 +256,7 @@ nonisolated struct FamiliarArtifactStore: @unchecked Sendable {
         return values.isRegularFile == true && values.isSymbolicLink != true
     }
     private func sanitized(_ value: String) -> String { let base = URL(fileURLWithPath: value).lastPathComponent; return base.isEmpty || base == "." || base == ".." ? "artifact.md" : String(base.prefix(240)) }
-    private func sha256(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+
 }
 
 @MainActor
@@ -412,7 +412,7 @@ nonisolated enum FamiliarArtifactValidator {
             validator: validator,
             validatorVersion: validatorVersion,
             format: format,
-            extractedTextHash: SHA256.hash(data: Data(normalized.utf8)).map { String(format: "%02x", $0) }.joined(),
+            extractedTextHash: FamiliarHash.sha256(normalized),
             checks: checks,
             validatedAt: now
         )

@@ -56,14 +56,19 @@ final class FamiliarBluetoothService: NSObject, FamiliarBluetoothServicing, CBCe
     }
 
     func scan(serviceUUIDs: [String], duration: TimeInterval) async throws -> [FamiliarBluetoothPeripheral] {
-        guard !serviceUUIDs.isEmpty, serviceUUIDs.count <= 8 else {
+        guard serviceUUIDs.count >= FamiliarToolDefaults.BluetoothScan.minimumServiceUUIDs,
+              serviceUUIDs.count <= FamiliarToolDefaults.BluetoothScan.maximumServiceUUIDs
+        else {
             throw FamiliarAppleDeviceToolError.bluetoothServicesRequired
         }
         try await requestAccess()
         guard scanContinuation == nil else { throw FamiliarAppleDeviceToolError.requestInProgress }
         let uuids = serviceUUIDs.map(CBUUID.init(string:))
         discovered = [:]
-        let boundedDuration = min(max(duration, 2), 10)
+        let boundedDuration = min(
+            max(duration, FamiliarToolDefaults.BluetoothScan.minimumDuration),
+            FamiliarToolDefaults.BluetoothScan.maximumDuration
+        )
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 scanContinuation = continuation
@@ -168,10 +173,23 @@ nonisolated struct FamiliarBluetoothScanTool: FamiliarTool {
         name: "bluetooth_scan",
         title: "扫描蓝牙设备",
         description: "经明确授权后，在前台按 1 到 8 个指定 BLE Service UUID 扫描 2 到 10 秒。不会连接设备、读取特征值或后台扫描。",
-        parameters: .init(type: .object, properties: [
-            "serviceUUIDs": .init(type: .array, description: "必须指定的 BLE Service UUID 列表，最多 8 个"),
-            "durationSeconds": .init(type: .number, description: "扫描时长，2 到 10 秒，默认 5 秒")
-        ], required: ["serviceUUIDs"]),
+        parameters: .object(
+            [
+                "serviceUUIDs": .stringArray(
+                    "必须显式指定的 BLE Service UUID 列表；不支持无过滤的全量扫描。",
+                    itemDescription: "BLE Service UUID，例如 180D 或完整的 128 位 UUID。",
+                    minItems: FamiliarToolDefaults.BluetoothScan.minimumServiceUUIDs,
+                    maxItems: FamiliarToolDefaults.BluetoothScan.maximumServiceUUIDs
+                ),
+                "durationSeconds": .number(
+                    "前台扫描时长（秒）。",
+                    minimum: FamiliarToolDefaults.BluetoothScan.minimumDuration,
+                    maximum: FamiliarToolDefaults.BluetoothScan.maximumDuration,
+                    defaultValue: FamiliarToolDefaults.BluetoothScan.duration
+                )
+            ],
+            required: ["serviceUUIDs"]
+        ),
         effect: .read,
         risk: .high,
         requirements: [.bluetoothScan],
@@ -182,10 +200,32 @@ nonisolated struct FamiliarBluetoothScanTool: FamiliarTool {
         maximumExecutionDuration: 20
     )
 
+    /// The scan is bounded by the explicit service UUID list, so the confirmation
+    /// card shows exactly which UUIDs and for how long.
+    func preflight(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolAuthorizationAssessment {
+        let duration = min(
+            max(input.durationSeconds ?? FamiliarToolDefaults.BluetoothScan.duration, FamiliarToolDefaults.BluetoothScan.minimumDuration),
+            FamiliarToolDefaults.BluetoothScan.maximumDuration
+        )
+        return .init(
+            disposition: .requiresApproval,
+            effect: manifest.effect,
+            risk: manifest.risk,
+            reason: manifest.description,
+            fields: [
+                .init(id: "serviceUUIDs", label: String(localized: "approval.field.service_uuids", defaultValue: "Service UUIDs"), type: .text, value: input.serviceUUIDs.joined(separator: ", ")),
+                .init(id: "duration", label: String(localized: "approval.field.duration", defaultValue: "Duration"), type: .number, value: String(format: "%.0f", duration)),
+                .init(id: "scope", label: String(localized: "approval.field.scope", defaultValue: "Scope"), type: .text, value: String(localized: "approval.value.bluetooth_scope", defaultValue: "Foreground discovery only. No connection, no characteristic reads."))
+            ],
+            consequence: String(localized: "approval.consequence.bluetooth_scan", defaultValue: "Familiar discovers nearby devices advertising these services and reports their names and signal strength. Results may be sent to the selected model provider as a tool result."),
+            targetKey: "bluetooth-scan"
+        )
+    }
+
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
         let peripherals = try await service.scan(
             serviceUUIDs: input.serviceUUIDs,
-            duration: input.durationSeconds ?? 5
+            duration: input.durationSeconds ?? FamiliarToolDefaults.BluetoothScan.duration
         )
         let records = peripherals.map { peripheral in
             FamiliarToolPresentationPayload.Record(id: peripheral.id, fields: [
@@ -249,9 +289,10 @@ nonisolated struct FamiliarScheduleNotificationTool: FamiliarTool {
         guard !title.isEmpty, !body.isEmpty, title.count <= 120, body.count <= 1_000 else {
             throw FamiliarAppleDeviceToolError.invalidNotification
         }
-        guard let fireAt = ISO8601DateFormatter().date(from: input.fireAtISO8601), fireAt > Date() else {
-            throw FamiliarAppleDeviceToolError.invalidFutureDate
-        }
+        // Uses the shared parser so a timestamp with fractional seconds is accepted
+        // here exactly as it is by the EventKit tools.
+        let fireAt = try FamiliarISO8601.date(input.fireAtISO8601)
+        guard fireAt > Date() else { throw FamiliarAppleDeviceToolError.invalidFutureDate }
         let identifier = "familiar.agent.\(context.runID).\(context.toolCallID)"
         return .action(.init(
             title: manifest.title,
@@ -304,11 +345,28 @@ nonisolated struct FamiliarScheduleNotificationTool: FamiliarTool {
     }
 }
 
-nonisolated enum FamiliarAppleDeviceToolError: LocalizedError, Sendable {
+nonisolated enum FamiliarAppleDeviceToolError: LocalizedError, FamiliarStructuredToolError, Sendable {
     case requestInProgress
     case bluetoothServicesRequired
     case invalidNotification
     case invalidFutureDate
+
+    var code: String {
+        switch self {
+        case .requestInProgress: "capability_request_in_progress"
+        case .bluetoothServicesRequired: "bluetooth_service_uuids_required"
+        case .invalidNotification: "invalid_notification"
+        case .invalidFutureDate: "invalid_future_date"
+        }
+    }
+
+    var isRetryable: Bool {
+        switch self {
+        // A concurrent request can finish, so the same call may succeed later.
+        case .requestInProgress: true
+        case .bluetoothServicesRequired, .invalidNotification, .invalidFutureDate: false
+        }
+    }
 
     var errorDescription: String? {
         switch self {

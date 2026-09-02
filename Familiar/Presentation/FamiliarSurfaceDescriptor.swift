@@ -273,7 +273,11 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
                 upsert(applyingApproval(approvalsByActivity[activity.activityID], to: toolDescriptor(activity: activity)))
             }
         }
-        for activity in run.activities where activity.kind == .runtimeNotice && activity.activityID.contains(":retrying:") {
+        for activity in run.activities where activity.kind == .runtimeNotice {
+            // The persisted activityID encodes the notice kind, which is the only way a
+            // historical replay can tell a retry from a budget stop.
+            let isBudget = activity.activityID.contains(":budgetExhausted:")
+            guard isBudget || activity.activityID.contains(":retrying:") else { continue }
             upsert(.init(
                 id: activity.activityID,
                 runID: run.id,
@@ -281,8 +285,12 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
                 kind: .activityTrace,
                 placement: .trace,
                 phase: surfacePhase(activity.phase),
-                title: String(localized: "runtime.notice.retrying", defaultValue: "Retrying provider request"),
-                detail: runtimeNoticeDetail(activity.detail),
+                title: isBudget
+                    ? String(localized: "runtime.notice.budget_exhausted", defaultValue: "Tool budget reached")
+                    : String(localized: "runtime.notice.retrying", defaultValue: "Retrying provider request"),
+                detail: isBudget
+                    ? String(localized: "runtime.notice.budget_exhausted.detail", defaultValue: "Answering from the information already gathered.")
+                    : runtimeNoticeDetail(activity.detail),
                 startedAt: activity.startedAt,
                 finishedAt: activity.endedAt
             ))
@@ -428,8 +436,19 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
 
     private mutating func showRuntimeNotice(_ notice: FamiliarRuntimeNotice, runID: String, assistantTurnID: String?, at date: Date) {
         ensureTrace(runID: runID, assistantTurnID: assistantTurnID, context: nil, startedAt: date)
-        let detail = String(format: String(localized: "runtime.notice.retrying.detail", defaultValue: "Attempt %lld in %.1f s (%@)"), notice.attempt, notice.delay, notice.failureKind.code)
-        upsert(.init(id: "notice:\(runID):\(notice.kind.rawValue):\(notice.attempt)", runID: runID, assistantTurnID: assistantTurnID, kind: .activityTrace, placement: .trace, phase: .running, title: String(localized: "runtime.notice.retrying", defaultValue: "Retrying provider request"), detail: detail, startedAt: date))
+        // Title and detail are per-kind. A budget notice carries no retry schedule, so
+        // rendering it with the retry wording would state a delay that does not exist.
+        let title: String
+        let detail: String?
+        switch notice.kind {
+        case .retrying:
+            title = String(localized: "runtime.notice.retrying", defaultValue: "Retrying provider request")
+            detail = String(format: String(localized: "runtime.notice.retrying.detail", defaultValue: "Attempt %lld in %.1f s (%@)"), notice.attempt, notice.delay, notice.failureKind.code)
+        case .budgetExhausted:
+            title = String(localized: "runtime.notice.budget_exhausted", defaultValue: "Tool budget reached")
+            detail = String(localized: "runtime.notice.budget_exhausted.detail", defaultValue: "Answering from the information already gathered.")
+        }
+        upsert(.init(id: "notice:\(runID):\(notice.kind.rawValue):\(notice.attempt)", runID: runID, assistantTurnID: assistantTurnID, kind: .activityTrace, placement: .trace, phase: .running, title: title, detail: detail, startedAt: date))
     }
 
     private mutating func updateRunStatus(runID: String, phase: FamiliarRunPhase, at date: Date) {
@@ -811,7 +830,67 @@ nonisolated enum FamiliarToolPresentationName {
         case "present_recommendation": String(localized: "tool.present_recommendation", defaultValue: "Recommendation")
         case "present_insight": String(localized: "tool.present_insight", defaultValue: "Insight")
         case "ask_user": String(localized: "tool.ask_user", defaultValue: "Clarification")
+        case "map_search": String(localized: "tool.map_search", defaultValue: "Search places")
+        case "weather_forecast": String(localized: "tool.weather_forecast", defaultValue: "Check weather")
+        case "weather_history": String(localized: "tool.weather_history", defaultValue: "Check past weather")
+        case "natural_language_analyze": String(localized: "tool.natural_language_analyze", defaultValue: "Analyze text")
+        case "health_activity_summary": String(localized: "tool.health_activity_summary", defaultValue: "Read health activity")
+        case "music_catalog_search": String(localized: "tool.music_catalog_search", defaultValue: "Search Apple Music")
+        case "bluetooth_scan": String(localized: "tool.bluetooth_scan", defaultValue: "Scan Bluetooth devices")
+        case "photos_recent_metadata": String(localized: "tool.photos_recent_metadata", defaultValue: "Read photo metadata")
+        case "notification_schedule": String(localized: "tool.notification_schedule", defaultValue: "Schedule notification")
+        case "alarm_schedule": String(localized: "tool.alarm_schedule", defaultValue: "Schedule alarm")
+        case "alarm_cancel": String(localized: "tool.alarm_cancel", defaultValue: "Cancel alarm")
+        case "alarm_list": String(localized: "tool.alarm_list", defaultValue: "List alarms")
         default: name.replacingOccurrences(of: "_", with: " ").localizedCapitalized
+        }
+    }
+
+    /// Explicit tool-name to SF Symbol mapping.
+    ///
+    /// This replaced a `contains("search"/"read"/"image"/...)` heuristic that
+    /// silently sent every Apple Framework tool added later to a generic wrench,
+    /// and mislabelled `music_catalog_search` as a magnifying glass. The symbol
+    /// lives here rather than in `FamiliarToolManifest` because every caller only
+    /// has a persisted tool name: a historical Run must render the same icon even
+    /// when that tool is no longer registered.
+    ///
+    /// Cases below the effect check reproduce the old heuristic's exact output, so
+    /// only the newer Apple Framework tools change appearance.
+    static func symbol(for name: String, effect: FamiliarToolEffect?) -> String {
+        switch name {
+        case "map_search": return "mappin.and.ellipse"
+        case "weather_forecast": return "cloud.sun"
+        case "weather_history": return "clock.arrow.circlepath"
+        case "natural_language_analyze": return "text.magnifyingglass"
+        case "health_activity_summary": return "heart.text.square"
+        case "music_catalog_search": return "music.note"
+        case "bluetooth_scan": return "dot.radiowaves.left.and.right"
+        case "photos_recent_metadata": return "photo.on.rectangle"
+        case "notification_schedule": return "bell.badge"
+        // Listed above the effect check so a write keeps its alarm identity instead
+        // of collapsing into the generic pencil.
+        case "alarm_schedule": return "alarm.waves.left.and.right"
+        case "alarm_cancel": return "alarm.slash"
+        case "alarm_list": return "alarm"
+        default: break
+        }
+        if effect == .reversibleWrite || effect == .destructiveWrite { return "pencil" }
+        switch name {
+        case "web_search", "familiar_search", "workspace_search", "resource_search", "contacts_search":
+            return "magnifyingglass"
+        case "shell_execute":
+            return "terminal"
+        case "workspace_image_list":
+            return "photo"
+        case "web_fetch", "workspace_read", "resource_read", "skill_read", "clipboard_read":
+            return "doc.text"
+        case "current_date_time", "calendar_events":
+            return "calendar"
+        case "reminders", "task_plan":
+            return "checklist"
+        default:
+            return "wrench.and.screwdriver"
         }
     }
 }

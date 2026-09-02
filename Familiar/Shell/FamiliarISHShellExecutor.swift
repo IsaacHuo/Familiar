@@ -1,5 +1,4 @@
 #if os(iOS)
-import CryptoKit
 import Foundation
 #if canImport(FamiliarISHRuntime)
 @preconcurrency import FamiliarISHRuntime
@@ -550,9 +549,10 @@ private actor FamiliarRealISHRuntimeState {
         "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
+    /// Streams the bundled rootfs archive instead of mapping it whole; the digest
+    /// is identical.
     private static func sha256(of url: URL) throws -> String {
-        let data = try Data(contentsOf: url, options: [.mappedIfSafe])
-        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        try FamiliarHash.sha256(contentsOf: url)
     }
 }
 

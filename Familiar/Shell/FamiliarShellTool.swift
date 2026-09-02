@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 nonisolated struct FamiliarPythonPackageSource: Identifiable, Equatable, Sendable {
@@ -86,7 +85,7 @@ nonisolated struct FamiliarEnvironmentReceipt: Codable, Equatable, Sendable {
     let preparedAt: Date
 }
 
-nonisolated enum FamiliarEnvironmentError: LocalizedError, Sendable {
+nonisolated enum FamiliarEnvironmentError: LocalizedError, FamiliarStructuredToolError, Sendable {
     case projectRequired
     case invalidPackages
     case installationFailed(String)
@@ -577,7 +576,11 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
         parameters: .init(
             type: .object,
             properties: [
-                "packages": .init(type: .array, description: "PyPI package names, optionally pinned with ==version. Use python-docx for Word document generation.")
+                "packages": .stringArray(
+                    "PyPI packages to install into the Project Environment.",
+                    itemDescription: "PyPI package name, optionally pinned with ==version. Use python-docx for Word document generation.",
+                    minItems: 1
+                )
             ],
             required: ["packages"]
         ),
@@ -632,7 +635,7 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
                 .init(id: "maximum_size", label: "Maximum Size", type: .number, value: String(Self.maximumEnvironmentBytes))
             ],
             target: projectID.uuidString,
-            targetKey: "environment:\(projectID.uuidString):\(Self.hash(packages.joined(separator: "\n")))",
+            targetKey: "environment:\(projectID.uuidString):\(FamiliarHash.sha256(packages.joined(separator: "\n")))",
             effect: manifest.effect,
             risk: manifest.risk,
             consequence: "将从设置中选择的软件源下载，并在当前 Project 的隔离 Environment 中安装这些依赖；旧 Environment 仅在新环境验证成功后替换。",
@@ -705,7 +708,7 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
         let lock = FamiliarEnvironmentLock(
             pythonVersion: pythonVersion.trimmingCharacters(in: .whitespacesAndNewlines),
             resolvedPackages: resolvedPackages,
-            contentHash: Self.hash(lockText)
+            contentHash: FamiliarHash.sha256(lockText)
         )
         let byteSize = try directorySize(view.environment)
         guard byteSize > 0, byteSize <= plan.maximumBytes else {
@@ -784,7 +787,4 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
         return total
     }
 
-    private static func hash(_ value: String) -> String {
-        SHA256.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined()
-    }
 }

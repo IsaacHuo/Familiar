@@ -53,6 +53,8 @@
 	<string>Familiar reads recent photo metadata only when you ask, respects limited access, and does not read image pixels without a separate selection.</string>
 	<key>NSAppleMusicUsageDescription</key>
 	<string>Familiar searches the Apple Music catalog only when you ask and never plays or changes your library automatically.</string>
+	<key>NSAlarmKitUsageDescription</key>
+	<string>Familiar schedules an alarm only after you confirm its exact time, and you can cancel it at any time.</string>
     <key>NSRemindersFullAccessUsageDescription</key>
     <string>Familiar reads reminders you ask about and adds a reminder only after you confirm its preview.</string>
     <key>NSMicrophoneUsageDescription</key>

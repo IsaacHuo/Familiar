@@ -1,6 +1,13 @@
 "NSCameraUsageDescription" = "Familiar uses the camera to add a photo draft to your message.";
-"NSPhotoLibraryAddUsageDescription" = "Familiar saves a Workspace image to Photos only after you approve the exact output.";
+"NSBluetoothAlwaysUsageDescription" = "Familiar scans only for the Bluetooth service UUIDs you explicitly request and never connects automatically.";
 "NSCalendarsFullAccessUsageDescription" = "Familiar reads calendar events you ask about and adds an event only after you confirm its preview.";
+"NSContactsUsageDescription" = "Familiar searches contacts only when you ask and only after you approve access.";
+"NSHealthShareUsageDescription" = "Familiar reads only the health activity summaries you explicitly request and never writes health data.";
+"NSLocationWhenInUseUsageDescription" = "Familiar requests a single foreground location only when your task needs it.";
+"NSPhotoLibraryAddUsageDescription" = "Familiar saves a Workspace image to Photos only after you approve the exact output.";
+"NSPhotoLibraryUsageDescription" = "Familiar reads recent photo metadata only when you ask, respects limited access, and does not read image pixels without a separate selection.";
+"NSAppleMusicUsageDescription" = "Familiar searches the Apple Music catalog only when you ask and never plays or changes your library automatically.";
+"NSAlarmKitUsageDescription" = "Familiar schedules an alarm only after you confirm its exact time, and you can cancel it at any time.";
 "NSRemindersFullAccessUsageDescription" = "Familiar reads reminders you ask about and adds a reminder only after you confirm its preview.";
 "NSMicrophoneUsageDescription" = "Familiar uses the microphone only while transcribing your voice into an editable message draft.";
 "NSSpeechRecognitionUsageDescription" = "Familiar uses Apple Speech to turn your voice into editable text and does not keep an audio recording.";

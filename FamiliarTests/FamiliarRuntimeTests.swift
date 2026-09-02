@@ -132,10 +132,19 @@ private struct FamiliarCountingTool: FamiliarTool {
     }
 }
 
+/// Keeps asking for tools while any are offered, then answers once the Runtime
+/// withholds them. This mirrors a real model: with an empty tool list it has no
+/// choice but to respond from what it already has.
 private struct FamiliarBudgetProvider: FamiliarModelProvider {
     let providerID = "fake"
     func stream(request: FamiliarModelRequest) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
         AsyncThrowingStream { continuation in
+            guard !request.tools.isEmpty else {
+                continuation.yield(.textDelta("Answered from gathered data"))
+                continuation.yield(.completed(.stop))
+                continuation.finish()
+                return
+            }
             let count = request.messages.filter { $0.role == .tool }.count
             continuation.yield(.toolCallDelta(index: 0, id: "call-\(count)", name: "fake_count", arguments: #"{"n":\#(count)}"#))
             continuation.yield(.completed(.toolCalls))
@@ -220,6 +229,9 @@ struct FamiliarRuntimeTests {
         #expect(completedTurns.map(\.1) == [events[completedTurns[0].0].runID + ":turn:0", events[completedTurns[1].0].runID + ":turn:1"])
     }
 
+    /// `repeatedTool` never emits text, so this run genuinely has nothing to deliver.
+    /// That is now the only condition under which exhausting the iterations fails the
+    /// run: if the model had said anything, that content would be delivered instead.
     @Test("Runtime failure still emits exactly one runFinished")
     func singleFailedFinish() async throws {
         let registry = try FamiliarToolRegistry(tools: [AnyFamiliarTool(FamiliarFakeTool())])
@@ -297,12 +309,35 @@ struct FamiliarRuntimeTests {
         #expect(events.contains { if case .runFinished(.succeeded) = $0.payload { true } else { false } })
     }
 
-    @Test("A run stops after the configured tool-call budget")
+    /// The tool-call budget must end the tool loop, not the run. Failing here would
+    /// discard every tool result already gathered and hand the user an error instead
+    /// of an answer.
+    @Test("Exhausting the tool-call budget still delivers an answer")
     func toolCallBudget() async throws {
         let registry = try FamiliarToolRegistry(tools: [AnyFamiliarTool(FamiliarCountingTool(probe: nil))])
         let events = try await collect(FamiliarAgentLoop(provider: FamiliarBudgetProvider(), registry: registry, policy: .init(), confirmationCoordinator: .init(), undoStore: .init(), maximumToolCalls: 1), manifests: await registry.manifests())
-        let finish = events.compactMap { if case .runFinished(let outcome) = $0.payload { outcome } else { nil } }.first
-        #expect(finish?.failureKind == .maxToolCalls)
+
+        let finishes = events.compactMap { if case .runFinished(let outcome) = $0.payload { outcome } else { nil } }
+        #expect(finishes.count == 1)
+        #expect(finishes.first?.status == .succeeded)
+
+        // The budget stop stays auditable as a typed notice rather than a failure.
+        let notices = events.compactMap { if case .runtimeNotice(let notice) = $0.payload { notice } else { nil } }
+        #expect(notices.map(\.kind) == [.budgetExhausted])
+        #expect(notices.first?.failureKind == .maxToolCalls)
+
+        // Exactly one call ran; the over-budget call reported a structured failure to
+        // the model instead of aborting the run.
+        let results = events.compactMap { if case .toolResultProduced(let result) = $0.payload { result.toolCallID } else { nil } }
+        #expect(results == ["call-0"])
+        let failedActivities = events.compactMap { event -> String? in
+            guard case .activityCompleted(let completion) = event.payload, completion.status == .failed else { return nil }
+            return completion.failureCode
+        }
+        #expect(failedActivities == ["tool_budget_exhausted"])
+
+        let response = events.compactMap { if case .responseCompleted(let value) = $0.payload { value.text } else { nil } }
+        #expect(response == ["Answered from gathered data"])
     }
 
     @Test("Oversized history is compacted while the recent user turn is retained")

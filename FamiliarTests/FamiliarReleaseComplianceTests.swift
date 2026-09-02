@@ -32,6 +32,65 @@ struct FamiliarReleaseComplianceTests {
         #expect(Set(reasons["NSPrivacyAccessedAPICategoryFileTimestamp"] ?? []) == ["C617.1", "3B52.1"])
     }
 
+    @Test("Every declared capability ships its Info.plist usage description in both languages")
+    func capabilityUsageDescriptions() throws {
+        let info = try plist("Familiar/Resources/Info.plist")
+        let english = try stringsFile("Familiar/Resources/en.lproj/InfoPlist.strings")
+        let chinese = try stringsFile("Familiar/Resources/zh-Hans.lproj/InfoPlist.strings")
+
+        for requirement in FamiliarCapabilityRequirement.allCases {
+            guard let key = requirement.usageDescriptionKey else { continue }
+            let base = info[key] as? String
+            #expect(base?.isEmpty == false, "Info.plist is missing \(key) for \(requirement.rawValue)")
+            #expect(english[key]?.isEmpty == false, "en.lproj/InfoPlist.strings is missing \(key)")
+            #expect(chinese[key]?.isEmpty == false, "zh-Hans.lproj/InfoPlist.strings is missing \(key)")
+        }
+
+        // The base development region is zh-Hans, so every localizable usage
+        // description must exist in both catalogs or a prompt ships untranslated.
+        let localizableKeys = Set(FamiliarCapabilityRequirement.allCases.compactMap(\.usageDescriptionKey))
+        #expect(localizableKeys.isSubset(of: Set(english.keys)))
+        #expect(Set(english.keys) == Set(chinese.keys))
+    }
+
+    @Test("Every declared capability ships its entitlement and privacy data types")
+    func capabilityEntitlementsAndPrivacyTypes() throws {
+        let entitlements = try plist("Familiar/Familiar.entitlements")
+        let privacy = try plist("Familiar/PrivacyInfo.xcprivacy")
+        let declared = Set(
+            (privacy["NSPrivacyCollectedDataTypes"] as? [[String: Any]] ?? [])
+                .compactMap { $0["NSPrivacyCollectedDataType"] as? String }
+        )
+
+        for requirement in FamiliarCapabilityRequirement.allCases {
+            if let key = requirement.entitlementKey {
+                #expect(entitlements[key] as? Bool == true, "Familiar.entitlements is missing \(key) for \(requirement.rawValue)")
+            }
+            for dataType in requirement.privacyCollectedDataTypes {
+                #expect(declared.contains(dataType), "PrivacyInfo.xcprivacy is missing \(dataType) for \(requirement.rawValue)")
+            }
+        }
+    }
+
+    @Test("Registered tools only require capabilities with complete shipping declarations") @MainActor
+    func registeredToolCapabilitiesAreDeclared() async throws {
+        let manifests = await FamiliarAppDependencies().registry.snapshot()
+        let required = Set(manifests.flatMap(\.requirements))
+        #expect(!required.isEmpty)
+
+        let info = try plist("Familiar/Resources/Info.plist")
+        let entitlements = try plist("Familiar/Familiar.entitlements")
+
+        for requirement in required {
+            if let key = requirement.usageDescriptionKey {
+                #expect((info[key] as? String)?.isEmpty == false, "\(requirement.rawValue) is used by a registered tool but \(key) is missing")
+            }
+            if let key = requirement.entitlementKey {
+                #expect(entitlements[key] as? Bool == true, "\(requirement.rawValue) is used by a registered tool but \(key) is missing")
+            }
+        }
+    }
+
     @Test("The iOS target excludes FastVLM and release fixtures")
     func excludedReleaseCode() throws {
         let project = try source("familiar.xcodeproj/project.pbxproj")
@@ -88,5 +147,18 @@ struct FamiliarReleaseComplianceTests {
 
     private func source(_ relativePath: String) throws -> String {
         try String(contentsOf: repositoryRoot.appendingPathComponent(relativePath), encoding: .utf8)
+    }
+
+    private func plist(_ relativePath: String) throws -> [String: Any] {
+        let data = try Data(contentsOf: repositoryRoot.appendingPathComponent(relativePath))
+        let value = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
+        return try #require(value as? [String: Any])
+    }
+
+    /// `.strings` files use the OpenStep property list format.
+    private func stringsFile(_ relativePath: String) throws -> [String: String] {
+        let data = try Data(contentsOf: repositoryRoot.appendingPathComponent(relativePath))
+        let value = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
+        return try #require(value as? [String: String])
     }
 }

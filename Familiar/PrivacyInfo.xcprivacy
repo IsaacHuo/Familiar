@@ -78,6 +78,49 @@
             <key>NSPrivacyCollectedDataTypePurposes</key>
             <array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
         </dict>
+        <!-- health_activity_summary reads HealthKit aggregates that can reach the selected model provider as tool results. -->
+        <dict>
+            <key>NSPrivacyCollectedDataType</key>
+            <string>NSPrivacyCollectedDataTypeHealth</string>
+            <key>NSPrivacyCollectedDataTypeLinked</key>
+            <true/>
+            <key>NSPrivacyCollectedDataTypeTracking</key>
+            <false/>
+            <key>NSPrivacyCollectedDataTypePurposes</key>
+            <array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
+        </dict>
+        <dict>
+            <key>NSPrivacyCollectedDataType</key>
+            <string>NSPrivacyCollectedDataTypeFitness</string>
+            <key>NSPrivacyCollectedDataTypeLinked</key>
+            <true/>
+            <key>NSPrivacyCollectedDataTypeTracking</key>
+            <false/>
+            <key>NSPrivacyCollectedDataTypePurposes</key>
+            <array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
+        </dict>
+        <!-- photos_recent_metadata reads asset timestamps, dimensions and location metadata. -->
+        <dict>
+            <key>NSPrivacyCollectedDataType</key>
+            <string>NSPrivacyCollectedDataTypePhotosorVideos</string>
+            <key>NSPrivacyCollectedDataTypeLinked</key>
+            <true/>
+            <key>NSPrivacyCollectedDataTypeTracking</key>
+            <false/>
+            <key>NSPrivacyCollectedDataTypePurposes</key>
+            <array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
+        </dict>
+        <!-- bluetooth_scan surfaces nearby peripheral identifiers and names. -->
+        <dict>
+            <key>NSPrivacyCollectedDataType</key>
+            <string>NSPrivacyCollectedDataTypeOtherDataTypes</string>
+            <key>NSPrivacyCollectedDataTypeLinked</key>
+            <true/>
+            <key>NSPrivacyCollectedDataTypeTracking</key>
+            <false/>
+            <key>NSPrivacyCollectedDataTypePurposes</key>
+            <array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
+        </dict>
     </array>
 </dict>
 </plist>

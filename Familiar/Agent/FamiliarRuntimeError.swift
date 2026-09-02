@@ -78,7 +78,6 @@ nonisolated enum FamiliarRuntimeFailure {
         case .contextTooLarge, .contextCompactionFailed: .contextTooLarge
         case .toolArgumentsTooLarge: .toolArgument
         case .toolResultTooLarge: .toolResult
-        case .maxToolCallsExceeded: .maxToolCalls
         case .durationExceeded: .durationExceeded
         case .missingDeliverables: .toolResult
         }

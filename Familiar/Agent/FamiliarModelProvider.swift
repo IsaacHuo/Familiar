@@ -100,30 +100,112 @@ nonisolated enum FamiliarJSONSchemaType: String, Codable, Sendable {
     case array
 }
 
+/// A literal JSON Schema value, used for `default`. Encoded as a bare JSON value
+/// so the model receives a real default instead of a sentence in `description`.
+nonisolated enum FamiliarJSONSchemaValue: Codable, Equatable, Sendable {
+    case string(String)
+    case integer(Int)
+    case number(Double)
+    case boolean(Bool)
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let value = try? container.decode(Bool.self) { self = .boolean(value); return }
+        if let value = try? container.decode(Int.self) { self = .integer(value); return }
+        if let value = try? container.decode(Double.self) { self = .number(value); return }
+        self = .string(try container.decode(String.self))
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value): try container.encode(value)
+        case .integer(let value): try container.encode(value)
+        case .number(let value): try container.encode(value)
+        case .boolean(let value): try container.encode(value)
+        }
+    }
+}
+
 nonisolated struct FamiliarJSONSchema: Codable, Equatable, Sendable {
     let type: FamiliarJSONSchemaType
     let description: String?
     let properties: [String: FamiliarJSONSchema]?
     let required: [String]?
     let enumValues: [String]?
+    let minimum: Double?
+    let maximum: Double?
+    let minItems: Int?
+    let maxItems: Int?
+    let defaultValue: FamiliarJSONSchemaValue?
+
+    /// `items` recursively contains `FamiliarJSONSchema`, and a value type cannot
+    /// store itself directly, so element schemas live behind an array for heap
+    /// indirection. At most one element is ever stored.
+    private let itemsStorage: [FamiliarJSONSchema]
+
+    var items: FamiliarJSONSchema? { itemsStorage.first }
 
     init(
         type: FamiliarJSONSchemaType,
         description: String? = nil,
         properties: [String: FamiliarJSONSchema]? = nil,
         required: [String]? = nil,
-        enumValues: [String]? = nil
+        enumValues: [String]? = nil,
+        items: FamiliarJSONSchema? = nil,
+        minimum: Double? = nil,
+        maximum: Double? = nil,
+        minItems: Int? = nil,
+        maxItems: Int? = nil,
+        defaultValue: FamiliarJSONSchemaValue? = nil
     ) {
         self.type = type
         self.description = description
         self.properties = properties
         self.required = required
         self.enumValues = enumValues
+        self.minimum = minimum
+        self.maximum = maximum
+        self.minItems = minItems
+        self.maxItems = maxItems
+        self.defaultValue = defaultValue
+        self.itemsStorage = items.map { [$0] } ?? []
     }
 
     enum CodingKeys: String, CodingKey {
-        case type, description, properties, required
+        case type, description, properties, required, items, minimum, maximum, minItems, maxItems
         case enumValues = "enum"
+        case defaultValue = "default"
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decode(FamiliarJSONSchemaType.self, forKey: .type)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+        properties = try container.decodeIfPresent([String: FamiliarJSONSchema].self, forKey: .properties)
+        required = try container.decodeIfPresent([String].self, forKey: .required)
+        enumValues = try container.decodeIfPresent([String].self, forKey: .enumValues)
+        minimum = try container.decodeIfPresent(Double.self, forKey: .minimum)
+        maximum = try container.decodeIfPresent(Double.self, forKey: .maximum)
+        minItems = try container.decodeIfPresent(Int.self, forKey: .minItems)
+        maxItems = try container.decodeIfPresent(Int.self, forKey: .maxItems)
+        defaultValue = try container.decodeIfPresent(FamiliarJSONSchemaValue.self, forKey: .defaultValue)
+        itemsStorage = try container.decodeIfPresent(FamiliarJSONSchema.self, forKey: .items).map { [$0] } ?? []
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(type, forKey: .type)
+        try container.encodeIfPresent(description, forKey: .description)
+        try container.encodeIfPresent(properties, forKey: .properties)
+        try container.encodeIfPresent(required, forKey: .required)
+        try container.encodeIfPresent(enumValues, forKey: .enumValues)
+        try container.encodeIfPresent(items, forKey: .items)
+        try container.encodeIfPresent(minimum, forKey: .minimum)
+        try container.encodeIfPresent(maximum, forKey: .maximum)
+        try container.encodeIfPresent(minItems, forKey: .minItems)
+        try container.encodeIfPresent(maxItems, forKey: .maxItems)
+        try container.encodeIfPresent(defaultValue, forKey: .defaultValue)
     }
 }
 

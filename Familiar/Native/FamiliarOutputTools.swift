@@ -104,7 +104,10 @@ actor FamiliarPhotoLibraryService: FamiliarPhotoLibrarySaving, FamiliarPhotoLibr
         }
         let options = PHFetchOptions()
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        options.fetchLimit = min(max(limit, 1), 50)
+        options.fetchLimit = min(
+            max(limit, FamiliarToolDefaults.PhotoMetadata.minimumLimit),
+            FamiliarToolDefaults.PhotoMetadata.maximumLimit
+        )
         let result = imagesOnly
             ? PHAsset.fetchAssets(with: .image, options: options)
             : PHAsset.fetchAssets(with: options)
@@ -237,10 +240,21 @@ nonisolated struct FamiliarPhotosRecentMetadataTool: FamiliarTool {
         name: "photos_recent_metadata",
         title: "读取最近照片信息",
         description: "经明确授权后读取照片图库中最近项目的时间、媒体类型、尺寸及可用的位置元数据。不会读取图片像素、导出原图或遍历超过 50 项；有限照片权限会被尊重。",
-        parameters: .init(type: .object, properties: [
-            "limit": .init(type: .integer, description: "返回 1 到 50 项，默认 10"),
-            "imagesOnly": .init(type: .boolean, description: "是否只返回图片，默认 true")
-        ], required: []),
+        parameters: .object(
+            [
+                "limit": .integer(
+                    "返回的项目数量。",
+                    minimum: FamiliarToolDefaults.PhotoMetadata.minimumLimit,
+                    maximum: FamiliarToolDefaults.PhotoMetadata.maximumLimit,
+                    defaultValue: FamiliarToolDefaults.PhotoMetadata.limit
+                ),
+                "imagesOnly": .boolean(
+                    "是否只返回图片。",
+                    defaultValue: FamiliarToolDefaults.PhotoMetadata.imagesOnly
+                )
+            ],
+            required: []
+        ),
         effect: .read,
         risk: .high,
         requirements: [.photoLibraryRead],
@@ -250,10 +264,35 @@ nonisolated struct FamiliarPhotosRecentMetadataTool: FamiliarTool {
         executionClass: .native
     )
 
+    /// Photo metadata includes capture locations, so the confirmation card must
+    /// state the exact count and whether location data is part of the read.
+    func preflight(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolAuthorizationAssessment {
+        let limit = min(
+            max(input.limit ?? FamiliarToolDefaults.PhotoMetadata.limit, FamiliarToolDefaults.PhotoMetadata.minimumLimit),
+            FamiliarToolDefaults.PhotoMetadata.maximumLimit
+        )
+        let imagesOnly = input.imagesOnly ?? FamiliarToolDefaults.PhotoMetadata.imagesOnly
+        return .init(
+            disposition: .requiresApproval,
+            effect: manifest.effect,
+            risk: manifest.risk,
+            reason: manifest.description,
+            fields: [
+                .init(id: "count", label: String(localized: "approval.field.count", defaultValue: "Items"), type: .number, value: String(limit)),
+                .init(id: "mediaType", label: String(localized: "approval.field.media_type", defaultValue: "Media"), type: .text, value: imagesOnly
+                    ? String(localized: "approval.value.images_only", defaultValue: "Images only")
+                    : String(localized: "approval.value.all_media", defaultValue: "Images, video and audio")),
+                .init(id: "scope", label: String(localized: "approval.field.scope", defaultValue: "Scope"), type: .text, value: String(localized: "approval.value.photo_metadata", defaultValue: "Metadata only, including capture location. No image pixels."))
+            ],
+            consequence: String(localized: "approval.consequence.photo_metadata_read", defaultValue: "Familiar reads recent asset metadata, which can include where each photo was taken. Results may be sent to the selected model provider as a tool result."),
+            targetKey: "photos-recent-metadata"
+        )
+    }
+
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
         let assets = try await photos.recentAssets(
-            limit: input.limit ?? 10,
-            imagesOnly: input.imagesOnly ?? true
+            limit: input.limit ?? FamiliarToolDefaults.PhotoMetadata.limit,
+            imagesOnly: input.imagesOnly ?? FamiliarToolDefaults.PhotoMetadata.imagesOnly
         )
         let records = assets.map { asset in
             var fields: [FamiliarToolPresentationPayload.RecordField] = [

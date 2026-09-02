@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import SwiftData
 
@@ -67,8 +66,8 @@ final class FamiliarRunPersistenceRecorder {
                 mimeType: attachment.mimeType,
                 sourceRelativePath: attachment.relativePath,
                 byteSize: attachment.byteSize,
-                contentHash: Self.sha256(sourceData),
-                extractedTextHash: Self.sha256(Data(attachment.extractedText.utf8)),
+                contentHash: FamiliarHash.sha256(sourceData),
+                extractedTextHash: FamiliarHash.sha256(Data(attachment.extractedText.utf8)),
                 createdAt: snapshot.createdAt
             ))
         }
@@ -107,10 +106,6 @@ final class FamiliarRunPersistenceRecorder {
         } catch {
             context.rollback()
         }
-    }
-
-    private static func sha256(_ data: Data) -> String {
-        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     func recordLoadedSkill(
@@ -504,7 +499,7 @@ final class FamiliarRunPersistenceRecorder {
             schemaVersion: schemaVersion,
             startedAt: startedAt ?? run.startedAt,
             endedAt: endedAt,
-            contentHash: Self.sha256(content)
+            contentHash: FamiliarHash.sha256(content)
         )
         context.insert(block)
         run.assistantTurnID = assistantTurnID
@@ -607,7 +602,7 @@ final class FamiliarRunPersistenceRecorder {
             existing.envelopeJSON = envelopeJSON
             existing.schemaVersion = envelope.presentation.schemaVersion
             existing.payloadName = envelope.presentation.name.rawValue
-            existing.payloadHash = Self.sha256(payloadJSON)
+            existing.payloadHash = FamiliarHash.sha256(payloadJSON)
             existing.revision += 1
             existing.truncated = truncated
             existing.createdAt = event.producedAt
@@ -621,7 +616,7 @@ final class FamiliarRunPersistenceRecorder {
             envelopeJSON: envelopeJSON,
             schemaVersion: envelope.presentation.schemaVersion,
             payloadName: envelope.presentation.name.rawValue,
-            payloadHash: Self.sha256(payloadJSON),
+            payloadHash: FamiliarHash.sha256(payloadJSON),
             semanticID: semanticID,
             trust: .untrusted,
             truncated: truncated,
@@ -672,7 +667,7 @@ final class FamiliarRunPersistenceRecorder {
             payloadJSON: Self.encodedJSON(["reason": reason]) ?? "{}",
             startedAt: run.startedAt,
             endedAt: date,
-            contentHash: Self.sha256(reason)
+            contentHash: FamiliarHash.sha256(reason)
         )
         context.insert(block)
         run.responseBlockID = block.id
@@ -751,10 +746,6 @@ final class FamiliarRunPersistenceRecorder {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         return String(decoding: try encoder.encode(value), as: UTF8.self)
-    }
-
-    private static func sha256(_ value: String) -> String {
-        SHA256.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
     private func fetchConversation(id: UUID, in context: ModelContext) -> FamiliarConversation? {

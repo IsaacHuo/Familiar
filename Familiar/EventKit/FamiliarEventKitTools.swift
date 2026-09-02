@@ -95,7 +95,7 @@ nonisolated struct FamiliarCreateCalendarEventTool: FamiliarTool {
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
         try Task.checkCancellation()
         guard !input.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw FamiliarEventKitError.emptyTitle }
-        try FamiliarISO8601ForTools.validate(start: input.startISO8601, end: input.endISO8601)
+        try FamiliarISO8601.validateRange(start: input.startISO8601, end: input.endISO8601)
         let request = FamiliarPendingWriteRequest.event(input)
         let target = try await service.targetDescription(for: request)
         return .action(FamiliarActionProposal(
@@ -133,7 +133,7 @@ nonisolated struct FamiliarCreateReminderTool: FamiliarTool {
         try Task.checkCancellation()
         guard !input.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw FamiliarEventKitError.emptyTitle }
         guard (0...9).contains(input.priority) else { throw FamiliarEventKitError.invalidRange }
-        if let dueISO8601 = input.dueISO8601 { _ = try FamiliarISO8601ForTools.date(dueISO8601) }
+        if let dueISO8601 = input.dueISO8601 { _ = try FamiliarISO8601.date(dueISO8601) }
         let request = FamiliarPendingWriteRequest.reminder(input)
         let target = try await service.targetDescription(for: request)
         return .action(FamiliarActionProposal(
@@ -182,7 +182,7 @@ nonisolated struct FamiliarUpdateCalendarEventTool: FamiliarTool {
         try Task.checkCancellation()
         guard !input.identifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw FamiliarEventKitError.missingItem(input.identifier) }
         guard !input.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw FamiliarEventKitError.emptyTitle }
-        try FamiliarISO8601ForTools.validate(start: input.startISO8601, end: input.endISO8601)
+        try FamiliarISO8601.validateRange(start: input.startISO8601, end: input.endISO8601)
         let request = FamiliarPendingWriteRequest.eventUpdate(input)
         let target = try await service.targetDescription(for: request)
         return .action(FamiliarActionProposal(
@@ -255,7 +255,7 @@ nonisolated struct FamiliarUpdateReminderTool: FamiliarTool {
         guard !input.identifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw FamiliarEventKitError.missingItem(input.identifier) }
         guard !input.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw FamiliarEventKitError.emptyTitle }
         guard (0...9).contains(input.priority) else { throw FamiliarEventKitError.invalidRange }
-        if let dueISO8601 = input.dueISO8601 { _ = try FamiliarISO8601ForTools.date(dueISO8601) }
+        if let dueISO8601 = input.dueISO8601 { _ = try FamiliarISO8601.date(dueISO8601) }
         let request = FamiliarPendingWriteRequest.reminderUpdate(input)
         let target = try await service.targetDescription(for: request)
         return .action(FamiliarActionProposal(
@@ -391,16 +391,4 @@ nonisolated enum FamiliarEventKitPreview {
     }
 }
 
-nonisolated private enum FamiliarISO8601ForTools {
-    static func date(_ value: String) throws -> Date {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: value) { return date }
-        formatter.formatOptions = [.withInternetDateTime]
-        if let date = formatter.date(from: value) { return date }
-        throw FamiliarEventKitError.invalidISO8601(value)
-    }
-    static func validate(start: String, end: String) throws {
-        guard try date(start) < date(end) else { throw FamiliarEventKitError.invalidRange }
-    }
-}
+// Replaced by the shared `FamiliarISO8601`.

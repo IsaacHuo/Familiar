@@ -1978,15 +1978,9 @@ private struct FamiliarRecordRow: View {
 
     private func formatted(_ field: FamiliarToolPresentationPayload.RecordField) -> String {
         let dateFields = ["start", "end", "due"]
-        if dateFields.contains(where: { field.name.caseInsensitiveCompare($0) == .orderedSame }) {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            var date = formatter.date(from: field.value)
-            if date == nil {
-                formatter.formatOptions = [.withInternetDateTime]
-                date = formatter.date(from: field.value)
-            }
-            if let date { return date.formatted(date: .abbreviated, time: .shortened) }
+        if dateFields.contains(where: { field.name.caseInsensitiveCompare($0) == .orderedSame }),
+           let date = try? FamiliarISO8601.date(field.value) {
+            return date.formatted(date: .abbreviated, time: .shortened)
         }
         return FamiliarRecordPresentation.displayValue(field.value, fieldName: field.name)
     }

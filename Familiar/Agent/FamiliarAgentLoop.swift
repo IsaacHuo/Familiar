@@ -132,6 +132,10 @@ nonisolated struct FamiliarToolResultProduced: Sendable {
 
 nonisolated enum FamiliarRuntimeNoticeKind: String, Codable, Equatable, Sendable {
     case retrying
+    /// The tool-call budget is spent. This is a closing signal, not a failure: the
+    /// run continues with tools withheld so the model must answer from what it has
+    /// already gathered, instead of discarding every result collected so far.
+    case budgetExhausted
 }
 
 nonisolated struct FamiliarRuntimeNotice: Equatable, Sendable {
@@ -139,6 +143,20 @@ nonisolated struct FamiliarRuntimeNotice: Equatable, Sendable {
     let attempt: Int
     let delay: TimeInterval
     let failureKind: FamiliarRuntimeFailureKind
+
+    /// `attempt` and `delay` describe a retry schedule and carry no meaning for a
+    /// budget notice, so they default to zero.
+    init(
+        kind: FamiliarRuntimeNoticeKind,
+        attempt: Int = 0,
+        delay: TimeInterval = 0,
+        failureKind: FamiliarRuntimeFailureKind
+    ) {
+        self.kind = kind
+        self.attempt = attempt
+        self.delay = delay
+        self.failureKind = failureKind
+    }
 }
 
 nonisolated enum FamiliarRuntimeEventPayload: Sendable {
@@ -204,7 +222,7 @@ actor FamiliarUndoStore {
 nonisolated enum FamiliarAgentError: LocalizedError, Sendable {
     case emptyResponse, invalidToolCall, incompleteResponse, maxIterationsExceeded
     case contextTooLarge, contextCompactionFailed, toolArgumentsTooLarge, toolResultTooLarge
-    case maxToolCallsExceeded, durationExceeded
+    case durationExceeded
     case missingDeliverables([String])
 
     var errorDescription: String? {
@@ -217,7 +235,6 @@ nonisolated enum FamiliarAgentError: LocalizedError, Sendable {
         case .contextCompactionFailed: String(localized: "error.agent.context_compaction_failed", defaultValue: "Context compaction failed. Start a new conversation or try again.")
         case .toolArgumentsTooLarge: String(localized: "error.agent.tool_arguments_too_large")
         case .toolResultTooLarge: String(localized: "error.agent.tool_result_too_large")
-        case .maxToolCallsExceeded: String(localized: "error.agent.max_tool_calls")
         case .durationExceeded: String(localized: "error.agent.duration_exceeded")
         case .missingDeliverables(let formats): "缺少已承诺且经过验证的交付文件：\(formats.joined(separator: ", "))"
         }
@@ -323,6 +340,10 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         var expectedDeliverables = Self.inferredDeliverables(from: contextSnapshot.providerMessages)
         var publishedFormats = Set<String>()
         var repairAttempts = 0
+        /// Set once the tool-call budget is spent. From then on tools are withheld
+        /// rather than the run being failed, so the work already done survives.
+        var toolBudgetExhausted = false
+        var announcedToolWithholding = false
 
         for iteration in 0..<maximumIterations {
             try Task.checkCancellation()
@@ -362,7 +383,23 @@ nonisolated struct FamiliarAgentLoop: Sendable {
             let assistantTurnID = "\(runID):turn:\(iteration)"
             await emitter.beginAssistantTurn(assistantTurnID)
             await emitter.emit(.assistantTurnStarted(id: assistantTurnID, index: iteration))
-            let request = FamiliarModelRequest(model: contextSnapshot.modelID, messages: messages, tools: manifests)
+            // Tools are withheld on the last iteration and once the tool-call budget
+            // is spent. Both used to throw and end the run as failed, which threw away
+            // every tool result already gathered and left the user with an error
+            // instead of an answer. Withholding forces the model to answer from what
+            // it has, which is the outcome the user actually wants at that point.
+            let withholdTools = toolBudgetExhausted || iteration == maximumIterations - 1
+            if withholdTools, !announcedToolWithholding {
+                announcedToolWithholding = true
+                messages.append(.system(
+                    "No further tool calls are available for this run. Answer now using only the information already gathered. State plainly what you could not verify or complete; never claim an action succeeded when it did not run."
+                ))
+            }
+            let request = FamiliarModelRequest(
+                model: contextSnapshot.modelID,
+                messages: messages,
+                tools: withholdTools ? [] : manifests
+            )
             let round = try await streamRound(request: request, emitter: emitter, deadline: deadline)
             await emitter.emit(.assistantTurnCompleted(id: assistantTurnID, index: iteration, text: round.text))
             visibleResponse += round.text
@@ -423,7 +460,21 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                     toolMessages[index] = .tool(Self.errorResult(code: "duplicate_tool_call", retryable: false, message: detail), toolCallID: call.id, name: call.name)
                     continue
                 }
-                guard executedToolCalls < maximumToolCalls else { throw FamiliarAgentError.maxToolCallsExceeded }
+                guard executedToolCalls < maximumToolCalls else {
+                    // The budget is a stop signal, not a run failure. Report it to this
+                    // one call as a structured failure and withhold tools from the next
+                    // round, so the model answers from what it already gathered instead
+                    // of the user getting an error in place of an answer.
+                    if !toolBudgetExhausted {
+                        toolBudgetExhausted = true
+                        await emitter.emit(.runtimeNotice(.init(kind: .budgetExhausted, failureKind: .maxToolCalls)))
+                    }
+                    let detail = String(localized: "error.agent.max_tool_calls")
+                    let completion = activityCompletion(runID: runID, call: call, manifest: manifest, assistantTurnID: assistantTurnID, detail: detail, confirmation: .notRequired, status: .failed, startedAt: startedAt, failureCode: "tool_budget_exhausted", failureRetryable: false)
+                    await emitter.emit(.activityCompleted(completion))
+                    toolMessages[index] = .tool(Self.errorResult(code: "tool_budget_exhausted", retryable: false, message: detail), toolCallID: call.id, name: call.name)
+                    continue
+                }
                 executedToolCalls += 1
                 prepared.append(.init(index: index, call: call, manifest: manifest, startedAt: startedAt))
             }
@@ -470,7 +521,18 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                 messages.append(message)
             }
         }
-        throw FamiliarAgentError.maxIterationsExceeded
+        // Reaching here means the model kept requesting tools even on the final
+        // iteration, where tools were already withheld. Deliver whatever it did say
+        // rather than failing the run and discarding the whole turn; only a run with
+        // literally nothing to show is a genuine failure.
+        let answer = visibleResponse.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !answer.isEmpty else { throw FamiliarAgentError.maxIterationsExceeded }
+        let missing = expectedDeliverables.filter { !publishedFormats.contains($0.format) }
+        guard missing.isEmpty else {
+            throw FamiliarAgentError.missingDeliverables(missing.map(\.format))
+        }
+        await emitter.emit(.runPhaseChanged(.delivering))
+        await emitter.emit(.responseCompleted(.init(text: answer, sources: collectedSources)))
     }
 
     private func streamRound(
@@ -546,7 +608,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         let availability = try await Self.withDeadline(deadline) {
             await registry.availability(for: item.manifest)
         }
-        return policy.decide(manifest: item.manifest, availability: availability, grant: nil, arguments: item.call.arguments, projectID: projectID) == .execute
+        return policy.decide(manifest: item.manifest, availability: availability) == .execute
     }
 
     private func executeToolCall(
@@ -560,26 +622,16 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         let call = item.call
         let manifest = item.manifest
         var automaticApprovalRequest: FamiliarToolConfirmationRequest?
+        /// `.confirmed` only when this call actually interrupted the user. A reused
+        /// authorization must not be audited as a fresh confirmation.
+        var readConfirmation: FamiliarPersistedConfirmationResult = .notRequired
         do {
             await emitter.emit(.activityProgress(.init(id: call.id, fractionCompleted: nil, detail: nil)))
             let availability = try await Self.withDeadline(deadline) {
                 await registry.availability(for: manifest)
             }
-            let decision = policy.decide(manifest: manifest, availability: availability, grant: nil, arguments: call.arguments, projectID: contextSnapshot.projectID)
+            let decision = policy.decide(manifest: manifest, availability: availability)
             if case .deny(let reason) = decision { throw FamiliarToolRegistryError.capabilityUnavailable(reason) }
-            if manifest.effect == .read, decision == .requestApproval {
-                let fields = [FamiliarApprovalField(id: "access_scope", label: "access_scope", type: .text, value: manifest.description)]
-                guard try await approve(runID: runID, call: call, effect: manifest.effect, risk: manifest.risk, title: call.name, fields: fields, target: nil, consequence: manifest.description, undoPolicy: .unavailable, emitter: emitter, deadline: deadline).isConfirmed else {
-                    let completion = activityCompletion(runID: runID, call: call, manifest: manifest, assistantTurnID: assistantTurnID, detail: String(localized: "tool.cancelled_by_user"), confirmation: .cancelled, status: .cancelled, startedAt: item.startedAt)
-                    await emitter.emit(.activityCompleted(completion))
-                    return .init(index: item.index, message: .tool(Self.cancelledResult(), toolCallID: call.id, name: call.name), sources: [])
-                }
-            }
-            if manifest.effect == .read {
-                try await Self.withDeadline(deadline) {
-                    try await registry.prepareCapabilities(for: manifest)
-                }
-            }
             let resources = contextSnapshot.resources.map {
                 FamiliarToolContext.Resource(id: $0.resourceID, versionID: $0.resourceVersionID, version: $0.version, displayName: $0.displayName, filename: $0.filename, mimeType: $0.mimeType, contentHash: $0.contentHash, extractedText: $0.extractedText)
             }
@@ -620,6 +672,92 @@ nonisolated struct FamiliarAgentLoop: Sendable {
             if case .denied(let reason) = authorizationAssessment.disposition {
                 throw FamiliarToolRegistryError.capabilityUnavailable(reason)
             }
+            // Sensitive reads (health aggregates, photo metadata, nearby devices)
+            // are gated here rather than through `.action`, because they produce a
+            // result instead of a mutation. `preflight` supplies the real read
+            // scope, and a matching persisted authorization lets a multi-step task
+            // read once more without interrupting the user again. `.always` is
+            // deliberately not offered for this class of data.
+            if manifest.effect == .read, decision == .requestApproval {
+                let existingScope: FamiliarAuthorizationDuration? = if let authorizationRuntime {
+                    await authorizationRuntime.matchingAuthorizationScope(
+                        manifest: manifest,
+                        arguments: call.arguments,
+                        projectID: contextSnapshot.projectID,
+                        targetKey: authorizationAssessment.targetKey
+                    )
+                } else {
+                    nil
+                }
+                let fields = authorizationAssessment.fields.isEmpty
+                    ? [FamiliarApprovalField(
+                        id: "access_scope",
+                        label: String(localized: "approval.field.scope", defaultValue: "Scope"),
+                        type: .text,
+                        value: manifest.description
+                    )]
+                    : authorizationAssessment.fields
+                let consequence = authorizationAssessment.consequence.isEmpty
+                    ? manifest.description
+                    : authorizationAssessment.consequence
+                let allowedDurations: [FamiliarAuthorizationDuration] = [.once, .session]
+                if let existingScope {
+                    automaticApprovalRequest = FamiliarToolConfirmationRequest(
+                        runID: runID,
+                        toolCallID: call.id,
+                        toolName: call.name,
+                        effect: manifest.effect,
+                        risk: manifest.risk,
+                        title: manifest.title,
+                        fields: fields,
+                        target: authorizationAssessment.targetKey,
+                        consequence: consequence,
+                        undoPolicy: .unavailable,
+                        automaticAuthorization: true,
+                        automaticAuthorizationScope: existingScope,
+                        allowedAuthorizationDurations: allowedDurations
+                    )
+                } else {
+                    let readDecision = try await approve(
+                        runID: runID,
+                        call: call,
+                        effect: manifest.effect,
+                        risk: manifest.risk,
+                        title: manifest.title,
+                        fields: fields,
+                        target: authorizationAssessment.targetKey,
+                        consequence: consequence,
+                        undoPolicy: .unavailable,
+                        allowedAuthorizationDurations: allowedDurations,
+                        emitter: emitter,
+                        deadline: deadline
+                    )
+                    guard readDecision.isConfirmed else {
+                        let completion = activityCompletion(runID: runID, call: call, manifest: manifest, assistantTurnID: assistantTurnID, detail: String(localized: "tool.cancelled_by_user"), confirmation: .cancelled, status: .cancelled, startedAt: item.startedAt)
+                        await emitter.emit(.activityCompleted(completion))
+                        return .init(index: item.index, message: .tool(Self.cancelledResult(), toolCallID: call.id, name: call.name), sources: [])
+                    }
+                    readConfirmation = .confirmed
+                    if let duration = readDecision.authorizationDuration,
+                       duration != .once,
+                       allowedDurations.contains(duration),
+                       let authorizationRuntime {
+                        try await authorizationRuntime.issueAuthorization(
+                            duration: duration,
+                            manifest: manifest,
+                            arguments: call.arguments,
+                            projectID: contextSnapshot.projectID,
+                            targetKey: authorizationAssessment.targetKey,
+                            evidence: manifest.title
+                        )
+                    }
+                }
+            }
+            if manifest.effect == .read {
+                try await Self.withDeadline(deadline) {
+                    try await registry.prepareCapabilities(for: manifest)
+                }
+            }
             let outcome = try await executeOutcome(
                 name: call.name,
                 arguments: call.arguments,
@@ -633,7 +771,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
             let resolved: (FamiliarToolExecutionResult, FamiliarPersistedConfirmationResult)
             switch outcome {
             case .result(let result):
-                resolved = (result, manifest.effect == .read && decision == .requestApproval ? .confirmed : .notRequired)
+                resolved = (result, readConfirmation)
             case .action(let proposal):
                 let automaticallyAllowed = authorizationAssessment.disposition == .automatic
                 let authorizationScope: FamiliarAuthorizationDuration? = if !automaticallyAllowed, proposal.effect == .reversibleWrite, proposal.risk != .high, let authorizationRuntime {
@@ -988,15 +1126,12 @@ nonisolated struct FamiliarAgentLoop: Sendable {
     }
 
     private static func errorResult(_ error: any Error) -> String {
-        if let environmentError = error as? FamiliarEnvironmentError {
+        if let structured = error as? any FamiliarStructuredToolError {
             return errorResult(
-                code: environmentError.code,
-                retryable: environmentError.isRetryable,
-                message: environmentError.localizedDescription
+                code: structured.code,
+                retryable: structured.isRetryable,
+                message: structured.localizedDescription
             )
-        }
-        if let webError = error as? FamiliarWebError {
-            return errorResult(code: webError.code, retryable: webError.isRetryable, message: webError.localizedDescription)
         }
         let kind = FamiliarRuntimeFailure.kind(for: error)
         return errorResult(code: kind.code, retryable: kind.isRetryable, message: error.localizedDescription)

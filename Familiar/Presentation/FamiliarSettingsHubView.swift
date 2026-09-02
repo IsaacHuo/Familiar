@@ -1,7 +1,10 @@
 import AVFoundation
 import Contacts
+import CoreBluetooth
 import CoreLocation
 import EventKit
+import HealthKit
+import MusicKit
 import Photos
 import Speech
 import SwiftData
@@ -929,6 +932,7 @@ private struct FamiliarPermissionsSettingsView: View {
     @State private var notificationState: FamiliarNotificationAuthorizationState = .unknown
     @State private var notificationsEnabled = FamiliarNotificationPreference.isEnabled
     @State private var isUpdatingNotifications = false
+    @State private var healthRequestState: FamiliarHealthReadScope.RequestState = .notRequested
 
     var body: some View {
         List {
@@ -946,12 +950,19 @@ private struct FamiliarPermissionsSettingsView: View {
                 permissionRow(String(localized: "settings.permissions.contacts", defaultValue: "Contacts"), symbol: "person.crop.circle", status: contactsStatus)
                 permissionRow(String(localized: "settings.permissions.location", defaultValue: "Location"), symbol: "location", status: locationStatus)
                 permissionRow(String(localized: "settings.permissions.photos_add", defaultValue: "Add to Photos"), symbol: "photo.badge.plus", status: photoAddStatus)
+                permissionRow(String(localized: "settings.permissions.photos_read", defaultValue: "Read Photo Metadata"), symbol: "photo.on.rectangle", status: photoReadStatus)
+                permissionRow(String(localized: "settings.permissions.health", defaultValue: "Health Activity"), symbol: "heart.text.square", status: healthStatus)
+                permissionRow(String(localized: "settings.permissions.music", defaultValue: "Apple Music"), symbol: "music.note", status: musicStatus)
+                permissionRow(String(localized: "settings.permissions.bluetooth", defaultValue: "Bluetooth"), symbol: "dot.radiowaves.left.and.right", status: bluetoothStatus)
                 permissionRow(String(localized: "settings.permissions.camera", defaultValue: "Camera"), symbol: "camera", status: mediaStatus(AVCaptureDevice.authorizationStatus(for: .video)))
                 permissionRow(String(localized: "settings.permissions.microphone", defaultValue: "Microphone"), symbol: "mic", status: mediaStatus(AVCaptureDevice.authorizationStatus(for: .audio)))
                 permissionRow(String(localized: "settings.permissions.speech", defaultValue: "Speech Recognition"), symbol: "waveform", status: speechStatus)
                 permissionRow(String(localized: "settings.notifications.title"), symbol: "bell", status: notificationStatus)
             } footer: {
-                Text(String(localized: "settings.permissions.footer", defaultValue: "Familiar asks for access only when you use the related feature. Permissions are controlled by iOS."))
+                VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
+                    Text(String(localized: "settings.permissions.footer", defaultValue: "Familiar asks for access only when you use the related feature. Permissions are controlled by iOS."))
+                    Text(String(localized: "settings.permissions.health_footer", defaultValue: "HealthKit never tells apps whether you denied a read request, so Familiar can only show whether it has asked. Missing values are never reported as zero."))
+                }
             }
 
             Section {
@@ -966,6 +977,7 @@ private struct FamiliarPermissionsSettingsView: View {
         .task {
             notificationState = await FamiliarNotificationService.authorizationState()
             notificationsEnabled = FamiliarNotificationPreference.isEnabled && notificationState == .enabled
+            healthRequestState = await FamiliarHealthReadScope.requestState()
         }
     }
 
@@ -1023,6 +1035,47 @@ private struct FamiliarPermissionsSettingsView: View {
     private var locationStatus: String {
         switch CLLocationManager().authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse: allowed
+        case .denied: denied
+        case .restricted: restricted
+        case .notDetermined: notRequested
+        @unknown default: restricted
+        }
+    }
+
+    /// HealthKit deliberately hides read denials, so the only honest states are
+    /// "requested" and "not requested". Never render `allowed` here.
+    private var healthStatus: String {
+        switch healthRequestState {
+        case .unavailable: String(localized: "settings.permissions.unsupported", defaultValue: "Not Supported")
+        case .notRequested: notRequested
+        case .requested: String(localized: "settings.permissions.requested", defaultValue: "Requested")
+        }
+    }
+
+    private var musicStatus: String {
+        switch MusicAuthorization.currentStatus {
+        case .authorized: allowed
+        case .denied: denied
+        case .restricted: restricted
+        case .notDetermined: notRequested
+        @unknown default: restricted
+        }
+    }
+
+    private var bluetoothStatus: String {
+        switch CBManager.authorization {
+        case .allowedAlways: allowed
+        case .denied: denied
+        case .restricted: restricted
+        case .notDetermined: notRequested
+        @unknown default: restricted
+        }
+    }
+
+    private var photoReadStatus: String {
+        switch PHPhotoLibrary.authorizationStatus(for: .readWrite) {
+        case .authorized: allowed
+        case .limited: String(localized: "settings.permissions.limited", defaultValue: "Limited")
         case .denied: denied
         case .restricted: restricted
         case .notDetermined: notRequested

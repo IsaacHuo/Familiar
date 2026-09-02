@@ -1,7 +1,6 @@
-import CryptoKit
 import Foundation
 
-nonisolated enum FamiliarWebError: LocalizedError, Sendable {
+nonisolated enum FamiliarWebError: LocalizedError, FamiliarStructuredToolError, Sendable {
     case invalidQuery
     case invalidURL
     case httpsRequired
@@ -118,8 +117,9 @@ nonisolated struct FamiliarWebCapture: Codable, Sendable, Equatable {
 }
 
 nonisolated enum FamiliarSourceIdentifier {
+    /// Six digest bytes, i.e. the first twelve hex characters. Identical output to
+    /// the previous inline implementation, so existing source IDs keep matching.
     static func make(for url: URL) -> String {
-        let digest = SHA256.hash(data: Data(url.absoluteString.utf8))
-        return "src_" + digest.prefix(6).map { String(format: "%02x", $0) }.joined()
+        "src_" + FamiliarHash.sha256(url.absoluteString).prefix(12)
     }
 }

@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 nonisolated enum FamiliarCapabilitySource: String, Codable, Sendable {
@@ -71,8 +70,7 @@ nonisolated struct FamiliarAuthorizationGrant: Codable, Equatable, Sendable {
     }
 
     static func argumentsHash(_ arguments: String) -> String {
-        let data = FamiliarCanonicalJSON.data(for: arguments)
-        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        FamiliarHash.sha256(FamiliarCanonicalJSON.data(for: arguments))
     }
 }
 

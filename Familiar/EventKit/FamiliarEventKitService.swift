@@ -285,7 +285,7 @@ public actor FamiliarEventKitService: FamiliarEventKitServicing {
         case .calendarFullAccess: authorization = FamiliarEventKitAuthorization(EKEventStore.authorizationStatus(for: .event))
         case .remindersFullAccess: authorization = FamiliarEventKitAuthorization(EKEventStore.authorizationStatus(for: .reminder))
         case .contactsRead, .locationWhenInUse, .weatherKit, .photoLibraryRead,
-             .healthActivityRead, .musicCatalogRead, .bluetoothScan, .userNotifications:
+             .healthActivityRead, .musicCatalogRead, .bluetoothScan, .userNotifications, .alarmKit:
             return .unavailable(reason: "此设备能力需要对应的 Native Service。")
         }
         switch authorization {
@@ -304,7 +304,7 @@ public actor FamiliarEventKitService: FamiliarEventKitServicing {
             case .calendarFullAccess: try await requestFullAccess(for: .events)
             case .remindersFullAccess: try await requestFullAccess(for: .reminders)
             case .contactsRead, .locationWhenInUse, .weatherKit, .photoLibraryRead,
-                 .healthActivityRead, .musicCatalogRead, .bluetoothScan, .userNotifications:
+                 .healthActivityRead, .musicCatalogRead, .bluetoothScan, .userNotifications, .alarmKit:
                 throw FamiliarToolRegistryError.capabilityUnavailable("此设备能力需要对应的 Native Service。")
             }
         }
@@ -662,36 +662,13 @@ public actor FamiliarEventKitService: FamiliarEventKitServicing {
     }
 }
 
-nonisolated private enum FamiliarISO8601 {
-    static func string(_ date: Date) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.string(from: date)
-    }
-
-    static func date(_ value: String) throws -> Date {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: value) { return date }
-        formatter.formatOptions = [.withInternetDateTime]
-        if let date = formatter.date(from: value) { return date }
-        throw FamiliarEventKitError.invalidISO8601(value)
-    }
-
-    static func components(_ value: String) throws -> DateComponents {
-        let date = try date(value)
-        var components = Calendar(identifier: .gregorian).dateComponents(in: TimeZone(secondsFromGMT: 0)!, from: date)
-        components.calendar = Calendar(identifier: .gregorian)
-        components.timeZone = TimeZone(secondsFromGMT: 0)
-        return components
-    }
-}
+// ISO8601 parsing and formatting now lives in the shared `FamiliarISO8601`
+// (Familiar/Agent/FamiliarISO8601.swift). The file-private copy that used to be
+// here disagreed with other tools about fractional seconds.
 
 private extension FamiliarCalendarEvent {
     nonisolated init(_ event: EKEvent) {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        self.init(id: event.eventIdentifier, title: event.title, startISO8601: formatter.string(from: event.startDate), endISO8601: formatter.string(from: event.endDate), isAllDay: event.isAllDay, location: event.location, notes: event.notes, calendarIdentifier: event.calendar.calendarIdentifier, calendarTitle: event.calendar.title)
+        self.init(id: event.eventIdentifier, title: event.title, startISO8601: FamiliarISO8601.string(event.startDate), endISO8601: FamiliarISO8601.string(event.endDate), isAllDay: event.isAllDay, location: event.location, notes: event.notes, calendarIdentifier: event.calendar.calendarIdentifier, calendarTitle: event.calendar.title)
     }
 }
 
@@ -703,8 +680,6 @@ nonisolated private struct FamiliarReminderCandidate: Sendable {
 
 private extension FamiliarReminder {
     nonisolated init(_ reminder: EKReminder) {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        self.init(id: reminder.calendarItemIdentifier, title: reminder.title, dueISO8601: reminder.dueDateComponents?.date.map(formatter.string), isCompleted: reminder.isCompleted, priority: reminder.priority, notes: reminder.notes, listIdentifier: reminder.calendar.calendarIdentifier, listTitle: reminder.calendar.title)
+        self.init(id: reminder.calendarItemIdentifier, title: reminder.title, dueISO8601: reminder.dueDateComponents?.date.map(FamiliarISO8601.string), isCompleted: reminder.isCompleted, priority: reminder.priority, notes: reminder.notes, listIdentifier: reminder.calendar.calendarIdentifier, listTitle: reminder.calendar.title)
     }
 }

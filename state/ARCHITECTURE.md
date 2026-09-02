@@ -12,6 +12,15 @@
 | 富文本 | WKWebView 非持久化 + 内置 Markdown-It、highlight.js、KaTeX、Mermaid、DOMPurify |
 | 密钥 | Security.framework Keychain，`kSecAttrAccessibleWhenUnlockedThisDeviceOnly` |
 | 日历/提醒 | EventKit full access（iOS 17+ API） |
+| 地点 | MapKit `MKLocalSearch`（公开地点检索，返回可继续用于 WeatherKit 的坐标） |
+| 天气 | WeatherKit（`com.apple.developer.weatherkit` entitlement，坐标发送给 Apple Weather） |
+| 健康 | HealthKit 只读聚合（`com.apple.developer.healthkit` entitlement，仅 stepCount/activeEnergyBurned/distanceWalkingRunning） |
+| 照片元数据 | PhotoKit `PHAsset` 只读元数据（时间/类型/尺寸/位置）与 add-only 保存，二者授权分离 |
+| 音乐 | MusicKit 目录检索（只读元数据，不播放、不修改资料库） |
+| 蓝牙 | CoreBluetooth 前台按显式 Service UUID 扫描，不连接、不读特征值 |
+| 本地文本分析 | NaturalLanguage（语言识别、情感分数、命名实体，全部在设备上） |
+| 本地通知 | UserNotifications（无 plist key，运行时授权） |
+| 闹钟 | AlarmKit（iOS 26.1+ 门控，必须声明 `NSAlarmKitUsageDescription`，alert-only presentation） |
 | 文档转换 | AnyDoc Rust 引擎（`Vendor/AnyDocBridge.xcframework`，iOS arm64 + Simulator arm64） |
 | PDF | PDFKit 文本层检查 + Vision OCR |
 | 图片 | PhotosPicker、AVFoundation、UIKit、Vision；Apple Vision 生成本地只读证据，生产模型不接收图片 bytes |
@@ -39,11 +48,11 @@
 ### `Familiar/Agent/` — Agent 运行时
 | 文件 | 职责 |
 |---|---|
-| `FamiliarTool.swift` | `FamiliarTool` 协议（类型化 Input）、`FamiliarToolManifest`、effect/risk/requirement、`FamiliarToolResultEnvelope`（canonical model JSON + schema v3 typed scalar/search/document/context/records/mutation/artifact/diff/taskList/recommendation/insight/code/shareDraft payload）、有序 typed approval fields、纯预览 `FamiliarActionProposal` 与批准后 `FamiliarCommittedAction(result + undo)`、clarification proposal、`actor FamiliarToolRegistry` |
-| `FamiliarAgentLoop.swift` | `struct FamiliarAgentLoop`（nonisolated）：唯一 typed Runtime event 集、`FamiliarRunOutcome` 单终态、最多 6 轮工具循环、规范化幂等指纹、read 失败内部重试一次、首字节前 Provider 重试 notice、整段 `ContinuousClock` hard deadline、最多 2 路并行独立 read、真实授权查询/签发、独立 clarification 暂停/恢复、结构化 tool failure、`actor FamiliarUndoStore`、结果长度上限（48k） |
+| `FamiliarTool.swift` | `FamiliarTool` 协议（类型化 Input）、`FamiliarToolManifest`、effect/risk/requirement、`FamiliarToolResultEnvelope`（canonical model JSON + schema v3 typed scalar/search/document/context/records/mutation/artifact/diff/taskList/recommendation/insight/code/shareDraft payload）、有序 typed approval fields、纯预览 `FamiliarActionProposal` 与批准后 `FamiliarCommittedAction(result + undo)`、clarification proposal、`actor FamiliarToolRegistry`；`FamiliarStructuredToolError` 定义稳定 code/retryable 契约；`FamiliarToolAuthorizationAssessment` 可由 `preflight` 提供真实读取范围 fields/consequence/targetKey；`FamiliarCapabilityRequirement` 声明各能力所需的 plist key、entitlement 与 privacy 数据类型，供合规契约测试机械反查 |
+| `FamiliarAgentLoop.swift` | `struct FamiliarAgentLoop`（nonisolated）：唯一 typed Runtime event 集、`FamiliarRunOutcome` 单终态、最多 6 轮工具循环、规范化幂等指纹、read 失败内部重试一次、首字节前 Provider 重试 notice、整段 `ContinuousClock` hard deadline、最多 2 路并行独立 read、独立 clarification 暂停/恢复、结构化 tool failure（任何 `FamiliarStructuredToolError` 直接透出 code）。工具调用预算耗尽与最后一轮迭代不再抛错终结 Run，而是把请求的 tools 收窄为空并追加系统消息要求立即基于已有信息作答（发 `budgetExhausted` notice 供审计）；迭代耗尽只在确实没有任何正文可交付时才失败、`actor FamiliarUndoStore`、结果长度上限（48k）。`preflight` 先于审批执行，敏感 read（health/photos/bluetooth）与写入分别接入 `authorizationRuntime`：read 只允许仅这次/本会话，命中既有授权时不再打断并记为自动授权 |
 | `FamiliarRuntimeError.swift` | `FamiliarRuntimeFailure.kind(for:)` 错误分类（auth/限流/5xx/网络/上下文/参数/结果/取消等）与 `isRetryable` 判定 |
 | `FamiliarModelProvider.swift` | 无 API Key 参数的 `FamiliarModelProvider.stream(request:)` 与默认 `generate(request:)`、统一 `FamiliarToolCall`、reasoning delta、消息/内容/Manifest、`localOnly/preferLocal/cloud` 值类型 |
-| `FamiliarExecutionPolicy.swift` | `FamiliarExecutionPolicy.decide(...)`：read 自动、destructive/high risk 确认、有效授权可执行；实际规则由 `FamiliarAuthorizationRuntime` 以 Project/工具版本/目标/精确参数 hash/期限匹配 |
+| `FamiliarExecutionPolicy.swift` | 纯 gate `decide(manifest:availability:)`：unavailable 拒绝、destructive 或 high risk 必须确认、能力就绪的 read 直接执行、其余走审批。策略本身不接受任何授权参数，无法自我授权；持久授权只由 `FamiliarAuthorizationRuntime` 按 Project/工具版本/targetKey/精确参数 hash/期限匹配 |
 | `FamiliarCapabilityContract.swift` | Manifest v2 字段、`FamiliarCapabilityCatalog/Resolver/Binding`、`FamiliarAuthorizationGrant`（共享规范化 arguments hash、single-use、expiry）；Capability snapshot/catalog 仍是契约层，实际免重复授权由 `FamiliarAuthorizationRuntime` 接线 |
 | `FamiliarToolConfirmationCoordinator.swift` | `public actor`，`runID + toolCallID` 幂等确认，checked continuation 暂停 Agent Loop |
 | `FamiliarClarificationCoordinator.swift` | `public actor`，独立于授权确认保存 pending clarification continuation；验证选项/自定义回答，支持按 Run 取消 |
@@ -51,6 +60,9 @@
 | `FamiliarAuthorizationRuntime.swift` | `@MainActor` SwiftData 授权查询、单次消费、session/长期授权签发与撤销范围匹配 |
 | `FamiliarProjectContextAssembler.swift` | 从 Project seed + 消息快照 + 工具 manifest 组装不可变 `FamiliarContextSnapshot`；除 Provider 输入外冻结去重后的 Attachment snapshot，供 Workspace 虚拟 Files 投影；按 base→Project→本次显式选择的 Skill→安全策略注入，并以该 Skill 的 allowedTools 收窄 manifests；执行输入字符预算 |
 | `FamiliarNativeTools.swift` | `current_date_time`、`app_information`（read/low） |
+| `FamiliarToolSchema.swift` | 共享 JSON Schema DSL（`object/string/boolean/integer/number/array/stringArray/objectArray`）与 `FamiliarToolDefaults`：范围和默认值只声明一次，同时供 manifest 与 `execute` 使用 |
+| `FamiliarISO8601.swift` | 唯一 ISO8601 边界：解析同时接受带/不带小数秒，格式化统一输出小数秒；`validateRange` 返回 typed `FamiliarISO8601Error` |
+| `FamiliarHash.swift` | 唯一 SHA-256 实现（Data/String/文件流式）。内容 hash 会持久化并跨启动比较，重复实现一旦分叉会静默失效既有 hash |
 
 ### `Familiar/App/` — 见 §2。
 
@@ -88,7 +100,12 @@
 ### `Familiar/Workspace/`、`Familiar/Native/`、`Familiar/Shell/`
 - `FamiliarWorkspaceStore.swift` — Project/Conversation Workspace，Shell-visible Files/Outputs/Work/Environment，Metadata/Tasks/Checkpoints 不挂载；Project Environment 持久，Conversation Environment 随 task view 删除；路径穿越、symlink、配额、checkpoint/diff/restore 与 Environment 原子替换。
 - `FamiliarWorkspaceTools.swift` — `Files/Resources/<id>/...` 与 `Files/Attachments/<id>/...` 是当前 ContextSnapshot 的虚拟只读投影；`Outputs`/`Runtime/Work` 来自 Workspace Store。write 只允许 `Outputs`，批准后保存目标文件级旧值，Undo 不触碰其他路径；image list 只列当前会话显式附件图片。
-- `FamiliarDeviceTools.swift` — Contacts 只读、单次前台 Location、Clipboard 双向确认/写入 undo、只准备 payload 的 Share；EventKit 继续独立 adapter，Spotlight 只查 Familiar 索引。
+- `FamiliarDeviceTools.swift` — Contacts 只读、单次前台 Location、Clipboard 双向确认/写入 undo、只准备 payload 的 Share；EventKit 继续独立 adapter，Spotlight 只查 Familiar 索引。末尾的 `FamiliarDeviceCapabilityProvider` 是唯一的 `FamiliarCapabilityProviding` 实现，把 11 个 `FamiliarCapabilityRequirement` 分发到各 Service 的 `availability()`/`requestAccess()`。`.weatherKit` 直接返回 `.available`：App 无法在运行时检查自身签名 entitlement 或 Apple Weather 配额，真实故障以 typed `FamiliarWeatherError` 暴露，而不是假装可用后让模型退回网页猜测。
+- `FamiliarAppleNativeTools.swift` — `FamiliarMapService`（`@MainActor`，`MKLocalSearch`）与 `FamiliarWeatherService`（`actor`，`WeatherService.shared`，携带 Apple Weather attribution 作为 `FamiliarSource`）；出 `map_search`、`weather_forecast`、`weather_history`。历史查询在发起网络请求前校验覆盖起点、区间方向与 10 天上限，超限明确失败而不截断——静默截断会让模型以为拿到了并不存在的天数。坐标校验共用 `FamiliarAppleNativeValidation`。
+- `FamiliarAppleDataTools.swift` — `FamiliarNaturalLanguageService`（设备内，输入截断 40k、实体上限 60）、`FamiliarHealthService`（`actor`，`HKStatisticsQueryDescriptor` 只读 3 个 quantity type；共享 `FamiliarHealthReadScope` 同时供工具与设置页使用。HealthKit 不揭示读取拒绝，因此设置页只显示“已请求/尚未请求”，空值不得解释为零）、`FamiliarMusicService`（`actor`，`MusicCatalogSearchRequest`，只读目录）。
+- `FamiliarAppleDeviceTools.swift` — `FamiliarBluetoothService`（`@MainActor` `CBCentralManagerDelegate`，必须显式 1–8 个 Service UUID、2–10 秒前台扫描、不连接不读特征值）与 `notification_schedule`（`reversibleWrite`，commit 后可撤销待发送通知）。
+- `FamiliarAlarmTools.swift` — `FamiliarAlarmService`（`actor`，无条件 façade + `@available(iOS 26.1, *)` 内部实现）出 `alarm_schedule`/`alarm_cancel`/`alarm_list`。只使用 alert-only `AlarmPresentation`：Apple 要求支持 countdown presentation 的 App 必须提供 widget extension，否则系统可能取消闹钟且不响铃。门控取 26.1 而非 26.0，因为非 deprecated 的 `AlarmPresentation.Alert` 初始化器自 26.1 起才存在。`alarm_list`/`alarm_cancel` 只能看到本 App 自己的闹钟，取消前先核验归属，幻觉 identifier 在确认卡出现前即失败。
+- `FamiliarOutputTools.swift` — `FamiliarWorkspaceOutputResolver` 与 `FamiliarPhotoLibraryService`；后者同时实现 `FamiliarPhotoLibrarySaving`（add-only，`undoPolicy: .unavailable`、仅 `.once` 授权）与 `FamiliarPhotoLibraryReading`（只读元数据，尊重 limited 权限，最多 50 项），出 `photos_save_output`、`photos_recent_metadata`、`prepare_file_export`。
 - `FamiliarShellExecutor.swift` / `FamiliarShellPolicy.swift` / `FamiliarShellTool.swift` — 统一 Shell 事件/typed result/取消/限制与动态 preflight；离线、Workspace-only、checkpointed 命令自动执行，联网/危险命令审批，包安装从 `shell_execute` 拒绝。`environment_prepare` 只接受 PyPI 声明依赖，由 Swift 使用设置中选择的官方 PyPI 或清华 TUNA HTTPS 索引构造命令，并把实际索引写入 Project Environment lock/receipt 后原子替换旧环境。
 - `FamiliarISHShellExecutor.swift` — 全局串行 iSH actor、rootfs version/bundle hash/iSH commit/原子 marker 校验、显式安装/启动/运行/失败生命周期、四目录 mount、streaming、timeout/cancel 和网络计数。bridge 只有 `prepare()` 成功后才向 ToolRegistry 暴露 Environment/Shell tools。
 - `Vendor/ish-arm64/` / `Vendor/ISHRuntime/` — 固定 commit 的 GPLv3 iSH ARM64 源码、Familiar headless bridge、网络 syscall policy、arm64 device/simulator XCFramework 与供应链 manifest。
@@ -100,7 +117,7 @@
 
 ### `Familiar/EventKit/`
 - `FamiliarEventKitService.swift` — `public actor`，权限状态/请求、查询（limit 1–200）、幂等 commit、按持久 EventKit identifier undo，符合 `FamiliarCapabilityProviding`。
-- `FamiliarEventKitTools.swift` — `calendar_events`、`create_calendar_event`、`reminders`、`create_reminder`。
+- `FamiliarEventKitTools.swift` — `calendar_events`、`create_calendar_event`、`update_calendar_event`、`delete_calendar_event`、`reminders`、`create_reminder`、`update_reminder`、`delete_reminder`（同一 Service 出 8 个 Tool）。
 
 ### `Familiar/Persistence/` — SwiftData
 - `FamiliarModels.swift` — 当前模型 typealias 与 `FamiliarModelContainer`；生产和测试容器直接打开单一当前 schema，不配置 migration plan。
@@ -114,9 +131,9 @@
 - `FamiliarChatView.swift` — 统一 Chat Surface：顶栏依次提供设置、普通/活跃项目工作区、模型和新对话；切换工作区恢复该作用域最近更新的会话，无历史时建立未持久化空白会话。左缘手势打开的抽屉只保留搜索、置顶、可折叠项目、全部项目和普通最近会话；项目与普通最近会话按 20 条逐批展开。
 - `FamiliarChatController.swift` — `@MainActor @Observable` 中央状态容器：`startSending`/`performSend` 编排整条 Agent Run。
 - `FamiliarChatMessageViews.swift` — 唯一 Assistant Turn 内容流：按 Runtime sequence 交错渲染每轮 Markdown ResponseBlock 与稳定工具执行块。工具调用在原位置从运行中 morph 为单页 Approval、typed result、receipt、failure 或 undone；只读结果默认一行折叠并从顶部锚点向下展开。Activity 只保留工具数与耗时摘要，完整审计进入 Project Runs。Context 超过 2 条进入 sheet，Records 超过 3 条进入可搜索全屏，Diff 与长 Code 进入全屏。
-- `FamiliarSurfaceDescriptor.swift` — 实时/历史共用的语义投影，descriptor 保存 Runtime sequence、稳定 tool identity 和授权决定。scalar、searchResults、document、contextMatches、recordCollection 等不再按固定区域堆叠，而是在所属 Assistant Turn 的调用位置渲染。
+- `FamiliarSurfaceDescriptor.swift` — 实时/历史共用的语义投影，descriptor 保存 Runtime sequence、稳定 tool identity 和授权决定。scalar、searchResults、document、contextMatches、recordCollection 等不再按固定区域堆叠，而是在所属 Assistant Turn 的调用位置渲染。`FamiliarToolPresentationName` 同时持有 name→title 与 name→SF Symbol 两张显式表；图标不放进 manifest，因为所有调用点只拿到持久化的 `activity.toolName`，历史 Run 必须在对应工具已不再注册时渲染出同一图标。
 - `FamiliarComposerView.swift` — compact/expanded/fullscreen 输入器、附件/相机/相册、一次性 Slash Skill 选择与语音。
-- `FamiliarSettingsHubView.swift` / `FamiliarSettingsView.swift` / `FamiliarSearchSettingsView.swift` — 设置 hub、模型服务、独立网页搜索设置和 Python 软件源设置；软件源只允许选择内置校验的官方 PyPI 或清华 TUNA HTTPS 索引，不接受任意 URL。搜索页提供 Provider 选择、独立 Key 保存/删除、最小连接验证以及隐私/费用说明。Skills 页只以右上角加号打开带默认 instructions 模板的创建表单，没有导入行，新建 Skill 的 allowedTools 为空。
+- `FamiliarSettingsHubView.swift` / `FamiliarSettingsView.swift` / `FamiliarSearchSettingsView.swift` — 设置 hub、模型服务、独立网页搜索设置和 Python 软件源设置；权限页覆盖日历、提醒、联系人、位置、照片添加、照片读取、健康活动、Apple Music、蓝牙、相机、麦克风、语音识别与通知，其中健康只显示“已请求/尚未请求”并在 footer 说明 HealthKit 从不揭示读取拒绝；软件源只允许选择内置校验的官方 PyPI 或清华 TUNA HTTPS 索引，不接受任意 URL。搜索页提供 Provider 选择、独立 Key 保存/删除、最小连接验证以及隐私/费用说明。Skills 页只以右上角加号打开带默认 instructions 模板的创建表单，没有导入行，新建 Skill 的 allowedTools 为空。
 - `FamiliarProjectsView.swift` — Project Context Workspace：项目列表/主页/编辑、文件/网页/文本资料、真实 Artifact、Environment、按需 Skills、Capability 与 Runs；主页主动作仍回到 Chat。
 - `FamiliarSharedDestinationView.swift` — Share 收件箱目标选择（已有项目、新建项目、普通聊天草稿）。
 - `FamiliarMarkdownWebView.swift` — 非持久化 WKWebView 渲染 + 高度回传 + 首帧回退文本；终态通过 `selectionChanged` bridge 回传最多 4000 字符纯文本，流式状态禁用并清空选择；长 Mermaid 通过 `previewMermaid` bridge 打开全屏，并复用同一 bundled renderer、非持久化 data store 与禁止远程连接的 CSP。
@@ -163,13 +180,16 @@
 ### `FamiliarWidgets/`、`FamiliarShareExtension/`
 - Widget bundle（launcher + control）、`SLComposeServiceViewController` 分享面板（最多 3 文件、25 MiB）。
 
-## 4. 启动时注册的工具（最多 40 个）
+## 4. 启动时注册的工具（无条件 49 个 + 条件 3 个 = 最多 52 个）
 
-注册位置：`FamiliarAppDependencies.init()`。ToolRegistry 按 manifest 的 `.native / .specializedLocal / .shell` 分类保存；Agent Runtime 不硬编码具体工具。
+注册位置：`FamiliarAppDependencies.init()`。ToolRegistry 按 manifest 的 `.native / .specializedLocal / .shell` 分类保存；Agent Runtime 不硬编码具体工具。`manifests()` 会过滤掉 `availability == .unavailable` 的工具，因此权限被拒或设备不支持的能力不会出现在模型的工具列表里。
 
 | 分类 | 工具 |
 |---|---|
 | 设备原生 | `current_date_time`、`app_information`、`contacts_search`、`current_location`、`clipboard_read`、`clipboard_write`、`prepare_share`、`familiar_search` |
+| Apple Framework（地点/天气/文本） | `map_search`（MapKit）、`weather_forecast`（WeatherKit 未来预报）、`weather_history`（WeatherKit 历史区间，2021-08-01 起、单次最多 10 天、`endDate` 开区间）、`natural_language_analyze`（NaturalLanguage，设备内） |
+| Apple Framework（个人数据） | `health_activity_summary`（HealthKit 只读聚合）、`photos_recent_metadata`（PhotoKit 只读元数据）、`music_catalog_search`（MusicKit 目录）、`bluetooth_scan`（CoreBluetooth 前台按 UUID）、`notification_schedule`（UserNotifications，可撤销写） |
+| AlarmKit | `alarm_schedule`（durable undo）、`alarm_cancel`、`alarm_list`；iOS 26.1 以下 `availability` 返回 `.unavailable`，因此不进入模型工具列表 |
 | EventKit | `calendar_events`、`create_calendar_event`、`update_calendar_event`、`delete_calendar_event`、`reminders`、`create_reminder`、`update_reminder`、`delete_reminder` |
 | Workspace | `workspace_list`、`workspace_read`、`workspace_search`、`workspace_write`、`workspace_image_list`、`photos_save_output`、`prepare_file_export` |
 | Project/Artifact | `resource_list`、`resource_read`、`resource_search`、`artifact_write`、`artifact_edit`、`artifact_publish` |
@@ -177,11 +197,15 @@
 | Presentation/interaction | `task_plan`、`present_recommendation`、`present_insight`、`ask_user`、`skill_list`、`skill_read` |
 | Shell/Environment | `environment_status`、`environment_prepare`、`shell_execute`（仅在 iSH bridge 和 bundled rootfs 准备成功后注册） |
 
-App Intents 是系统入口，不作为模型可调用 Tool 注册。ToolRegistry 只按 manifest 分类和可用性注册，Agent Runtime 不包含 iSH 或 Native Tool 的类型判断。
+一个 Apple Framework 只建一个 Service，可暴露多个 Tool：`FamiliarEventKitService` 出 8 个日历/提醒工具，`FamiliarWeatherService` 出 `weather_forecast` 与 `weather_history`，`FamiliarAlarmService` 出 3 个闹钟工具，`FamiliarPhotoLibraryService` 同时实现 add-only 保存与只读元数据两个协议、出 2 个工具，二者授权分离。
+
+工具参数统一使用 `Familiar/Agent/FamiliarToolSchema.swift` 的共享 DSL；`FamiliarJSONSchema` 支持 `items`/`minimum`/`maximum`/`minItems`/`maxItems`/`default`，数组必须声明元素类型。范围与默认值取自 `FamiliarToolDefaults`，同一常量同时供 manifest 与 `execute` 使用，避免 schema 与实际行为漂移。工具错误实现 `FamiliarStructuredToolError` 即可向模型返回稳定 `code`/`retryable`，Agent Loop 不再按具体类型硬编码分支。
+
+App Intents 是系统入口，不作为模型可调用 Tool 注册；iOS 没有公开 API 可枚举或执行第三方 App 的 AppIntent，因此不存在“让 Agent 调用 App Intents”的路径。ToolRegistry 只按 manifest 分类和可用性注册，Agent Runtime 不包含 iSH 或 Native Tool 的类型判断。
 
 ## 5. SwiftData Schema
 
-schema：`FamiliarReleaseSchema`（version `1.0.0`），当前 36 个实体；测试阶段没有 migration plan，旧 store 不受支持：
+schema：`FamiliarReleaseSchema`（version `1.0.0`），当前 37 个实体；测试阶段没有 migration plan，旧 store 不受支持：
 
 | 实体 | 运行时是否写入 |
 |---|---|
@@ -198,6 +222,7 @@ schema：`FamiliarReleaseSchema`（version `1.0.0`），当前 36 个实体；�
 | ActivityRecord, ToolResultRecord, ApprovalRecord, ResponseBlockRecord | 是（Assistant Turn 的活动、结构化结果、审批审计与回复块投影；ApprovalRecord 保存 allowedAuthorizationDurationsJSON，ActivityRecord 保存 failureCode/failureRetryable） |
 | ClarificationRecord | 是（typed requested/resolved/cancelled/interrupted；重启后 pending 只恢复为 interrupted 展示） |
 | ProjectEnvironmentRecord, ProjectSkillBindingRecord, ProjectCapabilityBindingRecord | 是（Environment receipt 与 Project-owned Skill/Capability scope） |
+| AlarmUndoRecord | 是（`alarm_schedule` 的跨重启 undo；闹钟必然在未来触发，session 级 undo 会给出无法兑现的承诺） |
 
 关系删除规则使用 cascade。附件文件由 Controller 显式清理；Resource 与 Artifact 文件经各自 Service 清理。单个 Artifact 删除同步删除元数据和文件；永久删除 Project 时先暂存 Resource 与 Artifact 项目目录，数据库提交后丢弃暂存目录，失败时恢复。新建开发 store 与用户确认的 store recovery 也会清理 Artifact 根目录。
 
@@ -268,4 +293,8 @@ MainActor 容器：`FamiliarChatController`、`FamiliarRunPersistenceRecorder`�
 - Project Capability/Skill binding UI 已实现；Skill 仍为 instruction-only 且不支持目录导入、scripts/references/assets。Remote MCP 与 Memory Runtime 工具未实现。
 - 后台承接（`BGContinuedProcessingTask`，iOS 26+）未实现；当前无后台 Run 保证。
 - DeepSeek、Search Provider、EventKit 跨重启 Undo 与 Surface 视觉/无障碍仍缺真机验收；当前没有真实 Provider 冒烟结论。FastVLM 不进入当前验收范围。
+- WeatherKit、HealthKit、PhotoKit、MusicKit、CoreBluetooth、AlarmKit 全部只完成编译与 fake-service 契约测试。真实可用性额外依赖签名 entitlement 与 provisioning（WeatherKit）、真实系统授权（Health/Photos/Music/Bluetooth）与 iOS 26.1 设备（AlarmKit），Simulator 构建无法证明其中任何一项。`weather_history` 的历史覆盖范围与 Apple Weather 配额消耗未在真实账户上验证。
+- `alarm_schedule` 的 durable undo 已写入 `FamiliarAlarmUndoRecord` 并可从记录重建取消动作，但跨重启撤销未真机验证；闹钟已响铃后取消的系统行为未验证。
+- AlarmKit 只使用 alert-only presentation，因此不提供 countdown/paused 状态，也不新增 widget extension；重复闹钟、贪睡与 Live Activity 不在当前范围。
+- 敏感 read（health/photos/bluetooth）的仅这次/本会话授权已接入 Agent Loop 并有确定性测试，但真机上多轮任务的实际打断次数未人工验收。
 - Skills 已完成显式一次性 Context 注入、工具收窄与 Run 审计快照；不支持 scripts/references/assets。Memory Runtime tools、Remote MCP 与可靠后台承接仍未实现。

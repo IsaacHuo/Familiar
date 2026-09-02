@@ -22,13 +22,31 @@ nonisolated struct FamiliarTaskPlanTool: FamiliarTool {
         name: "task_plan",
         title: "Present task plan",
         description: "Present or update an ordered task plan. Reuse the same planID to replace that plan in place. Only provide progress when it is known; never invent completion percentages.",
-        parameters: .init(
-            type: .object,
-            properties: [
-                "planID": .init(type: .string, description: "Stable identifier reused for updates to this plan."),
-                "title": .init(type: .string, description: "Plan title."),
-                "tasks": .init(type: .array, description: "Tasks in display order. Each item requires stable string id, title, and status pending|running|completed|failed; detail and real progress from 0 to 1 are optional. Omit progress when unknown.")
-                ,"expectedDeliverables": .init(type: .array, description: "Optional deliverables with stable id, title, and format markdown|plainText|docx|pdf|xlsx|html.")
+        parameters: .object(
+            [
+                "planID": .string("Stable identifier reused for updates to this plan."),
+                "title": .string("Plan title."),
+                "tasks": .objectArray(
+                    "Tasks in display order.",
+                    properties: [
+                        "id": .string("Stable task identifier, unique within this plan."),
+                        "title": .string("Short task title."),
+                        "status": .string("Current task status.", enumValues: FamiliarToolPresentationPayload.TaskStatus.allCases.map(\.rawValue)),
+                        "detail": .string("Optional one-line detail."),
+                        "progress": .number("Real progress. Omit entirely when unknown; never invent a value.", minimum: 0, maximum: 1)
+                    ],
+                    required: ["id", "title", "status"],
+                    minItems: 1
+                ),
+                "expectedDeliverables": .objectArray(
+                    "Optional real files this run must produce before it can claim completion.",
+                    properties: [
+                        "id": .string("Stable deliverable identifier."),
+                        "title": .string("User-visible deliverable title."),
+                        "format": .string("Artifact format.", enumValues: FamiliarArtifactFormat.allCases.map(\.rawValue))
+                    ],
+                    required: ["id", "title", "format"]
+                )
             ],
             required: ["planID", "title", "tasks"]
         ),
@@ -74,14 +92,24 @@ nonisolated struct FamiliarPresentRecommendationTool: FamiliarTool {
         name: "present_recommendation",
         title: "Present recommendation",
         description: "Present a recommendation with a suggested next prompt and optional alternatives. Confidence is categorical only, never a percentage. Selecting any prompt only fills the composer and does not execute it.",
-        parameters: .init(
-            type: .object,
-            properties: [
-                "title": .init(type: .string),
-                "explanation": .init(type: .string),
-                "nextPrompt": .init(type: .string, description: "Suggested next user prompt."),
-                "alternatives": .init(type: .array, description: "Alternative objects with required stable string id, title, and prompt."),
-                "confidenceLevel": .init(type: .string, enumValues: ["low", "medium", "high", "needsReview"])
+        parameters: .object(
+            [
+                "title": .string("Recommendation title."),
+                "explanation": .string("Why this is recommended."),
+                "nextPrompt": .string("Suggested next user prompt."),
+                "alternatives": .objectArray(
+                    "Alternative directions the user can choose instead.",
+                    properties: [
+                        "id": .string("Stable alternative identifier."),
+                        "title": .string("Short alternative title."),
+                        "prompt": .string("Prompt filled into the composer when chosen.")
+                    ],
+                    required: ["id", "title", "prompt"]
+                ),
+                "confidenceLevel": .string(
+                    "Categorical confidence only, never a percentage.",
+                    enumValues: FamiliarToolPresentationPayload.ConfidenceLevel.allCases.map(\.rawValue)
+                )
             ],
             required: ["title", "explanation", "nextPrompt", "alternatives"]
         ),
@@ -112,12 +140,20 @@ nonisolated struct FamiliarPresentInsightTool: FamiliarTool {
         name: "present_insight",
         title: "Present insight",
         description: "Present an insight and only real, explicitly named metrics. Use an empty metrics array when there are no metrics; the UI will not draw a chart.",
-        parameters: .init(
-            type: .object,
-            properties: [
-                "title": .init(type: .string),
-                "explanation": .init(type: .string),
-                "metrics": .init(type: .array, description: "Metric objects with required label and numeric value; unit and numeric change are optional.")
+        parameters: .object(
+            [
+                "title": .string("Insight title."),
+                "explanation": .string("What the insight means."),
+                "metrics": .objectArray(
+                    "Only real, explicitly named metrics. Use an empty array when there are none.",
+                    properties: [
+                        "label": .string("Metric name."),
+                        "value": .number("Metric value."),
+                        "unit": .string("Optional unit."),
+                        "change": .number("Optional change versus the previous period.")
+                    ],
+                    required: ["label", "value"]
+                )
             ],
             required: ["title", "explanation", "metrics"]
         ),
@@ -146,12 +182,18 @@ nonisolated struct FamiliarAskUserTool: FamiliarTool {
         name: "ask_user",
         title: "Ask user",
         description: "Pause the run and ask the user a clarification question. Provide stable option IDs. Use allowCustom when a free-text response is useful. This is not authorization for any action.",
-        parameters: .init(
-            type: .object,
-            properties: [
-                "question": .init(type: .string),
-                "options": .init(type: .array, description: "Option objects with required stable string id and label."),
-                "allowCustom": .init(type: .boolean)
+        parameters: .object(
+            [
+                "question": .string("The clarification question shown to the user."),
+                "options": .objectArray(
+                    "Selectable answers. May be empty only when allowCustom is true.",
+                    properties: [
+                        "id": .string("Stable option identifier."),
+                        "label": .string("User-visible option label.")
+                    ],
+                    required: ["id", "label"]
+                ),
+                "allowCustom": .boolean("Whether a free-text answer is accepted.")
             ],
             required: ["question", "options", "allowCustom"]
         ),

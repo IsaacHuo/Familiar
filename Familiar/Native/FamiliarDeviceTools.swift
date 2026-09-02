@@ -461,6 +461,7 @@ nonisolated struct FamiliarDeviceCapabilityProvider: FamiliarCapabilityProviding
     let health: any FamiliarHealthServicing
     let music: any FamiliarMusicServicing
     let bluetooth: any FamiliarBluetoothServicing
+    let alarm: any FamiliarAlarmServicing
 
     func availability(for requirement: FamiliarCapabilityRequirement) async -> FamiliarCapabilityAvailability {
         switch requirement {
@@ -471,8 +472,14 @@ nonisolated struct FamiliarDeviceCapabilityProvider: FamiliarCapabilityProviding
         case .locationWhenInUse:
             await location.availability()
         case .weatherKit:
-            if #available(iOS 16.0, *) { .available }
-            else { .unavailable(reason: "WeatherKit 需要 iOS 16 或更高版本。") }
+            // WeatherKit needs no user permission, and an app cannot inspect its
+            // own signed entitlements or Apple Weather quota at runtime. A
+            // version gate here was always true on an iOS 18 deployment target
+            // and therefore claimed availability it had not verified. Report
+            // `.available` and let a real failure surface as a typed
+            // `FamiliarWeatherError` so the model never silently substitutes
+            // web guesses for a WeatherKit outage.
+            .available
         case .photoLibraryRead:
             await photos.readAvailability()
         case .healthActivityRead:
@@ -483,6 +490,10 @@ nonisolated struct FamiliarDeviceCapabilityProvider: FamiliarCapabilityProviding
             await bluetooth.availability()
         case .userNotifications:
             await FamiliarNotificationService.capabilityAvailability()
+        case .alarmKit:
+            // Reports `.unavailable` below iOS 26, which removes the alarm tools
+            // from the model's tool list instead of offering a call that must fail.
+            await alarm.availability()
         }
     }
 
@@ -506,6 +517,8 @@ nonisolated struct FamiliarDeviceCapabilityProvider: FamiliarCapabilityProviding
             try await bluetooth.requestAccess()
         case .userNotifications:
             try await FamiliarNotificationService.requestToolAuthorization()
+        case .alarmKit:
+            try await alarm.requestAccess()
         }
     }
 }

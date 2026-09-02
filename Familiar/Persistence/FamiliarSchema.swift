@@ -96,6 +96,50 @@ final class FamiliarProjectCapabilityBindingRecord {
     }
 }
 
+/// Durable undo for an AlarmKit alarm scheduled by the Agent.
+///
+/// An alarm's whole purpose is to fire later, very likely after the app has been
+/// relaunched, so a session-scoped undo would promise a reversal that no longer
+/// exists by the time the user wants it. Only the alarm identity is persisted;
+/// cancelling needs nothing else.
+@Model
+final class FamiliarAlarmUndoRecord {
+    @Attribute(.unique) var id: UUID
+    @Attribute(.unique) var idempotencyKey: String
+    var runtimeID: String
+    var toolCallID: String
+    var toolName: String
+    var alarmIdentifier: String
+    var stateRawValue: String
+    var createdAt: Date
+    var undoneAt: Date?
+    var lastError: String?
+
+    init(
+        idempotencyKey: String,
+        runtimeID: String,
+        toolCallID: String,
+        toolName: String,
+        alarmIdentifier: String,
+        state: FamiliarDurableUndoState = .available,
+        createdAt: Date = Date()
+    ) {
+        id = UUID()
+        self.idempotencyKey = idempotencyKey
+        self.runtimeID = runtimeID
+        self.toolCallID = toolCallID
+        self.toolName = toolName
+        self.alarmIdentifier = alarmIdentifier
+        stateRawValue = state.rawValue
+        self.createdAt = createdAt
+    }
+
+    var state: FamiliarDurableUndoState {
+        get { FamiliarDurableUndoState(rawValue: stateRawValue) ?? .unavailable }
+        set { stateRawValue = newValue.rawValue }
+    }
+}
+
 nonisolated enum FamiliarModelSchema {
     static let models: [any PersistentModel.Type] = FamiliarSchemaV3.models + [
         FamiliarArtifact.self,
@@ -121,7 +165,8 @@ nonisolated enum FamiliarModelSchema {
         FamiliarEventKitUndoMutationRecord.self,
         FamiliarProjectEnvironmentRecord.self,
         FamiliarProjectSkillBindingRecord.self,
-        FamiliarProjectCapabilityBindingRecord.self
+        FamiliarProjectCapabilityBindingRecord.self,
+        FamiliarAlarmUndoRecord.self
     ]
 
     static var schema: Schema { Schema(models) }

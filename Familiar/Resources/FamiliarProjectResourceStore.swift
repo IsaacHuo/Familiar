@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 nonisolated enum FamiliarProjectResourceStoreError: LocalizedError, Sendable {
@@ -214,20 +213,11 @@ nonisolated struct FamiliarProjectResourceStore {
         return false
     }
 
+    /// Delegates to the shared hasher but keeps this store's error contract: any
+    /// read failure is reported as `sourceUnavailable`.
     private func sha256(of url: URL) throws -> String {
-        guard let stream = InputStream(url: url) else { throw FamiliarProjectResourceStoreError.sourceUnavailable }
-        stream.open()
-        defer { stream.close() }
-        var hash = SHA256()
-        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: 64 * 1024)
-        defer { buffer.deallocate() }
-        while stream.hasBytesAvailable {
-            let count = stream.read(buffer, maxLength: 64 * 1024)
-            if count < 0 { throw stream.streamError ?? FamiliarProjectResourceStoreError.sourceUnavailable }
-            if count == 0 { break }
-            hash.update(bufferPointer: UnsafeRawBufferPointer(start: buffer, count: count))
-        }
-        return hash.finalize().map { String(format: "%02x", $0) }.joined()
+        do { return try FamiliarHash.sha256(contentsOf: url) }
+        catch { throw FamiliarProjectResourceStoreError.sourceUnavailable }
     }
 
     private func sanitizedFilename(_ filename: String) -> String {

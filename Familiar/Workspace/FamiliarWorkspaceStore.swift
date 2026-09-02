@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 nonisolated enum FamiliarWorkspaceID: Hashable, Codable, Sendable {
@@ -621,7 +620,7 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
             relativePath: relative,
             byteSize: Int64(values.fileSize ?? data.count),
             modifiedAt: values.contentModificationDate,
-            contentHash: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            contentHash: FamiliarHash.sha256(data)
         )
     }
 

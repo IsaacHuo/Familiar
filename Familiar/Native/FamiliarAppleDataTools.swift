@@ -20,7 +20,7 @@ nonisolated protocol FamiliarNaturalLanguageServicing: Sendable {
 
 struct FamiliarNaturalLanguageService: FamiliarNaturalLanguageServicing {
     func analyze(_ text: String) throws -> FamiliarNaturalLanguageAnalysis {
-        let bounded = String(text.prefix(40_000))
+        let bounded = String(text.prefix(FamiliarToolDefaults.NaturalLanguage.maximumCharacters))
         guard !bounded.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw FamiliarAppleNativeToolError.emptyQuery
         }
@@ -47,7 +47,7 @@ struct FamiliarNaturalLanguageService: FamiliarNaturalLanguageServicing {
             case .organizationName: organizations.append(value)
             default: break
             }
-            return people.count + places.count + organizations.count < 60
+            return people.count + places.count + organizations.count < FamiliarToolDefaults.NaturalLanguage.maximumEntities
         }
         let sentiment = tagger.tag(at: bounded.startIndex, unit: .paragraph, scheme: .sentimentScore).0
             .flatMap { Double($0.rawValue) }
@@ -69,9 +69,10 @@ nonisolated struct FamiliarNaturalLanguageAnalyzeTool: FamiliarTool {
         name: "natural_language_analyze",
         title: "分析文本",
         description: "使用 Apple NaturalLanguage 在设备上识别语言、情感分数以及人物、地点和组织实体。适合文件处理前的本地文本分析，不需要 iSH。结果是概率性分析。",
-        parameters: .init(type: .object, properties: [
-            "text": .init(type: .string, description: "需要分析的文本，最多处理前 40000 个字符")
-        ], required: ["text"]),
+        parameters: .object(
+            ["text": .string("需要分析的文本，只处理前 \(FamiliarToolDefaults.NaturalLanguage.maximumCharacters) 个字符。")],
+            required: ["text"]
+        ),
         effect: .read,
         risk: .low,
         requirements: [],
@@ -116,18 +117,49 @@ nonisolated protocol FamiliarHealthServicing: Sendable {
     func activitySummary(days: Int) async throws -> FamiliarHealthActivitySummary
 }
 
-actor FamiliarHealthService: FamiliarHealthServicing {
-    private let store = HKHealthStore()
+/// Single definition of the HealthKit read scope, shared by the tool and the
+/// permissions surface so the UI can never claim a scope the tool does not request.
+nonisolated enum FamiliarHealthReadScope {
+    static let readTypes: Set<HKObjectType> = [
+        HKQuantityType(.stepCount),
+        HKQuantityType(.activeEnergyBurned),
+        HKQuantityType(.distanceWalkingRunning)
+    ]
 
-    func availability() async -> FamiliarCapabilityAvailability {
+    /// HealthKit deliberately never reveals read denials, so the only honest
+    /// states are "not requested yet" and "already requested".
+    enum RequestState: Sendable, Equatable {
+        case unavailable(reason: String)
+        case notRequested
+        case requested
+    }
+
+    static func requestState(store: HKHealthStore = HKHealthStore()) async -> RequestState {
         guard HKHealthStore.isHealthDataAvailable() else {
             return .unavailable(reason: "这台设备不支持 HealthKit。")
         }
         do {
-            let status = try await requestStatus()
-            return status == .shouldRequest ? .requestable : .available
+            let status: HKAuthorizationRequestStatus = try await withCheckedThrowingContinuation { continuation in
+                store.getRequestStatusForAuthorization(toShare: [], read: readTypes) { status, error in
+                    if let error { continuation.resume(throwing: error) }
+                    else { continuation.resume(returning: status) }
+                }
+            }
+            return status == .shouldRequest ? .notRequested : .requested
         } catch {
             return .unavailable(reason: "无法检查 HealthKit 授权状态：\(error.localizedDescription)")
+        }
+    }
+}
+
+actor FamiliarHealthService: FamiliarHealthServicing {
+    private let store = HKHealthStore()
+
+    func availability() async -> FamiliarCapabilityAvailability {
+        switch await FamiliarHealthReadScope.requestState(store: store) {
+        case .unavailable(let reason): .unavailable(reason: reason)
+        case .notRequested: .requestable
+        case .requested: .available
         }
     }
 
@@ -135,11 +167,14 @@ actor FamiliarHealthService: FamiliarHealthServicing {
         guard HKHealthStore.isHealthDataAvailable() else {
             throw FamiliarToolRegistryError.capabilityUnavailable("这台设备不支持 HealthKit。")
         }
-        try await store.requestAuthorization(toShare: [], read: Self.readTypes)
+        try await store.requestAuthorization(toShare: [], read: FamiliarHealthReadScope.readTypes)
     }
 
     func activitySummary(days: Int) async throws -> FamiliarHealthActivitySummary {
-        let boundedDays = min(max(days, 1), 31)
+        let boundedDays = min(
+            max(days, FamiliarToolDefaults.HealthActivity.minimumDays),
+            FamiliarToolDefaults.HealthActivity.maximumDays
+        )
         let end = Date()
         let start = Calendar.current.date(byAdding: .day, value: -boundedDays, to: end) ?? end
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end)
@@ -154,21 +189,6 @@ actor FamiliarHealthService: FamiliarHealthServicing {
             walkingRunningDistanceMeters: distance,
             authorizationDoesNotRevealReadDenials: true
         )
-    }
-
-    private static let readTypes: Set<HKObjectType> = [
-        HKQuantityType(.stepCount),
-        HKQuantityType(.activeEnergyBurned),
-        HKQuantityType(.distanceWalkingRunning)
-    ]
-
-    private func requestStatus() async throws -> HKAuthorizationRequestStatus {
-        try await withCheckedThrowingContinuation { continuation in
-            store.getRequestStatusForAuthorization(toShare: [], read: Self.readTypes) { status, error in
-                if let error { continuation.resume(throwing: error) }
-                else { continuation.resume(returning: status) }
-            }
-        }
     }
 
     private func sum(
@@ -192,9 +212,15 @@ nonisolated struct FamiliarHealthActivitySummaryTool: FamiliarTool {
         name: "health_activity_summary",
         title: "读取健康活动摘要",
         description: "经明确授权后，从 HealthKit 汇总最近 1 到 31 天的步数、活动能量和步行跑步距离。HealthKit 不会向 App 揭示用户是否拒绝了某项读取权限；空值不得解释为零。",
-        parameters: .init(type: .object, properties: [
-            "days": .init(type: .integer, description: "统计最近 1 到 31 天，默认 7 天")
-        ], required: []),
+        parameters: .object(
+            ["days": .integer(
+                "统计最近多少天。",
+                minimum: FamiliarToolDefaults.HealthActivity.minimumDays,
+                maximum: FamiliarToolDefaults.HealthActivity.maximumDays,
+                defaultValue: FamiliarToolDefaults.HealthActivity.days
+            )],
+            required: []
+        ),
         effect: .read,
         risk: .high,
         requirements: [.healthActivityRead],
@@ -204,8 +230,30 @@ nonisolated struct FamiliarHealthActivitySummaryTool: FamiliarTool {
         executionClass: .native
     )
 
+    /// Surfaces the concrete window and metric list in the confirmation card. The
+    /// manifest description alone would not tell the user what is about to be read.
+    func preflight(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolAuthorizationAssessment {
+        let days = min(
+            max(input.days ?? FamiliarToolDefaults.HealthActivity.days, FamiliarToolDefaults.HealthActivity.minimumDays),
+            FamiliarToolDefaults.HealthActivity.maximumDays
+        )
+        return .init(
+            disposition: .requiresApproval,
+            effect: manifest.effect,
+            risk: manifest.risk,
+            reason: manifest.description,
+            fields: [
+                .init(id: "window", label: String(localized: "approval.field.window", defaultValue: "Window"), type: .text, value: String(format: String(localized: "approval.value.recent_days", defaultValue: "Last %lld days"), days)),
+                .init(id: "metrics", label: String(localized: "approval.field.metrics", defaultValue: "Metrics"), type: .text, value: "stepCount, activeEnergyBurned, distanceWalkingRunning"),
+                .init(id: "scope", label: String(localized: "approval.field.scope", defaultValue: "Scope"), type: .text, value: String(localized: "approval.value.health_aggregate", defaultValue: "Daily totals only, no individual samples"))
+            ],
+            consequence: String(localized: "approval.consequence.health_read", defaultValue: "Familiar reads aggregated activity totals for this window. Results may be sent to the selected model provider as a tool result."),
+            targetKey: "health-activity"
+        )
+    }
+
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
-        let summary = try await service.activitySummary(days: input.days ?? 7)
+        let summary = try await service.activitySummary(days: input.days ?? FamiliarToolDefaults.HealthActivity.days)
         let fields: [FamiliarToolPresentationPayload.RecordField] = [
             .init(name: "steps", value: summary.stepCount.map { String($0) } ?? "unavailable"),
             .init(name: "activeEnergyKilocalories", value: summary.activeEnergyKilocalories.map { String($0) } ?? "unavailable"),
@@ -259,7 +307,10 @@ actor FamiliarMusicService: FamiliarMusicServicing {
         let normalized = term.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { throw FamiliarAppleNativeToolError.emptyQuery }
         var request = MusicCatalogSearchRequest(term: normalized, types: [Song.self])
-        request.limit = min(max(limit, 1), 10)
+        request.limit = min(
+            max(limit, FamiliarToolDefaults.MusicSearch.minimumLimit),
+            FamiliarToolDefaults.MusicSearch.maximumLimit
+        )
         let response = try await request.response()
         return response.songs.map { song in
             FamiliarMusicSong(
@@ -281,10 +332,18 @@ nonisolated struct FamiliarMusicCatalogSearchTool: FamiliarTool {
         name: "music_catalog_search",
         title: "搜索 Apple Music",
         description: "使用 MusicKit 搜索 Apple Music 目录中的歌曲。只返回目录元数据，不自动播放、不修改音乐资料库。",
-        parameters: .init(type: .object, properties: [
-            "query": .init(type: .string, description: "歌曲、艺人或专辑搜索词"),
-            "limit": .init(type: .integer, description: "返回 1 到 10 首歌曲")
-        ], required: ["query"]),
+        parameters: .object(
+            [
+                "query": .string("歌曲、艺人或专辑搜索词。"),
+                "limit": .integer(
+                    "返回的歌曲数量。",
+                    minimum: FamiliarToolDefaults.MusicSearch.minimumLimit,
+                    maximum: FamiliarToolDefaults.MusicSearch.maximumLimit,
+                    defaultValue: FamiliarToolDefaults.MusicSearch.limit
+                )
+            ],
+            required: ["query"]
+        ),
         effect: .read,
         risk: .sensitive,
         requirements: [.musicCatalogRead],
@@ -297,7 +356,10 @@ nonisolated struct FamiliarMusicCatalogSearchTool: FamiliarTool {
     )
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
-        let songs = try await service.searchSongs(term: input.query, limit: input.limit ?? 5)
+        let songs = try await service.searchSongs(
+            term: input.query,
+            limit: input.limit ?? FamiliarToolDefaults.MusicSearch.limit
+        )
         let records = songs.map { song in
             var fields: [FamiliarToolPresentationPayload.RecordField] = [
                 .init(name: "title", value: song.title),

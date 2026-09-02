@@ -239,8 +239,8 @@ private nonisolated enum FamiliarWorkspaceProjection {
         let attachments = context.attachments.map { attachment in
             let isImage = attachment.kind == .image
             let hash: String
-            if let url = FamiliarAttachmentStore.url(for: attachment.relativePath), let data = try? Data(contentsOf: url, options: [.mappedIfSafe]) { hash = sha256(data) }
-            else { hash = sha256(Data(attachment.extractedText.utf8)) }
+            if let url = FamiliarAttachmentStore.url(for: attachment.relativePath), let data = try? Data(contentsOf: url, options: [.mappedIfSafe]) { hash = FamiliarHash.sha256(data) }
+            else { hash = FamiliarHash.sha256(attachment.extractedText) }
             return FamiliarWorkspaceProjectedFile(
                 path: "Files/Attachments/\(attachment.id.uuidString.lowercased())/\(filename(attachment.filename))",
                 byteSize: attachment.byteSize, contentHash: hash, text: isImage ? nil : attachment.extractedText,
@@ -268,5 +268,5 @@ private nonisolated enum FamiliarWorkspaceProjection {
         let name = URL(fileURLWithPath: value).lastPathComponent
         return name.isEmpty ? "file" : name
     }
-    private static func sha256(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+
 }
