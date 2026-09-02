@@ -89,6 +89,23 @@ struct FamiliarUIFeedbackTests {
         #expect(!projects.contains("id: \\.first!.id"))
     }
 
+    @Test("Diagnostics surfaces the real unavailability reason from the registry report")
+    func diagnosticsSurfacesReasons() throws {
+        let hub = try source("Familiar/Presentation/FamiliarSettingsHubView.swift")
+
+        #expect(hub.contains("case diagnostics"))
+        #expect(hub.contains("FamiliarDiagnosticsSettingsView"))
+        // Must read the same report the model is told about, not a parallel query that
+        // could drift from the runtime's own view of availability.
+        #expect(hub.contains("await registry.availabilityReport()"))
+        // The concrete reason has to be rendered; showing only "Unavailable" would repeat
+        // the defect that made a missing capability indistinguishable from a working one.
+        #expect(hub.contains("Text(tool.reason)"))
+
+        let en = try source("Familiar/Resources/en.lproj/Localizable.strings")
+        #expect(en.contains("\"settings.diagnostics.title\""))
+    }
+
     private func source(_ relativePath: String) throws -> String {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

@@ -727,6 +727,14 @@
 "project.model.follow_global" = "跟随全局设置";
 "project.model.footer" = "在该项目中发起的运行使用此模型，其他场景仍使用全局选择。";
 "project.error.unknown_model" = "该模型已不可用。";
+"settings.diagnostics.title" = "诊断";
+"settings.diagnostics.detail" = "查看当前哪些能力不可用及原因";
+"settings.diagnostics.runtime" = "运行时";
+"settings.diagnostics.runtime.footer" = "读取项目环境 receipt 从不需要 Linux 运行时，因此即使运行时准备失败，它仍然可用。";
+"settings.diagnostics.tools_available" = "当前可用工具";
+"settings.diagnostics.all_available" = "所有能力均可用";
+"settings.diagnostics.unavailable" = "%@ 项不可用";
+"settings.diagnostics.unavailable.footer" = "Familiar 会把这些能力不可用的事实和原因告知模型，让它明确说明做不到什么，而不是改用其他手段猜测。";
 "settings.memory.title" = "记忆";
 "settings.memory.detail.on" = "记住你确认过的偏好和事实";
 "settings.memory.detail.off" = "已关闭 · 已保存的记忆仍保留但不使用";

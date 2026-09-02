@@ -21,7 +21,9 @@ Registry 与 iSH bridge 之间没有就绪协调：`prepareRuntime()` 在游离 
 - `cold`：未安装或未开始准备。
 - `starting`：安装、解包、引导中。
 - `ready`：全部声明能力可用。
-- `degraded(reason)`：部分能力可用（例如只读 receipt 可用但 guest 未起）。当前完全缺失。
+- `degraded(reason)`：部分能力可用（例如只读 receipt 可用但 guest 未起）。
+
+  **决策（2026-09-03）：不新增该 case。** 在 `environment_status` 解除 guest 门控之后，`failed(reason)` 已经恰好表示「guest 不可用但 receipt 仍可读」这一部分可用状态——该只读工具从来不依赖 guest。再加一个 `degraded` 只是重命名，没有任何与 `failed` 不同的产生路径，属于为抽象而抽象。真正缺的不是状态枚举，而是把 `reason` 暴露给用户的诊断界面（见 §1.3）。
 - `failed(reason)`：准备失败，`reason` 必须是可读的具体原因，不是布尔。
 
 规则：

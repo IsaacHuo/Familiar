@@ -20,6 +20,7 @@ enum FamiliarSettingsRoute: String, Hashable {
     case tools
     case executionBudget
     case memory
+    case diagnostics
     case shellRuntime
     case authorizations
     case skills
@@ -107,6 +108,13 @@ struct FamiliarSettingsView: View {
                         subtitle: executionBudgetSubtitle,
                         symbol: "gauge.with.needle",
                         color: .purple
+                    )
+                    settingsLink(
+                        .diagnostics,
+                        title: String(localized: "settings.diagnostics.title", defaultValue: "Diagnostics"),
+                        subtitle: String(localized: "settings.diagnostics.detail", defaultValue: "Why a capability is unavailable right now"),
+                        symbol: "stethoscope",
+                        color: .teal
                     )
                     settingsLink(
                         .memory,
@@ -280,6 +288,11 @@ struct FamiliarSettingsView: View {
             FamiliarExecutionBudgetSettingsView(budget: $settings.executionBudget)
         case .memory:
             FamiliarMemorySettingsView(isAutomaticMemoryEnabled: $settings.isAutomaticMemoryEnabled)
+        case .diagnostics:
+            FamiliarDiagnosticsSettingsView(
+                registry: registry,
+                runtimeStatus: shellRuntimeStatus
+            )
         case .shellRuntime:
             FamiliarShellRuntimeSettingsView(
                 store: workspaceStore,
@@ -1086,6 +1099,83 @@ private struct FamiliarExecutionBudgetSettingsView: View {
             format: String(localized: "settings.budget.duration.minutes", defaultValue: "%@ min"),
             NSNumber(value: minutes)
         )
+    }
+}
+
+/// Shows why a capability cannot be used right now. Reuses `availabilityReport()` so the
+/// reasons shown here are the same ones the model is told, rather than a parallel query
+/// that could drift from the runtime's own view.
+private struct FamiliarDiagnosticsSettingsView: View {
+    let registry: FamiliarToolRegistry
+    let runtimeStatus: FamiliarShellRuntimeStatus
+
+    @State private var unavailable: [FamiliarUnavailableTool] = []
+    @State private var availableCount = 0
+
+    var body: some View {
+        List {
+            Section {
+                LabeledContent(
+                    String(localized: "settings.shell.title", defaultValue: "Shell Runtime"),
+                    value: runtimeLabel
+                )
+                LabeledContent(
+                    String(localized: "settings.diagnostics.tools_available", defaultValue: "Tools available now"),
+                    value: "\(availableCount)"
+                )
+            } header: {
+                Text(String(localized: "settings.diagnostics.runtime", defaultValue: "Runtime"))
+            } footer: {
+                Text(String(localized: "settings.diagnostics.runtime.footer", defaultValue: "Reading the Project environment receipt never needs the Linux runtime, so it keeps working even when the runtime failed to prepare."))
+            }
+
+            if unavailable.isEmpty {
+                Section {
+                    ContentUnavailableView(
+                        String(localized: "settings.diagnostics.all_available", defaultValue: "Every capability is available"),
+                        systemImage: "checkmark.seal"
+                    )
+                }
+            } else {
+                Section {
+                    ForEach(unavailable, id: \.name) { tool in
+                        VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
+                            Text(tool.title)
+                            Text(tool.reason)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(tool.name)
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                } header: {
+                    Text(String(format: String(localized: "settings.diagnostics.unavailable", defaultValue: "%@ unavailable"), NSNumber(value: unavailable.count)))
+                } footer: {
+                    Text(String(localized: "settings.diagnostics.unavailable.footer", defaultValue: "Familiar tells the model these capabilities are unavailable and why, so it reports what it cannot do instead of guessing another way."))
+                }
+            }
+        }
+        .navigationTitle(String(localized: "settings.diagnostics.title", defaultValue: "Diagnostics"))
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            let report = await registry.availabilityReport()
+            availableCount = report.manifests.count
+            unavailable = report.unavailable
+        }
+    }
+
+    private var runtimeLabel: String {
+        switch runtimeStatus.phase {
+        case .unavailable:
+            String(localized: "settings.shell.unavailable", defaultValue: "Unavailable")
+        case .preparing:
+            String(localized: "settings.shell.preparing", defaultValue: "Preparing")
+        case .ready:
+            String(localized: "settings.shell.ready", defaultValue: "Ready")
+        case .failed(let message):
+            String(format: String(localized: "settings.shell.failed", defaultValue: "Failed: %@"), message)
+        }
     }
 }
 

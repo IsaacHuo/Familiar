@@ -727,6 +727,14 @@
 "project.model.follow_global" = "Follow global setting";
 "project.model.footer" = "Runs started in this project use this model. Everything else keeps the global selection.";
 "project.error.unknown_model" = "That model is no longer available.";
+"settings.diagnostics.title" = "Diagnostics";
+"settings.diagnostics.detail" = "Why a capability is unavailable right now";
+"settings.diagnostics.runtime" = "Runtime";
+"settings.diagnostics.runtime.footer" = "Reading the Project environment receipt never needs the Linux runtime, so it keeps working even when the runtime failed to prepare.";
+"settings.diagnostics.tools_available" = "Tools available now";
+"settings.diagnostics.all_available" = "Every capability is available";
+"settings.diagnostics.unavailable" = "%@ unavailable";
+"settings.diagnostics.unavailable.footer" = "Familiar tells the model these capabilities are unavailable and why, so it reports what it cannot do instead of guessing another way.";
 "settings.memory.title" = "Memory";
 "settings.memory.detail.on" = "Remembers confirmed preferences and facts";
 "settings.memory.detail.off" = "Off · stored memories are kept but unused";
