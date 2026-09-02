@@ -722,6 +722,7 @@
 "settings.shell.unavailable" = "此构建未包含可用的运行资产";
 "settings.shell.network" = "允许此 Workspace 访问公共互联网";
 "settings.shell.network.footer" = "默认关闭。批准 Environment 方案后可从 PyPI 下载声明依赖；Shell 不会获得模型 API Key、Keychain、Cookie 或局域网服务访问权。";
+"artifact.versions.count" = "另有 %@ 个历史版本";
 "project.model" = "模型";
 "project.model.follow_global" = "跟随全局设置";
 "project.model.footer" = "在该项目中发起的运行使用此模型，其他场景仍使用全局选择。";

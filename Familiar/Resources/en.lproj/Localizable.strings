@@ -722,6 +722,7 @@
 "settings.shell.unavailable" = "Runtime assets are not available in this build";
 "settings.shell.network" = "Allow public internet in this Workspace";
 "settings.shell.network.footer" = "Off by default. Approved Environment plans may download declared packages from PyPI. Shell never receives model API keys, Keychain data, cookies, or access to local-network services.";
+"artifact.versions.count" = "%@ earlier versions";
 "project.model" = "Model";
 "project.model.follow_global" = "Follow global setting";
 "project.model.footer" = "Runs started in this project use this model. Everything else keeps the global selection.";

@@ -74,6 +74,21 @@ struct FamiliarUIFeedbackTests {
         #expect(chips.contains("static func thinkingItem("))
     }
 
+    @Test("Artifact lists group versions by lineage instead of listing each version flatly")
+    func artifactVersionGrouping() throws {
+        let projects = try source("Familiar/Presentation/FamiliarProjectsView.swift")
+
+        // Both the full list and the project home summary must collapse a lineage, or
+        // successive revisions of one file appear as unrelated Artifacts.
+        #expect(projects.contains("Dictionary(grouping: artifacts, by: \\.lineageID)"))
+        #expect(projects.contains("Dictionary(grouping: projectArtifacts, by: \\.lineageID)"))
+        #expect(projects.contains("FamiliarArtifactVersionHistoryView"))
+        // Superseded versions stay previewable and shareable rather than being hidden.
+        #expect(projects.contains("artifact.versions.count"))
+        // No force unwrap of a possibly-empty lineage group in a production list.
+        #expect(!projects.contains("id: \\.first!.id"))
+    }
+
     private func source(_ relativePath: String) throws -> String {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

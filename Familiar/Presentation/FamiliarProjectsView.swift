@@ -492,7 +492,17 @@ private struct FamiliarProjectDetailView: View {
     private var sortedConversations: [FamiliarConversation] { project.conversations.sorted { $0.updatedAt > $1.updatedAt } }
     private var sortedRuns: [FamiliarAgentRun] { project.agentRuns.sorted { $0.startedAt > $1.startedAt } }
     private var recentResources: [FamiliarResource] { Array(sortedResources.prefix(3)) }
-    private var recentArtifacts: [FamiliarArtifact] { Array(projectArtifacts.prefix(3)) }
+    /// One entry per deliverable: taking the first three rows flatly would show v3, v2
+    /// and v1 of the same file as three separate recent artifacts.
+    private var recentArtifacts: [FamiliarArtifact] {
+        let latestPerLineage = Dictionary(grouping: projectArtifacts, by: \.lineageID)
+            .compactMap { $0.value.max { $0.version < $1.version } }
+            .sorted { lhs, rhs in
+                if lhs.updatedAt != rhs.updatedAt { return lhs.updatedAt > rhs.updatedAt }
+                return lhs.id.uuidString < rhs.id.uuidString
+            }
+        return Array(latestPerLineage.prefix(3))
+    }
 
     private func resourceRow(_ resource: FamiliarResource) -> some View {
         FamiliarProjectResourceRow(
@@ -505,6 +515,7 @@ private struct FamiliarProjectDetailView: View {
     private func artifactRow(_ artifact: FamiliarArtifact) -> some View {
         FamiliarProjectArtifactRow(
             artifact: artifact,
+            versionCount: projectArtifacts.count { $0.lineageID == artifact.lineageID },
             exportURL: FamiliarArtifactService().exportURL(for: artifact),
             onPreview: { previewArtifact(artifact) },
             onDelete: { artifactToDelete = artifact }
@@ -903,21 +914,88 @@ private struct FamiliarProjectArtifactsView: View {
     let onPreview: (FamiliarArtifact) -> Void
     let onDelete: (FamiliarArtifact) -> Void
 
+    /// Newest version first, with the rest kept as history. Identifiable by lineage so
+    /// the list needs no force unwrap of a possibly-empty group.
+    private struct Lineage: Identifiable {
+        let id: UUID
+        let latest: FamiliarArtifact
+        let earlier: [FamiliarArtifact]
+    }
+
+    /// Grouped by lineage so one deliverable is one row. Listing every version flatly
+    /// would present successive revisions of the same file as unrelated Artifacts.
+    private var lineages: [Lineage] {
+        Dictionary(grouping: artifacts, by: \.lineageID)
+            .compactMap { lineageID, group -> Lineage? in
+                let ordered = group.sorted { $0.version > $1.version }
+                guard let latest = ordered.first else { return nil }
+                return Lineage(id: lineageID, latest: latest, earlier: Array(ordered.dropFirst()))
+            }
+            .sorted { lhs, rhs in
+                if lhs.latest.updatedAt != rhs.latest.updatedAt {
+                    return lhs.latest.updatedAt > rhs.latest.updatedAt
+                }
+                return lhs.id.uuidString < rhs.id.uuidString
+            }
+    }
+
     var body: some View {
-        List(artifacts) { artifact in
+        List(lineages) { lineage in
             FamiliarProjectArtifactRow(
-                artifact: artifact,
-                exportURL: FamiliarArtifactService().exportURL(for: artifact),
-                onPreview: { onPreview(artifact) },
-                onDelete: { onDelete(artifact) }
+                artifact: lineage.latest,
+                versionCount: lineage.earlier.count + 1,
+                exportURL: FamiliarArtifactService().exportURL(for: lineage.latest),
+                onPreview: { onPreview(lineage.latest) },
+                onDelete: { onDelete(lineage.latest) }
             )
+            if !lineage.earlier.isEmpty {
+                NavigationLink {
+                    FamiliarArtifactVersionHistoryView(
+                        title: lineage.latest.title,
+                        versions: lineage.earlier,
+                        onPreview: onPreview,
+                        onDelete: onDelete
+                    )
+                } label: {
+                    Label(
+                        String(format: String(localized: "artifact.versions.count", defaultValue: "%@ earlier versions"), NSNumber(value: lineage.earlier.count)),
+                        systemImage: "clock.arrow.circlepath"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
         }
         .navigationTitle(String(localized: "artifact.section", defaultValue: "Artifacts"))
     }
 }
 
+/// Superseded versions of one deliverable. They remain previewable and shareable
+/// because each version keeps its own row and its own bytes on disk.
+private struct FamiliarArtifactVersionHistoryView: View {
+    let title: String
+    let versions: [FamiliarArtifact]
+    let onPreview: (FamiliarArtifact) -> Void
+    let onDelete: (FamiliarArtifact) -> Void
+
+    var body: some View {
+        List(versions) { version in
+            FamiliarProjectArtifactRow(
+                artifact: version,
+                versionCount: versions.count + 1,
+                exportURL: FamiliarArtifactService().exportURL(for: version),
+                onPreview: { onPreview(version) },
+                onDelete: { onDelete(version) }
+            )
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
 private struct FamiliarProjectArtifactRow: View {
     let artifact: FamiliarArtifact
+    let versionCount: Int
     let exportURL: URL?
     let onPreview: () -> Void
     let onDelete: () -> Void
@@ -930,7 +1008,7 @@ private struct FamiliarProjectArtifactRow: View {
                         .foregroundStyle(FamiliarTheme.accent)
                     VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                         Text(artifact.title).foregroundStyle(.primary)
-                        Text(ByteCountFormatter.string(fromByteCount: artifact.byteSize, countStyle: .file))
+                        Text(detail)
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -957,6 +1035,14 @@ private struct FamiliarProjectArtifactRow: View {
             }
             .buttonStyle(.borderless)
         }
+    }
+
+    /// Shows the version only once a lineage actually has history: labelling a
+    /// single-version deliverable "v1" would imply revisions that do not exist.
+    private var detail: String {
+        var values = [ByteCountFormatter.string(fromByteCount: artifact.byteSize, countStyle: .file)]
+        if versionCount > 1 { values.append("v\(artifact.version)") }
+        return values.joined(separator: " · ")
     }
 
     private var artifactIcon: String {
