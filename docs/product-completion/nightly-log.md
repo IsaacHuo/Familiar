@@ -4,6 +4,41 @@
 
 ---
 
+## 2026-09-03 · 第 3 轮：Artifact 版本
+
+### 已完成
+
+- **Artifact 版本**（`e24d109`）：`FamiliarArtifact` 新增 `lineageID` + `version`。每个版本是独立的行与独立目录——store 按 artifact ID 存文件，原位覆盖会销毁上一版字节，因此复用同一行做不到真正的版本。`artifact_publish` 新增可选 `supersedes`，指定后新文件成为同一交付物的下一版本；格式错误的 predecessor 直接拒绝而不是忽略，否则会静默发布一个不相关的第一版、丢掉调用方要的修订历史。
+- 谱系与版本号在 `FamiliarArtifactService.persist` 解析，而不是信任 descriptor：工具是 `nonisolated`、无法查询 store，由工具提供的版本号在同一交付物发布两次修订时必然冲突。`nextVersion` 取该谱系历史最大值加一，因此删除中间版本也不会让后续修订复用号码。
+- `supersedes` 声明为 `var` 而非带默认值的 `let`：带初值的 `let` 会被排除在合成 `Decodable` 之外，模型传的参数会被静默丢弃，该参数就成了死参数。
+
+### 修改文件
+
+`Familiar/Persistence/FamiliarSchemaV4.swift`、`Familiar/Artifacts/{FamiliarArtifactService,FamiliarArtifactTool}.swift`、`FamiliarTests/FamiliarProjectWorkspaceTests.swift`。
+
+### 测试结果（已实际执行）
+
+- 受影响套件：49 tests / 5 suites 全部通过（含新增的版本测试：第一版是自身谱系原点、修订为 v2 且保留旧行与旧字节、v3 延续同一谱系、删除中间版本后 `nextVersion` 仍为 4）。
+- **全量套件再次通过**：`Scripts/run-release-test-suites.sh`，29 个 suite + `FamiliarUITests`，输出 `All release test suites passed`（退出码 0）。schema 有改动，因此本轮重跑了全量。
+- `git diff --check` 通过。
+
+### 一次自己造成的构建失败（值得记录）
+
+`FamiliarArtifactService.swift:295` 报 `circular reference`：我把助手命名为 `artifact(id:in:)`，而同一作用域下一行声明了局部变量 `let artifact = ...`，Swift 把调用解析到了正在声明的变量上。改名为 `storedArtifact(id:in:)` 后消除。报错信息本身完全没有提示名字遮蔽。
+
+### 北京介绍 Word 闭环状态
+
+| 半程 | 结论 |
+|---|---|
+| 校验、发布、审计 | `verified-by-tests` |
+| 回读产物 | `verified-by-tests`（`artifact_read`，经真实 AnyDoc 往返） |
+| **生成新版本** | 数据层 `verified-by-tests`；**版本历史尚无 UI**，用户无法在界面浏览或预览旧版本 |
+| 生产 DOCX | `device-unverified`，无原生 Swift OOXML writer，依赖 iSH guest |
+
+剩余唯一的真机阻塞是 DOCX 生产半程。
+
+---
+
 ## 2026-09-03 · 第 2 轮：P0 六个垂直切片
 
 ### 已完成

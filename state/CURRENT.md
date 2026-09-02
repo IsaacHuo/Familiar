@@ -88,7 +88,7 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 
 ## Known Problems
 
-- **Artifact 无版本表示**：`FamiliarArtifact` 没有 version 字段（对比 `FamiliarResourceVersion` 确有 `version: Int`），`artifact_edit` 只保留同会话内存 undo。「继续修改并生成新版本」因此仍未闭环。
+- Artifact 版本已实现（`lineageID` + `version`，每版独立行与独立目录），但版本历史尚无 UI：Project 详情仍按单个 Artifact 列出，用户无法在界面上浏览或预览同一交付物的旧版本。`artifact_edit` 仍只保留同会话内存 undo，不产生新版本。
 - **Run 无跨重启续跑**：`RunResumeCursorRecord` 与 `ToolInvocationRecord` 只写不读，`recoverInterruptedRuns` 做的是终结而非恢复。统一状态词表中的 `paused` 与 `resumable` 没有任何真实产生路径，在实现续跑前不得出现在 UI 或文档中。
 - **没有 Plan → Task → Step 状态机**：`FamiliarRunPhase` 是展示标签，循环里没有该类型的状态变量或转移表；`task_plan` 产出的 `TaskList` 无任何调度器读取；交付物靠对最后一条用户消息做中英关键词匹配推断。
 - **Runtime 缺少 `degraded` 状态**：UI 侧与 iSH 内部两个生命周期枚举互不同步，且都没有部分能力可用的表示。
@@ -117,7 +117,7 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 
 ## Next
 
-1. **Artifact 版本**：给 `FamiliarArtifact` 增加真实版本表示。这是场景「继续修改并生成新版本」剩下的唯一代码缺口，且不依赖真机。
+1. **Artifact 版本历史 UI**：数据层已就绪（`lineageID` + `version`），但 Project 详情仍按单个 Artifact 列出，用户无法浏览或预览旧版本。
 2. **Orchestrator 持久化执行状态**：把已在写入的 cursor/invocation 真正读回，实现跨重启续跑；在此之前 `paused`/`resumable` 不得进入 UI 或文档。
 3. **Plan → Task → Step 真实状态机**：让 `task_plan` 产出的计划真正驱动执行，交付物不再靠关键词匹配推断。
 4. 连接 `hwf`，复用设备 Keychain 中的 DeepSeek Key，先验证签名安装、iSH 冷启动、Environment prepare 与离线 Shell；不导出或记录 API Key。

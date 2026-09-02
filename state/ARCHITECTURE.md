@@ -74,7 +74,7 @@
 
 ### `Familiar/Artifacts/`
 - `FamiliarArtifactService.swift` — `FamiliarArtifactStore`（`<Application Support>/Familiar/Artifacts`，流式原子导入 + SHA-256）与 `@MainActor FamiliarArtifactService`；`FamiliarArtifactValidator` 复用 AnyDoc/SwiftSoup 验证 Markdown/Text/DOCX/PDF/XLSX/HTML 并生成 versioned receipt。
-- `FamiliarArtifactTool.swift` — 保留 `artifact_write/edit`；`artifact_read` 回读已发布 Artifact（Markdown/文本/HTML 原样返回，DOCX/PDF/XLSX 经 AnyDoc 解析，截断显式上报，因为以为读全了的模型会去修改一份它只看过一部分的文档）；`artifact_publish` 只从当前 Project Workspace Outputs 导入经过扩展名、文件签名、可解析正文、必需内容和 hash 校验的真实文件。Artifact 仍无版本字段。
+- `FamiliarArtifactTool.swift` — 保留 `artifact_write/edit`；`artifact_read` 回读已发布 Artifact（Markdown/文本/HTML 原样返回，DOCX/PDF/XLSX 经 AnyDoc 解析，截断显式上报，因为以为读全了的模型会去修改一份它只看过一部分的文档）；`artifact_publish` 只从当前 Project Workspace Outputs 导入经过扩展名、文件签名、可解析正文、必需内容和 hash 校验的真实文件，并可通过可选 `supersedes` 把新文件登记为同一交付物的下一版本。Artifact 版本由 `lineageID` + `version` 表示：每个版本是独立的行与独立目录（store 按 artifact ID 存文件，原位覆盖会销毁上一版字节），谱系与版本号在 `FamiliarArtifactService` 解析而非由 descriptor 提供（工具 nonisolated、无法查询 store），`nextVersion` 取历史最大值加一，因此删除中间版本也不会让后续修订复用号码。
 
 ### `Familiar/AnyDoc/`
 - `FamiliarAnyDocService.swift` — Swift 到 Rust C ABI 的转换封装，返回 Markdown/格式/引擎版本/错误码，声明支持扩展名列表。
