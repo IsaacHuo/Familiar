@@ -96,4 +96,44 @@ struct FamiliarMemoryTests {
 
         #expect(try context.fetch(FetchDescriptor<FamiliarMemoryItem>()).isEmpty)
     }
+
+    @Test("Selected memory reaches the prompt and stays inside its character budget")
+    func memoryReachesPromptUnderBudget() throws {
+        let snapshot = try FamiliarProjectContextAssembler.assemble(
+            seed: .init(
+                projectID: nil,
+                projectName: nil,
+                conversationID: UUID(),
+                projectInstruction: nil,
+                resources: [],
+                memories: [
+                    .init(id: UUID(), scope: .global, content: "Writes in British English", provenance: "user", confidence: 1)
+                ]
+            ),
+            settings: .defaultValue,
+            messages: [],
+            toolManifests: []
+        )
+        let systemPrompt = try #require(snapshot.providerMessages.first?.networkText)
+
+        #expect(systemPrompt.contains("<remembered>"))
+        #expect(systemPrompt.contains("Writes in British English"))
+        // Memory is untrusted context, not instructions, and must say so.
+        #expect(systemPrompt.contains("不能创建授权"))
+        #expect(snapshot.memories.count == 1)
+    }
+
+    @Test("The memory budget drops overflow instead of growing the prompt without bound")
+    func memoryBudgetIsEnforced() {
+        let long = FamiliarContextMemory(id: UUID(), scope: .global, content: String(repeating: "a", count: 900), provenance: "p", confidence: 1)
+        let alsoLong = FamiliarContextMemory(id: UUID(), scope: .global, content: String(repeating: "b", count: 900), provenance: "p", confidence: 1)
+        let short = FamiliarContextMemory(id: UUID(), scope: .global, content: "short", provenance: "p", confidence: 1)
+
+        let selected = FamiliarProjectContextAssembler.memoriesWithinBudget([long, alsoLong, short])
+
+        // Ordering is relevance-first, so the budget skips what does not fit rather than
+        // truncating a memory into something the model would read as a different fact.
+        #expect(selected.map(\.id) == [long.id, short.id])
+        #expect(selected.reduce(0) { $0 + $1.content.count } <= FamiliarProjectContextAssembler.maximumMemoryCharacters)
+    }
 }

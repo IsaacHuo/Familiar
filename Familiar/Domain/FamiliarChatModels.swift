@@ -418,6 +418,9 @@ nonisolated struct FamiliarSettings: Codable, Equatable, Sendable {
     var systemPrompt: String
     var providerConfigurations: [String: FamiliarProviderConfiguration]
     var executionBudget: FamiliarExecutionBudget
+    /// When off, Familiar neither proposes new memory nor reads existing memory into
+    /// the prompt. Existing rows stay on disk and remain visible in Settings.
+    var isAutomaticMemoryEnabled: Bool
 
     static let defaultValue = FamiliarSettings(
         providerID: FamiliarProviderCatalog.deepSeek.id,
@@ -425,7 +428,8 @@ nonisolated struct FamiliarSettings: Codable, Equatable, Sendable {
         modelRoutePolicy: .cloud,
         systemPrompt: String(localized: "settings.system_prompt.default"),
         providerConfigurations: [:],
-        executionBudget: .defaultValue
+        executionBudget: .defaultValue,
+        isAutomaticMemoryEnabled: true
     )
 
     enum CodingKeys: String, CodingKey {
@@ -435,6 +439,7 @@ nonisolated struct FamiliarSettings: Codable, Equatable, Sendable {
         case systemPrompt
         case providerConfigurations
         case executionBudget
+        case isAutomaticMemoryEnabled
     }
 
     /// Decoded tolerantly so settings stored by an earlier build, which have no
@@ -455,6 +460,10 @@ nonisolated struct FamiliarSettings: Codable, Equatable, Sendable {
             FamiliarExecutionBudget.self,
             forKey: .executionBudget
         ) ?? .defaultValue).normalized
+        isAutomaticMemoryEnabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .isAutomaticMemoryEnabled
+        ) ?? true
     }
 
     init(
@@ -463,7 +472,8 @@ nonisolated struct FamiliarSettings: Codable, Equatable, Sendable {
         modelRoutePolicy: FamiliarModelRoutePolicy,
         systemPrompt: String,
         providerConfigurations: [String: FamiliarProviderConfiguration],
-        executionBudget: FamiliarExecutionBudget
+        executionBudget: FamiliarExecutionBudget,
+        isAutomaticMemoryEnabled: Bool
     ) {
         self.providerID = providerID
         self.modelID = modelID
@@ -471,6 +481,7 @@ nonisolated struct FamiliarSettings: Codable, Equatable, Sendable {
         self.systemPrompt = systemPrompt
         self.providerConfigurations = providerConfigurations
         self.executionBudget = executionBudget
+        self.isAutomaticMemoryEnabled = isAutomaticMemoryEnabled
     }
 
     var providerConfiguration: FamiliarProviderConfiguration {

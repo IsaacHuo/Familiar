@@ -385,7 +385,7 @@ final class FamiliarChatController {
         draftImages = []
         reloadMessages(in: context)
         let requestMessages = messages
-        let contextSeed = makeContextSeed(conversation: conversation, skills: invokedSkills, context: context)
+        let contextSeed = makeContextSeed(conversation: conversation, skills: invokedSkills, query: prompt, context: context)
         selectedSkillID = nil
         let responseID = UUID()
         isSending = true
@@ -1623,9 +1623,36 @@ final class FamiliarChatController {
             .forEach(context.delete)
     }
 
+    /// Context Compiler: selects only the memory relevant to this prompt, then lets the
+    /// assembler apply its character budget. Reading here also stamps `lastUsedAt`, so
+    /// the field means "was actually selected as context".
+    private func selectedMemories(
+        query: String,
+        projectID: UUID?,
+        conversationID: UUID,
+        context: ModelContext
+    ) -> [FamiliarContextMemory] {
+        let items = (try? FamiliarMemoryService().search(
+            query: query,
+            projectID: projectID,
+            conversationID: conversationID,
+            in: context
+        )) ?? []
+        return items.map {
+            FamiliarContextMemory(
+                id: $0.id,
+                scope: $0.scope,
+                content: $0.content,
+                provenance: $0.provenance,
+                confidence: $0.confidence
+            )
+        }
+    }
+
     private func makeContextSeed(
         conversation: FamiliarConversation,
         skills: [FamiliarSkillSnapshot],
+        query: String,
         context: ModelContext
     ) -> FamiliarProjectContextSeed {
         let project = conversation.project
@@ -1648,6 +1675,9 @@ final class FamiliarChatController {
         let availableSkills = project.flatMap {
             try? FamiliarProjectService().boundSkillSnapshots(projectID: $0.id, in: context)
         } ?? []
+        let memories = settings.isAutomaticMemoryEnabled
+            ? selectedMemories(query: query, projectID: project?.id, conversationID: conversation.id, context: context)
+            : []
         return FamiliarProjectContextSeed(
             projectID: project?.id,
             projectName: project?.name,
@@ -1655,7 +1685,8 @@ final class FamiliarChatController {
             projectInstruction: project?.instruction?.text,
             resources: resources,
             skills: skills,
-            availableSkills: availableSkills
+            availableSkills: availableSkills,
+            memories: memories
         )
     }
 
