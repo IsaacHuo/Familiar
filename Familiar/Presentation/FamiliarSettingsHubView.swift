@@ -391,7 +391,7 @@ private struct FamiliarShellRuntimeSettingsView: View {
             }
 
             Section(String(localized: "settings.shell.limits", defaultValue: "Limits")) {
-                Text(String(localized: "settings.shell.limits.detail", defaultValue: "180 seconds · 16 processes · 1 MB output · 500 MB Workspace"))
+                Text(shellLimitsDetail)
                     .foregroundStyle(.secondary)
             }
 
@@ -464,6 +464,19 @@ private struct FamiliarShellRuntimeSettingsView: View {
         case .failed(let message):
             String(format: String(localized: "settings.shell.failed", defaultValue: "Failed: %@"), message)
         }
+    }
+
+    /// Derived from `FamiliarShellLimits.iOS` rather than written as a literal: a
+    /// hardcoded limits string silently drifts from what the executor enforces.
+    private var shellLimitsDetail: String {
+        let limits = FamiliarShellLimits.iOS
+        return String(
+            format: String(localized: "settings.shell.limits.detail", defaultValue: "%1$@ seconds · %2$@ processes · %3$@ output · %4$@ Workspace"),
+            NSNumber(value: Int(limits.maximumTimeout)),
+            NSNumber(value: limits.maximumProcessCount),
+            ByteCountFormatter.string(fromByteCount: Int64(limits.maximumOutputBytes), countStyle: .file),
+            ByteCountFormatter.string(fromByteCount: limits.maximumWorkspaceBytes, countStyle: .file)
+        )
     }
 
     private var bundledRuntimeSize: String {

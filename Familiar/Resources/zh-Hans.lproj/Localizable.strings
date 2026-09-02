@@ -723,7 +723,7 @@
 "settings.shell.network" = "允许此 Workspace 访问公共互联网";
 "settings.shell.network.footer" = "默认关闭。批准 Environment 方案后可从 PyPI 下载声明依赖；Shell 不会获得模型 API Key、Keychain、Cookie 或局域网服务访问权。";
 "settings.shell.limits" = "资源限制";
-"settings.shell.limits.detail" = "180 秒 · 16 个进程 · 1 MB 输出 · 500 MB Workspace";
+"settings.shell.limits.detail" = "%1$@ 秒 · %2$@ 个进程 · %3$@ 输出 · %4$@ Workspace";
 "settings.shell.source" = "iSH 源代码";
 "settings.shell.license" = "GNU GPLv3 许可证";
 "settings.shell.rootfs" = "根文件系统";
