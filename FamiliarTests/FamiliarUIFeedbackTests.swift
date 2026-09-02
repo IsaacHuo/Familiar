@@ -51,14 +51,16 @@ struct FamiliarUIFeedbackTests {
         #expect(settings.contains("if let skill { return skill.stableID }"))
     }
 
-    @Test("Tool chips project real tool surfaces through the reference interactions")
-    func toolChipPresentation() throws {
+    @Test("Tool calls render as ordered stable blocks with anchored disclosure")
+    func toolBlockPresentation() throws {
         let messages = try source("Familiar/Presentation/FamiliarChatMessageViews.swift")
         let chips = try source("Familiar/Presentation/FamiliarToolChips.swift")
 
-        #expect(messages.contains("FamiliarToolChips("))
-        #expect(messages.contains("surfaces: toolChipSurfaces"))
-        #expect(messages.contains("reasoningSummary: reasoningSummary"))
+        #expect(!messages.contains("surfaces: toolChipSurfaces"))
+        #expect(messages.contains("private var contentBlocks: [FamiliarAssistantContentBlock]"))
+        #expect(messages.contains("private struct FamiliarExecutionBlock"))
+        #expect(messages.contains("FamiliarMotion.expansion"))
+        #expect(messages.contains(".transition(.opacity)"))
         #expect(!messages.contains("variant: .coding"))
         #expect(chips.contains("@State private var isOpen = true"))
         #expect(chips.contains("@State private var openRows: Set<String>"))
@@ -67,6 +69,7 @@ struct FamiliarUIFeedbackTests {
         #expect(chips.contains("afterLines.difference(from: beforeLines)"))
         #expect(chips.contains("FamiliarToolDiffPreview"))
         #expect(chips.contains("scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)"))
+        #expect(!chips.contains(".move(edge:"))
         #expect(chips.contains("Dictionary(grouping: eligible)"))
         #expect(chips.contains("static func thinkingItem("))
     }

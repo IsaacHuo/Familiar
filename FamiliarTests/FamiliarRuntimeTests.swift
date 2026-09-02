@@ -5,7 +5,7 @@ import Testing
 private struct FamiliarFakeProvider: FamiliarModelProvider {
     let providerID = "fake"
     let mode: Mode
-    enum Mode: Sendable { case text, reasoning, toolThenText, repeatedTool }
+    enum Mode: Sendable, Equatable { case text, reasoning, toolThenText, repeatedTool }
 
     func stream(request: FamiliarModelRequest) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -22,6 +22,9 @@ private struct FamiliarFakeProvider: FamiliarModelProvider {
                 continuation.yield(.textDelta("Done"))
                 continuation.yield(.completed(.stop))
             case .toolThenText, .repeatedTool:
+                if mode == .toolThenText {
+                    continuation.yield(.textDelta("Checking"))
+                }
                 continuation.yield(.toolCallDelta(index: 0, id: "call", name: "fake_read", arguments: "{}"))
                 continuation.yield(.completed(.toolCalls))
             }
@@ -195,6 +198,26 @@ struct FamiliarRuntimeTests {
         #expect(finishes == [.succeeded])
         #expect(events.contains { if case .activityCompleted = $0.payload { true } else { false } })
         #expect(events.contains { if case .toolResultProduced = $0.payload { true } else { false } })
+    }
+
+    @Test("Assistant turn blocks bracket tool execution in runtime order")
+    func assistantTurnBlockOrder() async throws {
+        let registry = try FamiliarToolRegistry(tools: [AnyFamiliarTool(FamiliarFakeTool())])
+        let events = try await collect(FamiliarAgentLoop(provider: FamiliarFakeProvider(mode: .toolThenText), registry: registry, policy: .init(), confirmationCoordinator: .init(), undoStore: .init()), manifests: await registry.manifests())
+        let completedTurns = events.enumerated().compactMap { index, event -> (Int, String, String)? in
+            if case .assistantTurnCompleted(let id, _, let text) = event.payload {
+                return (index, id, text)
+            }
+            return nil
+        }
+        let invocation = try #require(events.firstIndex { if case .toolInvocationRequested = $0.payload { true } else { false } })
+        let result = try #require(events.firstIndex { if case .toolResultProduced = $0.payload { true } else { false } })
+
+        #expect(completedTurns.map(\.2) == ["Checking", "Done"])
+        #expect(completedTurns[0].0 < invocation)
+        #expect(invocation < result)
+        #expect(result < completedTurns[1].0)
+        #expect(completedTurns.map(\.1) == [events[completedTurns[0].0].runID + ":turn:0", events[completedTurns[1].0].runID + ":turn:1"])
     }
 
     @Test("Runtime failure still emits exactly one runFinished")

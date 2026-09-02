@@ -70,7 +70,8 @@ struct FamiliarAssistantTurnPersistenceTests {
             consequence: "Creates one event",
             undoPolicy: .durable,
             automaticAuthorization: true,
-            automaticAuthorizationScope: .always
+            automaticAuthorizationScope: .always,
+            allowedAuthorizationDurations: [.once]
         )
 
         try recorder.recordApprovalRequested(request, assistantTurnID: "approval-run:turn:0", eventSequence: 3, at: requestedAt, context: fixture.context)
@@ -84,6 +85,7 @@ struct FamiliarAssistantTurnPersistenceTests {
         #expect(record.risk == .sensitive)
         #expect(record.consequence == "Creates one event")
         #expect(record.undoPolicy == .durable)
+        #expect(try JSONDecoder().decode([FamiliarAuthorizationDuration].self, from: Data(record.allowedAuthorizationDurationsJSON.utf8)) == [.once])
         #expect(record.decision == .approved)
         #expect(record.scope == .always)
         #expect(record.requestedAt == requestedAt)
@@ -132,6 +134,39 @@ struct FamiliarAssistantTurnPersistenceTests {
         #expect(block.content == "**Answer**")
         #expect(block.contentHash.count == 64)
         #expect(runBlock == block)
+    }
+
+    @Test("Multiple assistant turns retain runtime order when attached to one message")
+    @MainActor
+    func orderedResponseBlockReload() throws {
+        let fixture = try makeRun(runtimeID: "ordered-response-run")
+        let recorder = FamiliarRunPersistenceRecorder()
+        let messageID = UUID()
+        let firstID = UUID()
+        let finalID = UUID()
+        let message = FamiliarMessage(
+            id: messageID,
+            role: .assistant,
+            content: "Checking\n\nDone",
+            sequence: 0,
+            runtimeID: "ordered-response-run",
+            assistantTurnID: "ordered-response-run:turn:1",
+            responseBlockID: finalID,
+            conversation: fixture.conversation
+        )
+        fixture.context.insert(message)
+
+        _ = try recorder.recordResponseBlock(id: firstID, runtimeID: "ordered-response-run", assistantTurnID: "ordered-response-run:turn:0", messageID: nil, kind: .markdown, state: .completed, content: "Checking", order: 2, endedAt: Date(timeIntervalSince1970: 2), context: fixture.context)
+        _ = try recorder.recordResponseBlock(id: firstID, runtimeID: "ordered-response-run", assistantTurnID: "ordered-response-run:turn:0", messageID: messageID, kind: .markdown, state: .completed, content: "Checking", order: 2, endedAt: Date(timeIntervalSince1970: 2), context: fixture.context)
+        _ = try recorder.recordResponseBlock(id: finalID, runtimeID: "ordered-response-run", assistantTurnID: "ordered-response-run:turn:1", messageID: messageID, kind: .markdown, state: .completed, content: "Done", order: 9, endedAt: Date(timeIntervalSince1970: 9), context: fixture.context)
+
+        let controller = FamiliarChatController(dependencies: FamiliarAppDependencies())
+        controller.select(fixture.conversation.id, in: fixture.context)
+
+        let blocks = try #require(controller.messages.first?.responseBlocks)
+        #expect(blocks.map(\.id) == [firstID, finalID])
+        #expect(blocks.map(\.order) == [2, 9])
+        #expect(blocks.map(\.content) == ["Checking", "Done"])
     }
 
     @Test("A completed reasoning summary is persisted as one response block")

@@ -133,15 +133,17 @@ struct FamiliarSurfaceTests {
         }
     }
 
-    @Test("Structured accessories follow assistant Markdown and expose bounded detail actions")
+    @Test("Assistant content uses ordered blocks and in-place disclosure")
     func structuredAccessoryStaticContracts() throws {
         let presentation = try source("Familiar/Presentation/FamiliarChatMessageViews.swift")
         let markdown = try source("Familiar/Presentation/FamiliarMarkdownWebView.swift")
         let renderer = try source("Familiar/Resources/FamiliarMarkdownRenderer/renderer.js")
 
-        let bodyPosition = try #require(presentation.range(of: "FamiliarMarkdownWebView(markdown: message.content"))
-        let accessoriesPosition = try #require(presentation.range(of: "ForEach(responseAccessoryItems)"))
-        #expect(bodyPosition.lowerBound < accessoriesPosition.lowerBound)
+        #expect(presentation.contains("private var contentBlocks: [FamiliarAssistantContentBlock]"))
+        #expect(presentation.contains("ForEach(contentBlocks)"))
+        #expect(presentation.contains("FamiliarExecutionBlock("))
+        #expect(presentation.contains("withAnimation(reduceMotion ? nil : FamiliarMotion.expansion)"))
+        #expect(presentation.contains(".transition(.opacity)"))
         #expect(presentation.contains("surface.context.details"))
         #expect(presentation.contains("surface.records.details"))
         #expect(presentation.contains("surface.diff.details"))
@@ -237,19 +239,20 @@ struct FamiliarSurfaceTests {
         #expect(store.orderedSurfaces.contains { $0.kind == .insight && $0.placement == .topLevel })
     }
 
-    @Test("Approval card keeps the rounded two-step authorization flow")
+    @Test("Approval card is a one-page least-privilege system action")
     func approvalCardStaticContracts() throws {
         let card = try source("Familiar/Presentation/FamiliarApprovalCard.swift")
 
-        #expect(card.contains("private let stepCount = 2"))
-        #expect(card.contains("@State private var isOpen = true"))
-        #expect(card.contains("contentTransition(.numericText"))
+        #expect(!card.contains("stepCount"))
+        #expect(!card.contains("Button(String(localized: \"approval.skip\""))
         #expect(card.contains("FamiliarRadius.card"))
-        #expect(card.contains("FamiliarApprovalPrimaryButtonStyle()"))
+        #expect(card.contains(".buttonStyle(.borderedProminent)"))
+        #expect(card.contains(".tint(FamiliarAISurfaceColor.accent)"))
         #expect(card.contains("authorization.once"))
         #expect(card.contains("authorization.session"))
         #expect(card.contains("authorization.always"))
-        #expect(card.contains("selectedDecision == nil"))
+        #expect(card.contains("return .confirmedOnce"))
+        #expect(card.contains("FamiliarControlSize.minimumHitTarget"))
         #expect(card.contains("resolve(.cancelled)"))
     }
 
@@ -259,6 +262,29 @@ struct FamiliarSurfaceTests {
         #expect(FamiliarHapticPolicy.feedback(from: .running, to: .succeeded) == .success)
         #expect(FamiliarHapticPolicy.feedback(from: .running, to: .failed) == .error)
         #expect(FamiliarHapticPolicy.feedback(from: .queued, to: .running) == nil)
+    }
+
+    @Test("Interrupted pending approval projects as a settled non-interactive summary")
+    func interruptedApprovalProjection() {
+        let activityID = "tool:interrupted:call-1"
+        let run = FamiliarAgentRunSnapshot(
+            id: "interrupted",
+            responseMessageID: nil,
+            status: .cancelled,
+            startedAt: Date(timeIntervalSince1970: 1),
+            finishedAt: Date(timeIntervalSince1970: 3),
+            context: nil,
+            activities: [.init(activityID: activityID, parentID: "turn:interrupted", assistantTurnID: "interrupted:turn:0", kind: .tool, effect: .reversibleWrite, phase: .cancelled, toolName: "create_calendar_event", toolCallID: "call-1", summary: "Create", detail: "Cancelled", progress: 1, resultRecordID: nil, approvalRecordID: nil, sequence: 1, startedAt: Date(timeIntervalSince1970: 1), endedAt: Date(timeIntervalSince1970: 2))],
+            approvals: [.init(id: UUID(), activityID: activityID, assistantTurnID: "interrupted:turn:0", toolCallID: "call-1", toolName: "create_calendar_event", title: "Create event", fields: [.init(id: "title", label: "Title", type: .text, value: "Review")], target: "Calendar", effect: .reversibleWrite, risk: .sensitive, consequence: "Creates one event", undoPolicy: .durable, allowedAuthorizationDurations: [.once, .session, .always], decision: nil, scope: nil, requestedAt: Date(timeIntervalSince1970: 1), resolvedAt: nil, automaticAuthorization: false)],
+            clarifications: [],
+            toolResults: [],
+            responseBlocks: []
+        )
+
+        let approval = FamiliarSurfaceStore.projectedSurfaces(for: run).first { $0.kind == .approval }
+        #expect(approval?.approvalRequestID == nil)
+        #expect(approval?.phase == .cancelled)
+        #expect(approval?.phase != .awaitingApproval)
     }
 
     private func source(_ relativePath: String) throws -> String {
