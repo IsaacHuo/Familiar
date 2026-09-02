@@ -113,8 +113,8 @@
 - `FamiliarRootView.swift` — 直接进入 Chat，并承接 Deep Link/Spotlight/App Intent handoff 路由。
 - `FamiliarChatView.swift` — 统一 Chat Surface：顶栏依次提供设置、普通/活跃项目工作区、模型和新对话；切换工作区恢复该作用域最近更新的会话，无历史时建立未持久化空白会话。左缘手势打开的抽屉只保留搜索、置顶、可折叠项目、全部项目和普通最近会话；项目与普通最近会话按 20 条逐批展开。
 - `FamiliarChatController.swift` — `@MainActor @Observable` 中央状态容器：`startSending`/`performSend` 编排整条 Agent Run。
-- `FamiliarChatMessageViews.swift` — 唯一 Assistant Turn 时间线：无背景 Markdown 正文、Loading/Thinking rail、终态 Selection Actions、Task Rows、Recommendation、Swift Charts Insight、Clarification、typed Code、紧凑 Context chunks、纵向可筛选 Records、移动端 before/after Diff、紧凑 tool summary、默认折叠的来源簇、typed approval intervention、write receipt、failure recovery 与可展开 typed activity trace；Context 超过 2 条进入 sheet，Records 超过 3 条进入可搜索全屏，Diff 与长 Code 进入全屏。Selection/Recommendation 动作只填 Composer。Search trace 展示 query、结果数和已读取/仅发现统计，不逐结果生成顶级卡片。
-- `FamiliarSurfaceDescriptor.swift` — 实时/历史共用的语义投影：runStatus/activityTrace/toolSummary/approval/taskList/recommendation/insight/clarification/code/search/context/records/diff/mutationReceipt/artifact/failure。scalar、searchResults、document 始终进入 trace；contextMatches、recordCollection、diff、taskList、recommendation、insight、code 进入正文后的 top-level accessory，写回执保持 top-level。
+- `FamiliarChatMessageViews.swift` — 唯一 Assistant Turn 内容流：按 Runtime sequence 交错渲染每轮 Markdown ResponseBlock 与稳定工具执行块。工具调用在原位置从运行中 morph 为单页 Approval、typed result、receipt、failure 或 undone；只读结果默认一行折叠并从顶部锚点向下展开。Activity 只保留工具数与耗时摘要，完整审计进入 Project Runs。Context 超过 2 条进入 sheet，Records 超过 3 条进入可搜索全屏，Diff 与长 Code 进入全屏。
+- `FamiliarSurfaceDescriptor.swift` — 实时/历史共用的语义投影，descriptor 保存 Runtime sequence、稳定 tool identity 和授权决定。scalar、searchResults、document、contextMatches、recordCollection 等不再按固定区域堆叠，而是在所属 Assistant Turn 的调用位置渲染。
 - `FamiliarComposerView.swift` — compact/expanded/fullscreen 输入器、附件/相机/相册、一次性 Slash Skill 选择与语音。
 - `FamiliarSettingsHubView.swift` / `FamiliarSettingsView.swift` / `FamiliarSearchSettingsView.swift` — 设置 hub、模型服务、独立网页搜索设置和 Python 软件源设置；软件源只允许选择内置校验的官方 PyPI 或清华 TUNA HTTPS 索引，不接受任意 URL。搜索页提供 Provider 选择、独立 Key 保存/删除、最小连接验证以及隐私/费用说明。Skills 页只以右上角加号打开带默认 instructions 模板的创建表单，没有导入行，新建 Skill 的 allowedTools 为空。
 - `FamiliarProjectsView.swift` — Project Context Workspace：项目列表/主页/编辑、文件/网页/文本资料、真实 Artifact、Environment、按需 Skills、Capability 与 Runs；主页主动作仍回到 Chat。
@@ -195,7 +195,7 @@ schema：`FamiliarReleaseSchema`（version `1.0.0`），当前 36 个实体；�
 | Skill, MemoryItem, MCPServerRecord, MCPBindingRecord | Skill 安装已写入；Memory 仅基础服务；MCP Runtime 尚未接线 |
 | RunSkillSnapshotRecord | 是（Run 启动时冻结 Skill ID/版本/hash/allowedTools） |
 | PinnedItemRecord | 是（项目/会话统一持久置顶） |
-| ActivityRecord, ToolResultRecord, ApprovalRecord, ResponseBlockRecord | 是（Assistant Turn 的活动、结构化结果、审批审计与回复块投影） |
+| ActivityRecord, ToolResultRecord, ApprovalRecord, ResponseBlockRecord | 是（Assistant Turn 的活动、结构化结果、审批审计与回复块投影；ApprovalRecord 保存 allowedAuthorizationDurationsJSON，ActivityRecord 保存 failureCode/failureRetryable） |
 | ClarificationRecord | 是（typed requested/resolved/cancelled/interrupted；重启后 pending 只恢复为 interrupted 展示） |
 | ProjectEnvironmentRecord, ProjectSkillBindingRecord, ProjectCapabilityBindingRecord | 是（Environment receipt 与 Project-owned Skill/Capability scope） |
 
@@ -229,6 +229,7 @@ Composer
           → activity/approval/result 边界写 Activity、ToolResult、Approval；正文与 reasoning delta 不逐项写 Store
       → runRecovery（CapabilitySnapshot/Cursor/ToolInvocation 阶段记录；activityCompleted → committed/cancelled/failed）
           → toolResultProduced → typed result、Artifact 落盘、web capture → 项目资源；activityCompleted → durable EventKit undo
+      → assistantTurnCompleted 在每轮工具边界写独立 Markdown ResponseBlock；Controller 以 Runtime sequence 保持正文与工具顺序
       → reasoningSummaryCompleted 在 Controller 内存汇总，回复完成时一次写 reasoningSummary ResponseBlock
       → runFinished(outcome) 是 Controller/Recorder/Surface 唯一 Run 终态；成功后保存 markdown ResponseBlock + Sources + 可选本地通知
           → failed/cancelled Run 写 runtime notice Activity + ResponseBlock

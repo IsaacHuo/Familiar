@@ -1,6 +1,6 @@
 # Current State
 
-Last verified: 2026-08-31
+Last verified: 2026-09-02
 
 ## Current Focus
 
@@ -10,6 +10,7 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 
 ## Recently Completed
 
+- **聊天有序块与 Run 审计收敛**：Assistant Turn 改为按 Runtime sequence 交错显示每轮 Markdown 与稳定工具执行块，查询结果默认摘要折叠并原地展开，Activity 不再承载重复明细。确认卡改为默认“仅这次”的单页系统蓝布局，明确展示风险、后果和撤销能力；修复 once 授权额外签发规则。Project Run 详情新增调用状态、参数 hash、结构化失败、授权决定、结果 hash 与冻结上下文审计。每轮正文在工具边界持久化，失败 Run 也可回放已产生内容。
 - **2026-08-31 Complex Task Runtime v1 代码纵切**：iSH 安装改用 rootfs 版本、bundle hash、固定 iSH commit 与原子 marker 校验，并显式记录 installing/booting/ready/running/failed 生命周期；Project 持久挂载 `/workspace/env`，普通 Chat Environment 随 Run 删除。新增声明式 `environment_status`/`environment_prepare`、Project Skill/Capability binding、按需 `skill_list`/`skill_read`、动态 Shell preflight、Plan/Execute/Validate/Repair/Deliver 阶段和最多两次缺失交付修复。Artifact 扩展为 Markdown/Text/DOCX/PDF/XLSX/HTML，`artifact_publish` 只登记通过签名、AnyDoc/SwiftSoup、必需正文和 hash 校验的真实 Outputs 文件；Chat/Project 复用 Quick Look/ShareLink，HTML 使用 non-persistent WebKit + CSP。当前唯一 Release Schema 为 36 实体。独立 DerivedData 的 arm64 generic Simulator `build-for-testing` 已成功；未启动 Simulator、未执行测试、未连接真机、未调用真实 DeepSeek 或真实 iSH guest。
 - **2026-08-30 DeepSeek + Native Tools + iSH 成品纵切**：EventKit 更新/完成/删除与跨重启 Undo、Photos add-only 输出、Files 导出、最小 Contacts 字段、当前单一 33 实体 Release Schema、task-scoped Shell 输入投影、Workspace 删除事务、ARM64 iSH/Alpine headless runtime、socket/资源 policy、Shell Chat Surface 和 Runtime 设置页已接入。固定 iSH commit、Alpine 3.24.0 rootfs、device/simulator XCFramework、GPLv3 源码/许可与构建脚本通过供应链校验；全新 DerivedData 的 Debug arm64 generic Simulator `build-for-testing` 与 Release generic iOS arm64 无签名 build 成功，网站构建、本地化 plist/key parity 和 `git diff --check` 通过。未启动 Simulator、未执行测试、未使用真实 DeepSeek Key；真实 iSH guest、系统权限、DeepSeek 效果、签名 Archive 与 App Review 仍由所有者验收。
 - **集中 UI 反馈收口**：移除首启 Onboarding 与设置中的重看入口，首次启动直接进入 Chat；发送前在任何图片导入或 Apple Vision 处理之前检查 Keychain，缺 Key 时保留草稿并提示先填写 API Key。Composer 图片改为可点击缩略图，原生全屏预览提供关闭与删除；已发送图片从文字气泡中独立右对齐，所有 Quick Look 预览均有明确完成按钮。Thinking 只保留系统 Disclosure 箭头，Activity 内容取消额外左缩进；抽屉开合提交时触发原生 selection feedback。Skills 列表行可进入查看/编辑，保存时保持 stable ID、version、工具范围和 examples，历史 Run snapshot 不变。
@@ -51,6 +52,8 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 - **本地渲染**：非持久化 WKWebView + 内置 Markdown/高亮/Mermaid/KaTeX/DOMPurify，CSP 禁远程图片自动加载。
 
 ## Verification Evidence
+
+- 2026-09-02：聊天有序块与 Run 审计收敛改动后，独立 DerivedData 的 Debug arm64 generic iOS Simulator `build-for-testing` 成功且无警告；`FamiliarRuntimeTests`、`FamiliarSurfaceTests`、`FamiliarAssistantTurnPersistenceTests`、`FamiliarUIFeedbackTests`、`FamiliarPlanCompletionTests` 与 `FamiliarPersistenceReleaseTests` 共 45 项全部通过。中英 strings plist `plutil` lint 与 `git diff --check` 通过。按项目约束未启动 Simulator 做视觉验收；确认卡、展开动效与审计详情仍需真机人工验收。
 
 - 2026-08-29：集中 UI 反馈改动后，独立 DerivedData 的 Debug arm64 generic iOS Simulator `build-for-testing` 成功，App、Share Extension、Widget、`FamiliarTests` 与 `FamiliarUITests` 全部完成编译；新增 direct launch/API Key guard、图片预览/删除、Activity/Thinking、drawer haptic 与 Skill editor 静态契约测试。中英 strings plist/parity 与 `git diff --check` 通过。按项目约束未启动 Simulator；图片布局、Quick Look 关闭、抽屉触觉和 Skill 编辑仍需所有者真机验收。
 - 2026-08-28：最终发布验证使用独立 DerivedData 完成 Debug arm64 generic Simulator `build-for-testing`；24 个 Swift Testing suite 按 `Scripts/run-release-test-suites.sh` 的清单逐套串行执行并全部通过，随后 UI smoke 2/2 通过。修复了测试夹具未持有 SwiftData `ModelContainer`、过时的 `.always` 授权断言与 UI fixture 子元素暴露问题。Release generic iOS arm64 build 和无签名 Archive 成功；App/Share/Widget 版本均为 1.0 (1)，三个 bundle manifest、许可资源和 arm64 架构检查通过，包内扫描未发现 FastVLM/MLX、实验 DeepSeek 模型或 DEBUG fixture。签名 Archive、Organizer Privacy Report、真实 DeepSeek Key 与真机矩阵仍由所有者完成。

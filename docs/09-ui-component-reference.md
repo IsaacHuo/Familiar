@@ -521,7 +521,7 @@ export default function ThinkingState({ variant = "Steps" }: { variant?: string 
 
 - **描述**：Streamed answer with inline sources, actions, and follow-ups. 流式回答 + 内联来源 + 操作 + 追问。
 - **变体**：来源徽标堆叠（sources 数量）、来源展开列表、Follow-ups 追问按钮。
-- **适配结论**：Familiar 的终态助手消息使用 WKWebView 渲染 Markdown，流式阶段使用原生回退文本；终态操作按复制、系统分享、重试排列，并与助手正文左边缘对齐。来源引用和追问按钮仍只作为候选参考。
+- **适配结论**：Familiar 的流式与终态助手正文均使用 WKWebView，原生文本只负责首帧和失败回退。一个 Assistant Turn 按 Runtime sequence 组合多个 Markdown 与工具执行块；工具块在调用位置原位更新，终态操作按复制、重试排列并与正文左边缘对齐。
 
 ```tsx
 "use client";
