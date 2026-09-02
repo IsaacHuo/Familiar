@@ -159,8 +159,11 @@ struct FamiliarComposer: View {
     @State private var notice: FamiliarComposerNotice?
     @State private var previewImage: FamiliarDraftImage?
     private let availableHeight: CGFloat
-    private static let editorFontSize: CGFloat = 20
-    private static let lineHeight = UIFont.systemFont(ofSize: editorFontSize).lineHeight
+    /// Scales with Dynamic Type. It must be one value shared by the font and the height
+    /// math below: scaling the font while measuring against a fixed 20pt would clip the
+    /// user's own text at larger sizes.
+    @ScaledMetric(relativeTo: .body) private var editorFontSize: CGFloat = 20
+    private var lineHeight: CGFloat { UIFont.systemFont(ofSize: editorFontSize).lineHeight }
 
     init(
         draft: Binding<String>,
@@ -195,10 +198,10 @@ struct FamiliarComposer: View {
         isSending || (importingFileCount == 0 && (hasText || !documents.isEmpty || !images.isEmpty))
     }
     private var hasDraftContent: Bool { selectedSkill != nil || !images.isEmpty || !documents.isEmpty || importingFileCount > 0 }
-    private var effectiveTextHeight: CGFloat { max(measuredTextHeight, CGFloat(max(draft.components(separatedBy: "\n").count, 1)) * Self.lineHeight) }
-    private var isLongText: Bool { effectiveTextHeight >= Self.lineHeight * 4 - 0.5 }
+    private var effectiveTextHeight: CGFloat { max(measuredTextHeight, CGFloat(max(draft.components(separatedBy: "\n").count, 1)) * lineHeight) }
+    private var isLongText: Bool { effectiveTextHeight >= lineHeight * 4 - 0.5 }
     private var showsExpansion: Bool { mode == .fullscreen || isLongText }
-    private var editorHeight: CGFloat { min(max(effectiveTextHeight + 18, 44), Self.lineHeight * 4 + 20) }
+    private var editorHeight: CGFloat { min(max(effectiveTextHeight + 18, 44), lineHeight * 4 + 20) }
     private var controlsHeight: CGFloat { mode == .compact ? 44 : editorHeight + 8 + 44 }
     private var fullscreenHeight: CGFloat {
         min(max(availableHeight * 0.8 - 14, 240), max(availableHeight - 14, 240))
@@ -374,14 +377,14 @@ struct FamiliarComposer: View {
         ZStack(alignment: .topLeading) {
             if draft.isEmpty {
                 Text(String(localized: "composer.placeholder"))
-                    .font(.system(size: Self.editorFontSize))
+                    .font(.system(size: editorFontSize))
                     .foregroundStyle(.tertiary)
                     .padding(.leading, mode == .compact ? 5 : 14)
                     .padding(.top, mode == .compact ? 8 : 14)
                     .allowsHitTesting(false)
             }
             TextEditor(text: $draft)
-                .font(.system(size: Self.editorFontSize))
+                .font(.system(size: editorFontSize))
                 .scrollContentBackground(.hidden)
                 .scrollIndicators(.hidden)
                 .padding(.leading, mode == .compact ? 0 : 9)
@@ -654,8 +657,8 @@ struct FamiliarComposer: View {
 
     private func measuredHeight(width: CGFloat) -> CGFloat {
         let text = draft.isEmpty ? " " : (draft.hasSuffix("\n") ? draft + " " : draft)
-        let bounds = (text as NSString).boundingRect(with: CGSize(width: max(width - 54, 1), height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: UIFont.systemFont(ofSize: Self.editorFontSize)], context: nil)
-        return max(ceil(bounds.height), CGFloat(max(draft.components(separatedBy: "\n").count, 1)) * Self.lineHeight)
+        let bounds = (text as NSString).boundingRect(with: CGSize(width: max(width - 54, 1), height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: UIFont.systemFont(ofSize: editorFontSize)], context: nil)
+        return max(ceil(bounds.height), CGFloat(max(draft.components(separatedBy: "\n").count, 1)) * lineHeight)
     }
 
     private func showFullPhotosIfNeeded() {

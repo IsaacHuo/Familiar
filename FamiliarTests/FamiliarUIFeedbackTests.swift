@@ -106,6 +106,23 @@ struct FamiliarUIFeedbackTests {
         #expect(en.contains("\"settings.diagnostics.title\""))
     }
 
+    @Test("Composer text and its height math scale together with Dynamic Type")
+    func dynamicTypeScaling() throws {
+        let composer = try source("Familiar/Presentation/FamiliarComposerView.swift")
+        let hub = try source("Familiar/Presentation/FamiliarSettingsHubView.swift")
+
+        #expect(composer.contains("@ScaledMetric(relativeTo: .body) private var editorFontSize"))
+        // The height math must derive from the same scaled value. Measuring against a
+        // fixed 20pt while rendering a scaled font would clip the user's own text.
+        #expect(composer.contains("private var lineHeight: CGFloat { UIFont.systemFont(ofSize: editorFontSize).lineHeight }"))
+        #expect(!composer.contains("Self.editorFontSize"))
+        #expect(!composer.contains("Self.lineHeight"))
+
+        // A fixed icon container beside a label that scales would leave the glyph
+        // visually detached at larger sizes.
+        #expect(hub.contains("@ScaledMetric(relativeTo: .body) private var rowIconContainer"))
+    }
+
     private func source(_ relativePath: String) throws -> String {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
