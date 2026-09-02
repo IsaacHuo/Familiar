@@ -9,8 +9,10 @@ struct FamiliarPersistenceReleaseTests {
     @MainActor
     func releaseSchemaBaseline() {
         #expect(FamiliarReleaseSchema.versionIdentifier == Schema.Version(1, 0, 0))
-        #expect(FamiliarReleaseSchema.models.count == 36)
-        #expect(FamiliarModelContainer.currentSchema.entities.count == 36)
+        // 37 since FamiliarAlarmUndoRecord joined the schema. Both counts are asserted
+        // because the models list and the realised container entities can drift apart.
+        #expect(FamiliarReleaseSchema.models.count == 37)
+        #expect(FamiliarModelContainer.currentSchema.entities.count == 37)
         #expect(FamiliarStoreProfile.development.storeName == "FamiliarDevelopment")
         #expect(FamiliarStoreProfile.release.storeName == "Familiar")
     }
