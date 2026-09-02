@@ -139,11 +139,11 @@ hash 一致性在 commit 时校验：`imported.hash == output.contentHash`（`Fa
 
 | 问题 | 位置 | 性质 |
 |---|---|---|
-| 4 个完整构建但**永不渲染**的 section（`responseSection` / `privacySection` / `notificationSection` / `brandHeader`） | `Familiar/Presentation/FamiliarSettingsView.swift:143-212`；`body` 只渲染 provider/model/key（`:38-43`） | 死 UI，含重复的通知开关与重复的 system prompt 编辑器 |
-| 该页 `.task` 仍会跑 `refreshNotificationAuthorization`（`:355-364`），在未授权时**静默** `FamiliarNotificationPreference.setEnabled(false)`（`:359`） | 同上 | 无可见控件却产生副作用，属于真实 bug |
+| ~~4 个完整构建但永不渲染的 section~~ | 已删除（2026-09-03，`633deb6`） | 连同随之失效的状态、hook 与 UIKit import 一并移除 |
+| ~~该页 `.task` 在未授权时静默关闭通知~~ | 已删除（2026-09-03，`633deb6`） | 该副作用随不可达 section 一并移除；Permissions 页的通知开关是唯一真实路径，未改动 |
 | `Refresh models` 拉取结果不持久化，只存 `@State`（`:14,89-98,323-342`） | 同上 | 关页即丢 |
 | `providerConfigurations[providerID]` 写入的是 UI 永不修改的值（`:265`，`@State` 仅 `:32` 播种） | 同上 | 恒等回写 |
-| Shell Limits 以硬编码字符串展示「180 秒 · 16 进程 · 1 MB 输出 · 500 MB」 | `FamiliarSettingsHubView.swift:394`；真值在 `FamiliarShellExecutor.swift:138-151` | 必然漂移 |
+| ~~Shell Limits 硬编码字符串~~ | 已修复（2026-09-03，`633deb6`） | 改为从 `FamiliarShellLimits.iOS` 派生，不再可能与执行器实际限制漂移 |
 | Skill `allowedTools` 有数据契约与保留路径，但**没有任何控件**，新建恒为 `[]` | `FamiliarSettingsHubView.swift:585-586,636,699-700` | 能力无法配置 |
 
 ### P0 Settings 清单核对
@@ -154,14 +154,14 @@ hash 一致性在 commit 时校验：`imported.hash == output.contentHash`（`Fa
 | 2 | DeepSeek Key Keychain | 有 | 存 `:289`，删 `:346`，读 `FamiliarChatController.swift:222` |
 | 3 | 连通性测试 | 有 | `:126-135,302-321`；搜索侧 `FamiliarSearchSettingsView.swift:64-73,180-196` |
 | 4 | 默认模型 | 有（即唯一全局选择） | `FamiliarChatModels.swift:392-398,442` |
-| 5 | 每 Project 模型配置 | **缺失** | `FamiliarProjectContextAssembler.swift:188-189` 无条件读全局 settings；`FamiliarProject`（`FamiliarSchemaV3.swift:291`）无相关字段；无 UI |
-| 6 | Shell 超时 | **缺失** | 硬编码 `FamiliarShellExecutor.swift:138-140`；仅模型可传 `timeoutSeconds`（`FamiliarShellTool.swift:460-462`） |
-| 7 | 最大执行步数 | **缺失** | `FamiliarAgentLoop.swift:273-276` 默认值；`makeRuntime`（`FamiliarAppDependencies.swift:186-194`）**一个都不传**，只有测试覆盖（`FamiliarRuntimeTests.swift:238,282,318`） |
+| 5 | 每 Project 模型配置 | 已补齐（2026-09-03） | `FamiliarProject.modelIDOverride`（`nil` 表示跟随全局）+ Project 编辑器 Model picker；覆盖在 `requestSettings` 固定前应用，未知 ID 在服务边界拒绝、过期 ID 回落全局 |
+| 6 | Shell 超时 | 已补齐（2026-09-03） | `FamiliarShellTimeoutSettingsStore` 持久化，Shell Runtime 页 stepper；设置值同时是默认值与上限，模型只能请求更短 |
+| 7 | 最大执行步数 | 已补齐（2026-09-03） | `FamiliarExecutionBudget` 持久化于 `FamiliarSettings`，经 `makeRuntime` 传入 `FamiliarAgentLoop`；设置页 stepper 范围与 `normalized` 的钳制一致 |
 | 8 | 自动审批策略 | 部分 | 无策略控件；`FamiliarExecutionPolicy()` 零参构造（`FamiliarAppDependencies.swift:50`）；只有查看/撤销（`FamiliarSettingsHubView.swift:756,767`） |
 | 9 | 网络策略 | 部分 | 每 Workspace shell 联网开关真实生效（`:381` → `FamiliarShellTool.swift:216` → `FamiliarISHShellExecutor.swift:466-470`）；`web_search`/`web_fetch` 与 provider 出站无控制 |
-| 10 | Memory 开关与管理 | **缺失** | 无路由（`FamiliarSettingsHubView.swift:15-30`），无任何控件 |
-| 11 | Runtime 状态 | 部分 | 只有 Shell runtime（`:365-378,456-467`），无 Agent Runtime 状态 |
-| 12 | Diagnostics | **缺失** | 无视图、无路由、无符号 |
+| 10 | Memory 开关与管理 | 已补齐（2026-09-03） | `.memory` 路由；自动记忆开关、按 scope 与来源列出、编辑、删除、全部删除 |
+| 11 | Runtime 状态 | 已补齐（2026-09-03） | Shell runtime phase 之外，Diagnostics 页展示当前实际提供给模型的工具数与逐条不可用原因 |
+| 12 | Diagnostics | 已补齐（2026-09-03） | `.diagnostics` 路由；复用 `registry.availabilityReport()` 逐条展示不可用能力与具体原因，另附 Shell Runtime phase 与当前可用工具数 |
 | 13 | Logs | 部分 | Run History/Detail 只读（`:1126-1171,1188-1218`）；无原始日志捕获或导出 |
 | 14 | 数据导出 | **Settings 内缺失** | ShareLink 仅存在于 chat/Projects 的单个 artifact/attachment |
 | 15 | 数据清除 | **Settings 内缺失** | 仅能删 Skill、撤销授权；无「清除全部数据」 |

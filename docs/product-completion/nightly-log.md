@@ -4,6 +4,39 @@
 
 ---
 
+## 2026-09-03 · 第 6 轮：Shell 超时与审计清单回填
+
+### 已完成
+
+- **Shell 命令超时可配置**（`e6535cc`）：此前超时只硬编码在 `FamiliarShellLimits`，唯一能改变它的是模型传的 `timeoutSeconds`，设置里没有任何控件。新增 `FamiliarShellTimeoutSettingsStore` 与 Shell Runtime 页的 stepper，并接入 `boundedTimeout`。
+- 设置值同时是**默认值与上限**：用户调低限制是期望被遵守的，所以模型只能请求更短的超时，不能更长。此前的实现是「模型值优先、仅受硬上限约束」，用户设置会被模型直接绕过。
+- 读与写两侧都做钳制：旧版本留下或手工编辑的 defaults 条目会绕过 `save()`，只在写入侧钳制等于没有钳制。
+- **回填 `codebase-audit.md` 的 Settings 清单**：第 5、6、7、10、11、12 项与 3 条死控件记录已从「缺失」更新为已补齐并注明提交。剩余 3 条死控件（`Refresh models` 不持久化、`providerConfigurations` 恒等回写、Skill `allowedTools` 无控件）**经代码复核确认仍然存在**，因此保留原样，不做粉饰。
+
+### 修改文件
+
+`Familiar/Shell/FamiliarShellTool.swift`、`Familiar/Presentation/FamiliarSettingsHubView.swift`、中英 `Localizable.strings`、`FamiliarTests/FamiliarWorkspaceShellTests.swift`、`docs/product-completion/codebase-audit.md`、`state/ARCHITECTURE.md`。
+
+### 测试结果（已实际执行）
+
+- 受影响套件：24 tests / 3 suites 全部通过。
+- **全量套件通过**：`Scripts/run-release-test-suites.sh`，29 个 suite + `FamiliarUITests`，输出 `All release test suites passed`（退出码 0）。
+- 中英 `Localizable.strings` 经 `plutil -lint` 通过且 key 完全一致（798/798），`git diff --check` 通过。
+- 新增测试使用独立 `UserDefaults` suite，避免读写真实 App 设置；覆盖无存储值时取执行器默认、正常保存、超上限与低于下限两侧钳制，以及绕过 `save()` 的旧值在读取时仍被钳制。
+
+### 一次 flake（记录以免误判）
+
+全量套件第一次运行时 `FamiliarPersistenceReleaseTests` 以 `signal abrt before establishing connection` 失败——这是**启动期失败，不是断言失败**。单独重跑该套件 5/5 通过，随后整套全量重跑也通过。判定为 Simulator 启动 flake，非确定性失败；未据此修改任何代码。
+
+### 下一步最高优先级
+
+1. **Orchestrator 持久化执行状态**：cursor/invocation 仍只写不读。完整跨重启续跑需要 `resume(runID:)` 入口与可重建的消息历史，且涉及产品决策（自动续跑还是用户发起、pending 审批是否重新询问），需要确认后再实施。
+2. **Plan → Task → Step 真实状态机**。
+3. **Dynamic Type**：全仓库仍是 0 处适配。
+4. 剩余 3 条死控件：`Refresh models` 结果不持久化、`providerConfigurations` 恒等回写、Skill `allowedTools` 无控件。
+
+---
+
 ## 2026-09-03 · 第 5 轮：Diagnostics 与 `degraded` 决策
 
 ### 已完成
