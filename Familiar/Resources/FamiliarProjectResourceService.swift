@@ -102,6 +102,26 @@ struct FamiliarProjectResourceService {
         }
     }
 
+    func deleteAll(from project: FamiliarProject, in context: ModelContext) throws {
+        let resources = project.resources
+        guard !resources.isEmpty else { return }
+        var staged: [FamiliarStagedResourceDirectory] = []
+        do {
+            for resource in resources {
+                if let directory = try store.stageResourceDirectory(projectID: project.id, resourceID: resource.id) {
+                    staged.append(directory)
+                }
+            }
+            resources.forEach(context.delete)
+            try context.save()
+            for directory in staged { try store.discard(directory) }
+        } catch {
+            context.rollback()
+            for directory in staged.reversed() { try? store.restore(directory) }
+            throw error
+        }
+    }
+
     @discardableResult
     func importPastedText(
         _ text: String,

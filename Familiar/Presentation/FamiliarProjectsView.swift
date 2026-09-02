@@ -17,6 +17,7 @@ struct FamiliarProjectsView: View {
     private let onConversationRequest: ((FamiliarProjectConversationRequest) -> Void)?
     private let onSelectConversation: ((FamiliarConversation) -> Void)?
     private let onNewConversation: ((FamiliarProject) -> Void)?
+    private let onDeleteConversations: (([FamiliarConversation]) -> Void)?
 
     @State private var path: [UUID]
     @State private var editor: FamiliarProjectEditorDestination?
@@ -25,11 +26,13 @@ struct FamiliarProjectsView: View {
     init(
         initialProjectID: UUID? = nil,
         registry: FamiliarToolRegistry? = nil,
-        onConversationRequest: @escaping (FamiliarProjectConversationRequest) -> Void
+        onConversationRequest: @escaping (FamiliarProjectConversationRequest) -> Void,
+        onDeleteConversations: @escaping ([FamiliarConversation]) -> Void
     ) {
         self.initialProjectID = initialProjectID
         self.registry = registry
         self.onConversationRequest = onConversationRequest
+        self.onDeleteConversations = onDeleteConversations
         onSelectConversation = nil
         onNewConversation = nil
         _path = State(initialValue: initialProjectID.map { [$0] } ?? [])
@@ -44,6 +47,7 @@ struct FamiliarProjectsView: View {
         self.initialProjectID = initialProjectID
         self.registry = registry
         onConversationRequest = nil
+        onDeleteConversations = nil
         self.onSelectConversation = onSelectConversation
         self.onNewConversation = onNewConversation
         _path = State(initialValue: initialProjectID.map { [$0] } ?? [])
@@ -90,6 +94,7 @@ struct FamiliarProjectsView: View {
                         project: project,
                         registry: registry,
                         onConversationRequest: handleConversationRequest,
+                        onDeleteConversations: onDeleteConversations,
                         onEdit: { editor = .edit(project) },
                         onError: { errorMessage = $0 }
                     )
@@ -159,6 +164,7 @@ private struct FamiliarProjectDetailView: View {
     let project: FamiliarProject
     let registry: FamiliarToolRegistry?
     let onConversationRequest: (FamiliarProjectConversationRequest) -> Void
+    let onDeleteConversations: (([FamiliarConversation]) -> Void)?
     let onEdit: () -> Void
     let onError: (String) -> Void
 
@@ -197,7 +203,10 @@ private struct FamiliarProjectDetailView: View {
                     FamiliarProjectResourcesView(
                         resources: sortedResources,
                         onPreview: previewResource,
-                        onDelete: { resourceToDelete = $0 }
+                        onDelete: { resourceToDelete = $0 },
+                        onDeleteAll: {
+                            perform { try FamiliarProjectResourceService().deleteAll(from: project, in: modelContext) }
+                        }
                     )
                 }
             } footer: {
@@ -272,7 +281,8 @@ private struct FamiliarProjectDetailView: View {
                 NavigationLink {
                     FamiliarProjectConversationsView(
                         conversations: sortedConversations,
-                        onSelect: { onConversationRequest(.open(conversationID: $0.id)) }
+                        onSelect: { onConversationRequest(.open(conversationID: $0.id)) },
+                        onDeleteAll: deleteAllConversations
                     )
                 } label: {
                     FamiliarProjectContextRow(
@@ -472,6 +482,12 @@ private struct FamiliarProjectDetailView: View {
     private var projectArtifacts: [FamiliarArtifact] {
         allArtifacts.filter { $0.projectID == project.id }
     }
+    private var deleteAllConversations: (() -> Void)? {
+        guard let onDeleteConversations else { return nil }
+        let project = project
+        return { onDeleteConversations(project.conversations) }
+    }
+
     private var sortedResources: [FamiliarResource] { project.resources.sorted { $0.updatedAt > $1.updatedAt } }
     private var sortedConversations: [FamiliarConversation] { project.conversations.sorted { $0.updatedAt > $1.updatedAt } }
     private var sortedRuns: [FamiliarAgentRun] { project.agentRuns.sorted { $0.startedAt > $1.startedAt } }
@@ -786,6 +802,9 @@ private struct FamiliarProjectResourcesView: View {
     let resources: [FamiliarResource]
     let onPreview: (FamiliarResource) -> Void
     let onDelete: (FamiliarResource) -> Void
+    let onDeleteAll: () -> Void
+
+    @State private var confirmsDeleteAll = false
 
     var body: some View {
         List(resources) { resource in
@@ -796,6 +815,33 @@ private struct FamiliarProjectResourcesView: View {
             )
         }
         .navigationTitle(String(localized: "resource.section"))
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(role: .destructive) {
+                    confirmsDeleteAll = true
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .disabled(resources.isEmpty)
+                .accessibilityLabel(String(localized: "resource.delete_all", defaultValue: "Delete All Resources"))
+                .accessibilityIdentifier("resource.deleteAll")
+            }
+        }
+        .confirmationDialog(
+            String(localized: "resource.delete_all.title", defaultValue: "Delete all resources?"),
+            isPresented: $confirmsDeleteAll,
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "common.delete_all", defaultValue: "Delete All"), role: .destructive) {
+                onDeleteAll()
+            }
+            Button(String(localized: "common.cancel"), role: .cancel) {}
+        } message: {
+            Text(String(
+                localized: "resource.delete_all.detail",
+                defaultValue: "Every document in this project, including all of their versions, will be removed."
+            ))
+        }
     }
 }
 
@@ -928,6 +974,9 @@ private struct FamiliarProjectArtifactRow: View {
 private struct FamiliarProjectConversationsView: View {
     let conversations: [FamiliarConversation]
     let onSelect: (FamiliarConversation) -> Void
+    let onDeleteAll: (() -> Void)?
+
+    @State private var confirmsDeleteAll = false
 
     var body: some View {
         List(conversations) { conversation in
@@ -940,6 +989,35 @@ private struct FamiliarProjectConversationsView: View {
             }
         }
         .navigationTitle(String(localized: "project.conversations"))
+        .toolbar {
+            if let onDeleteAll {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(role: .destructive) {
+                        confirmsDeleteAll = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .disabled(conversations.isEmpty)
+                    .accessibilityLabel(String(localized: "conversation.delete_all", defaultValue: "Delete All Chats"))
+                    .accessibilityIdentifier("conversation.deleteAll")
+                    .confirmationDialog(
+                        String(localized: "conversation.delete_all.title", defaultValue: "Delete all chats in this project?"),
+                        isPresented: $confirmsDeleteAll,
+                        titleVisibility: .visible
+                    ) {
+                        Button(String(localized: "common.delete_all", defaultValue: "Delete All"), role: .destructive) {
+                            onDeleteAll()
+                        }
+                        Button(String(localized: "common.cancel"), role: .cancel) {}
+                    } message: {
+                        Text(String(
+                            localized: "conversation.delete_all.detail",
+                            defaultValue: "Messages, attachments, and saved run history in these chats will be deleted from this iPhone."
+                        ))
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1005,7 +1083,32 @@ private struct FamiliarProjectRunRow: View {
 
 private struct FamiliarProjectRunDetailView: View {
     @Query(sort: \FamiliarRunSkillSnapshotRecord.sequence) private var allSkillSnapshots: [FamiliarRunSkillSnapshotRecord]
+    @Query private var activities: [FamiliarActivityRecord]
+    @Query private var approvals: [FamiliarApprovalRecord]
+    @Query private var results: [FamiliarToolResultRecord]
+    @Query private var invocations: [FamiliarToolInvocationRecord]
     let run: FamiliarAgentRun
+
+    init(run: FamiliarAgentRun) {
+        self.run = run
+        let runtimeID = run.runtimeID
+        _activities = Query(
+            filter: #Predicate<FamiliarActivityRecord> { $0.runtimeID == runtimeID },
+            sort: \FamiliarActivityRecord.sequence
+        )
+        _approvals = Query(
+            filter: #Predicate<FamiliarApprovalRecord> { $0.runtimeID == runtimeID },
+            sort: \FamiliarApprovalRecord.requestedAt
+        )
+        _results = Query(
+            filter: #Predicate<FamiliarToolResultRecord> { $0.runtimeID == runtimeID },
+            sort: \FamiliarToolResultRecord.createdAt
+        )
+        _invocations = Query(
+            filter: #Predicate<FamiliarToolInvocationRecord> { $0.runtimeID == runtimeID },
+            sort: \FamiliarToolInvocationRecord.startedAt
+        )
+    }
 
     var body: some View {
         List {
@@ -1019,6 +1122,39 @@ private struct FamiliarProjectRunDetailView: View {
                 if let finishedAt = run.finishedAt {
                     LabeledContent(String(localized: "project.run.finished", defaultValue: "Finished")) {
                         Text(finishedAt, format: .dateTime.year().month().day().hour().minute().second())
+                    }
+                }
+                if let reason = run.finishReason, !reason.isEmpty {
+                    LabeledContent(String(localized: "settings.runs.result", defaultValue: "Result"), value: reason)
+                }
+                if let finishedAt = run.finishedAt {
+                    LabeledContent(String(localized: "project.run.duration", defaultValue: "Duration")) {
+                        Text(finishedAt.timeIntervalSince(run.startedAt), format: .number.precision(.fractionLength(1)))
+                        + Text(" s")
+                    }
+                }
+            }
+
+            Section(String(localized: "project.run.steps", defaultValue: "Execution Steps")) {
+                if toolActivities.isEmpty {
+                    Text(String(localized: "settings.runs.no_activities", defaultValue: "No persisted activities"))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(toolActivities) { activity in
+                        FamiliarProjectRunStep(
+                            activity: activity,
+                            invocation: invocations.first { $0.activityID == activity.activityID },
+                            approval: approvals.first { $0.activityID == activity.activityID },
+                            result: results.first { $0.activityID == activity.activityID }
+                        )
+                    }
+                }
+            }
+
+            if !approvals.isEmpty {
+                Section(String(localized: "project.run.authorizations", defaultValue: "Authorizations")) {
+                    ForEach(approvals) { approval in
+                        FamiliarProjectRunApproval(approval: approval)
                     }
                 }
             }
@@ -1073,6 +1209,9 @@ private struct FamiliarProjectRunDetailView: View {
     }
 
     private var snapshot: FamiliarContextSnapshotRecord? { run.contextSnapshot }
+    private var toolActivities: [FamiliarActivityRecord] {
+        activities.filter { $0.kind == .tool }
+    }
     private var providerName: String {
         guard let snapshot else { return String(localized: "common.unknown", defaultValue: "Unknown") }
         return FamiliarProviderCatalog.descriptor(for: snapshot.providerID)?.displayName ?? snapshot.providerID
@@ -1101,6 +1240,174 @@ private struct FamiliarProjectRunDetailView: View {
         case .completed: String(localized: "project.run.status.completed", defaultValue: "Completed")
         case .cancelled: String(localized: "project.run.status.cancelled", defaultValue: "Cancelled")
         case .failed: String(localized: "project.run.status.failed", defaultValue: "Failed")
+        }
+    }
+}
+
+private struct FamiliarProjectRunStep: View {
+    let activity: FamiliarActivityRecord
+    let invocation: FamiliarToolInvocationRecord?
+    let approval: FamiliarApprovalRecord?
+    let result: FamiliarToolResultRecord?
+
+    var body: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: FamiliarSpacing.small) {
+                LabeledContent(String(localized: "project.run.step.call_id", defaultValue: "Call ID"), value: activity.toolCallID ?? String(localized: "common.unknown", defaultValue: "Unknown"))
+                LabeledContent(String(localized: "project.run.step.effect", defaultValue: "Effect"), value: activity.effect?.rawValue ?? FamiliarToolEffect.read.rawValue)
+                LabeledContent(String(localized: "project.run.started", defaultValue: "Started")) {
+                    Text(activity.startedAt, format: .dateTime.year().month().day().hour().minute().second())
+                }
+                if let endedAt = activity.endedAt {
+                    LabeledContent(String(localized: "project.run.finished", defaultValue: "Finished")) {
+                        Text(endedAt, format: .dateTime.year().month().day().hour().minute().second())
+                    }
+                }
+                if let invocation {
+                    LabeledContent(String(localized: "project.run.step.invocation", defaultValue: "Invocation"), value: invocation.state.rawValue)
+                    LabeledContent(String(localized: "project.run.step.arguments_hash", defaultValue: "Arguments hash")) {
+                        Text(invocation.argumentsHash)
+                            .font(.caption.monospaced())
+                            .textSelection(.enabled)
+                    }
+                }
+                if let failureCode = activity.failureCode {
+                    LabeledContent(String(localized: "project.run.step.failure_code", defaultValue: "Failure code"), value: failureCode)
+                    if let retryable = activity.failureRetryable {
+                        LabeledContent(String(localized: "project.run.step.retryable", defaultValue: "Retryable"), value: retryable ? String(localized: "common.yes", defaultValue: "Yes") : String(localized: "common.no", defaultValue: "No"))
+                    }
+                }
+                if let detail = activity.detail, !detail.isEmpty {
+                    Text(detail)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                if let approval {
+                    Divider()
+                    Label(authorizationSummary(approval), systemImage: "hand.raised")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                if let result {
+                    Divider()
+                    LabeledContent(String(localized: "project.run.step.payload", defaultValue: "Result payload"), value: result.payloadName)
+                    LabeledContent(String(localized: "project.run.step.payload_hash", defaultValue: "Payload hash")) {
+                        Text(result.payloadHash)
+                            .font(.caption.monospaced())
+                            .textSelection(.enabled)
+                    }
+                    if let envelope = try? JSONDecoder().decode(FamiliarToolResultEnvelope.self, from: Data(result.envelopeJSON.utf8)) {
+                        Text(envelope.summary)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .font(.caption)
+            .padding(.vertical, FamiliarSpacing.small)
+        } label: {
+            HStack(spacing: FamiliarSpacing.medium) {
+                Image(systemName: statusSymbol)
+                    .foregroundStyle(statusColor)
+                    .frame(width: FamiliarIconSize.standard)
+                VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
+                    Text(activity.toolName.map(FamiliarToolPresentationName.title) ?? activity.summary)
+                        .foregroundStyle(.primary)
+                    Text(activity.phase.rawValue)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private var statusSymbol: String {
+        switch activity.phase {
+        case .queued, .running: "circle.dotted"
+        case .awaitingApproval: "hand.raised.fill"
+        case .awaitingClarification: "questionmark.bubble"
+        case .succeeded: "checkmark.circle.fill"
+        case .failed: "exclamationmark.circle.fill"
+        case .cancelled: "xmark.circle"
+        case .undone: "arrow.uturn.backward.circle.fill"
+        }
+    }
+
+    private var statusColor: Color {
+        switch activity.phase {
+        case .succeeded: FamiliarAISurfaceColor.success
+        case .failed: FamiliarAISurfaceColor.failure
+        case .cancelled, .undone: .secondary
+        default: FamiliarTheme.accent
+        }
+    }
+
+    private func authorizationSummary(_ approval: FamiliarApprovalRecord) -> String {
+        if approval.automaticAuthorization {
+            return String(localized: "project.run.authorization.automatic", defaultValue: "Allowed by a remembered authorization")
+        }
+        guard approval.decision == .approved else {
+            return String(localized: "project.run.authorization.cancelled", defaultValue: "Cancelled by the user")
+        }
+        return approval.scope?.rawValue ?? FamiliarApprovalScope.once.rawValue
+    }
+}
+
+private struct FamiliarProjectRunApproval: View {
+    let approval: FamiliarApprovalRecord
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: FamiliarSpacing.small) {
+            HStack {
+                Label(FamiliarToolPresentationName.title(for: approval.toolName), systemImage: approval.automaticAuthorization ? "checkmark.shield.fill" : "hand.raised.fill")
+                    .font(.headline)
+                Spacer(minLength: 0)
+                Text(decisionTitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(approval.decision == .approved ? FamiliarAISurfaceColor.success : .secondary)
+            }
+            if let target = approval.target, !target.isEmpty {
+                Text(target)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(fields) { field in
+                LabeledContent(field.label, value: field.formattedValue)
+                    .font(.caption)
+            }
+            LabeledContent(String(localized: "project.run.authorization.risk", defaultValue: "Risk"), value: approval.risk.rawValue)
+                .font(.caption)
+            LabeledContent(String(localized: "project.run.authorization.scope", defaultValue: "Scope"), value: approval.scope?.rawValue ?? "-")
+                .font(.caption)
+            LabeledContent(String(localized: "project.run.authorization.allowed", defaultValue: "Allowed choices"), value: allowedDurations.map(\.rawValue).joined(separator: ", "))
+                .font(.caption)
+            Text(approval.consequence)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(approval.requestedAt, format: .dateTime.year().month().day().hour().minute().second())
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, FamiliarSpacing.xSmall)
+    }
+
+    private var fields: [FamiliarApprovalField] {
+        (try? JSONDecoder().decode([FamiliarApprovalField].self, from: Data(approval.orderedFieldsJSON.utf8))) ?? []
+    }
+
+    private var allowedDurations: [FamiliarAuthorizationDuration] {
+        (try? JSONDecoder().decode([FamiliarAuthorizationDuration].self, from: Data(approval.allowedAuthorizationDurationsJSON.utf8))) ?? []
+    }
+
+    private var decisionTitle: String {
+        if approval.automaticAuthorization {
+            return String(localized: "project.run.authorization.automatic.short", defaultValue: "Automatic")
+        }
+        return switch approval.decision {
+        case .approved: String(localized: "approval.sent", defaultValue: "Approved")
+        case .cancelled: String(localized: "settings.runs.cancelled", defaultValue: "Cancelled")
+        case nil: String(localized: "agent.status.awaiting_confirmation", defaultValue: "Awaiting approval")
         }
     }
 }
