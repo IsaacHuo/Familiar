@@ -1495,6 +1495,9 @@ final class FamiliarChatController {
             if let receipt = event.environmentReceipt {
                 try FamiliarProjectService().persistEnvironment(receipt, in: context)
             }
+            if let memoryWrite = event.memoryWrite {
+                try FamiliarMemoryService().persist(memoryWrite, in: context)
+            }
             if let skill = event.loadedSkill {
                 try runRecorder.recordLoadedSkill(
                     runtimeID: event.runID,

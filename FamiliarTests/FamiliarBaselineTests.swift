@@ -49,6 +49,8 @@ struct FamiliarBaselineTests {
         "present_recommendation",
         "present_insight",
         "ask_user",
+        "memory_search",
+        "memory_remember",
         "skill_list",
         "skill_read",
         "artifact_write",

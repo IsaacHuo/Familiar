@@ -92,6 +92,8 @@ struct FamiliarAppDependencies {
                 AnyFamiliarTool(FamiliarPresentRecommendationTool()),
                 AnyFamiliarTool(FamiliarPresentInsightTool()),
                 AnyFamiliarTool(FamiliarAskUserTool()),
+                AnyFamiliarTool(FamiliarMemorySearchTool()),
+                AnyFamiliarTool(FamiliarMemoryRememberTool()),
                 AnyFamiliarTool(FamiliarSkillListTool()),
                 AnyFamiliarTool(FamiliarSkillReadTool()),
                 AnyFamiliarTool(FamiliarArtifactWriteTool(store: FamiliarArtifactStore())),

@@ -717,6 +717,10 @@ nonisolated struct FamiliarToolContext: Sendable {
     let resources: [Resource]
     let attachments: [Attachment]
     let availableSkills: [FamiliarSkillSnapshot]
+    /// The memories the Context Compiler selected for this run, already inside the
+    /// prompt. Frozen like resources so the tool and the prompt cannot disagree about
+    /// what Familiar remembers mid-run.
+    let memories: [FamiliarContextMemory]
     private let progressReporter: ProgressReporter?
 
     init(
@@ -728,6 +732,7 @@ nonisolated struct FamiliarToolContext: Sendable {
         resources: [Resource] = [],
         attachments: [Attachment] = [],
         availableSkills: [FamiliarSkillSnapshot] = [],
+        memories: [FamiliarContextMemory] = [],
         progressReporter: ProgressReporter? = nil
     ) {
         self.runID = runID
@@ -738,6 +743,7 @@ nonisolated struct FamiliarToolContext: Sendable {
         self.resources = resources
         self.attachments = attachments
         self.availableSkills = availableSkills
+        self.memories = memories
         self.progressReporter = progressReporter
     }
 
@@ -757,8 +763,11 @@ nonisolated struct FamiliarToolExecutionResult: Sendable {
     let environmentReceipt: FamiliarEnvironmentReceipt?
     let loadedSkill: FamiliarSkillSnapshot?
     let deliverables: [FamiliarDeliverableSpec]
+    /// Set only by an approved memory write. Tools are `nonisolated` and have no
+    /// SwiftData access, so the row is persisted by the controller.
+    let memoryWrite: FamiliarMemoryWriteRequest?
 
-    init(envelope: FamiliarToolResultEnvelope, artifactIdentifier: String? = nil, sources: [FamiliarSource] = [], webCaptures: [FamiliarWebCapture] = [], artifact: FamiliarArtifactDescriptor? = nil, environmentReceipt: FamiliarEnvironmentReceipt? = nil, loadedSkill: FamiliarSkillSnapshot? = nil, deliverables: [FamiliarDeliverableSpec] = []) {
+    init(envelope: FamiliarToolResultEnvelope, artifactIdentifier: String? = nil, sources: [FamiliarSource] = [], webCaptures: [FamiliarWebCapture] = [], artifact: FamiliarArtifactDescriptor? = nil, environmentReceipt: FamiliarEnvironmentReceipt? = nil, loadedSkill: FamiliarSkillSnapshot? = nil, deliverables: [FamiliarDeliverableSpec] = [], memoryWrite: FamiliarMemoryWriteRequest? = nil) {
         self.envelope = envelope
         self.artifactIdentifier = artifactIdentifier
         self.sources = sources
@@ -767,6 +776,7 @@ nonisolated struct FamiliarToolExecutionResult: Sendable {
         self.environmentReceipt = environmentReceipt
         self.loadedSkill = loadedSkill
         self.deliverables = deliverables
+        self.memoryWrite = memoryWrite
     }
 
     var modelContent: String { envelope.modelContent }

@@ -136,4 +136,82 @@ struct FamiliarMemoryTests {
         #expect(selected.map(\.id) == [long.id, short.id])
         #expect(selected.reduce(0) { $0 + $1.content.count } <= FamiliarProjectContextAssembler.maximumMemoryCharacters)
     }
+
+    @Test("memory_remember proposes rather than writes, and only persists after approval")
+    func rememberRequiresApproval() async throws {
+        let project = UUID()
+        let context = FamiliarToolContext(runID: "run-1", toolCallID: "call-1", projectID: project)
+        let outcome = try await FamiliarMemoryRememberTool().execute(.init(content: "Prefers metric units", scope: nil), context: context)
+
+        guard case .action(let proposal) = outcome else {
+            Issue.record("memory_remember must return an approval proposal, never write directly")
+            return
+        }
+        // A session or long-term grant would let the Agent keep writing memory silently.
+        #expect(proposal.allowedAuthorizationDurations == [.once])
+        // No undo closure exists, so the card must not promise one.
+        #expect(proposal.undoPolicy == .unavailable)
+
+        let committed = try await proposal.commit()
+        let write = try #require(committed.result.memoryWrite)
+        #expect(write.content == "Prefers metric units")
+        // Inside a Project the default scope is the Project, so preferences do not leak
+        // into unrelated work.
+        #expect(write.scope == .project)
+        #expect(write.projectID == project)
+    }
+
+    @Test("Secrets are refused before the approval card and never reach the store")
+    func sensitiveContentIsRefused() async throws {
+        let container = try FamiliarTestStore.make()
+        let modelContext = container.mainContext
+        let toolContext = FamiliarToolContext(runID: "run-1", toolCallID: "call-1")
+
+        // Refused at the tool boundary, so a secret is never shown back to the user as
+        // something Familiar is about to remember.
+        await #expect(throws: FamiliarMemoryError.self) {
+            _ = try await FamiliarMemoryRememberTool().execute(.init(content: "My api key is sk-abc123", scope: nil), context: toolContext)
+        }
+        // Also refused at the persistence boundary, so no other caller can bypass it.
+        #expect(throws: FamiliarMemoryError.self) {
+            try FamiliarMemoryService().insert(content: "密码是 hunter2", scope: .global, projectID: nil, conversationID: nil, provenance: "t", creator: .user, in: modelContext)
+        }
+        #expect(try modelContext.fetch(FetchDescriptor<FamiliarMemoryItem>()).isEmpty)
+    }
+
+    @Test("An ordinary chat remembers globally because no Project owns the memory")
+    func ordinaryChatFallsBackToGlobalScope() async throws {
+        let outcome = try await FamiliarMemoryRememberTool().execute(
+            .init(content: "Prefers dark mode", scope: "project"),
+            context: FamiliarToolContext(runID: "run-1", toolCallID: "call-1")
+        )
+
+        guard case .action(let proposal) = outcome else {
+            Issue.record("Expected an approval proposal")
+            return
+        }
+        let write = try #require(try await proposal.commit().result.memoryWrite)
+        #expect(write.scope == .global)
+        #expect(write.projectID == nil)
+    }
+
+    @Test("memory_search reads the frozen run context rather than re-querying the store")
+    func searchToolReadsFrozenContext() async throws {
+        let frozen = FamiliarContextMemory(id: UUID(), scope: .global, content: "Prefers metric units", provenance: "user", confidence: 1)
+        let context = FamiliarToolContext(runID: "run-1", toolCallID: "call-1", memories: [frozen])
+
+        let outcome = try await FamiliarMemorySearchTool().execute(.init(query: "metric"), context: context)
+        guard case .result(let result) = outcome else {
+            Issue.record("Expected a read result")
+            return
+        }
+        #expect(result.envelope.modelContent.contains("Prefers metric units"))
+
+        let miss = try await FamiliarMemorySearchTool().execute(.init(query: "unrelated"), context: context)
+        guard case .result(let empty) = miss else {
+            Issue.record("Expected a read result")
+            return
+        }
+        #expect(!empty.envelope.modelContent.contains("Prefers metric units"))
+    }
 }

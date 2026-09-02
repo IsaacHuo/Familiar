@@ -99,6 +99,7 @@ nonisolated struct FamiliarToolResultProduced: Sendable {
     let artifact: FamiliarArtifactDescriptor?
     let environmentReceipt: FamiliarEnvironmentReceipt?
     let loadedSkill: FamiliarSkillSnapshot?
+    let memoryWrite: FamiliarMemoryWriteRequest?
     let producedAt: Date
 
     init(
@@ -113,6 +114,7 @@ nonisolated struct FamiliarToolResultProduced: Sendable {
         artifact: FamiliarArtifactDescriptor?,
         environmentReceipt: FamiliarEnvironmentReceipt? = nil,
         loadedSkill: FamiliarSkillSnapshot? = nil,
+        memoryWrite: FamiliarMemoryWriteRequest? = nil,
         producedAt: Date
     ) {
         self.runID = runID
@@ -126,6 +128,7 @@ nonisolated struct FamiliarToolResultProduced: Sendable {
         self.artifact = artifact
         self.environmentReceipt = environmentReceipt
         self.loadedSkill = loadedSkill
+        self.memoryWrite = memoryWrite
         self.producedAt = producedAt
     }
 }
@@ -649,6 +652,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                 resources: resources,
                 attachments: attachments,
                 availableSkills: contextSnapshot.availableSkills,
+                memories: contextSnapshot.memories,
                 progressReporter: { progress in
                     let detail: String = switch progress {
                     case .status(let value): value
@@ -843,7 +847,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
             let finishedAt = Date()
             let completion = activityCompletion(runID: runID, call: call, manifest: manifest, assistantTurnID: assistantTurnID, detail: "", confirmation: resolved.1, status: .succeeded, startedAt: item.startedAt, finishedAt: finishedAt, artifactIdentifier: resolved.0.artifactIdentifier, undoAvailable: undoAvailable, automaticApprovalRequest: automaticApprovalRequest)
             await emitter.emit(.activityCompleted(completion))
-            await emitter.emit(.toolResultProduced(.init(runID: runID, toolCallID: call.id, toolName: call.name, effect: manifest.effect, assistantTurnID: assistantTurnID, envelope: resolved.0.envelope, sources: resolved.0.sources, webCaptures: resolved.0.webCaptures, artifact: resolved.0.artifact, environmentReceipt: resolved.0.environmentReceipt, loadedSkill: resolved.0.loadedSkill, producedAt: finishedAt)))
+            await emitter.emit(.toolResultProduced(.init(runID: runID, toolCallID: call.id, toolName: call.name, effect: manifest.effect, assistantTurnID: assistantTurnID, envelope: resolved.0.envelope, sources: resolved.0.sources, webCaptures: resolved.0.webCaptures, artifact: resolved.0.artifact, environmentReceipt: resolved.0.environmentReceipt, loadedSkill: resolved.0.loadedSkill, memoryWrite: resolved.0.memoryWrite, producedAt: finishedAt)))
             return .init(
                 index: item.index,
                 message: .tool(resolved.0.modelContent, toolCallID: call.id, name: call.name),
