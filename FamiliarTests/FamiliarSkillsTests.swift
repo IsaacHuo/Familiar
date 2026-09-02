@@ -39,6 +39,38 @@ struct FamiliarSkillsTests {
         }
     }
 
+    @Test("A Skill that lists no tools narrows nothing instead of stripping every tool")
+    func emptyAllowedToolsDoesNotNarrow() {
+        let available = [manifest("artifact_publish"), manifest("resource_read"), manifest("web_search")]
+
+        // The bundled example Skill and every Skill created in the editor ship with an
+        // empty list, so treating empty as "deny everything" left the model with no
+        // capabilities at all for the whole run.
+        let unrestricted = FamiliarSkillToolScope.manifests(
+            available: available,
+            skills: [skillSnapshot(id: "unrestricted", allowedTools: [])]
+        )
+        #expect(unrestricted.map(\.name) == ["artifact_publish", "resource_read", "web_search"])
+
+        // A declared list still narrows.
+        let narrowed = FamiliarSkillToolScope.manifests(
+            available: available,
+            skills: [skillSnapshot(id: "declared", allowedTools: ["resource_read"])]
+        )
+        #expect(narrowed.map(\.name) == ["resource_read"])
+
+        // Narrowing can only remove tools, so an unspecified list alongside a declared one
+        // must not widen the declared scope back open.
+        let mixed = FamiliarSkillToolScope.manifests(
+            available: available,
+            skills: [
+                skillSnapshot(id: "declared", allowedTools: ["resource_read"]),
+                skillSnapshot(id: "unrestricted", allowedTools: [])
+            ]
+        )
+        #expect(mixed.map(\.name) == ["resource_read"])
+    }
+
     @Test("Installed Skills resolve snapshots and updates keep identity")
     @MainActor
     func bindingResolutionAndStableHash() throws {
@@ -211,6 +243,17 @@ struct FamiliarSkillsTests {
             instructions: instructions,
             allowedTools: allowedTools,
             examples: []
+        )
+    }
+
+    private func skillSnapshot(id: String, allowedTools: [String]) -> FamiliarSkillSnapshot {
+        FamiliarSkillSnapshot(
+            stableID: id,
+            version: "1",
+            name: id.capitalized,
+            contentHash: "hash-\(id)",
+            instructions: "Fixture",
+            allowedTools: allowedTools
         )
     }
 

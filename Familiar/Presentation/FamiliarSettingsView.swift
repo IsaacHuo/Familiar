@@ -7,7 +7,6 @@ struct FamiliarModelServiceSettingsView: View {
     let onSaveSettings: (FamiliarSettings) -> Void
 
     @State private var settings: FamiliarSettings
-    @State private var configuration: FamiliarProviderConfiguration
     @State private var models: [FamiliarModelDescriptor]
     @State private var apiKey = ""
     @State private var hasAPIKey: Bool
@@ -23,7 +22,6 @@ struct FamiliarModelServiceSettingsView: View {
         self.initialSettings = initialSettings
         self.onSaveSettings = onSaveSettings
         _settings = State(initialValue: initialSettings)
-        _configuration = State(initialValue: initialSettings.providerConfiguration)
         _models = State(initialValue: initialSettings.selectedProvider.curatedModels)
         _hasAPIKey = State(initialValue: FamiliarKeychainStore.isConfigured(for: initialSettings.providerID))
     }
@@ -129,7 +127,10 @@ struct FamiliarModelServiceSettingsView: View {
     }
 
     private var currentDescriptor: FamiliarProviderDescriptor? {
-        FamiliarProviderCatalog.descriptor(for: settings.providerID, configuration: configuration)
+        FamiliarProviderCatalog.descriptor(
+            for: settings.providerID,
+            configuration: settings.providerConfiguration
+        )
     }
 
     private var providerDisplayName: String {
@@ -170,7 +171,8 @@ struct FamiliarModelServiceSettingsView: View {
         value.providerID = FamiliarProviderCatalog.deepSeek.id
         value.modelRoutePolicy = .cloud
         value.modelID = normalizedModelID
-        value.providerConfigurations[value.providerID] = configuration
+        // No provider configuration write: nothing in this screen can edit it, so writing
+        // the seeded value back was an identity round-trip that only looked like a save.
         return value
     }
 
@@ -228,6 +230,10 @@ struct FamiliarModelServiceSettingsView: View {
         }
     }
 
+    /// Checks live availability rather than caching a catalog. The fetched list is
+    /// deliberately not persisted: it is the intersection of curated IDs with what the
+    /// account can reach right now, and a stored copy would go stale and offer a model the
+    /// key no longer has access to. What does persist is the selection this can correct.
     private func refreshModels() {
         guard let descriptor = currentDescriptor else { return }
         let key = effectiveKey

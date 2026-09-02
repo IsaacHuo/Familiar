@@ -78,7 +78,15 @@ nonisolated enum FamiliarSkillToolScope {
     ) -> [FamiliarToolManifest] {
         let sorted = available.sorted { $0.name < $1.name }
         guard !skills.isEmpty else { return sorted }
-        let allowed = Set(skills.flatMap(\.allowedTools))
+        // A Skill that lists no tools has declared no restriction, so it must not narrow
+        // anything. Treating the empty set as "deny everything" stripped every tool from
+        // the run: the bundled example Skill and every Skill created in the editor ship
+        // with an empty list, so selecting one silently left the model with no capabilities
+        // at all. Narrowing can only ever remove tools, never add them, so ignoring an
+        // unspecified list grants nothing.
+        let declared = skills.filter { !$0.allowedTools.isEmpty }
+        guard !declared.isEmpty else { return sorted }
+        let allowed = Set(declared.flatMap(\.allowedTools))
         return sorted.filter { allowed.contains($0.name) }
     }
 }
