@@ -69,6 +69,13 @@ struct FamiliarEventKitPolicyTests {
         let registry = try FamiliarToolRegistry(tools: [AnyFamiliarTool(FamiliarCalendarEventsTool(service: denied))], capabilities: denied)
         #expect(await registry.manifests().isEmpty)
 
+        // The tool must not merely vanish: the concrete reason has to survive so the
+        // model can report the missing capability instead of guessing an alternative.
+        let report = await registry.availabilityReport()
+        #expect(report.manifests.isEmpty)
+        #expect(report.unavailable.map(\.name) == ["calendar_events"])
+        #expect(report.unavailable.first?.reason == "Denied")
+
         let failing = FamiliarFakeEventKitService()
         await failing.setFailsCommit()
         let outcome = try await FamiliarCreateCalendarEventTool(service: failing).execute(event, context: .init(runID: "run", toolCallID: "call"))

@@ -206,7 +206,7 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         }
     }
 
-    public enum TaskStatus: String, Codable, Equatable, Sendable {
+    public enum TaskStatus: String, Codable, Equatable, Sendable, CaseIterable {
         case pending
         case running
         case completed
@@ -243,7 +243,7 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         }
     }
 
-    public enum ConfidenceLevel: String, Codable, Equatable, Sendable {
+    public enum ConfidenceLevel: String, Codable, Equatable, Sendable, CaseIterable {
         case low
         case medium
         case high
@@ -546,6 +546,17 @@ nonisolated public enum FamiliarToolResultContractError: Error, Sendable {
     case invalidModelJSON
 }
 
+/// A tool error that carries a stable machine-readable code for the model.
+///
+/// `FamiliarAgentLoop.errorResult` used to hardcode an `as?` chain per error
+/// type, so every new domain error silently degraded to the generic runtime
+/// classification. Conforming here is the only thing required to keep a
+/// specific `code` and `retryable` flag.
+nonisolated protocol FamiliarStructuredToolError: Error, Sendable {
+    var code: String { get }
+    var isRetryable: Bool { get }
+}
+
 nonisolated public struct FamiliarToolFailure: Codable, Equatable, Sendable {
     public let code: String
     public let retryable: Bool
@@ -598,7 +609,7 @@ nonisolated public enum FamiliarApprovalUndoPolicy: String, Codable, Sendable {
     case durable
 }
 
-nonisolated enum FamiliarCapabilityRequirement: String, Codable, Hashable, Sendable {
+nonisolated enum FamiliarCapabilityRequirement: String, Codable, Hashable, Sendable, CaseIterable {
     case calendarFullAccess
     case remindersFullAccess
     case contactsRead
@@ -609,6 +620,57 @@ nonisolated enum FamiliarCapabilityRequirement: String, Codable, Hashable, Senda
     case musicCatalogRead
     case bluetoothScan
     case userNotifications
+    case alarmKit
+}
+
+/// Declares what shipping the capability requires so the compliance contract test
+/// can verify Info.plist, entitlements, localized strings and the privacy manifest
+/// mechanically instead of relying on a hand-maintained checklist.
+nonisolated extension FamiliarCapabilityRequirement {
+    /// `nil` means the system grants access through a runtime API with no plist key.
+    var usageDescriptionKey: String? {
+        switch self {
+        case .calendarFullAccess: "NSCalendarsFullAccessUsageDescription"
+        case .remindersFullAccess: "NSRemindersFullAccessUsageDescription"
+        case .contactsRead: "NSContactsUsageDescription"
+        case .locationWhenInUse: "NSLocationWhenInUseUsageDescription"
+        case .photoLibraryRead: "NSPhotoLibraryUsageDescription"
+        case .healthActivityRead: "NSHealthShareUsageDescription"
+        case .musicCatalogRead: "NSAppleMusicUsageDescription"
+        case .bluetoothScan: "NSBluetoothAlwaysUsageDescription"
+        // AlarmKit refuses to schedule anything when this key is missing or empty,
+        // so it is a hard shipping requirement rather than a courtesy string.
+        case .alarmKit: "NSAlarmKitUsageDescription"
+        case .weatherKit, .userNotifications: nil
+        }
+    }
+
+    /// `nil` means the capability needs no signed entitlement.
+    var entitlementKey: String? {
+        switch self {
+        case .weatherKit: "com.apple.developer.weatherkit"
+        case .healthActivityRead: "com.apple.developer.healthkit"
+        case .calendarFullAccess, .remindersFullAccess, .contactsRead, .locationWhenInUse,
+             .photoLibraryRead, .musicCatalogRead, .bluetoothScan, .userNotifications, .alarmKit: nil
+        }
+    }
+
+    /// Data types that reach a tool result and therefore must appear in
+    /// `NSPrivacyCollectedDataTypes`. Empty means the capability produces no
+    /// user data that leaves the framework boundary.
+    var privacyCollectedDataTypes: [String] {
+        switch self {
+        case .contactsRead: ["NSPrivacyCollectedDataTypeContacts"]
+        case .locationWhenInUse: ["NSPrivacyCollectedDataTypePreciseLocation"]
+        case .healthActivityRead: ["NSPrivacyCollectedDataTypeHealth", "NSPrivacyCollectedDataTypeFitness"]
+        case .photoLibraryRead: ["NSPrivacyCollectedDataTypePhotosorVideos"]
+        case .bluetoothScan: ["NSPrivacyCollectedDataTypeOtherDataTypes"]
+        // Alarm labels are content the user asked for, already covered by the
+        // declared OtherUserContent type; scheduling one collects nothing new.
+        case .calendarFullAccess, .remindersFullAccess, .musicCatalogRead,
+             .weatherKit, .userNotifications, .alarmKit: []
+        }
+    }
 }
 
 nonisolated enum FamiliarCapabilityAvailability: Equatable, Sendable {
@@ -785,6 +847,38 @@ nonisolated struct FamiliarToolAuthorizationAssessment: Equatable, Sendable {
     let risk: FamiliarToolRisk
     let reason: String
 
+    /// Ordered approval fields describing the concrete read scope. Sensitive
+    /// read tools override `preflight` to supply real values (day counts, item
+    /// limits, service UUIDs) so the confirmation card is not just the manifest
+    /// description. Empty means "fall back to the manifest description".
+    let fields: [FamiliarApprovalField]
+
+    /// What granting this read actually exposes. Empty falls back to `reason`.
+    let consequence: String
+
+    /// Stable key that scopes a persisted authorization for a read tool.
+    /// `argumentsHash` already covers every parameter, so reads use a constant
+    /// key unless a tool needs a coarser grouping.
+    let targetKey: String
+
+    init(
+        disposition: FamiliarToolAuthorizationDisposition,
+        effect: FamiliarToolEffect,
+        risk: FamiliarToolRisk,
+        reason: String,
+        fields: [FamiliarApprovalField] = [],
+        consequence: String = "",
+        targetKey: String = "default"
+    ) {
+        self.disposition = disposition
+        self.effect = effect
+        self.risk = risk
+        self.reason = reason
+        self.fields = fields
+        self.consequence = consequence
+        self.targetKey = targetKey
+    }
+
     static func manifestDefault(_ manifest: FamiliarToolManifest) -> Self {
         let disposition: FamiliarToolAuthorizationDisposition = manifest.effect == .read && manifest.risk != .high
             ? .automatic
@@ -891,6 +985,20 @@ nonisolated enum FamiliarToolRegistryError: LocalizedError, Sendable {
     }
 }
 
+/// A tool that exists in the registry but cannot be offered to the model right now,
+/// paired with the concrete reason. Callers must be able to tell the model what is
+/// missing and why instead of presenting a silently shorter tool list.
+nonisolated struct FamiliarUnavailableTool: Equatable, Sendable {
+    let name: String
+    let title: String
+    let reason: String
+}
+
+nonisolated struct FamiliarToolAvailabilityReport: Equatable, Sendable {
+    let manifests: [FamiliarToolManifest]
+    let unavailable: [FamiliarUnavailableTool]
+}
+
 actor FamiliarToolRegistry {
     private var toolsByName: [String: AnyFamiliarTool]
     private let capabilities: (any FamiliarCapabilityProviding)?
@@ -908,14 +1016,23 @@ actor FamiliarToolRegistry {
     }
 
     func manifests() async -> [FamiliarToolManifest] {
-        var result: [FamiliarToolManifest] = []
+        await availabilityReport().manifests
+    }
+
+    /// Keeps the reason a tool is unavailable instead of letting the tool silently
+    /// disappear from the model's tool list. A silently missing capability makes the
+    /// model guess an alternative rather than report that it cannot do the task.
+    func availabilityReport() async -> FamiliarToolAvailabilityReport {
+        var manifests: [FamiliarToolManifest] = []
+        var unavailable: [FamiliarUnavailableTool] = []
         for manifest in snapshot() {
-            guard case .unavailable = await availability(for: manifest) else {
-                result.append(manifest)
-                continue
+            if case .unavailable(let reason) = await availability(for: manifest) {
+                unavailable.append(.init(name: manifest.name, title: manifest.title, reason: reason))
+            } else {
+                manifests.append(manifest)
             }
         }
-        return result
+        return .init(manifests: manifests, unavailable: unavailable)
     }
 
     func snapshot() -> [FamiliarToolManifest] {

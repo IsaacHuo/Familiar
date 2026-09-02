@@ -63,6 +63,26 @@ struct FamiliarWP1Tests {
         #expect(FamiliarToolPresentation.symbol(for: "future_tool") == "wrench.and.screwdriver")
     }
 
+    @Test("Unavailable capabilities reach the system prompt with their real reason")
+    func unavailableCapabilitiesAreReported() throws {
+        let snapshot = try FamiliarProjectContextAssembler.assemble(
+            seed: .init(projectID: nil, projectName: nil, conversationID: UUID(), projectInstruction: nil, resources: []),
+            settings: .defaultValue,
+            messages: [],
+            toolManifests: [],
+            unavailableTools: [
+                .init(name: "shell_execute", title: "Run Command", reason: "Linux Runtime 尚未准备好。")
+            ]
+        )
+        let systemPrompt = try #require(snapshot.providerMessages.first?.networkText)
+
+        #expect(systemPrompt.contains("<unavailable_capabilities>"))
+        #expect(systemPrompt.contains("shell_execute"))
+        #expect(systemPrompt.contains("Linux Runtime 尚未准备好。"))
+        // A tool that is unavailable must never be offered as callable.
+        #expect(snapshot.exposedToolNames.isEmpty)
+    }
+
     @Test("Run recorder preserves the activity projection and terminal idempotence")
     @MainActor
     func runRecorderLifecycle() throws {

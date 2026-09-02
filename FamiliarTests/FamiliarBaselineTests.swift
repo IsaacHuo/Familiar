@@ -6,42 +6,102 @@ import Testing
 
 @Suite("Familiar baseline")
 struct FamiliarBaselineTests {
-    @Test("App dependencies register native tools before specialized tools")
+    /// Tools registered unconditionally by `FamiliarAppDependencies.init()`.
+    /// Asserted as a set: a full ordered list is a maintenance trap that silently
+    /// rots whenever a tool is added. Ordering is asserted structurally below.
+    static let unconditionallyRegisteredToolNames: Set<String> = [
+        "current_date_time",
+        "app_information",
+        "map_search",
+        "weather_forecast",
+        "weather_history",
+        "natural_language_analyze",
+        "health_activity_summary",
+        "music_catalog_search",
+        "bluetooth_scan",
+        "notification_schedule",
+        // Registered unconditionally even though AlarmKit needs iOS 26: `snapshot()`
+        // does not filter by availability, only `manifests()` does. On iOS 18 these
+        // exist in the registry but never reach the model.
+        "alarm_schedule",
+        "alarm_cancel",
+        "alarm_list",
+        "web_search",
+        "web_fetch",
+        "resource_list",
+        "resource_read",
+        "resource_search",
+        "workspace_list",
+        "workspace_read",
+        "workspace_search",
+        "workspace_write",
+        "workspace_image_list",
+        "photos_save_output",
+        "photos_recent_metadata",
+        "prepare_file_export",
+        "familiar_search",
+        "contacts_search",
+        "current_location",
+        "clipboard_read",
+        "clipboard_write",
+        "prepare_share",
+        "task_plan",
+        "present_recommendation",
+        "present_insight",
+        "ask_user",
+        "skill_list",
+        "skill_read",
+        "artifact_write",
+        "artifact_edit",
+        "artifact_publish",
+        // Reads only the on-disk Environment receipt, so it must never be gated on
+        // the iSH guest booting: a missing rootfs previously meant it was never
+        // registered at all.
+        "environment_status",
+        "calendar_events",
+        "create_calendar_event",
+        "update_calendar_event",
+        "delete_calendar_event",
+        "reminders",
+        "create_reminder",
+        "update_reminder",
+        "delete_reminder"
+    ]
+
+    /// Registered only after the bundled iSH runtime prepares successfully, so a
+    /// snapshot may or may not contain them depending on timing and platform.
+    static let conditionallyRegisteredToolNames: Set<String> = [
+        "environment_prepare",
+        "shell_execute"
+    ]
+
+    @Test("App dependencies register every unconditional tool exactly once")
     @MainActor
     func registeredToolNames() async {
         let dependencies = FamiliarAppDependencies()
-        let manifests = await dependencies.registry.snapshot()
-        let names = manifests.map(\.name)
-        #expect(names == [
-            "app_information",
-            "calendar_events",
-            "clipboard_read",
-            "clipboard_write",
-            "contacts_search",
-            "create_calendar_event",
-            "create_reminder",
-            "current_date_time",
-            "current_location",
-            "familiar_search",
-            "prepare_share",
-            "reminders",
-            "workspace_image_list",
-            "workspace_list",
-            "workspace_read",
-            "workspace_search",
-            "workspace_write",
-            "artifact_edit",
-            "artifact_write",
-            "ask_user",
-            "present_insight",
-            "present_recommendation",
-            "resource_list",
-            "resource_read",
-            "resource_search",
-            "task_plan",
-            "web_fetch",
-            "web_search"
-        ])
+        let names = await dependencies.registry.snapshot().map(\.name)
+        let unique = Set(names)
+
+        #expect(unique.count == names.count)
+        #expect(Self.unconditionallyRegisteredToolNames.isSubset(of: unique))
+        #expect(unique.subtracting(Self.unconditionallyRegisteredToolNames)
+            .isSubset(of: Self.conditionallyRegisteredToolNames))
+    }
+
+    @Test("Tool snapshot orders native tools before specialized and shell tools")
+    @MainActor
+    func registeredToolOrdering() async {
+        let manifests = await FamiliarAppDependencies().registry.snapshot()
+        let ranks = manifests.map(\.executionClass.preferenceRank)
+
+        #expect(ranks == ranks.sorted())
+
+        for rank in Set(ranks) {
+            let group = manifests
+                .filter { $0.executionClass.preferenceRank == rank }
+                .map(\.name)
+            #expect(group == group.sorted())
+        }
     }
 
     @Test("Provider catalog has stable unique identifiers")
@@ -332,15 +392,27 @@ struct FamiliarBaselineTests {
         #expect(!FamiliarAttachmentStore.isSafeRelativePath("Messages//file.pdf"))
     }
 
-    @Test("Execution policy confirms natural-language writes")
+    /// The policy is a pure gate: a write always reaches approval, and no policy
+    /// argument can pre-authorize it. Persisted authorization is matched later by
+    /// `FamiliarAuthorizationRuntime`, never here.
+    @Test("Execution policy always confirms writes and never self-authorizes")
     func executionPolicy() {
-        let manifest = FamiliarToolManifest(name: "write", title: "Write", description: "", parameters: .init(type: .object), effect: .reversibleWrite, risk: .low, requirements: [])
         let policy = FamiliarExecutionPolicy()
-        #expect(policy.decide(manifest: manifest, availability: .available, idempotencyKey: "run:call") == .requestApproval)
-        let token = FamiliarOneShotAuthorization(toolName: "write", idempotencyKey: "run:call", source: .appIntent)
-        #expect(policy.decide(manifest: manifest, availability: .available, authorization: token, idempotencyKey: "run:call") == .requestApproval)
-        let grant = FamiliarAuthorizationGrant(id: UUID(), userAction: "confirm", source: .builtIn, capabilityID: manifest.id, capabilityVersion: manifest.version, argumentsHash: FamiliarAuthorizationGrant.argumentsHash("{}"), projectID: nil, expiresAt: Date().addingTimeInterval(60), singleUse: true, evidence: "fixture", consumedAt: nil, state: .issued)
-        #expect(policy.decide(manifest: manifest, availability: .available, grant: grant, arguments: "{}", projectID: nil) == .execute)
+        let write = FamiliarToolManifest(name: "write", title: "Write", description: "", parameters: .object([:]), effect: .reversibleWrite, risk: .low, requirements: [])
+        #expect(policy.decide(manifest: write, availability: .available) == .requestApproval)
+
+        let destructive = FamiliarToolManifest(name: "destroy", title: "Destroy", description: "", parameters: .object([:]), effect: .destructiveWrite, risk: .low)
+        #expect(policy.decide(manifest: destructive, availability: .available) == .requestApproval)
+
+        let read = FamiliarToolManifest(name: "read", title: "Read", description: "", parameters: .object([:]), effect: .read, risk: .low)
+        #expect(policy.decide(manifest: read, availability: .available) == .execute)
+        #expect(policy.decide(manifest: read, availability: .requestable) == .requestApproval)
+
+        // A sensitive read must still be confirmed even once the capability is granted.
+        let sensitiveRead = FamiliarToolManifest(name: "read_health", title: "Read health", description: "", parameters: .object([:]), effect: .read, risk: .high)
+        #expect(policy.decide(manifest: sensitiveRead, availability: .available) == .requestApproval)
+
+        #expect(policy.decide(manifest: read, availability: .unavailable(reason: "denied")) == .deny("denied"))
     }
 
     @Test("Run and activity projection persist in the in-memory store") @MainActor

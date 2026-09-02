@@ -18,6 +18,7 @@ struct FamiliarAppDependencies {
     let music: FamiliarMusicService
     let naturalLanguage: FamiliarNaturalLanguageService
     let bluetooth: FamiliarBluetoothService
+    let alarm: FamiliarAlarmService
     let clipboard: FamiliarClipboardService
     let searchService: FamiliarWebSearchService
     let pythonPackageSourceSettings: FamiliarPythonPackageSourceSettingsStore
@@ -37,6 +38,7 @@ struct FamiliarAppDependencies {
         music = FamiliarMusicService()
         naturalLanguage = FamiliarNaturalLanguageService()
         bluetooth = FamiliarBluetoothService()
+        alarm = FamiliarAlarmService()
         clipboard = FamiliarClipboardService()
         let web = FamiliarWebContentService()
         searchService = FamiliarWebSearchService()
@@ -58,11 +60,15 @@ struct FamiliarAppDependencies {
                 AnyFamiliarTool(FamiliarAppInformationTool()),
                 AnyFamiliarTool(FamiliarMapSearchTool(service: map)),
                 AnyFamiliarTool(FamiliarWeatherForecastTool(service: weather)),
+                AnyFamiliarTool(FamiliarWeatherHistoryTool(service: weather)),
                 AnyFamiliarTool(FamiliarNaturalLanguageAnalyzeTool(service: naturalLanguage)),
                 AnyFamiliarTool(FamiliarHealthActivitySummaryTool(service: health)),
                 AnyFamiliarTool(FamiliarMusicCatalogSearchTool(service: music)),
                 AnyFamiliarTool(FamiliarBluetoothScanTool(service: bluetooth)),
                 AnyFamiliarTool(FamiliarScheduleNotificationTool()),
+                AnyFamiliarTool(FamiliarAlarmScheduleTool(service: alarm)),
+                AnyFamiliarTool(FamiliarAlarmCancelTool(service: alarm)),
+                AnyFamiliarTool(FamiliarAlarmListTool(service: alarm)),
                 AnyFamiliarTool(FamiliarWebSearchTool(service: searchService)),
                 AnyFamiliarTool(FamiliarWebFetchTool(service: web)),
                 AnyFamiliarTool(FamiliarResourceListTool()),
@@ -91,6 +97,7 @@ struct FamiliarAppDependencies {
                 AnyFamiliarTool(FamiliarArtifactWriteTool(store: FamiliarArtifactStore())),
                 AnyFamiliarTool(FamiliarArtifactEditTool(store: FamiliarArtifactStore())),
                 AnyFamiliarTool(FamiliarArtifactPublishTool(workspaceStore: workspaceStore)),
+                AnyFamiliarTool(FamiliarEnvironmentStatusTool(workspaceStore: workspaceStore)),
                 AnyFamiliarTool(FamiliarCalendarEventsTool(service: eventKit)),
                 AnyFamiliarTool(FamiliarCreateCalendarEventTool(service: eventKit)),
                 AnyFamiliarTool(FamiliarUpdateCalendarEventTool(service: eventKit)),
@@ -109,7 +116,8 @@ struct FamiliarAppDependencies {
                     photos: photoLibrary,
                     health: health,
                     music: music,
-                    bluetooth: bluetooth
+                    bluetooth: bluetooth,
+                    alarm: alarm
                 )
             )
         } catch {
@@ -124,9 +132,6 @@ struct FamiliarAppDependencies {
                 Task {
                     do {
                         try await shellRuntime.executor.prepare()
-                        try await registry.registerIfAbsent(AnyFamiliarTool(
-                            FamiliarEnvironmentStatusTool(workspaceStore: runtimeWorkspaceStore)
-                        ))
                         try await registry.registerIfAbsent(AnyFamiliarTool(
                             FamiliarEnvironmentPrepareTool(
                                 executor: shellRuntime.executor,

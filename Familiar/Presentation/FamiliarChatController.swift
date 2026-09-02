@@ -925,9 +925,10 @@ final class FamiliarChatController {
         var runOutcome: FamiliarRunOutcome?
         var separatesNextReasoningSummary = false
         do {
-            let availableManifests = settings.selectedModel.capabilities.supportsTools
-                ? await dependencies.registry.manifests()
-                : []
+            let availabilityReport = settings.selectedModel.capabilities.supportsTools
+                ? await dependencies.registry.availabilityReport()
+                : FamiliarToolAvailabilityReport(manifests: [], unavailable: [])
+            let availableManifests = availabilityReport.manifests
             let manifests = try FamiliarProjectService().filterCapabilities(
                 availableManifests,
                 projectID: contextSeed.projectID,
@@ -938,6 +939,7 @@ final class FamiliarChatController {
                 settings: settings,
                 messages: requestMessages,
                 toolManifests: manifests,
+                unavailableTools: availabilityReport.unavailable,
                 visualEvidence: visualEvidence
             )
             let agentLoop = dependencies.makeRuntime(
@@ -1270,9 +1272,31 @@ final class FamiliarChatController {
         guard availableUndoKeys.contains(key) else { return }
         Task {
             do {
+                let alarmDescriptor = FetchDescriptor<FamiliarAlarmUndoRecord>(predicate: #Predicate { $0.idempotencyKey == key })
                 let descriptor = FetchDescriptor<FamiliarEventKitUndoRecord>(predicate: #Predicate { $0.idempotencyKey == key })
                 let result: FamiliarToolExecutionResult
-                if let record = try context.fetch(descriptor).first {
+                // Rebuilt from the persisted record rather than the in-memory undo
+                // closure, which does not survive a relaunch. An alarm almost always
+                // outlives the session that scheduled it.
+                if let alarmRecord = try context.fetch(alarmDescriptor).first {
+                    guard alarmRecord.state == .available,
+                          let alarmID = UUID(uuidString: alarmRecord.alarmIdentifier)
+                    else { throw FamiliarAlarmError.unknownAlarm(alarmRecord.alarmIdentifier) }
+                    try await dependencies.alarm.cancel(id: alarmID)
+                    result = .init(envelope: try FamiliarToolResultEnvelope(
+                        model: AlarmUndoOutput(cancelled: true, alarmID: alarmRecord.alarmIdentifier),
+                        presentation: .mutationReceipt(.init(
+                            summary: String(localized: "alarm.receipt.cancelled", defaultValue: "Alarm cancelled"),
+                            operation: "alarmCancel",
+                            targetIdentifier: alarmRecord.alarmIdentifier,
+                            succeeded: true,
+                            undoAvailable: false
+                        ))
+                    ))
+                    alarmRecord.state = .undone
+                    alarmRecord.undoneAt = Date()
+                    try context.save()
+                } else if let record = try context.fetch(descriptor).first {
                     guard record.state == .available else { throw FamiliarEventKitError.undoUnavailable }
                     let mutationDescriptor = FetchDescriptor<FamiliarEventKitUndoMutationRecord>(predicate: #Predicate { $0.idempotencyKey == key })
                     if let mutation = try context.fetch(mutationDescriptor).first {
@@ -1311,15 +1335,33 @@ final class FamiliarChatController {
         }
     }
 
+    private struct AlarmUndoOutput: Encodable {
+        let cancelled: Bool
+        let alarmID: String
+    }
+
     private func persistDurableUndo(_ event: FamiliarRuntimeActivityCompletion, context: ModelContext) async {
         guard let identifier = event.artifactIdentifier else { return }
+        let key = event.runID + ":" + event.toolCallID
+        if event.toolName == "alarm_schedule" {
+            let descriptor = FetchDescriptor<FamiliarAlarmUndoRecord>(predicate: #Predicate { $0.idempotencyKey == key })
+            guard (try? context.fetch(descriptor).first) == nil else { return }
+            context.insert(FamiliarAlarmUndoRecord(
+                idempotencyKey: key,
+                runtimeID: event.runID,
+                toolCallID: event.toolCallID,
+                toolName: event.toolName,
+                alarmIdentifier: identifier
+            ))
+            try? context.save()
+            return
+        }
         let kind: FamiliarEventKitAccessKind
         switch event.toolName {
         case "create_calendar_event", "update_calendar_event", "delete_calendar_event": kind = .events
         case "create_reminder", "update_reminder", "delete_reminder": kind = .reminders
         default: return
         }
-        let key = event.runID + ":" + event.toolCallID
         let descriptor = FetchDescriptor<FamiliarEventKitUndoRecord>(predicate: #Predicate { $0.idempotencyKey == key })
         guard (try? context.fetch(descriptor).first) == nil else { return }
         context.insert(FamiliarEventKitUndoRecord(idempotencyKey: key, runtimeID: event.runID, toolCallID: event.toolCallID, toolName: event.toolName, kind: kind, calendarItemIdentifier: identifier))
@@ -1334,9 +1376,12 @@ final class FamiliarChatController {
     }
 
     private func reloadDurableUndo(in context: ModelContext) {
-        let records = (try? context.fetch(FetchDescriptor<FamiliarEventKitUndoRecord>())) ?? []
-        availableUndoKeys = Set(records.filter { $0.state == .available }.map(\.idempotencyKey))
-        completedUndoKeys = Set(records.filter { $0.state == .undone }.map(\.idempotencyKey))
+        let eventKitRecords = (try? context.fetch(FetchDescriptor<FamiliarEventKitUndoRecord>())) ?? []
+        let alarmRecords = (try? context.fetch(FetchDescriptor<FamiliarAlarmUndoRecord>())) ?? []
+        let states = eventKitRecords.map { ($0.idempotencyKey, $0.state) }
+            + alarmRecords.map { ($0.idempotencyKey, $0.state) }
+        availableUndoKeys = Set(states.filter { $0.1 == .available }.map(\.0))
+        completedUndoKeys = Set(states.filter { $0.1 == .undone }.map(\.0))
     }
 
     private func resetTransientRunState() {
