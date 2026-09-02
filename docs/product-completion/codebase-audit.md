@@ -167,7 +167,7 @@ hash 一致性在 commit 时校验：`imported.hash == output.contentHash`（`Fa
 | 15 | 数据清除 | **Settings 内缺失** | 仅能删 Skill、撤销授权；无「清除全部数据」 |
 | 16 | 主题 | 有 | `FamiliarTheme.swift:8,32-52`；应用于 `FamiliarRootView.swift:6,15` |
 | 17 | 动效开关 / Reduce Motion | 无控件，系统值已尊重 | 约 30 处 `accessibilityReduceMotion` |
-| 18 | Dynamic Type | **缺失** | 全仓库 0 处 `dynamicTypeSize`/`ScaledMetric`/`sizeCategory`；同时存在固定点数与固定 frame（如 `FamiliarSettingsHubView.swift:214-219`） |
+| 18 | Dynamic Type | 部分补齐（2026-09-03，`a1ec752`） | Composer 编辑器字号与其高度计算共享同一个 `@ScaledMetric`；设置行图标容器随标签缩放。其余固定点数经复核基本都是装饰容器或点击目标内的 SF Symbol，非正文；真机各字号档位排版未验收 |
 | 19 | 隐私说明 | 有 | `:172-177,1225-1241` |
 | 20 | About 与许可证 | 有 | `:1243-1276,1324-1333`（6 个 bundled license 文件） |
 

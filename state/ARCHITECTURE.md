@@ -156,7 +156,7 @@
 - `FamiliarSpeechTranscriber.swift` — `@MainActor`，`SFSpeechRecognizer` + `AVAudioEngine` 流式转写（工作树已改 async/await + sessionID 失效保护）。
 
 ### `Familiar/Support/`
-- `FamiliarTheme.swift` — 语义 spacing / typography / radius / icon / control tokens、基础 ButtonStyle，以及 iOS 26 `glassEffect`/material 回退 modifier。
+- `FamiliarTheme.swift` — 语义 spacing / typography / radius / icon / control tokens、基础 ButtonStyle，以及 iOS 26 `glassEffect`/material 回退 modifier。`FamiliarTypography` 全部使用可缩放的语义 Font 角色。固定点数只保留给装饰容器与点击目标内的 SF Symbol；正文类固定字号已改为 `@ScaledMetric`（Composer 编辑器），且其高度计算必须从同一个缩放值派生，否则渲染缩放字体而按固定 20pt 测量会裁掉用户自己的文本。
 - `FamiliarMotion.swift` — 集中 motion tokens（`micro/state/spatial/drawer`）与 `FamiliarHapticPolicy`（只标记 awaitingApproval/succeeded/failed 边界）。
 
 ### `Familiar/SystemEntry/`

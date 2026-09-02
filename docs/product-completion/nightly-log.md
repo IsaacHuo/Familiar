@@ -4,6 +4,40 @@
 
 ---
 
+## 2026-09-03 · 第 8 轮：Dynamic Type
+
+### 已完成
+
+- **Composer 编辑器字号改为可缩放**（`a1ec752`）：此前是固定 20pt，而全仓库 0 处 `ScaledMetric`/`dynamicTypeSize`/`sizeCategory`。现改为 `@ScaledMetric(relativeTo: .body)`。
+- 关键在于**高度计算必须从同一个缩放值派生**：该字号被六处布局计算引用（`lineHeight`、`effectiveTextHeight`、`isLongText`、`editorHeight`、`measuredHeight` 的 `boundingRect` 与其下界）。只缩放字体、仍按固定 20pt 测量，会在大字号档位裁掉用户自己输入的文本。因此 `lineHeight` 从静态常量改为由 `editorFontSize` 派生的计算属性，六处 `Self.` 引用一并改为实例引用。
+- 设置行图标容器也随标签缩放：固定 28pt 的方框放在会变大的文字旁边，大字号下字形会显得脱节。
+
+### 审计结论修正
+
+逐个复核固定点数后发现，`.font(.system(size:))` 的绝大多数命中是**位于装饰容器或点击目标内的 SF Symbol**（chevron、magnifyingglass、checkmark、camera.fill、thinking dot 里的 globe 等），并非正文；`frame(height:)` 的命中多为 hairline 分隔线。真正的固定字号正文只有 Composer 编辑器一处。原审计把「存在固定点数」直接等同于「Dynamic Type 缺失」，这个判断过粗，已在 `codebase-audit.md` 更正。
+
+### 修改文件
+
+`Familiar/Presentation/FamiliarComposerView.swift`、`Familiar/Presentation/FamiliarSettingsHubView.swift`、`FamiliarTests/FamiliarUIFeedbackTests.swift`。
+
+### 测试结果（已实际执行）
+
+- **单次调用跑完整个 target 通过：205 tests / 29 suites**（`-only-testing:FamiliarTests test-without-building`，退出码 0）。按第 7 轮记录的结论，一次跑完整个 target 可避开逐套件脚本的重复安装 flake。
+- 新增契约测试断言 Composer 使用 `@ScaledMetric`、`lineHeight` 由该值派生，且不再存在 `Self.editorFontSize` / `Self.lineHeight` 这类会与缩放值脱钩的引用。
+
+### 尚未验证
+
+各 Dynamic Type 档位（尤其 accessibility 档位）下的实际排版、截断与换行需真机验收；本轮只保证字号与布局计算共用同一个缩放来源，不保证极端档位的视觉效果。
+
+### 下一步最高优先级
+
+1. **Orchestrator 持久化执行状态**：cursor/invocation 仍只写不读。完整跨重启续跑需要 `resume(runID:)` 入口与可重建的消息历史，并涉及产品决策（自动续跑还是用户发起、pending 审批是否重新询问），需确认后实施。
+2. **Plan → Task → Step 真实状态机**。
+3. Skill `allowedTools` 的主动收窄控件（可选能力，不影响现有 Skill 可用）。
+4. 两个 Shell 生命周期枚举仍未合并为单一对外类型。
+
+---
+
 ## 2026-09-03 · 第 7 轮：Skill 工具收窄缺陷与剩余死控件
 
 ### 已完成

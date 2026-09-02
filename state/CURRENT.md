@@ -92,7 +92,7 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 - **Run 无跨重启续跑**：`RunResumeCursorRecord` 与 `ToolInvocationRecord` 只写不读，`recoverInterruptedRuns` 做的是终结而非恢复。统一状态词表中的 `paused` 与 `resumable` 没有任何真实产生路径，在实现续跑前不得出现在 UI 或文档中。
 - **没有 Plan → Task → Step 状态机**：`FamiliarRunPhase` 是展示标签，循环里没有该类型的状态变量或转移表；`task_plan` 产出的 `TaskList` 无任何调度器读取；交付物靠对最后一条用户消息做中英关键词匹配推断。
 - Runtime 不新增 `degraded` 状态（2026-09-03 决策）：`environment_status` 解除 guest 门控后，`failed(reason)` 已表示「guest 不可用但 receipt 仍可读」这一部分可用状态，再加一个 case 只是重命名、没有独立产生路径。真正缺的是把 `reason` 暴露给用户，已由设置中的 Diagnostics 页补齐。UI 侧与 iSH 内部两个生命周期枚举仍未合并为一个类型。
-- **Dynamic Type 全仓库 0 处适配**：无 `dynamicTypeSize`/`ScaledMetric`/`sizeCategory`，同时存在固定点数与固定 frame。
+- Dynamic Type 部分适配：Composer 编辑器字号与其高度计算已改为共享的 `@ScaledMetric`（此前是固定 20pt 且被六处布局计算引用），设置行图标容器随标签缩放。审计确认其余固定点数基本都是位于装饰容器或点击目标内的 SF Symbol，不是正文；真机上各字号档位的实际排版未验收。
 - Keychain 相关行为在验证构建中不可覆盖：`CODE_SIGNING_ALLOWED=NO` 使 test host 缺少 `application-identifier` entitlement，`SecItem*` 返回 `errSecMissingEntitlement (-34018)`。依赖 Keychain 的场景只能标记为 unverified。
 
 - Apple Framework 工具全部只完成编译与 fake-service 契约测试。WeatherKit 真实可用性额外依赖签名 entitlement 与 provisioning，Simulator 构建证明不了；`weather_history` 的历史覆盖与 Apple Weather 配额未在真实账户验证；HealthKit/PhotoKit/MusicKit/CoreBluetooth 需真实系统授权；AlarmKit 需 iOS 26.1 设备。
