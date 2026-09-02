@@ -141,10 +141,10 @@ hash 一致性在 commit 时校验：`imported.hash == output.contentHash`（`Fa
 |---|---|---|
 | ~~4 个完整构建但永不渲染的 section~~ | 已删除（2026-09-03，`633deb6`） | 连同随之失效的状态、hook 与 UIKit import 一并移除 |
 | ~~该页 `.task` 在未授权时静默关闭通知~~ | 已删除（2026-09-03，`633deb6`） | 该副作用随不可达 section 一并移除；Permissions 页的通知开关是唯一真实路径，未改动 |
-| `Refresh models` 拉取结果不持久化，只存 `@State`（`:14,89-98,323-342`） | 同上 | 关页即丢 |
-| `providerConfigurations[providerID]` 写入的是 UI 永不修改的值（`:265`，`@State` 仅 `:32` 播种） | 同上 | 恒等回写 |
+| ~~`Refresh models` 结果不持久化~~ | 已判定为正确行为（2026-09-03，`03399fc`） | 该按钮检查的是实时可用性（curated ID 与账号当前可达模型的交集），缓存一份反而会过期并提供 Key 已无权访问的模型。真正会持久化的是它能纠正的 `modelID` 选择，代码中已注明 |
+| ~~`providerConfigurations` 恒等回写~~ | 已删除（2026-09-03，`03399fc`） | 该页没有任何控件能编辑 provider configuration，把播种值原样写回只是看起来像保存；`currentDescriptor` 改为直接读 `settings.providerConfiguration` |
 | ~~Shell Limits 硬编码字符串~~ | 已修复（2026-09-03，`633deb6`） | 改为从 `FamiliarShellLimits.iOS` 派生，不再可能与执行器实际限制漂移 |
-| Skill `allowedTools` 有数据契约与保留路径，但**没有任何控件**，新建恒为 `[]` | `FamiliarSettingsHubView.swift:585-586,636,699-700` | 能力无法配置 |
+| Skill `allowedTools` 仍没有编辑控件，新建恒为 `[]` | `FamiliarSettingsHubView.swift:662,776` 保留既有值 | 不再是能力缺陷（2026-09-03，`03399fc`）：空列表此前会把整个 Run 收窄到零个工具，现已改为「未声明限制即不收窄」。缺的只是「主动收窄」这一可选能力，不影响任何现有 Skill 可用 |
 
 ### P0 Settings 清单核对
 

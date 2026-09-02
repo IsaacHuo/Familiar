@@ -4,6 +4,38 @@
 
 ---
 
+## 2026-09-03 · 第 7 轮：Skill 工具收窄缺陷与剩余死控件
+
+### 已完成
+
+- **修掉一个真实的能力剥夺缺陷**（`03399fc`）：`FamiliarSkillToolScope.manifests` 把可用工具过滤成所选 Skill `allowedTools` 的并集，因此一个「没有列出任何工具」的 Skill 会把整个 Run 收窄到**零个工具**。这不是边缘情况：内置的 `clear-writing` 示例 Skill 就带着空列表，设置里新建的每个 Skill 也都是空列表，所以从 Composer 选一个 Skill 会静默让模型在整轮里没有任何能力。
+- Agent Loop 的按需加载路径（`toolIsAllowedAfterLoadingSkill`）本就保留了一组 core 工具，也就是说两条收窄路径此前互相矛盾。现改为：未声明列表即未声明限制、不收窄；收窄只能移除工具、永不新增，所以忽略未声明的列表不会授予任何东西；同时另一个已声明列表的 Skill 不会因为它而被重新放开。
+- **移除 `providerConfigurations` 恒等回写**：该页没有任何控件能编辑 provider configuration，把播种值原样写回只是看起来像保存。`currentDescriptor` 改为直接读 `settings.providerConfiguration`。
+- **`Refresh models` 判定为正确行为而非死控件**：它检查的是实时可用性（curated ID 与账号当前可达模型的交集），缓存一份反而会过期并提供 Key 已无权访问的模型。真正会持久化的是它能纠正的 `modelID` 选择，已在代码中注明理由。
+
+### 修改文件
+
+`Familiar/Skills/FamiliarSkillService.swift`、`Familiar/Presentation/FamiliarSettingsView.swift`、`FamiliarTests/FamiliarSkillsTests.swift`、`docs/product-completion/codebase-audit.md`、`logs/per-suite-release-runs-flake-on-repeated-install.md`。
+
+### 测试结果（已实际执行）
+
+- 受影响套件：46 tests / 5 suites 全部通过。
+- **单次调用跑完整个 target 通过：204 tests / 29 suites**（`-only-testing:FamiliarTests test-without-building`）。
+- 新增测试覆盖三种情形：空列表不收窄、已声明列表仍收窄、已声明与未声明混合时不被重新放开。
+
+### 两次全量 flake（已记录为可复用日志）
+
+`Scripts/run-release-test-suites.sh` 连续两次在**不同套件**上失败，且都发生在 establishing connection 之前或路径含 `containermanagerd/Dead`——即安装的 App 在运行中被系统回收，属启动期失败而非断言失败。失败套件单独重跑均通过，单次调用整个 target 也通过 204/204。根因是该脚本对 29 个套件各发起一次调用，在同一 Simulator 上反复安装与卸载同一个 App，与回收产生竞争。按第二次失败即换方法的原则，改用单次调用整个 target 复核，并把判别方法写入 `logs/per-suite-release-runs-flake-on-repeated-install.md`；逐套件脚本保留，因为它能在某个套件让 test host 崩溃时隔离影响。
+
+### 下一步最高优先级
+
+1. **Orchestrator 持久化执行状态**：cursor/invocation 仍只写不读。完整跨重启续跑需要 `resume(runID:)` 入口与可重建的消息历史，并涉及产品决策（自动续跑还是用户发起、pending 审批是否重新询问），需确认后实施。
+2. **Plan → Task → Step 真实状态机**。
+3. **Dynamic Type**：全仓库仍是 0 处适配。
+4. Skill `allowedTools` 的主动收窄控件（可选能力，不影响现有 Skill 可用）。
+
+---
+
 ## 2026-09-03 · 第 6 轮：Shell 超时与审计清单回填
 
 ### 已完成
