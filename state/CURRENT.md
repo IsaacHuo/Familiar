@@ -88,7 +88,7 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 
 ## Known Problems
 
-- Artifact 版本已实现（`lineageID` + `version`，每版独立行与独立目录），但版本历史尚无 UI：Project 详情仍按单个 Artifact 列出，用户无法在界面上浏览或预览同一交付物的旧版本。`artifact_edit` 仍只保留同会话内存 undo，不产生新版本。
+- Artifact 版本已实现（`lineageID` + `version`，每版独立行与独立目录），Project 列表与首页摘要按谱系折叠、旧版本可进入历史页预览与分享。`artifact_edit` 仍只保留同会话内存 undo，不产生新版本；版本历史页的视觉与无障碍表现未真机验收。
 - **Run 无跨重启续跑**：`RunResumeCursorRecord` 与 `ToolInvocationRecord` 只写不读，`recoverInterruptedRuns` 做的是终结而非恢复。统一状态词表中的 `paused` 与 `resumable` 没有任何真实产生路径，在实现续跑前不得出现在 UI 或文档中。
 - **没有 Plan → Task → Step 状态机**：`FamiliarRunPhase` 是展示标签，循环里没有该类型的状态变量或转移表；`task_plan` 产出的 `TaskList` 无任何调度器读取；交付物靠对最后一条用户消息做中英关键词匹配推断。
 - **Runtime 缺少 `degraded` 状态**：UI 侧与 iSH 内部两个生命周期枚举互不同步，且都没有部分能力可用的表示。
@@ -117,11 +117,10 @@ Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是�
 
 ## Next
 
-1. **Artifact 版本历史 UI**：数据层已就绪（`lineageID` + `version`），但 Project 详情仍按单个 Artifact 列出，用户无法浏览或预览旧版本。
-2. **Orchestrator 持久化执行状态**：把已在写入的 cursor/invocation 真正读回，实现跨重启续跑；在此之前 `paused`/`resumable` 不得进入 UI 或文档。
-3. **Plan → Task → Step 真实状态机**：让 `task_plan` 产出的计划真正驱动执行，交付物不再靠关键词匹配推断。
-4. 连接 `hwf`，复用设备 Keychain 中的 DeepSeek Key，先验证签名安装、iSH 冷启动、Environment prepare 与离线 Shell；不导出或记录 API Key。
-5. 在 Project Chat 执行北京资料 Golden Task：真实 `web_search`/至少两次成功 `web_fetch` → `python-docx` → `artifact_publish` → AnyDoc receipt → Quick Look → Share to Files。
-6. 分别验证空环境冷启动、缓存环境和强制退出后重启；任何失败必须停在真实 phase，不能产生成功 Artifact 或虚假完成回答。
-7. 修复真实冒烟暴露的问题后冻结当前“唯一启用 Provider 为 DeepSeek”的 iOS 实验基线；分别记录构建、测试执行和真机结论。Search、Share、系统入口和无障碍继续按风险逐项验收，FastVLM 不进入本轮。
-8. Core AI、MCP 与后台执行保持在本版范围之外；不在本轮恢复本地路由 UI。Memory 已进入本版范围并完成运行时接线，仅剩真机打断体验验收。iSH/Shell 只修复真机验收暴露的问题，不扩展为宿主文件系统或 Native capability bridge。
+1. **Orchestrator 持久化执行状态**：把已在写入的 cursor/invocation 真正读回，实现跨重启续跑；在此之前 `paused`/`resumable` 不得进入 UI 或文档。
+2. **Plan → Task → Step 真实状态机**：让 `task_plan` 产出的计划真正驱动执行，交付物不再靠关键词匹配推断。
+3. 连接 `hwf`，复用设备 Keychain 中的 DeepSeek Key，先验证签名安装、iSH 冷启动、Environment prepare 与离线 Shell；不导出或记录 API Key。
+4. 在 Project Chat 执行北京资料 Golden Task：真实 `web_search`/至少两次成功 `web_fetch` → `python-docx` → `artifact_publish` → AnyDoc receipt → Quick Look → Share to Files。
+5. 分别验证空环境冷启动、缓存环境和强制退出后重启；任何失败必须停在真实 phase，不能产生成功 Artifact 或虚假完成回答。
+6. 修复真实冒烟暴露的问题后冻结当前“唯一启用 Provider 为 DeepSeek”的 iOS 实验基线；分别记录构建、测试执行和真机结论。Search、Share、系统入口和无障碍继续按风险逐项验收，FastVLM 不进入本轮。
+7. Core AI、MCP 与后台执行保持在本版范围之外；不在本轮恢复本地路由 UI。Memory 已进入本版范围并完成运行时接线，仅剩真机打断体验验收。iSH/Shell 只修复真机验收暴露的问题，不扩展为宿主文件系统或 Native capability bridge。

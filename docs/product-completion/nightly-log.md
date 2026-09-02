@@ -4,6 +4,43 @@
 
 ---
 
+## 2026-09-03 · 第 4 轮：Artifact 版本历史 UI
+
+### 已完成
+
+- **版本按谱系折叠**（`fd66666`）：版本落地后，原先平铺的 Artifact 列表会把同一交付物的 v3、v2、v1 显示成三个互不相关的 Artifact；项目首页摘要更糟，三个「最近产物」槽位会被同一个文件的三次修订占满。两处现在都按 `lineageID` 折叠为「一个交付物一行」，只展示最新版本。
+- 旧版本通过版本历史页进入，仍可预览与分享——每个版本保有自己的行与自己的字节，所以「能打开」不是新增能力，而是把已有事实暴露出来。
+- 版本号只在该谱系确实有历史时显示：给只有一个版本的交付物标上「v1」会暗示存在并不存在的修订。
+- 谱系分组用按 `lineageID` 的 `Identifiable` 包装类型，而不是在生产列表里对可能为空的分组做 `first!` 强解包。
+
+### 修改文件
+
+`Familiar/Presentation/FamiliarProjectsView.swift`、中英 `Localizable.strings`、`FamiliarTests/FamiliarUIFeedbackTests.swift`。
+
+### 测试结果（已实际执行）
+
+- 受影响套件：45 tests / 4 suites 全部通过。
+- **全量套件再次通过**：`Scripts/run-release-test-suites.sh`，29 个 suite + `FamiliarUITests`，输出 `All release test suites passed`（退出码 0）。
+- 中英 `Localizable.strings` 经 `plutil -lint` 通过且 key 完全一致（787/787），`git diff --check` 通过。
+- 新增契约测试断言两处分组都存在、历史页存在，且不存在 `id: \.first!.id` 这类强解包。
+
+### 尚未验证
+
+版本历史页的视觉、VoiceOver、Dynamic Type 与深色模式表现需真机验收（按当前阶段策略未启动 Simulator）。
+
+### 北京介绍 Word 闭环状态
+
+| 半程 | 结论 |
+|---|---|
+| 校验、发布、审计 | `verified-by-tests` |
+| 回读产物 | `verified-by-tests` |
+| 生成新版本 | 数据层与 UI 均 `verified-by-tests`；视觉 `device-unverified` |
+| 生产 DOCX | `device-unverified`，无原生 Swift OOXML writer，依赖 iSH guest |
+
+**剩余唯一阻塞是 DOCX 生产半程，且它只能在真机上验证。** 其余环节已无代码缺口。
+
+---
+
 ## 2026-09-03 · 第 3 轮：Artifact 版本
 
 ### 已完成
