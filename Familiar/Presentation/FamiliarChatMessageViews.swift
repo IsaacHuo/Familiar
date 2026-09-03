@@ -2155,19 +2155,20 @@ private struct FamiliarWriteReceipt: View {
 
             if let artifact = surface.artifact {
                 HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
-                    Button {
-                        previewURL = FamiliarArtifactStore().url(relativePath: artifact.relativePath)
-                    } label: {
-                        Label(artifact.title, systemImage: "doc.richtext")
-                            .font(.subheadline.weight(.medium))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(FamiliarAISurfaceColor.accentInk)
-                    Spacer()
-                    if let url = FamiliarArtifactStore().url(relativePath: artifact.relativePath) {
-                        ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
+                    // Plain content, not a button: the whole card is the tap target now, so a
+                    // second overlapping target doing the same thing would only shrink the one
+                    // the user actually aims at.
+                    Label(artifact.title, systemImage: "doc.richtext")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(FamiliarAISurfaceColor.accentInk)
+                    Spacer(minLength: 0)
+                    if let artifactURL {
+                        ShareLink(item: artifactURL) { Image(systemName: "square.and.arrow.up") }
                             .accessibilityLabel(String(localized: "common.share"))
                             .frame(minWidth: FamiliarControlSize.minimumHitTarget, minHeight: FamiliarControlSize.minimumHitTarget)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
                     }
                 }
             }
@@ -2187,9 +2188,28 @@ private struct FamiliarWriteReceipt: View {
         }
         .padding(FamiliarAISurfaceMetric.spaceM)
         .background(FamiliarAISurfaceColor.successTint, in: RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.card, style: .continuous))
+        // The whole card opens the deliverable. contentShape is required because the
+        // background shape alone does not make the padding tappable, which would leave
+        // most of the card visually inviting a tap that does nothing.
+        .contentShape(RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.card, style: .continuous))
+        .onTapGesture {
+            guard let artifactURL else { return }
+            previewURL = artifactURL
+        }
+        // Only announce the card as a button when there is a file to open; Undo and Share
+        // stay separate elements so VoiceOver can still reach them.
+        .accessibilityAddTraits(artifactURL == nil ? [] : .isButton)
         .sheet(isPresented: Binding(get: { previewURL != nil }, set: { if !$0 { previewURL = nil } })) {
             if let previewURL { FamiliarAttachmentPreviewView(url: previewURL, format: surface.artifact?.format) }
         }
+    }
+
+    /// Resolved once and reused by the row, the tap target and the accessibility traits.
+    /// It is `nil` when the file is missing, which is what keeps the card from presenting
+    /// itself as openable when there is nothing to open.
+    private var artifactURL: URL? {
+        guard let artifact = surface.artifact else { return nil }
+        return FamiliarArtifactStore().url(relativePath: artifact.relativePath)
     }
 
     private var authorizationSummary: String? {

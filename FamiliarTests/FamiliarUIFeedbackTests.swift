@@ -123,6 +123,29 @@ struct FamiliarUIFeedbackTests {
         #expect(hub.contains("@ScaledMetric(relativeTo: .body) private var rowIconContainer"))
     }
 
+    @Test("The whole artifact receipt card opens the deliverable")
+    func artifactReceiptCardIsTappable() throws {
+        let messages = try source("Familiar/Presentation/FamiliarChatMessageViews.swift")
+        let receipt = try section(
+            named: "private struct FamiliarWriteReceipt: View {",
+            endingAt: "private var authorizationSummary: String? {",
+            in: messages
+        )
+
+        // contentShape is required: the background shape alone does not make the padding
+        // tappable, which would leave most of the card visually inviting a dead tap.
+        #expect(receipt.contains(".contentShape(RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.card"))
+        #expect(receipt.contains(".onTapGesture {"))
+        // The title is plain content now: a second overlapping target doing the same thing
+        // only shrinks the one the user actually aims at.
+        #expect(!receipt.contains("Button {"))
+        // Announced as a button only when a file exists, so the card never claims to be
+        // openable with nothing to open.
+        #expect(receipt.contains("accessibilityAddTraits(artifactURL == nil ? [] : .isButton)"))
+        // Share stays a separate element rather than being swallowed by the card gesture.
+        #expect(receipt.contains("ShareLink(item: artifactURL)"))
+    }
+
     private func source(_ relativePath: String) throws -> String {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
