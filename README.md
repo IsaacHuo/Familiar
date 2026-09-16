@@ -1,3 +1,5 @@
+WORK IN PROGRESS | 未完成。未上架。
+
 <p align="center">
   <img src="website/public/assets/app-icon.png" width="112" alt="Familiar app icon">
 </p>
