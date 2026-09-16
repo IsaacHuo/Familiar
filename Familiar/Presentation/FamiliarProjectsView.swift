@@ -178,10 +178,15 @@ private struct FamiliarProjectDetailView: View {
 
     var body: some View {
         List {
-            Section {
-                FamiliarProjectHero(project: project)
-                projectActions
+            if !project.summary.isEmpty {
+                Section {
+                    FamiliarProjectHero(project: project)
+                }
             }
+
+            projectContextSection
+
+            artifactsSection
 
             Section {
                 if recentResources.isEmpty {
@@ -217,99 +222,6 @@ private struct FamiliarProjectDetailView: View {
                 }
             }
 
-            Section {
-                if recentArtifacts.isEmpty {
-                    emptyRow(
-                        String(localized: "artifact.empty", defaultValue: "No artifacts yet"),
-                        systemImage: "doc.badge.gearshape"
-                    )
-                } else {
-                    ForEach(recentArtifacts) { artifact in
-                        artifactRow(artifact)
-                    }
-                }
-            } header: {
-                FamiliarProjectSectionHeader(
-                    title: String(localized: "artifact.section", defaultValue: "Artifacts"),
-                    count: projectArtifacts.count,
-                    destination: {
-                        FamiliarProjectArtifactsView(
-                            artifacts: projectArtifacts,
-                            onPreview: previewArtifact,
-                            onDelete: { artifactToDelete = $0 }
-                        )
-                    }
-                )
-            }
-
-            Section(String(localized: "project.context", defaultValue: "Project Context")) {
-                NavigationLink {
-                    FamiliarProjectEnvironmentView(projectID: project.id)
-                } label: {
-                    FamiliarProjectContextRow(
-                        title: String(localized: "project.environment", defaultValue: "Environment"),
-                        detail: String(localized: "project.environment.detail", defaultValue: "Isolated Linux dependencies and verified lock"),
-                        symbol: "shippingbox",
-                        count: nil
-                    )
-                }
-
-                NavigationLink {
-                    FamiliarProjectSkillsView(projectID: project.id)
-                } label: {
-                    FamiliarProjectContextRow(
-                        title: String(localized: "settings.skills", defaultValue: "Skills"),
-                        detail: String(localized: "project.skills.context_detail", defaultValue: "Instruction-only Skills available for on-demand loading"),
-                        symbol: "wand.and.stars",
-                        count: nil
-                    )
-                }
-
-                if let registry {
-                    NavigationLink {
-                        FamiliarProjectCapabilitiesView(projectID: project.id, registry: registry)
-                    } label: {
-                        FamiliarProjectContextRow(
-                            title: String(localized: "project.capabilities", defaultValue: "Capabilities"),
-                            detail: String(localized: "project.capabilities.detail", defaultValue: "Tools this Project may expose to the Agent"),
-                            symbol: "switch.2",
-                            count: nil
-                        )
-                    }
-                }
-
-                NavigationLink {
-                    FamiliarProjectConversationsView(
-                        conversations: sortedConversations,
-                        onSelect: { onConversationRequest(.open(conversationID: $0.id)) },
-                        onDeleteAll: deleteAllConversations
-                    )
-                } label: {
-                    FamiliarProjectContextRow(
-                        title: String(localized: "project.conversations"),
-                        detail: String(
-                            localized: "project.conversations.context_detail",
-                            defaultValue: "Chats that share this project context"
-                        ),
-                        symbol: "bubble.left.and.bubble.right",
-                        count: sortedConversations.count
-                    )
-                }
-
-                NavigationLink {
-                    FamiliarProjectRunsView(runs: sortedRuns)
-                } label: {
-                    FamiliarProjectContextRow(
-                        title: String(localized: "project.runs", defaultValue: "Runs"),
-                        detail: String(
-                            localized: "project.runs.context_detail",
-                            defaultValue: "Execution history and frozen context"
-                        ),
-                        symbol: "bolt",
-                        count: sortedRuns.count
-                    )
-                }
-            }
         }
         .navigationTitle(project.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -414,30 +326,115 @@ private struct FamiliarProjectDetailView: View {
         }
     }
 
-    private var projectActions: some View {
-        Group {
-            if !sortedConversations.isEmpty {
-                primaryProjectAction
+    private var projectContextSection: some View {
+        Section(String(localized: "project.context", defaultValue: "Project Context")) {
+            // First item: the instruction used to live in the hero block above. It belongs
+            // here because it is project context, and tapping it opens the same editor that
+            // owns it rather than duplicating an editing surface.
+            Button(action: onEdit) {
+                FamiliarProjectContextRow(
+                    title: String(localized: "project.instruction"),
+                    detail: project.instruction?.text ?? String(localized: "project.instruction.empty"),
+                    symbol: "text.quote",
+                    count: nil
+                )
+            }
+            .buttonStyle(.plain)
+
+            NavigationLink {
+                FamiliarProjectEnvironmentView(projectID: project.id)
+            } label: {
+                FamiliarProjectContextRow(
+                    title: String(localized: "project.environment", defaultValue: "Environment"),
+                    detail: String(localized: "project.environment.detail", defaultValue: "Isolated Linux dependencies and verified lock"),
+                    symbol: "shippingbox",
+                    count: nil
+                )
+            }
+
+            NavigationLink {
+                FamiliarProjectSkillsView(projectID: project.id)
+            } label: {
+                FamiliarProjectContextRow(
+                    title: String(localized: "settings.skills.title", defaultValue: "Skills"),
+                    detail: String(localized: "project.skills.context_detail", defaultValue: "Instruction-only Skills available for on-demand loading"),
+                    symbol: "wand.and.stars",
+                    count: nil
+                )
+            }
+
+            if let registry {
+                NavigationLink {
+                    FamiliarProjectCapabilitiesView(projectID: project.id, registry: registry)
+                } label: {
+                    FamiliarProjectContextRow(
+                        title: String(localized: "project.capabilities", defaultValue: "Capabilities"),
+                        detail: String(localized: "project.capabilities.detail", defaultValue: "Tools this Project may expose to the Agent"),
+                        symbol: "switch.2",
+                        count: nil
+                    )
+                }
+            }
+
+            NavigationLink {
+                FamiliarProjectConversationsView(
+                    conversations: sortedConversations,
+                    onSelect: { onConversationRequest(.open(conversationID: $0.id)) },
+                    onDeleteAll: deleteAllConversations
+                )
+            } label: {
+                FamiliarProjectContextRow(
+                    title: String(localized: "project.conversations"),
+                    detail: String(
+                        localized: "project.conversations.context_detail",
+                        defaultValue: "Chats that share this project context"
+                    ),
+                    symbol: "bubble.left.and.bubble.right",
+                    count: sortedConversations.count
+                )
+            }
+
+            NavigationLink {
+                FamiliarProjectRunsView(runs: sortedRuns)
+            } label: {
+                FamiliarProjectContextRow(
+                    title: String(localized: "project.runs", defaultValue: "Runs"),
+                    detail: String(
+                        localized: "project.runs.context_detail",
+                        defaultValue: "Execution history and frozen context"
+                    ),
+                    symbol: "bolt",
+                    count: sortedRuns.count
+                )
             }
         }
     }
 
-    private var primaryProjectAction: some View {
-        Button {
-            if let conversation = sortedConversations.first {
-                onConversationRequest(.open(conversationID: conversation.id))
+    private var artifactsSection: some View {
+        Section {
+            if recentArtifacts.isEmpty {
+                emptyRow(
+                    String(localized: "artifact.empty", defaultValue: "No artifacts yet"),
+                    systemImage: "doc.badge.gearshape"
+                )
             } else {
-                onConversationRequest(.create(projectID: project.id))
+                ForEach(recentArtifacts) { artifact in
+                    artifactRow(artifact)
+                }
             }
-        } label: {
-            Label(
-                String(localized: "project.continue_chat", defaultValue: "Continue Chat"),
-                systemImage: "bubble.left.and.bubble.right"
+        } header: {
+            FamiliarProjectSectionHeader(
+                title: String(localized: "artifact.section", defaultValue: "Artifacts"),
+                count: projectArtifacts.count,
+                destination: {
+                    FamiliarProjectArtifactsView(
+                        artifacts: projectArtifacts,
+                        onPreview: previewArtifact,
+                        onDelete: { artifactToDelete = $0 }
+                    )
+                }
             )
-            .frame(maxWidth: .infinity, minHeight: FamiliarControlSize.minimumHitTarget)
         }
-        .buttonStyle(FamiliarPillButtonStyle(prominence: .primary))
-        .accessibilityIdentifier("project.continueChat")
     }
 
     private var resourceImportMenu: some View {
@@ -735,24 +732,12 @@ private struct FamiliarProjectHero: View {
     let project: FamiliarProject
 
     var body: some View {
-        VStack(alignment: .leading, spacing: FamiliarSpacing.medium) {
-            if !project.summary.isEmpty {
-                Text(project.summary)
-                    .font(FamiliarTypography.body)
-                    .foregroundStyle(.secondary)
-            }
-            VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                Label(String(localized: "project.instruction"), systemImage: "text.quote")
-                    .font(FamiliarTypography.caption.weight(.semibold))
-                    .foregroundStyle(FamiliarTheme.accent)
-                Text(project.instruction?.text ?? String(localized: "project.instruction.empty"))
-                    .font(FamiliarTypography.secondary)
-                    .foregroundStyle(project.instruction == nil ? .secondary : .primary)
-                    .lineLimit(4)
-            }
-        }
-        .padding(.vertical, FamiliarSpacing.small)
-        .accessibilityElement(children: .combine)
+        // Summary only: the instruction moved into Project Context, where it belongs, and
+        // showing it in both places would leave two things to keep in sync.
+        Text(project.summary)
+            .font(FamiliarTypography.body)
+            .foregroundStyle(.secondary)
+            .padding(.vertical, FamiliarSpacing.small)
     }
 }
 

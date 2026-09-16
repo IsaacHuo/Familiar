@@ -799,10 +799,10 @@
 "search.more" = "还有 %lld 条";
 "run.context.reply_time" = "回复时长";
 "run.context.first_token" = "首 token";
-"project.environment" = "Environment";
+"project.environment" = "运行环境";
 "project.environment.detail" = "项目独立的 Linux 依赖与已验证锁定清单";
-"project.skills.context_detail" = "供 Agent 按需加载的 instruction-only Skills";
-"project.capabilities" = "Capabilities";
+"project.skills.context_detail" = "供 Agent 按需加载的纯指令技能";
+"project.capabilities" = "可用能力";
 "project.capabilities.detail" = "这个 Project 可以向 Agent 暴露的工具";
 "environment.state" = "状态";
 "environment.python" = "Python";
