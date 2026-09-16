@@ -869,9 +869,11 @@ private struct FamiliarProjectResourceRow: View {
                     Image(systemName: latestVersion?.source == .fetchedWeb ? "link" : "doc.text")
                         .foregroundStyle(FamiliarTheme.accent)
                     VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                        Text(resource.displayName)
+                        Text(rowTitle)
                             .foregroundStyle(.primary)
-                            .lineLimit(2)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .accessibilityLabel(resource.displayName)
                         if let latestVersion {
                             Text(resourceDetail(latestVersion))
                                 .font(FamiliarTypography.caption)
@@ -893,6 +895,19 @@ private struct FamiliarProjectResourceRow: View {
             .buttonStyle(.borderless)
             .accessibilityIdentifier("resource.delete.\(resource.id.uuidString)")
         }
+    }
+
+    /// A web resource imported without a title falls back to its full URL as the display
+    /// name, which fills the row and pushes out the format and size. Shows the host plus a
+    /// short tail instead; the full address stays in the accessibility label.
+    private var rowTitle: String {
+        guard latestVersion?.source == .fetchedWeb,
+              let url = URL(string: resource.displayName),
+              let host = url.host
+        else { return resource.displayName }
+        let tail = url.pathComponents.filter { $0 != "/" }.last
+        guard let tail, !tail.isEmpty else { return host }
+        return "\(host)/\(String(tail.prefix(24)))"
     }
 
     private var latestVersion: FamiliarResourceVersion? {
