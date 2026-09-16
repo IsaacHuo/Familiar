@@ -787,6 +787,80 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
 
 }
 
+/// Explicit tool-name to category mapping, used by both the Project Capabilities screen
+/// and the Settings Tools list. Explicit rather than derived from `dataDomains` or name
+/// prefixes: those exist for policy and audit, and reusing them for grouping would make a
+/// display change silently alter what a domain means.
+nonisolated enum FamiliarToolCategory: String, CaseIterable, Sendable {
+    case basics
+    case calendarAndReminders
+    case placesAndWeather
+    case personalData
+    case web
+    case projectContent
+    case workspaceFiles
+    case memory
+    case planningAndInteraction
+    case clipboardAndSharing
+    case runtime
+    case other
+
+    var title: String {
+        switch self {
+        case .basics: String(localized: "tool.category.basics", defaultValue: "Basics")
+        case .calendarAndReminders: String(localized: "tool.category.calendar", defaultValue: "Calendar & Reminders")
+        case .placesAndWeather: String(localized: "tool.category.places", defaultValue: "Places & Weather")
+        case .personalData: String(localized: "tool.category.personal", defaultValue: "Personal Data")
+        case .web: String(localized: "tool.category.web", defaultValue: "Web")
+        case .projectContent: String(localized: "tool.category.project", defaultValue: "Project Resources & Artifacts")
+        case .workspaceFiles: String(localized: "tool.category.workspace", defaultValue: "Workspace Files")
+        case .memory: String(localized: "tool.category.memory", defaultValue: "Memory")
+        case .planningAndInteraction: String(localized: "tool.category.planning", defaultValue: "Planning & Interaction")
+        case .clipboardAndSharing: String(localized: "tool.category.clipboard", defaultValue: "Clipboard & Sharing")
+        case .runtime: String(localized: "tool.category.runtime", defaultValue: "Linux Runtime")
+        case .other: String(localized: "tool.category.other", defaultValue: "Other")
+        }
+    }
+
+    /// Unknown names fall into `.other` rather than being guessed from a prefix: a tool
+    /// added later should show up in a plain bucket instead of being silently filed under
+    /// a category it does not belong to.
+    static func category(for name: String) -> FamiliarToolCategory {
+        switch name {
+        case "current_date_time", "app_information", "familiar_search":
+            .basics
+        case "calendar_events", "create_calendar_event", "update_calendar_event", "delete_calendar_event",
+             "reminders", "create_reminder", "update_reminder", "delete_reminder",
+             "notification_schedule", "alarm_schedule", "alarm_cancel", "alarm_list":
+            .calendarAndReminders
+        case "map_search", "current_location", "weather_forecast", "weather_history":
+            .placesAndWeather
+        case "contacts_search", "health_activity_summary", "photos_recent_metadata",
+             "music_catalog_search", "bluetooth_scan", "natural_language_analyze":
+            .personalData
+        case "web_search", "web_fetch":
+            .web
+        case "resource_list", "resource_read", "resource_search",
+             "artifact_write", "artifact_edit", "artifact_read", "artifact_publish":
+            .projectContent
+        case "workspace_list", "workspace_read", "workspace_search", "workspace_write",
+             "workspace_image_list", "photos_save_output", "prepare_file_export":
+            .workspaceFiles
+        case "memory_search", "memory_remember":
+            .memory
+        case "task_plan", "present_recommendation", "present_insight", "ask_user",
+             "skill_list", "skill_read":
+            .planningAndInteraction
+        case "clipboard_read", "clipboard_write", "prepare_share":
+            .clipboardAndSharing
+        case "environment_status", "environment_prepare", "shell_execute":
+            .runtime
+        default:
+            .other
+        }
+    }
+}
+
 nonisolated enum FamiliarToolPresentationName {
     static func title(for name: String) -> String {
         switch name {

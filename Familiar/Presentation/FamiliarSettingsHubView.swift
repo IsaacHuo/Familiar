@@ -1212,23 +1212,34 @@ private struct FamiliarToolsSettingsView: View {
 
     var body: some View {
         List {
-            Section {
-                ForEach(entries) { entry in
-                    Label {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(entry.manifest.title)
-                            Text("\(executionClassLabel(entry.manifest.executionClass)) · \(availabilityLabel(entry.availability))")
-                                .font(.caption.monospaced())
-                                .foregroundStyle(.secondary)
+            // Grouped by the same explicit table the Project Capabilities screen uses, so the
+            // two screens cannot disagree about where a tool belongs.
+            ForEach(orderedCategories, id: \.self) { category in
+                let group = entries.filter { FamiliarToolCategory.category(for: $0.manifest.name) == category }
+                if !group.isEmpty {
+                    Section {
+                        ForEach(group) { entry in
+                            Label {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(entry.manifest.title)
+                                    Text("\(executionClassLabel(entry.manifest.executionClass)) · \(availabilityLabel(entry.availability))")
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(.secondary)
+                                }
+                            } icon: {
+                                Image(systemName: FamiliarToolPresentation.symbol(for: entry.manifest.name))
+                            }
                         }
-                    } icon: {
-                        Image(systemName: FamiliarToolPresentation.symbol(for: entry.manifest.name))
+                    } header: {
+                        Text(category.title)
+                    } footer: {
+                        // Only under the last group, so the explanation appears once rather
+                        // than repeating under every category.
+                        if category == orderedCategories.last {
+                            Text(String(localized: "settings.tools.registered.footer", defaultValue: "This read-only list shows each registered tool's execution class and current system-capability availability."))
+                        }
                     }
                 }
-            } header: {
-                Text(String(localized: "settings.tools.registered", defaultValue: "Registered Tools"))
-            } footer: {
-                Text(String(localized: "settings.tools.registered.footer", defaultValue: "This read-only list shows each registered tool's execution class and current system-capability availability."))
             }
         }
         .navigationTitle(String(localized: "settings.hub.tools", defaultValue: "Tools"))
@@ -1243,6 +1254,15 @@ private struct FamiliarToolsSettingsView: View {
                 ))
             }
             entries = values
+        }
+    }
+
+    /// Categories that actually have tools, in the enum's declaration order. Deriving the
+    /// order from the enum rather than from the registry keeps the screen from reshuffling
+    /// between launches, and it also gives the footer a single stable last section.
+    private var orderedCategories: [FamiliarToolCategory] {
+        FamiliarToolCategory.allCases.filter { category in
+            entries.contains { FamiliarToolCategory.category(for: $0.manifest.name) == category }
         }
     }
 

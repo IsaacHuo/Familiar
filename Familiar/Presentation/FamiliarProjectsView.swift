@@ -681,29 +681,45 @@ private struct FamiliarProjectCapabilitiesView: View {
     @State private var manifests: [FamiliarToolManifest] = []
 
     var body: some View {
-        List(manifests, id: \.id) { manifest in
-            Toggle(isOn: Binding(
-                get: { isEnabled(manifest.id) },
-                set: { enabled in
-                    try? FamiliarProjectService().setCapability(
-                        manifest.id,
-                        enabled: enabled,
-                        allCapabilityIDs: manifests.map(\.id),
-                        projectID: projectID,
-                        in: modelContext
-                    )
-                }
-            )) {
-                VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                    Text(manifest.title)
-                    Text(manifest.description).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+        List {
+            // Grouped by category so a 50-plus tool list is scannable. Category order comes
+            // from the enum's declaration order, not from whatever order the registry
+            // happens to return, so the screen does not reshuffle between launches.
+            ForEach(FamiliarToolCategory.allCases, id: \.self) { category in
+                let group = manifests.filter { FamiliarToolCategory.category(for: $0.name) == category }
+                if !group.isEmpty {
+                    Section(category.title) {
+                        ForEach(group, id: \.id) { manifest in
+                            capabilityToggle(manifest)
+                        }
+                    }
                 }
             }
-            .disabled(coreCapabilities.contains(manifest.name))
         }
         .navigationTitle(String(localized: "project.capabilities", defaultValue: "Capabilities"))
         .navigationBarTitleDisplayMode(.inline)
         .task { manifests = await registry.manifests() }
+    }
+
+    private func capabilityToggle(_ manifest: FamiliarToolManifest) -> some View {
+        Toggle(isOn: Binding(
+            get: { isEnabled(manifest.id) },
+            set: { enabled in
+                try? FamiliarProjectService().setCapability(
+                    manifest.id,
+                    enabled: enabled,
+                    allCapabilityIDs: manifests.map(\.id),
+                    projectID: projectID,
+                    in: modelContext
+                )
+            }
+        )) {
+            VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
+                Text(manifest.title)
+                Text(manifest.description).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            }
+        }
+        .disabled(coreCapabilities.contains(manifest.name))
     }
 
     private let coreCapabilities: Set<String> = ["task_plan", "ask_user", "skill_list", "skill_read", "environment_status"]
