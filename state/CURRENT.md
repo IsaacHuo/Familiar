@@ -1,12 +1,16 @@
 # Current State
 
-Last verified: 2026-09-02
+Last verified: 2026-09-27 (code and compilation; no runtime acceptance)
 
 ## Current Focus
 
-Product Convergence v1 已把现有能力收敛为统一产品模型：Chat 是主要交互与执行 Surface，Project 是长期 Context Workspace，单 Agent Runtime 是执行内核，原生 iPhone Capabilities 是执行能力。Chat 顶栏直接提供设置、普通/项目工作区切换、模型与新对话；工作区恢复该作用域最近更新的会话，没有历史时保持未持久化的空白会话。抽屉按置顶、可折叠项目和普通最近会话分区。Skill 可继续从 Composer 显式选择一次，也可绑定到 Project 后只常驻 metadata、由 Agent 在 planning 阶段按需加载一个；两条路径都不会自动全量注入。
+The first implementation stage of OpenMinis import and native UI convergence is closed. Full parity is not complete. The pinned reference and remaining work are tracked in [the import matrix](../docs/13-openminis-import-matrix.md).
 
-当前进入 Complex Task Runtime v1 真机收口。单一 iSH/Alpine 底层新增 Project 持久 Environment 与普通 Chat 临时 Environment，Agent 可通过声明式环境方案准备依赖；Project 可绑定按需加载的 instruction-only Skill 和 Capability。首个 Golden Task 固定为真实网页检索后生成、验证、预览并分享 DOCX。生产 UI 继续固定使用 DeepSeek BYOK；当前剩余门槛是真实 `hwf` 真机上的 iSH 冷启动、PyPI 安装、DeepSeek Tool Call、AnyDoc 验证、Quick Look 与系统分享。
+Chat remains the primary surface, Project the long-lived context workspace, and the single Familiar Agent Runtime the execution kernel. Daily Chat is now a protected default Project; old unassigned conversations are adopted without moving their files or rewriting historical Run snapshots. The top bar uses grouped compose/more actions and the app uses one native color/radius scale. The composer claims its interior touch area and disables drawer gestures while editing.
+
+Provider instances, four text wire protocols, Kimi Code/Codex/OpenRouter external login, model-group routing, HTTP MCP, imported voice adapters, app-level locking, manual compaction, branching, project moves, text export and usage have connected implementations. The app still has no Familiar account backend. No real-provider, Simulator execution, microphone, Face ID, or device visual acceptance is claimed. Cloud sync, backups, mounts, STDIO/MCP OAuth, remaining provider OAuth, source background behavior and full capability parity are unfinished.
+
+Existing uncommitted execution-runtime and skill-package work is retained. Real iSH/Alpine operation, entitlement-dependent native integrations and document-delivery acceptance still require device verification.
 
 ## Recently Completed
 

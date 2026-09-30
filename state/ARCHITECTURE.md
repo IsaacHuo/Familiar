@@ -2,6 +2,17 @@
 
 基于当前代码验证。目标是回答"现在代码实际上长什么样"；设计目标见 `docs/02-system-architecture.md`。
 
+## OpenMinis import status (2026-09-27)
+
+This import is partial. See [coverage and remaining work](../docs/13-openminis-import-matrix.md).
+
+- Daily Chat uses `FamiliarProject.dailyProjectID`; initialization adopts only unassigned conversations. Project settings share the existing implementation. Historical Run/ContextSnapshot provenance is not rewritten.
+- Conversation compaction stores a summary and sequence boundary while retaining original messages and attachment references. Editing/retrying invalidates the summary. Forks copy message content, source references and attachment files without copying approvals or executed actions.
+- Provider instance configuration and model groups are local settings; API keys and OAuth tokens use independent Keychain identities. Per-run route instances freeze members and use one Agent loop; actual group request choices and reported usage are stored on the Run.
+- HTTP MCP configurations use the existing MCP records; bindings resolve chat, project, then global enablement. The client discovers tools and the runtime snapshots a registry. All remote calls use high-risk one-time proposals regardless of server annotations.
+- Voice adapter source is namespaced from OpenMinis and feeds the existing editable composer/speech interface. App locking uses a scene-owned window above presented sheets and defers system-entry navigation while locked.
+- Native view colors use `FamiliarTheme`; radii use `FamiliarRadius`. No independent AI-surface palette remains. iOS 26 glass is availability-gated; iOS 18 and reduced transparency retain native fallback materials.
+
 ## 1. 技术基线
 
 | 领域 | 技术 |
@@ -41,7 +52,7 @@
   - Debug store 文件名 `FamiliarDevelopment.store`；Release store 文件名 `Familiar.store`。
   - 首次创建任何 store 都不自动清理旧 store 或文件目录。
   - 容器创建失败显示 `FamiliarStoreRecoveryView`，用户确认后删除当前 store、附件、项目资源与 Artifact，保留 Keychain。
-  - **`Familiar/App/FamiliarAppDependencies.swift`** — `@MainActor` DI 根。持有 ToolRegistry、执行/审批/clarification/model-escalation coordinator、Workspace、原生 capability services、Web 与 Apple Vision。`makeRuntime(for:)` 以 `ModelRouter` 组合当前 descriptor 与将来的 Core AI Provider，再注入单一 `FamiliarAgentLoop`，并把设置中持久化的 `FamiliarExecutionBudget`（步数/工具调用/时长）经 `normalized` 钳制后传入——此前这三个预算只是初始化器默认值，只有测试能覆写。当前 descriptor catalog 只有 DeepSeek；Runtime 不做供应商类型判断。
+  - **`Familiar/App/FamiliarAppDependencies.swift`** — `@MainActor` DI 根。持有 ToolRegistry、执行/审批/clarification/model-escalation coordinator、Workspace、原生 capability services、Web 与 Apple Vision。`makeRuntime(for:)` 以 `ModelRouter` 组合当前 descriptor 与将来的 Core AI Provider，再注入单一 `FamiliarAgentLoop`，并把设置中持久化的 `FamiliarExecutionBudget`（步数/工具调用/时长）经 `normalized` 钳制后传入——此前这三个预算只是初始化器默认值，只有测试能覆写。当前 descriptor catalog 包含独立供应商实例和冻结成员的模型分组；Runtime 不做供应商类型判断。MCP 为每次 Run 构造独立注册表，远程调用不进入共享全局注册表。
 
 ## 3. 模块清单
 
@@ -84,7 +95,7 @@
 - `FamiliarSharedDraftImportService.swift` — 从共享收件箱取下一项导入为附件草稿。
 
 ### `Familiar/Data/` — Provider 与密钥
-- `OpenAICompatibleClient.swift` — 通用 `FamiliarOpenAICompatibleModelProvider`（Chat Completions SSE）；当前 catalog/factory 只传入 DeepSeek descriptor，但 adapter、Tool Call、SSE 和错误合同不含 DeepSeek 专用分支。API Key 由 Provider 实例持有，不进入 Agent Runtime 合同。
+- `OpenAICompatibleClient.swift` — 通用 `FamiliarOpenAICompatibleModelProvider`（Chat Completions SSE）；factory 支持 OpenAI Chat/Responses、Anthropic 与 Gemini 协议，Kimi Code/Codex 刷新凭据后进入相同适配器；Tool Call、SSE 和错误合同由现有 Runtime 消费。API Key 由 Provider 实例持有，不进入 Agent Runtime 合同。
 - `FamiliarSSEParser.swift` — 仅测试 fixture 使用。
 - `FamiliarKeychainStore.swift` — service `com.isaachuo.familiar.provider-api-keys.v2`，account = providerID，空 Key 删除。
 - `FamiliarSearchKeychainStore.swift` — 独立 Search Provider service `com.isaachuo.familiar.search-provider-api-keys.v1`，account = Search Provider ID，不与模型 Key 共用。
@@ -95,7 +106,7 @@
 - `FamiliarChatModels.swift` — 消息/附件/来源与只含 activities/approvals/toolResults/responseBlocks/context 的 Run 快照、设置（UserDefaults `familiar.chat.settings.v2`）。
 - `FamiliarConversationMetadata.swift` — `FamiliarModelSwitchRecord`。
 - `FamiliarDeepLink.swift` — `familiar://new?text=`、`familiar://conversation/<UUID>`、`familiar://run/<UUID>`。
-- `FamiliarProviderCatalog.swift` — 对外只暴露 DeepSeek；旧第三方 Provider descriptor/fixture 已删除。
+- `FamiliarProviderCatalog.swift` — 保存独立供应商实例与模型能力；保留原有 DeepSeek 实例 ID 和钥匙串项。模型分组根据成员共同支持的能力计算输入边界。
 
 ### `Familiar/Workspace/`、`Familiar/Native/`、`Familiar/Shell/`
 - `FamiliarWorkspaceStore.swift` — Project/Conversation Workspace，Shell-visible Files/Outputs/Work/Environment，Metadata/Tasks/Checkpoints 不挂载；Project Environment 持久，Conversation Environment 随 task view 删除；路径穿越、symlink、配额、checkpoint/diff/restore 与 Environment 原子替换。
@@ -217,7 +228,7 @@ schema：`FamiliarReleaseSchema`（version `1.0.0`），当前 37 个实体；�
 | CapabilitySnapshotRecord, AuthorizationGrantRecord | CapabilitySnapshot 是（Run 启动）；AuthorizationGrantRecord 否 |
 | RunResumeCursorRecord, ToolInvocationRecord | 是（工具请求/审批/完成与终态 cursor；跨进程恢复未实现） |
 | AuthorizationRuleRecord, EventKitUndoRecord, VisualEvidenceRecord | 是（真实授权、跨重启 Undo、视觉证据） |
-| Skill, MemoryItem, MCPServerRecord, MCPBindingRecord | Skill 安装已写入；MemoryItem 由用户确认的 `memory_remember` 与设置页写入，并由 Context Compiler 读取；MCP Runtime 尚未接线 |
+| Skill, MemoryItem, MCPServerRecord, MCPBindingRecord | Skill 安装已写入；MemoryItem 由用户确认的 `memory_remember` 与设置页写入，并由 Context Compiler 读取；HTTP MCP 已接线；STDIO 与 MCP OAuth 未接线 |
 | RunSkillSnapshotRecord | 是（Run 启动时冻结 Skill ID/版本/hash/allowedTools） |
 | PinnedItemRecord | 是（项目/会话统一持久置顶） |
 | ActivityRecord, ToolResultRecord, ApprovalRecord, ResponseBlockRecord | 是（Assistant Turn 的活动、结构化结果、审批审计与回复块投影；ApprovalRecord 保存 allowedAuthorizationDurationsJSON，ActivityRecord 保存 failureCode/failureRetryable） |
@@ -284,18 +295,18 @@ MainActor 容器：`FamiliarChatController`、`FamiliarRunPersistenceRecorder`�
 
 ## 8. 已知缺口与未验证边界
 
-- iOS 1.0 设置固定 `.cloud`，只显示 DeepSeek Flash/Pro；App 直接进入 Chat，缺少 API Key 时由发送动作提示并提供设置入口。内部 `ModelRouter` 合同保留，但本地路由不进入生产 UI。
-- 当前没有生产视觉模型。图片在本机经 Apple Vision 转成有限证据文本，原始 bytes 不发送到 DeepSeek。
-- 当前开发机是 Xcode 26.6 / iOS 26.5 SDK；计划中的 Xcode 27 Core AI API、Qwen3-0.6B Core AI bundle、specialization 与真机断网流式对话尚不可编译/验收。`FamiliarCoreAIModelProvider` 目前只完成 SDK-neutral adapter contract。
+- iOS 1.0 设置固定 `.cloud`，显示供应商实例与模型分组；App 直接进入 Chat，缺少 API Key 时由发送动作提示并提供设置入口。内部 `ModelRouter` 合同保留，但本地路由不进入生产 UI。
+- 模型实例可声明图片输入能力，支持时直接发送图片；不支持时保留 Apple Vision 文本证据路径，DeepSeek 默认不发送图片 bytes。
+- 当前开发机已验证为 Xcode 27.0（27A266a）/ iOS Simulator 27.0 SDK；Core AI API、Qwen3-0.6B bundle、specialization 与真机断网流式对话未在本轮接通或验收。`FamiliarCoreAIModelProvider` 目前只完成 SDK-neutral adapter contract。
 - iSH fork 固定到 `54ca185b77f170e12fd353fcd7443232f6cb73fd`，Alpine 3.24.0 aarch64 fakefs、安装 identity、Project/Run Environment mount 与 headless bridge 已加入生产 target；真实 guest 冷启动、PyPI 安装、DOCX 生成和资源边界尚待 `hwf` 真机验收。
 - macOS 已直接编译链接 Containerization 0.33.4，并有可构造 networkless LinuxContainer 的 session/factory；Familiar runtime kernel/init/rootfs/persistent disk 的下载校验器与真实 VM 启动尚未完成。FamiliarMac 当前是原生 Codex 式 UI shell，未接入共享 SwiftData/Agent Runtime。
 - Workspace 的 Files 以 Attachment/Project Resource ContextSnapshot 虚拟投影，Outputs/Runtime 保持独立目录；不做重复物理迁移。未公开的 development store 不迁入首个 Release store，也不会被自动删除。
 - ToolInvocation/cursor、授权创建/消费均已接入；字节级中断续跑仍未实现。
-- Project Capability/Skill binding UI 已实现；Skill 仍为 instruction-only 且不支持目录导入、scripts/references/assets。Memory Runtime（工具、Context Compiler、设置页）已接线且有确定性测试，真机多轮任务的打断次数未人工验收。Remote MCP 未实现。
+- Project Capability/Skill binding UI 已实现；Skill 仍为 instruction-only 且不支持目录导入、scripts/references/assets。Memory Runtime（工具、Context Compiler、设置页）已接线且有确定性测试，真机多轮任务的打断次数未人工验收。HTTP MCP 已接入逐次审批；STDIO、MCP OAuth 与完整 schema 支持未完成。
 - 后台承接（`BGContinuedProcessingTask`，iOS 26+）未实现；当前无后台 Run 保证。
 - DeepSeek、Search Provider、EventKit 跨重启 Undo 与 Surface 视觉/无障碍仍缺真机验收；当前没有真实 Provider 冒烟结论。FastVLM 不进入当前验收范围。
 - WeatherKit、HealthKit、PhotoKit、MusicKit、CoreBluetooth、AlarmKit 全部只完成编译与 fake-service 契约测试。真实可用性额外依赖签名 entitlement 与 provisioning（WeatherKit）、真实系统授权（Health/Photos/Music/Bluetooth）与 iOS 26.1 设备（AlarmKit），Simulator 构建无法证明其中任何一项。`weather_history` 的历史覆盖范围与 Apple Weather 配额消耗未在真实账户上验证。
 - `alarm_schedule` 的 durable undo 已写入 `FamiliarAlarmUndoRecord` 并可从记录重建取消动作，但跨重启撤销未真机验证；闹钟已响铃后取消的系统行为未验证。
 - AlarmKit 只使用 alert-only presentation，因此不提供 countdown/paused 状态，也不新增 widget extension；重复闹钟、贪睡与 Live Activity 不在当前范围。
 - 敏感 read（health/photos/bluetooth）的仅这次/本会话授权已接入 Agent Loop 并有确定性测试，但真机上多轮任务的实际打断次数未人工验收。
-- Skills 已完成显式一次性 Context 注入、工具收窄与 Run 审计快照；不支持 scripts/references/assets。Memory Runtime tools 已实现；Remote MCP 与可靠后台承接仍未实现。
+- Skills 已完成显式一次性 Context 注入、工具收窄与 Run 审计快照；不支持 scripts/references/assets。Memory Runtime tools 已实现；HTTP MCP 已接入；STDIO/MCP OAuth 与可靠后台承接仍未实现。
