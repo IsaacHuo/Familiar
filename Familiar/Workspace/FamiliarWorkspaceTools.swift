@@ -30,7 +30,7 @@ nonisolated struct FamiliarWorkspaceListTool: FamiliarTool {
         }
         return .result(.init(envelope: try FamiliarToolResultEnvelope(
             model: items,
-            presentation: .recordCollection(.init(summary: "Workspace 中有 \(items.count) 个文件。", recordType: "workspaceFile", records: records))
+            presentation: .recordCollection(.init(summary: String(format: String(localized: "workspace.file_count"), items.count), recordType: "workspaceFile", records: records))
         )))
     }
 }

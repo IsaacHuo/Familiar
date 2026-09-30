@@ -99,8 +99,8 @@
 "settings.skills.detail" = "Instruction-only guidance available from the composer";
 "settings.skills.add" = "Add Skill";
 "settings.skills.empty" = "No installed skills";
-"settings.skills.empty.detail" = "Create an instruction-only Skill, then call it from the composer.";
-"settings.skills.footer" = "Skills contain instructions only. They cannot authorize actions or expand system access, and apply only when explicitly selected.";
+"settings.skills.empty.detail" = "Create or import a skill, then select it in the composer or project settings.";
+"settings.skills.footer" = "Skills can include instructions, scripts and references. They cannot grant permissions or authorize actions.";
 "settings.skills.delete" = "Delete";
 "settings.skills.name" = "Name";
 "settings.skills.identifier" = "Identifier";
@@ -403,7 +403,7 @@
 "empty.prompt.8" = "Help me write a thoughtful email";
 "empty.prompt.9" = "Plan a step-by-step learning path for me";
 "empty.prompt.10" = "Pull the key facts out of this information";
-"empty.configure" = "Configure API Key";
+"empty.configure" = "Configure Model Service";
 
 "attachment.choose_photos" = "Choose Photos";
 "attachment.close_photos" = "Close photo picker";
@@ -526,7 +526,7 @@
 "error.create_conversation" = "Couldn't create the conversation: %@";
 "error.delete_conversation" = "Couldn't delete the conversation: %@";
 "error.rename_conversation" = "Couldn't rename the conversation: %@";
-"error.api_key_missing" = "You need to add an API key first.";
+"error.api_key_missing" = "Enter an API key or sign in to the selected provider first.";
 "error.save_prompt" = "Couldn't save your message: %@";
 "error.save_settings" = "Couldn't save settings: %@";
 "error.edit_message" = "Couldn't edit the message: %@";
@@ -713,8 +713,8 @@
 "settings.permissions.requested" = "Requested";
 "settings.permissions.unsupported" = "Not Supported";
 "settings.permissions.health_footer" = "HealthKit never tells apps whether you denied a read request, so Familiar can only show whether it has asked. Missing values are never reported as zero.";
-"settings.shell.title" = "Shell Runtime";
-"settings.shell.detail" = "Alpine Linux in the current Familiar Workspace";
+"settings.shell.title" = "Execution Environment";
+"settings.shell.detail" = "File processing and dependencies for this workspace";
 "settings.shell.status" = "Runtime Status";
 "settings.shell.ready" = "Ready";
 "settings.shell.preparing" = "Preparing";
@@ -832,3 +832,178 @@
 "settings.python_source.index_url" = "Index URL";
 "settings.python_source.website" = "Source website and help";
 "settings.python_source.security" = "Changing the source affects future environment preparations only. Existing Project environments remain pinned to their recorded lock and source.";
+
+// Unified workspace and provider instances
+"project.error.protected" = "The Daily Chat project cannot be archived or deleted.";
+"provider.add" = "Add AI Provider";
+"provider.choose" = "Choose AI Provider";
+"provider.name" = "Name";
+"provider.endpoint" = "API URL";
+"provider.protocol" = "Protocol";
+"provider.tools" = "Tool calling";
+"provider.images" = "Image input";
+"provider.model_id" = "Model ID";
+"provider.use" = "Use for Current Chat";
+"provider.import" = "Import Provider Configuration";
+"provider.export" = "Export Provider Configuration";
+"provider.instances.footer" = "Add multiple instances of the same provider. Keys stay in this device's Keychain and requests go directly to your selected provider.";
+"provider.export.footer" = "Exports do not contain credentials. Enter your own key after import and confirm the model's capabilities.";
+"provider.openai" = "OpenAI / Compatible API";
+"provider.anthropic" = "Anthropic / Compatible API";
+"common.add" = "Add";
+"chat.compact" = "Compact Messages";
+"chat.compact.too_large" = "The history exceeds this model's input limit. Select a model with a larger context and try again.";
+"chat.clear" = "Clear Chat";
+"chat.clear.confirm" = "Clear messages, attachments and run history from this chat? Project resources will be kept.";
+"chat.files" = "Browse Chat Files";
+"chat.speech" = "Read Reply Aloud";
+"chat.speech.stop" = "Stop Reading";
+"chat.more" = "More Options";
+"message.operation_trace" = "Activity";
+"settings.hub.diagnostics" = "Diagnostics";
+
+// Connected provider and MCP flows
+"mcp.error.response" = "The MCP server returned an invalid response.";
+"mcp.error.schema" = "The input schema for %@ is not supported.";
+"mcp.error.tool" = "The remote tool failed.";
+"mcp.server" = "MCP Server";
+"mcp.arguments" = "Arguments";
+"mcp.consequence" = "These arguments will be sent to the remote server. The tool may change remote data and Familiar cannot undo the operation.";
+"mcp.scope.footer" = "Chat settings override project settings, which override global settings. Changes apply to the next run.";
+"mcp.add" = "Add MCP Server";
+"mcp.import" = "Import MCP JSON";
+"mcp.title" = "MCP Integrations";
+"mcp.session" = "MCPs in This Chat";
+"mcp.endpoint" = "Server HTTPS URL";
+"mcp.token" = "Access Token (optional)";
+"mcp.discover" = "Connect and Discover Tools";
+"mcp.import.unsupported" = "This flow supports HTTPS endpoints and bearer tokens. This configuration includes other connection methods. No servers were imported.";
+"mcp.settings.detail" = "Connect remote tools and control access by project and chat";
+"oauth.missing" = "Sign in to the provider first.";
+"oauth.expired" = "The login expired or timed out. Sign in again.";
+"oauth.sign_in" = "Sign In to Provider";
+"oauth.signed_in" = "Signed In";
+"oauth.sign_out" = "Sign Out";
+"oauth.device.instructions" = "Open the provider's page and enter this code to authorize access.";
+"oauth.open" = "Open Authorization Page";
+"oauth.waiting" = "Waiting for Authorization";
+"usage.title" = "Usage";
+"usage.input" = "Input Tokens";
+"usage.output" = "Output Tokens";
+"usage.cached" = "Cached Input Tokens";
+"usage.footer" = "Totals include only usage reported by the provider for this chat. Historical runs and some providers may not report usage. Costs are not estimated.";
+"usage.unreported" = "Not Reported";
+"attachment.error.image_encoding_failed" = "Could not encode the image.";
+"common.preview" = "Preview";
+"error.provider.invalid_custom_configuration" = "Invalid provider configuration.";
+"settings.skills" = "Skills";
+"share.destination.new_project" = "New Project";
+"share.destination.ordinary" = "Daily Chat";
+"share.destination.project" = "Project";
+"share.destination.title" = "Add To";
+"tool.web_fetch" = "Read Web Page";
+"tool.web_fetch.result" = "Read %@";
+"tool.web_search" = "Search the Web";
+"tool.web_search.results" = "Found %lld web results";
+"local_vision.error.archive" = "Could not unpack the model.";
+"local_vision.error.benchmark_required" = "Complete the model benchmark first.";
+"local_vision.error.device" = "This device does not support the model.";
+"local_vision.error.integrity" = "Model integrity verification failed.";
+"local_vision.error.storage" = "Not enough storage space.";
+"local_vision.error.timeout" = "Model processing timed out.";
+"workspace.file_count" = "%lld files in the workspace.";
+"workspace.invalid_path" = "Invalid workspace path.";
+"workspace.symlink" = "Workspace access through symbolic links is not allowed.";
+"workspace.missing" = "Workspace file not found.";
+"workspace.quota" = "Workspace storage exceeds the %lld-byte limit.";
+"workspace.checkpoint" = "Workspace checkpoint is unavailable.";
+"workspace.task_view" = "Invalid task workspace.";
+"skills.import" = "Import Skill Package";
+"skills.create" = "Create Skill";
+"chat.cloud.title" = "Switch to the Cloud Model?";
+"chat.cloud.continue" = "Continue with Cloud Model";
+
+// Voice, privacy and model routing
+"voice.title" = "Voice";
+"voice.providers" = "Voice Providers";
+"voice.add" = "Add Voice Provider";
+"voice.system" = "System Voice";
+"voice.input" = "Voice Input";
+"voice.output" = "Voice Output";
+"voice.input_model" = "Recognition Model (default if empty)";
+"voice.output_model" = "Synthesis Model (default if empty)";
+"voice.voice_id" = "Voice ID (default if empty)";
+"voice.remote.footer" = "Cloud voice input sends recordings to the selected provider; cloud output sends reply text. System input uses on-device recognition.";
+"voice.error.unsupported" = "This voice provider does not support the operation.";
+"voice.error.http" = "Voice request failed (HTTP %lld): %@";
+"voice.error.response" = "Could not read the voice provider response.";
+"voice.error.auth" = "Voice authentication failed. Check the key.";
+"voice.error.empty" = "There is no audio to play.";
+"voice.alibaba" = "Alibaba Bailian";
+"voice.doubao" = "Doubao";
+"voice.xunfei" = "iFlytek";
+"voice.link" = "Link";
+"voice.host_link" = "Link to %@";
+"lock.reason" = "Unlock your Familiar workspace";
+"lock.failed" = "Authentication did not succeed. Try again.";
+"lock.title" = "Familiar Is Locked";
+"lock.unlock" = "Unlock";
+"lock.setting" = "App Lock";
+"lock.footer" = "Lock the app when it enters the background; unlock with device authentication.";
+"group.title" = "Model Groups";
+"group.add" = "Add Model Group";
+"group.strategy" = "Routing";
+"group.fallback" = "Ordered Fallback";
+"group.balance" = "Balance by Chat";
+"group.any_error" = "Fall Back on Any Error";
+"group.members" = "Models";
+"group.detail" = "Model fallback and session routing";
+"group.footer" = "Reorder members to set priority. Fallback only occurs before any reply or tool call is emitted. Image, tool and context limits use the capabilities shared by all members.";
+
+"chat.branch" = "Branch Chat";
+
+"chat.branch.title" = "%@ · Branch";
+
+"chat.move" = "Move to Project";
+
+"chat.export" = "Export Chat Text";
+
+"chat.export.user" = "You";
+
+"chat.export.footer" = "The export includes message text, attachment names and source links. Attachment files and run approvals are not included.";
+
+"oauth.return" = "Authorization completed. You can return to Familiar.";
+
+"oauth.busy" = "Another sign-in is already in progress.";
+
+"tool.skill_install" = "Install Skill Package";
+
+"tool.memory_search" = "Search Memory";
+
+"tool.memory_remember" = "Remember a Preference or Fact";
+
+"tool.artifact_read" = "Read Artifact";
+
+"capability.read" = "Reads data within the authorized scope";
+
+"capability.sensitive" = "Confirms the scope before reading sensitive data";
+
+"capability.write" = "Changes are limited by the active authorization";
+
+"capability.destructive" = "High-risk operations require individual approval";
+
+"provider.subtitle.login" = "Sign in with your provider account";
+
+"provider.subtitle.router" = "Access GPT, Claude, Gemini and other models";
+
+"provider.subtitle.xai" = "Supports the Grok family of models";
+
+"provider.subtitle.kimi" = "Supports Kimi models and compatible APIs";
+
+"provider.subtitle.deepseek" = "Supports DeepSeek models";
+
+"provider.subtitle.anthropic" = "Supports Claude and Anthropic-compatible services";
+
+"provider.subtitle.gemini" = "Supports Gemini and Google AI Studio";
+
+"provider.subtitle.openai" = "Supports OpenAI, DeepSeek, Moonshot, Groq and compatible services";

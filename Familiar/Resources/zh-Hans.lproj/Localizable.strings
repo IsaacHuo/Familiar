@@ -21,8 +21,8 @@
 "common.collapsed" = "已折叠";
 
 "provider.validation.invalid_response" = "服务商返回了无法识别的响应。";
-"provider.validation.model_unavailable" = "当前 API Key 无法使用所选模型：%@";
-"provider.validation.rejected" = "%1$@ 验证失败（%2$ld）。请检查 API Key 和网络连接。";
+"provider.validation.model_unavailable" = "当前 API 密钥 无法使用所选模型：%@";
+"provider.validation.rejected" = "%1$@ 验证失败（%2$ld）。请检查 API 密钥 和网络连接。";
 
 "model.current" = "当前模型：%1$@，%2$@";
 
@@ -32,8 +32,8 @@
 "settings.model" = "模型";
 "settings.profile.name" = "Familiar 用户";
 "settings.subtitle" = "本地使用，无需账户";
-"settings.api_key.title" = "%@ API Key";
-"settings.api_key.footer" = "API Key 按服务商分别保存在当前设备的钥匙串。请求从设备直接发送到 %@。";
+"settings.api_key.title" = "%@ API 密钥";
+"settings.api_key.footer" = "API 密钥 按服务商分别保存在当前设备的钥匙串。请求从设备直接发送到 %@。";
 "settings.api_key.replace_placeholder" = "已配置；输入新值可替换";
 "settings.api_key.saved" = "已保存在此设备";
 "settings.api_key.missing" = "尚未配置";
@@ -57,17 +57,17 @@
 "settings.search.title" = "网页搜索";
 "settings.search.provider" = "搜索服务";
 "settings.search.routing" = "web_search 只使用当前选择的服务。请求失败时会直接返回错误，不会静默切换到其他服务。";
-"settings.search.key.footer" = "搜索 API Key 保存在独立的钥匙串服务中，不会与模型 Provider 共用。";
+"settings.search.key.footer" = "搜索 API 密钥 保存在独立的钥匙串服务中，不会与模型 Provider 共用。";
 "settings.search.validation.footer" = "连接验证会向当前搜索服务发送一次最小测试搜索。";
 "settings.search.privacy_cost" = "隐私与费用";
 "settings.search.privacy" = "搜索词会从此 iPhone 直接发送给 %@。搜索结果随后可能作为工具结果发送给你选择的模型 Provider。";
 "settings.search.cost.paid" = "%@ 可能按照其套餐、额度和定价向你的账户收费。";
-"settings.search.cost.duckduckgo" = "Familiar 使用 DuckDuckGo 时无需 API Key，其服务条款仍然适用。";
-"settings.search.cost.no_key" = "Familiar 使用 %@ 时无需 API Key，其服务条款仍然适用。";
+"settings.search.cost.duckduckgo" = "Familiar 使用 DuckDuckGo 时无需 API 密钥，其服务条款仍然适用。";
+"settings.search.cost.no_key" = "Familiar 使用 %@ 时无需 API 密钥，其服务条款仍然适用。";
 "settings.search.provider_website" = "查看服务网站与条款";
 "settings.hub.agent" = "智能体";
 "settings.hub.tools" = "工具";
-"settings.hub.tools.detail" = "Agent Runtime 当前注册的能力";
+"settings.hub.tools.detail" = "Agent 运行环境 当前注册的能力";
 "settings.hub.soul" = "灵魂";
 "settings.hub.soul.detail" = "人格与回答风格";
 "settings.hub.app" = "App";
@@ -81,7 +81,7 @@
 "settings.hub.support" = "隐私与支持";
 "settings.hub.privacy.detail" = "了解 Familiar 如何处理数据";
 "settings.hub.about" = "关于 Familiar";
-"error.web.search_api_key_missing" = "请先在网页搜索设置中添加 %@ API Key。";
+"error.web.search_api_key_missing" = "请先在网页搜索设置中添加 %@ API 密钥。";
 "settings.soul.editor" = "人格提示词";
 "settings.soul.personality" = "人格";
 "settings.soul.footer" = "这里会改变 Familiar 的语气和回答风格。工具权限与安全规则始终由 App 强制执行。";
@@ -91,7 +91,7 @@
 "settings.tools.registered.footer" = "这个只读列表显示每个已注册工具的执行分类和当前系统能力可用性。";
 "settings.tools.class.native" = "原生";
 "settings.tools.class.specialized" = "专用本地";
-"settings.tools.class.shell" = "Shell";
+"settings.tools.class.shell" = "命令执行";
 "settings.tools.availability.available" = "可用";
 "settings.tools.availability.requestable" = "需要权限";
 "settings.tools.availability.unavailable" = "不可用";
@@ -99,8 +99,8 @@
 "settings.skills.detail" = "可从输入框调用的纯指令能力";
 "settings.skills.add" = "添加技能";
 "settings.skills.empty" = "还没有安装技能";
-"settings.skills.empty.detail" = "新建一个仅包含指令的 Skill，然后在输入框中调用。";
-"settings.skills.footer" = "Skill 只包含指令，不能授权操作或扩大系统权限，并且只在用户明确选择时生效。";
+"settings.skills.empty.detail" = "创建或导入技能，然后从输入框或项目设置中选择。";
+"settings.skills.footer" = "技能可包含指令、脚本和参考资料，但不能自行授予权限或授权操作。";
 "settings.skills.delete" = "删除";
 "settings.skills.name" = "名称";
 "settings.skills.identifier" = "标识符";
@@ -109,7 +109,7 @@
 "settings.skills.create.title" = "新建技能";
 "settings.skills.create.identifier_hint" = "斜杠命令：/%@";
 "settings.skills.create.no_tools" = "新建技能只包含指令，默认不使用任何工具。";
-"settings.skills.create.instructions_template" = "目标：\n- 描述这个 Skill 要帮助完成什么。\n\n规则：\n- 写出回答必须遵守的要求。\n\n输出要求：\n- 描述期望的格式和风格。";
+"settings.skills.create.instructions_template" = "目标：\n- 描述这个 技能 要帮助完成什么。\n\n规则：\n- 写出回答必须遵守的要求。\n\n输出要求：\n- 描述期望的格式和风格。";
 "settings.skills.edit.title" = "编辑技能";
 "settings.skills.edit.hint" = "打开并查看或编辑这个技能";
 "settings.skills.edit.preserved" = "编辑时会保留技能标识符、工具范围和示例。";
@@ -122,8 +122,8 @@
 "error.skill.unknown_tool" = "技能请求了未知工具：%@。";
 "error.skill.empty_instructions" = "技能必须包含非空指令。";
 "error.skill.invalid_stored_allowed_tools" = "已安装技能 %@ 的工具范围无效，请重新安装。";
-"error.skill.already_installed" = "已存在使用该标识符的 Skill。";
-"error.skill.unavailable" = "这个 Skill 已不再安装。";
+"error.skill.already_installed" = "已存在使用该标识符的 技能。";
+"error.skill.unavailable" = "这个 技能 已不再安装。";
 
 "settings.appearance.system" = "跟随系统";
 "settings.appearance.light" = "浅色";
@@ -166,11 +166,11 @@
 "settings.about.feedback" = "反馈问题";
 "settings.about.notices" = "第三方软件声明";
 "settings.about.notices.unavailable" = "无法读取第三方软件声明。";
-"slash.palette" = "Skill";
-"slash.open" = "选择 Skill";
-"slash.remove" = "移除 Skill";
-"slash.empty" = "没有可用的 Skill";
-"slash.empty.detail" = "请先在设置中创建 Skill。";
+"slash.palette" = "技能";
+"slash.open" = "选择 技能";
+"slash.remove" = "移除 技能";
+"slash.empty" = "没有可用的 技能";
+"slash.empty.detail" = "请先在设置中创建 技能。";
 
 "drawer.open" = "打开会话列表";
 "drawer.search" = "搜索项目与对话";
@@ -250,7 +250,7 @@
 "project.run.resources" = "使用的资料";
 "project.run.resources.empty" = "本次运行没有使用项目资料。";
 "project.run.skills" = "使用的技能";
-"project.run.skills.empty" = "本次运行没有使用 Skill。";
+"project.run.skills.empty" = "本次运行没有使用 技能。";
 "project.run.tools" = "可用工具";
 "project.run.tools.empty" = "本次运行没有向模型暴露工具。";
 "project.run.status.running" = "运行中";
@@ -403,7 +403,7 @@
 "empty.prompt.8" = "帮我写一封得体的邮件";
 "empty.prompt.9" = "帮我规划一个循序渐进的学习路线";
 "empty.prompt.10" = "帮我在一段信息里找出关键事实";
-"empty.configure" = "配置 API Key";
+"empty.configure" = "配置模型服务";
 
 "attachment.choose_photos" = "选择照片";
 "attachment.close_photos" = "关闭照片选择";
@@ -510,7 +510,7 @@
 "tool.app_information" = "App 信息";
 
 "error.unknown" = "发生了未知错误。";
-"error.keychain" = "API Key 操作失败（系统状态码：%d）。";
+"error.keychain" = "API 密钥 操作失败（系统状态码：%d）。";
 "error.provider.invalid_response" = "%@ 返回了无法识别的响应。";
 "error.provider.server" = "%1$@ 请求失败（%2$ld）：%3$@";
 "error.provider.empty_response" = "%@ 没有返回回答内容。";
@@ -526,7 +526,7 @@
 "error.create_conversation" = "新建对话失败：%@";
 "error.delete_conversation" = "删除对话失败：%@";
 "error.rename_conversation" = "重命名失败：%@";
-"error.api_key_missing" = "你需要先填写 API Key。";
+"error.api_key_missing" = "请先填写 API 密钥或登录所选服务商。";
 "error.save_prompt" = "保存问题失败：%@";
 "error.save_settings" = "保存设置失败：%@";
 "error.edit_message" = "编辑消息失败：%@";
@@ -670,7 +670,7 @@
 "tool.bluetooth_scan" = "扫描蓝牙设备";
 "tool.notification_schedule" = "安排通知";
 "tool.prepare_file_export" = "准备导出文件";
-"tool.shell_execute" = "运行 Workspace Shell";
+"tool.shell_execute" = "运行 工作区 命令执行";
 "eventkit.target.calendar" = "日历";
 "eventkit.target.reminder_list" = "提醒列表";
 "eventkit.target.event" = "日历事件";
@@ -713,15 +713,15 @@
 "settings.permissions.requested" = "已请求";
 "settings.permissions.unsupported" = "不支持";
 "settings.permissions.health_footer" = "HealthKit 不会告知 App 你是否拒绝了读取请求，因此 Familiar 只能显示是否已经请求过。缺失的数值不会被当作零。";
-"settings.shell.title" = "Shell Runtime";
-"settings.shell.detail" = "在当前 Familiar Workspace 中运行 Alpine Linux";
+"settings.shell.title" = "执行环境";
+"settings.shell.detail" = "当前工作区的文件处理和依赖环境";
 "settings.shell.status" = "运行环境状态";
 "settings.shell.ready" = "已就绪";
 "settings.shell.preparing" = "正在准备";
 "settings.shell.failed" = "准备失败：%@";
 "settings.shell.unavailable" = "此构建未包含可用的运行资产";
-"settings.shell.network" = "允许此 Workspace 访问公共互联网";
-"settings.shell.network.footer" = "默认关闭。批准 Environment 方案后可从 PyPI 下载声明依赖；Shell 不会获得模型 API Key、Keychain、Cookie 或局域网服务访问权。";
+"settings.shell.network" = "允许此 工作区 访问公共互联网";
+"settings.shell.network.footer" = "默认关闭。批准 Environment 方案后可从 PyPI 下载声明依赖；命令执行 不会获得模型 API 密钥、Keychain、Cookie 或局域网服务访问权。";
 "artifact.versions.count" = "另有 %@ 个历史版本";
 "project.model" = "模型";
 "project.model.follow_global" = "跟随全局设置";
@@ -778,15 +778,15 @@
 "settings.shell.timeout.seconds" = "%@ 秒";
 "settings.shell.timeout.footer" = "该值同时是默认值和上限。Agent 只能请求更短的超时，不能更长。";
 "settings.shell.limits" = "资源限制";
-"settings.shell.limits.detail" = "%1$@ 秒 · %2$@ 个进程 · %3$@ 输出 · %4$@ Workspace";
+"settings.shell.limits.detail" = "%1$@ 秒 · %2$@ 个进程 · %3$@ 输出 · %4$@ 工作区";
 "settings.shell.source" = "iSH 源代码";
 "settings.shell.license" = "GNU GPLv3 许可证";
 "settings.shell.rootfs" = "根文件系统";
 "settings.shell.storage" = "内置存储";
-"settings.shell.reset" = "下次启动时重置 Runtime";
-"settings.shell.reset_scheduled" = "已安排 Runtime 重置";
+"settings.shell.reset" = "下次启动时重置 运行环境";
+"settings.shell.reset_scheduled" = "已安排 运行环境 重置";
 "settings.shell.reset.footer" = "Familiar 下次启动时会使用经过校验的内置镜像替换已安装的 Alpine 文件系统。";
-"settings.shell.reset.confirm" = "下次启动时重置 Shell Runtime？";
+"settings.shell.reset.confirm" = "下次启动时重置 命令执行 运行环境？";
 "settings.about.source" = "源代码";
 "shell.command" = "命令";
 "shell.working_directory" = "工作目录";
@@ -803,7 +803,7 @@
 "project.environment.detail" = "项目独立的 Linux 依赖与已验证锁定清单";
 "project.skills.context_detail" = "供 Agent 按需加载的纯指令技能";
 "project.capabilities" = "可用能力";
-"project.capabilities.detail" = "这个 Project 可以向 Agent 暴露的工具";
+"project.capabilities.detail" = "这个 项目 可以向 Agent 暴露的工具";
 "environment.state" = "状态";
 "environment.python" = "Python";
 "environment.revision" = "修订版本";
@@ -811,7 +811,7 @@
 "environment.lock" = "锁定摘要";
 "environment.packages" = "已解析依赖";
 "environment.not_prepared" = "Environment 尚未准备";
-"environment.not_prepared.detail" = "Agent 可以在 Project Chat 中通过 environment_prepare 提交依赖方案。";
+"environment.not_prepared.detail" = "Agent 可以在 项目 Chat 中通过 environment_prepare 提交依赖方案。";
 "runtime.phase.preparing_environment" = "正在准备环境";
 "runtime.phase.compacting_context" = "正在压缩上下文";
 "error.agent.context_compaction_failed" = "上下文压缩失败。请重试，或新建会话后继续。";
@@ -819,16 +819,191 @@
 "runtime.phase.validating" = "正在验证交付文件";
 "runtime.phase.repairing" = "正在修复 · %lld/2";
 "runtime.phase.delivering" = "正在交付";
-"tool.environment_status" = "检查 Project Environment";
-"tool.environment_prepare" = "准备 Project Environment";
-"tool.skill_list" = "列出 Project Skills";
-"tool.skill_read" = "加载 Project Skill";
+"tool.environment_status" = "检查 项目 Environment";
+"tool.environment_prepare" = "准备 项目 Environment";
+"tool.skill_list" = "列出 项目 技能";
+"tool.skill_read" = "加载 项目 技能";
 "tool.artifact_publish" = "发布 Artifact";
-"settings.shell.retry" = "重试 Runtime 准备";
+"settings.shell.retry" = "重试 运行环境 准备";
 "settings.python_source.title" = "Python 软件源";
 "settings.python_source.picker" = "软件源";
 "settings.python_source.footer" = "environment_prepare 只使用所选 HTTPS 软件源。审批卡和 Environment receipt 会记录准确的索引地址。";
 "settings.python_source.selected" = "当前选择";
 "settings.python_source.index_url" = "索引地址";
 "settings.python_source.website" = "软件源网站与帮助";
-"settings.python_source.security" = "更换软件源只影响之后准备的 Environment。已有 Project Environment 继续使用其已记录的锁定清单和软件源。";
+"settings.python_source.security" = "更换软件源只影响之后准备的 Environment。已有 项目 Environment 继续使用其已记录的锁定清单和软件源。";
+
+// Unified workspace and provider instances
+"project.error.protected" = "日常对话项目不能归档或删除。";
+"provider.add" = "添加 AI 服务商";
+"provider.choose" = "选择 AI 服务商";
+"provider.name" = "名称";
+"provider.endpoint" = "API 地址";
+"provider.protocol" = "接口协议";
+"provider.tools" = "工具调用";
+"provider.images" = "图片输入";
+"provider.model_id" = "模型 ID";
+"provider.use" = "用于当前对话";
+"provider.import" = "导入服务商配置";
+"provider.export" = "导出服务商配置";
+"provider.instances.footer" = "可以添加同一服务商的多个实例。密钥仅保存在本机钥匙串，请求直接发送给你选择的服务商。";
+"provider.export.footer" = "导出的配置不包含密钥。导入后请填写自己的密钥，并确认模型支持的能力。";
+"provider.openai" = "OpenAI / 兼容 API";
+"provider.anthropic" = "Anthropic / 兼容 API";
+"common.add" = "添加";
+"chat.compact" = "压缩消息";
+"chat.compact.too_large" = "历史内容超过当前模型的输入上限，请选择上下文更长的模型后重试。";
+"chat.clear" = "清空对话";
+"chat.clear.confirm" = "清空此对话的消息、附件和运行记录？项目资源会保留。";
+"chat.files" = "浏览对话文件";
+"chat.speech" = "朗读回复";
+"chat.speech.stop" = "停止朗读";
+"chat.more" = "更多选项";
+"message.operation_trace" = "执行记录";
+"settings.hub.diagnostics" = "诊断";
+
+// Connected provider and MCP flows
+"mcp.error.response" = "MCP 服务器返回了无法识别的响应。";
+"mcp.error.schema" = "工具“%@”的参数结构暂不受支持。";
+"mcp.error.tool" = "远程工具执行失败。";
+"mcp.server" = "MCP 服务器";
+"mcp.arguments" = "调用参数";
+"mcp.consequence" = "这些参数会发送给远程服务器。该工具可能修改远程数据，Familiar 无法撤销此操作。";
+"mcp.scope.footer" = "会话设置优先于项目设置，项目设置优先于全局设置。更改从下一次运行生效。";
+"mcp.add" = "添加 MCP 服务器";
+"mcp.import" = "导入 MCP JSON";
+"mcp.title" = "MCP 集成";
+"mcp.session" = "会话中的 MCP";
+"mcp.endpoint" = "服务器 HTTPS 地址";
+"mcp.token" = "访问令牌（可选）";
+"mcp.discover" = "连接并发现工具";
+"mcp.import.unsupported" = "此处仅支持 HTTPS 地址和访问令牌。此配置包含其他连接方式，未导入任何服务器。";
+"mcp.settings.detail" = "连接远程工具，按项目和会话控制启用范围";
+"oauth.missing" = "请先登录服务商。";
+"oauth.expired" = "登录已过期或超时，请重新登录。";
+"oauth.sign_in" = "登录服务商";
+"oauth.signed_in" = "已登录";
+"oauth.sign_out" = "退出登录";
+"oauth.device.instructions" = "打开服务商页面，输入下面的验证码完成授权。";
+"oauth.open" = "打开授权页面";
+"oauth.waiting" = "等待授权";
+"usage.title" = "用量";
+"usage.input" = "输入词元";
+"usage.output" = "输出词元";
+"usage.cached" = "缓存命中词元";
+"usage.footer" = "仅汇总服务商实际报告的本次对话用量。历史运行或部分服务商可能没有报告用量；不估算费用。";
+"usage.unreported" = "未报告";
+"attachment.error.image_encoding_failed" = "无法编码图片。";
+"common.preview" = "预览";
+"error.provider.invalid_custom_configuration" = "服务商配置无效。";
+"settings.skills" = "技能";
+"share.destination.new_project" = "新建项目";
+"share.destination.ordinary" = "日常对话";
+"share.destination.project" = "项目";
+"share.destination.title" = "添加到";
+"tool.web_fetch" = "读取网页";
+"tool.web_fetch.result" = "已读取 %@";
+"tool.web_search" = "搜索网页";
+"tool.web_search.results" = "找到 %lld 个网页结果";
+"local_vision.error.archive" = "模型文件无法解压。";
+"local_vision.error.benchmark_required" = "请先完成模型性能测试。";
+"local_vision.error.device" = "此设备不支持该模型。";
+"local_vision.error.integrity" = "模型文件完整性校验失败。";
+"local_vision.error.storage" = "没有足够的存储空间。";
+"local_vision.error.timeout" = "模型处理超时。";
+"workspace.file_count" = "工作区中有 %lld 个文件。";
+"workspace.invalid_path" = "工作区路径无效。";
+"workspace.symlink" = "工作区不允许通过符号链接访问文件。";
+"workspace.missing" = "工作区文件不存在。";
+"workspace.quota" = "工作区已超过 %lld 字节的存储上限。";
+"workspace.checkpoint" = "工作区检查点不可用。";
+"workspace.task_view" = "任务工作区无效。";
+"skills.import" = "导入技能包";
+"skills.create" = "创建技能";
+"chat.cloud.title" = "切换到云端模型？";
+"chat.cloud.continue" = "继续使用云端模型";
+
+// Voice, privacy and model routing
+"voice.title" = "语音";
+"voice.providers" = "语音服务商";
+"voice.add" = "添加语音服务商";
+"voice.system" = "系统语音";
+"voice.input" = "语音输入";
+"voice.output" = "语音输出";
+"voice.input_model" = "识别模型（留空使用默认值）";
+"voice.output_model" = "合成模型（留空使用默认值）";
+"voice.voice_id" = "声音 ID（留空使用默认值）";
+"voice.remote.footer" = "选择云端语音输入后，录音会发送给所选服务商；选择云端朗读后，回复文字会发送给所选服务商。系统输入在本机完成识别。";
+"voice.error.unsupported" = "此语音服务不支持这项操作。";
+"voice.error.http" = "语音请求失败（HTTP %lld）：%@";
+"voice.error.response" = "无法解析语音服务响应。";
+"voice.error.auth" = "语音服务验证失败，请检查密钥。";
+"voice.error.empty" = "没有可播放的音频。";
+"voice.alibaba" = "阿里百炼";
+"voice.doubao" = "豆包";
+"voice.xunfei" = "讯飞";
+"voice.link" = "链接";
+"voice.host_link" = "%@ 的链接";
+"lock.reason" = "解锁你的 Familiar 工作区";
+"lock.failed" = "未能验证身份，请重试。";
+"lock.title" = "Familiar 已锁定";
+"lock.unlock" = "解锁";
+"lock.setting" = "应用锁";
+"lock.footer" = "进入后台后锁定应用；通过系统身份验证解锁。";
+"group.title" = "模型分组";
+"group.add" = "添加模型分组";
+"group.strategy" = "路由方式";
+"group.fallback" = "按顺序回退";
+"group.balance" = "按会话均衡分配";
+"group.any_error" = "遇到任意错误时回退";
+"group.members" = "模型成员";
+"group.detail" = "模型回退和会话负载分配";
+"group.footer" = "可调整成员顺序。回退只发生在回复或工具调用尚未输出时，避免重复执行。图片、工具和上下文上限采用所有成员都支持的范围。";
+
+"chat.branch" = "创建对话分支";
+
+"chat.branch.title" = "%@ · 分支";
+
+"chat.move" = "移到项目";
+
+"chat.export" = "导出对话文本";
+
+"chat.export.user" = "你";
+
+"chat.export.footer" = "导出包含消息正文、附件名称和来源链接，不包含附件文件或运行审批记录。";
+
+"oauth.return" = "授权完成，可以返回 Familiar。";
+
+"oauth.busy" = "已有登录流程正在进行。";
+
+"tool.skill_install" = "安装技能包";
+
+"tool.memory_search" = "搜索记忆";
+
+"tool.memory_remember" = "记住偏好或事实";
+
+"tool.artifact_read" = "读取产物";
+
+"capability.read" = "读取已授权范围内的数据";
+
+"capability.sensitive" = "使用前确认敏感数据的读取范围";
+
+"capability.write" = "修改操作受授权范围控制";
+
+"capability.destructive" = "高风险操作需要逐次确认";
+
+"provider.subtitle.login" = "使用服务商账号登录";
+
+"provider.subtitle.router" = "聚合 GPT、Claude、Gemini 等模型";
+
+"provider.subtitle.xai" = "支持 Grok 系列模型";
+
+"provider.subtitle.kimi" = "支持 Kimi 系列模型及兼容接口";
+
+"provider.subtitle.deepseek" = "支持 DeepSeek 模型";
+
+"provider.subtitle.anthropic" = "支持 Claude 及兼容 Anthropic 协议的服务";
+
+"provider.subtitle.gemini" = "支持 Gemini 系列及 Google AI Studio";
+
+"provider.subtitle.openai" = "支持 OpenAI、DeepSeek、Moonshot、Groq 等兼容服务";
