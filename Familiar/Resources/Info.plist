@@ -71,5 +71,7 @@
         <string>UIInterfaceOrientationLandscapeLeft</string>
         <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Unlock your private Familiar workspace.</string>
 </dict>
 </plist>
