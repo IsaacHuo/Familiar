@@ -13,6 +13,10 @@ import UIKit
 import UniformTypeIdentifiers
 
 enum FamiliarSettingsRoute: String, Hashable {
+    case mcp
+    case voice
+    case appLock
+    case modelGroups
     case modelService
     case searchService
     case pythonPackageSource
@@ -81,6 +85,7 @@ struct FamiliarSettingsView: View {
         NavigationStack(path: $path) {
             List {
                 Section(String(localized: "settings.hub.models", defaultValue: "Models")) {
+                    settingsLink(.modelGroups, title: String(localized: "group.title"), subtitle: String(localized: "group.detail"), symbol: "square.stack", color: .blue)
                     settingsLink(
                         .modelService,
                         title: String(localized: "settings.hub.model_service", defaultValue: "Model Service"),
@@ -121,6 +126,14 @@ struct FamiliarSettingsView: View {
                         symbol: "stethoscope",
                         color: .teal
                     )
+                    settingsLink(.voice, title: String(localized: "voice.title"), subtitle: String(localized: "voice.providers"), symbol: "waveform", color: .blue)
+                    settingsLink(
+                        .mcp,
+                        title: String(localized: "mcp.title"),
+                        subtitle: String(localized: "mcp.settings.detail"),
+                        symbol: "wrench.and.screwdriver",
+                        color: .blue
+                    )
                     settingsLink(
                         .memory,
                         title: String(localized: "settings.memory.title", defaultValue: "Memory"),
@@ -134,7 +147,7 @@ struct FamiliarSettingsView: View {
                         .shellRuntime,
                         title: String(localized: "settings.shell.title", defaultValue: "Shell Runtime"),
                         subtitle: String(localized: "settings.shell.detail", defaultValue: "Alpine Linux in the current Familiar Workspace"),
-                        symbol: "terminal.fill",
+                        symbol: "shippingbox",
                         color: .gray
                     )
                     settingsLink(
@@ -144,6 +157,7 @@ struct FamiliarSettingsView: View {
                         symbol: "shippingbox.fill",
                         color: .orange
                     )
+                    settingsLink(.appLock, title: String(localized: "lock.setting"), subtitle: String(localized: "lock.footer"), symbol: "lock", color: .blue)
                     settingsLink(
                         .authorizations,
                         title: String(localized: "settings.hub.authorizations", defaultValue: "Authorizations"),
@@ -270,6 +284,16 @@ struct FamiliarSettingsView: View {
     @ViewBuilder
     private func destination(_ route: FamiliarSettingsRoute) -> some View {
         switch route {
+        case .modelGroups:
+            FamiliarModelGroupsView(settings: settings) { value in
+                settings = value; onSaveSettings(value)
+            }
+        case .appLock:
+            FamiliarAppLockSettingsView()
+        case .voice:
+            FamiliarVoiceSettingsView()
+        case .mcp:
+            FamiliarMCPSettingsView()
         case .modelService:
             FamiliarModelServiceSettingsView(
                 initialSettings: settings,
@@ -523,9 +547,9 @@ private struct FamiliarShellRuntimeSettingsView: View {
         switch runtimeStatus.phase {
         case .unavailable:
             String(localized: "settings.shell.unavailable", defaultValue: "Runtime assets are not available in this build")
-        case .preparing:
+        case .preparing, .installing, .booting:
             String(localized: "settings.shell.preparing", defaultValue: "Preparing")
-        case .ready:
+        case .ready, .running:
             String(localized: "settings.shell.ready", defaultValue: "Ready")
         case .failed(let message):
             String(format: String(localized: "settings.shell.failed", defaultValue: "Failed: %@"), message)
@@ -567,6 +591,7 @@ private struct FamiliarShellRuntimeSettingsView: View {
 }
 
 private struct FamiliarSkillsSettingsView: View {
+    @State private var importing = false
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \FamiliarSkill.installedAt, order: .reverse) private var skills: [FamiliarSkill]
     @State private var creating = false
@@ -614,11 +639,23 @@ private struct FamiliarSkillsSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button { creating = true } label: {
-                    Image(systemName: "plus")
-                }
+                Menu {
+                    Button(String(localized: "skills.create"), systemImage: "square.and.pencil") { creating = true }
+                    Button(String(localized: "skills.import"), systemImage: "square.and.arrow.down") { importing = true }
+                } label: { Image(systemName: "plus") }
                 .accessibilityLabel(String(localized: "settings.skills.add", defaultValue: "Add Skill"))
             }
+        }
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.folder, .zip, .plainText, .data], allowsMultipleSelection: false) { result in
+            do {
+                guard let url = try result.get().first else { return }
+                let access = url.startAccessingSecurityScopedResource()
+                defer { if access { url.stopAccessingSecurityScopedResource() } }
+                let store = FamiliarSkillPackageStore()
+                let prepared = try store.prepare(url: url)
+                let snapshot = try store.commit(prepared)
+                try store.persistInstallation(snapshot, context: modelContext)
+            } catch { errorMessage = error.localizedDescription }
         }
         .sheet(isPresented: $creating) {
             NavigationStack {
@@ -1161,7 +1198,7 @@ private struct FamiliarDiagnosticsSettingsView: View {
                 Section {
                     ForEach(unavailable, id: \.name) { tool in
                         VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                            Text(tool.title)
+                            Text(FamiliarToolPresentationName.title(for: tool.name))
                             Text(tool.reason)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -1190,9 +1227,9 @@ private struct FamiliarDiagnosticsSettingsView: View {
         switch runtimeStatus.phase {
         case .unavailable:
             String(localized: "settings.shell.unavailable", defaultValue: "Unavailable")
-        case .preparing:
+        case .preparing, .installing, .booting:
             String(localized: "settings.shell.preparing", defaultValue: "Preparing")
-        case .ready:
+        case .ready, .running:
             String(localized: "settings.shell.ready", defaultValue: "Ready")
         case .failed(let message):
             String(format: String(localized: "settings.shell.failed", defaultValue: "Failed: %@"), message)
@@ -1221,7 +1258,7 @@ private struct FamiliarToolsSettingsView: View {
                         ForEach(group) { entry in
                             Label {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(entry.manifest.title)
+                                    Text(FamiliarToolPresentationName.title(for: entry.manifest.name))
                                     Text("\(executionClassLabel(entry.manifest.executionClass)) · \(availabilityLabel(entry.availability))")
                                         .font(.caption.monospaced())
                                         .foregroundStyle(.secondary)
@@ -1730,7 +1767,7 @@ private struct FamiliarAboutView: View {
     }
 
     private var thirdPartyNotices: String {
-        let names = ["ThirdPartyNotices", "ThirdPartyNotices-iSH", "AnyDocRustDependencies", "GPL-3.0", "ISH_LICENSE_IOS", "ISHSourceOffer"]
+        let names = ["ThirdPartyNotices", "OpenMinisNotices", "ThirdPartyNotices-iSH", "AnyDocRustDependencies", "GPL-3.0", "ISH_LICENSE_IOS", "ISHSourceOffer"]
         let values = names.compactMap { name -> String? in
             guard let url = Bundle.main.url(forResource: name, withExtension: "txt") else { return nil }
             return try? String(contentsOf: url, encoding: .utf8)
