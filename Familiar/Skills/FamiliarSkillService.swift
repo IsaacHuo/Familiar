@@ -22,6 +22,8 @@ nonisolated struct FamiliarSkillSnapshot: Codable, Sendable, Equatable, Identifi
     let contentHash: String
     let instructions: String
     let allowedTools: [String]
+    var resources: [String]? = nil
+    var description: String? = nil
 }
 
 enum FamiliarSkillParserError: LocalizedError, Sendable {
@@ -130,6 +132,15 @@ struct FamiliarSkillService {
     }
 
     func installExampleIfNeeded(in context: ModelContext) throws {
+        if let root = Bundle.main.resourceURL?.appendingPathComponent("Skills/research-document"),
+           FileManager.default.fileExists(atPath: root.appendingPathComponent("SKILL.md").path) {
+            let id = "research-document"
+            if try context.fetch(FetchDescriptor<FamiliarSkill>(predicate: #Predicate { $0.stableID == id })).isEmpty {
+                let packages = FamiliarSkillPackageStore()
+                let prepared = try packages.prepare(url: root, source: "bundled:research-document")
+                try packages.persistInstallation(packages.commit(prepared), context: context)
+            }
+        }
         guard !UserDefaults.standard.bool(forKey: Self.exampleSeedKey) else { return }
         let stableID = Self.exampleDocument.id
         let existing = try context.fetch(FetchDescriptor<FamiliarSkill>(
@@ -182,7 +193,9 @@ struct FamiliarSkillService {
             name: skill.name,
             contentHash: skill.contentHash,
             instructions: skill.instructions,
-            allowedTools: Array(Set(allowedTools)).sorted()
+            allowedTools: Array(Set(allowedTools)).sorted(),
+            resources: (try? FamiliarSkillPackageStore().manifest(hash: skill.contentHash))?.files.keys.sorted(),
+            description: skill.descriptionText
         )
     }
 
@@ -207,6 +220,8 @@ nonisolated struct FamiliarSkillListTool: FamiliarTool {
         let version: String
         let name: String
         let allowedTools: [String]
+        let description: String?
+        let resources: [String]
     }
 
     let manifest = FamiliarToolManifest(
@@ -224,7 +239,7 @@ nonisolated struct FamiliarSkillListTool: FamiliarTool {
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
         let metadata = context.availableSkills.map {
-            Metadata(id: $0.stableID, version: $0.version, name: $0.name, allowedTools: $0.allowedTools)
+            Metadata(id: $0.stableID, version: $0.version, name: $0.name, allowedTools: $0.allowedTools, description: $0.description, resources: $0.resources ?? [])
         }
         let records = metadata.map { skill in
             FamiliarToolPresentationPayload.Record(id: skill.id, fields: [
@@ -245,7 +260,7 @@ nonisolated struct FamiliarSkillListTool: FamiliarTool {
 }
 
 nonisolated struct FamiliarSkillReadTool: FamiliarTool {
-    struct Input: Decodable, Sendable { let id: String }
+    struct Input: Decodable, Sendable { let id: String; var path: String? }
     private struct Output: Encodable {
         let id: String
         let version: String
@@ -260,7 +275,7 @@ nonisolated struct FamiliarSkillReadTool: FamiliarTool {
         description: "Load one attached Project Skill during planning. Loading freezes its version and narrows subsequent execution to its allowed tools plus core planning and delivery tools.",
         parameters: .init(
             type: .object,
-            properties: ["id": .init(type: .string, description: "Stable Skill identifier from skill_list.")],
+            properties: ["id": .init(type: .string, description: "Stable Skill identifier from skill_list."), "path": .init(type: .string, description: "Optional relative resource path from the Skill manifest. Omit to load SKILL.md instructions.")],
             required: ["id"]
         ),
         effect: .read,
@@ -276,11 +291,19 @@ nonisolated struct FamiliarSkillReadTool: FamiliarTool {
         guard let skill = context.availableSkills.first(where: { $0.stableID == stableID }) else {
             throw FamiliarSkillServiceError.unavailable
         }
+        if let path = input.path {
+            let url = try FamiliarSkillPackageStore().resource(hash: skill.contentHash, path: path)
+            let data = try Data(contentsOf: url)
+            guard let text = String(data: data, encoding: .utf8) else { throw FamiliarSkillParserError.unsupported }
+            let excerpt = String(text.prefix(32_000))
+            return .result(.init(envelope: try .init(model: ["path": path, "text": excerpt, "truncated": text.count > excerpt.count ? "true" : "false"],
+                presentation: .document(.init(summary: path, title: path, text: excerpt, truncated: text.count > excerpt.count))), loadedSkill: skill))
+        }
         let output = Output(
             id: skill.stableID,
             version: skill.version,
             contentHash: skill.contentHash,
-            instructions: skill.instructions,
+            instructions: skill.instructions + "\n\nResources (read-only): " + (skill.resources ?? []).map { "/workspace/files/Skills/\(skill.stableID)/\($0)" }.joined(separator: "\n"),
             allowedTools: skill.allowedTools
         )
         return .result(.init(
