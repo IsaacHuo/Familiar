@@ -306,7 +306,15 @@ nonisolated enum FamiliarModelFinishReason: String, Sendable {
     case unknown
 }
 
+nonisolated struct FamiliarTokenUsage: Codable, Equatable, Sendable {
+    let inputTokens: Int?
+    let outputTokens: Int?
+    let cachedInputTokens: Int?
+}
+
 nonisolated enum FamiliarModelStreamEvent: Sendable {
+    case providerSelection(providerID: String, modelID: String)
+    case usage(FamiliarTokenUsage)
     case textDelta(String)
     case reasoningSummaryDelta(String)
     case toolCallDelta(index: Int, id: String?, name: String?, arguments: String?)
@@ -355,6 +363,8 @@ nonisolated extension FamiliarModelProvider {
                 if let name { call.name += name }
                 if let arguments { call.arguments += arguments }
                 pendingCalls[index] = call
+            case .providerSelection, .usage:
+                break
             case .completed(let reason):
                 finishReason = reason
             }

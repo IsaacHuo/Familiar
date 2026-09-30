@@ -49,7 +49,7 @@ nonisolated enum FamiliarProviderConnectionValidator {
                 break
             case .toolCallDelta:
                 break
-            case .completed:
+            case .providerSelection, .usage, .completed:
                 break
             }
             if receivedContent { break }

@@ -69,6 +69,7 @@ nonisolated struct FamiliarOpenAICompatibleModelProvider: FamiliarModelProvider,
 
                     let dataPrefix = descriptor.openAIChat?.dataPrefix ?? "data:"
                     let doneToken = descriptor.openAIChat?.doneToken ?? "[DONE]"
+                    var usage: FamiliarTokenUsage?
                     var emittedContent = false
                     var emittedCompletion = false
                     for try await line in bytes.lines {
@@ -86,6 +87,9 @@ nonisolated struct FamiliarOpenAICompatibleModelProvider: FamiliarModelProvider,
                             throw FamiliarProviderRequestError.invalidResponse(provider: descriptor.displayName)
                         }
 
+                        if let reported = event.usage {
+                            usage = FamiliarTokenUsage(inputTokens: reported.prompt_tokens, outputTokens: reported.completion_tokens, cachedInputTokens: reported.prompt_tokens_details?.cached_tokens)
+                        }
                         for choice in event.choices {
                             if let reasoning = choice.delta.reasoningContent, !reasoning.isEmpty {
                                 emittedContent = true
@@ -111,6 +115,7 @@ nonisolated struct FamiliarOpenAICompatibleModelProvider: FamiliarModelProvider,
                         }
                     }
 
+                    if let usage { continuation.yield(.usage(usage)) }
                     guard emittedContent else {
                         throw FamiliarProviderRequestError.emptyResponse(provider: descriptor.displayName)
                     }
@@ -275,6 +280,13 @@ private nonisolated extension FamiliarOpenAICompatibleModelProvider {
 
     struct StreamPayload: Decodable {
         let choices: [Choice]
+        let usage: Usage?
+        struct Usage: Decodable {
+            let prompt_tokens: Int?
+            let completion_tokens: Int?
+            let prompt_tokens_details: Details?
+            struct Details: Decodable { let cached_tokens: Int? }
+        }
 
         struct Choice: Decodable {
             let delta: Delta
@@ -343,7 +355,12 @@ nonisolated enum FamiliarProviderHTTP {
         descriptor: FamiliarProviderDescriptor,
         apiKey: String
     ) {
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        switch descriptor.authStyle {
+        case .bearer:
+            if !apiKey.isEmpty { request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization") }
+        case .anthropicKey: request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        case .googleKey: request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+        }
         descriptor.additionalHeaders.forEach {
             request.setValue($1, forHTTPHeaderField: $0)
         }
@@ -369,7 +386,7 @@ nonisolated enum FamiliarProviderHTTP {
             : String(localized: "error.provider.unknown_server")
     }
 
-    private static func sanitizedMessage(_ value: String) -> String {
+    static func sanitizedMessage(_ value: String) -> String {
         let bounded = String(value.prefix(500))
         return bounded.replacingOccurrences(
             of: #"(?i)bearer\s+[a-z0-9._-]+|sk-[a-z0-9_-]+"#,
@@ -387,8 +404,22 @@ nonisolated enum FamiliarProviderHTTP {
 nonisolated enum FamiliarProviderFactory {
     static func makeProvider(
         for descriptor: FamiliarProviderDescriptor,
-        apiKey: String
+        apiKey: String,
+        sessionID: String = ""
     ) -> any FamiliarModelProvider {
-        FamiliarOpenAICompatibleModelProvider(descriptor: descriptor, apiKey: apiKey)
+        if let routes = descriptor.routes {
+            let members = routes.compactMap { route -> FamiliarGroupModelProvider.Member? in
+                guard let key = FamiliarKeychainStore.load(for: route.provider.id) ?? FamiliarOAuthCredentialStore.load(instanceID: route.provider.id)?.accessToken else { return nil }
+                return .init(provider: makeProvider(for: route.provider, apiKey: key, sessionID: sessionID), modelID: route.modelID)
+            }
+            return FamiliarGroupModelProvider(providerID: descriptor.id, members: members, strategy: descriptor.routeStrategy ?? "fallback", fallbackOnAnyError: descriptor.fallbackOnAnyError == true, sessionID: sessionID)
+        }
+        if descriptor.oauthKind == "codex" { return FamiliarCodexModelProvider(descriptor: descriptor) }
+        if descriptor.oauthKind == "kimi" { return FamiliarKimiModelProvider(descriptor: descriptor) }
+        return switch descriptor.protocolKind {
+        case .openAIChat: FamiliarOpenAICompatibleModelProvider(descriptor: descriptor, apiKey: apiKey)
+        case .anthropic, .gemini, .openAIResponses:
+            FamiliarStructuredModelProvider(descriptor: descriptor, apiKey: apiKey)
+        }
     }
 }

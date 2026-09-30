@@ -31,9 +31,19 @@ nonisolated enum FamiliarModelCatalogService {
             )
         }
 
-        let payload = try JSONDecoder().decode(OpenAIModelsResponse.self, from: data)
-        let availableIDs = Set(payload.data.lazy.map(\.id).filter { !$0.isEmpty })
-        let models = descriptor.curatedModels.filter { availableIDs.contains($0.id) }
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let rows = (object?["data"] ?? object?["models"]) as? [[String: Any]] ?? []
+        let identifiers = Set(rows.compactMap { row -> String? in
+            if descriptor.protocolKind == .gemini {
+                guard (row["supportedGenerationMethods"] as? [String])?.contains("generateContent") == true else { return nil }
+                return (row["name"] as? String)?.replacingOccurrences(of: "models/", with: "")
+            }
+            return row["id"] as? String
+        }.filter { !$0.isEmpty })
+        let models = identifiers.sorted().map { id in
+            descriptor.curatedModels.first(where: { $0.id == id })
+                ?? FamiliarModelDescriptor(id: id)
+        }
         guard !models.isEmpty else {
             throw FamiliarProviderRequestError.invalidResponse(provider: descriptor.displayName)
         }

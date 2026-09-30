@@ -64,7 +64,10 @@ nonisolated enum FamiliarKeychainStore {
     }
 
     static func isConfigured(for providerID: String) -> Bool {
-        load(for: providerID) != nil
+        if let routes = FamiliarProviderCatalog.descriptor(for: providerID)?.routes {
+            return routes.contains { load(for: $0.provider.id) != nil || FamiliarOAuthCredentialStore.load(instanceID: $0.provider.id) != nil }
+        }
+        return load(for: providerID) != nil || FamiliarOAuthCredentialStore.load(instanceID: providerID) != nil
     }
 
     static func configuredProviderIDs(in providerIDs: [String]) -> Set<String> {

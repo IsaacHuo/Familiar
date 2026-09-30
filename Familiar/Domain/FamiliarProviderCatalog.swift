@@ -2,10 +2,15 @@ import Foundation
 
 nonisolated enum FamiliarProviderProtocol: String, Codable, Sendable {
     case openAIChat
+    case openAIResponses
+    case anthropic
+    case gemini
 }
 
 nonisolated enum FamiliarProviderAuthStyle: Codable, Equatable, Sendable {
     case bearer
+    case anthropicKey
+    case googleKey
 }
 
 nonisolated enum FamiliarProviderRegion: String, CaseIterable, Codable, Identifiable, Sendable {
@@ -107,6 +112,10 @@ nonisolated struct FamiliarProviderDescriptor: Identifiable, Codable, Equatable,
     let curatedModels: [FamiliarModelDescriptor]
     let openAIChat: FamiliarOpenAIChatConfiguration?
     let isCustom: Bool
+    var oauthKind: String?
+    var routes: [FamiliarProviderRoute]?
+    var routeStrategy: String?
+    var fallbackOnAnyError: Bool?
 
     var defaultModel: FamiliarModelDescriptor {
         curatedModels.first ?? FamiliarModelDescriptor(id: "manual-model")
@@ -123,7 +132,36 @@ nonisolated struct FamiliarProviderDescriptor: Identifiable, Codable, Equatable,
 }
 
 nonisolated enum FamiliarProviderCatalog {
-    static let builtIn: [FamiliarProviderDescriptor] = [deepSeek]
+    static var instances: [FamiliarProviderDescriptor] {
+        let saved = FamiliarProviderInstanceStore.load()
+        return saved.contains(where: { $0.id == deepSeek.id }) ? saved : [deepSeek] + saved
+    }
+
+    static var builtIn: [FamiliarProviderDescriptor] {
+        let values = instances
+        return values + FamiliarModelGroupStore.descriptors(instances: values)
+    }
+
+    static let templates: [FamiliarProviderDescriptor] = [
+        {
+            var value = provider(id: "codex", name: "Codex", protocolKind: .openAIResponses, baseURL: "https://chatgpt.com/backend-api/codex", chatPath: "/responses", modelsPath: nil, models: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini"].map { .init(id: $0, capabilities: .init(supportsTools: true, supportsImages: true)) })
+            value.oauthKind = "codex"
+            return value
+        }(),
+        provider(id: "openai", name: "OpenAI / Compatible API", baseURL: "https://api.openai.com/v1", chatPath: "/chat/completions", modelsPath: "/models", models: []),
+        provider(id: "responses", name: "OpenAI Responses", protocolKind: .openAIResponses, baseURL: "https://api.openai.com/v1", chatPath: "/responses", modelsPath: "/models", models: []),
+        provider(id: "anthropic", name: "Anthropic / Compatible API", protocolKind: .anthropic, baseURL: "https://api.anthropic.com/v1", chatPath: "/messages", modelsPath: "/models", authStyle: .anthropicKey, headers: ["anthropic-version": "2023-06-01"], models: []),
+        provider(id: "gemini", name: "Google Gemini", protocolKind: .gemini, baseURL: "https://generativelanguage.googleapis.com/v1beta", chatPath: "/models/{model}:streamGenerateContent?alt=sse", modelsPath: "/models", authStyle: .googleKey, models: []),
+        provider(id: "openrouter", name: "OpenRouter", baseURL: "https://openrouter.ai/api/v1", chatPath: "/chat/completions", modelsPath: "/models", models: []),
+        provider(id: "xai", name: "xAI (Grok)", baseURL: "https://api.x.ai/v1", chatPath: "/chat/completions", modelsPath: "/models", models: []),
+        provider(id: "kimi", name: "Kimi", baseURL: "https://api.moonshot.cn/v1", chatPath: "/chat/completions", modelsPath: "/models", models: []),
+        {
+            var value = provider(id: "kimi-code", name: "Kimi Code", baseURL: "https://api.kimi.com/coding/v1", chatPath: "/chat/completions", modelsPath: "/models", models: [.init(id: "kimi-k3", displayName: "Kimi K3", capabilities: toolText), .init(id: "kimi-k2", displayName: "Kimi K2", capabilities: toolText)])
+            value.oauthKind = "kimi"
+            return value
+        }(),
+        deepSeek
+    ]
 
     static var allProviderIDs: [String] {
         builtIn.map(\.id)
@@ -141,10 +179,8 @@ nonisolated enum FamiliarProviderCatalog {
     }
 
     static func normalizedModelID(_ id: String, providerID: String) -> String {
-        guard providerID == deepSeek.id,
-              deepSeek.curatedModels.contains(where: { $0.id == id })
-        else { return deepSeek.defaultModel.id }
-        return id
+        let value = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? (descriptor(for: providerID)?.defaultModel.id ?? id) : value
     }
 
     private static let toolText = FamiliarModelCapabilities(supportsTools: true)

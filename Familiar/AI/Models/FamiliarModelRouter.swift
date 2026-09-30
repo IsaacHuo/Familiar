@@ -121,7 +121,7 @@ nonisolated struct FamiliarModelRouter: FamiliarModelProvider, Sendable {
                 switch event {
                 case .textDelta, .reasoningSummaryDelta, .toolCallDelta:
                     emittedContent = true
-                case .completed:
+                case .providerSelection, .usage, .completed:
                     break
                 }
                 continuation.yield(event)
