@@ -20,6 +20,8 @@
 		M20000000000000000000012 /* Familiar/Shell/FamiliarShellExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20000000000000000000022 /* Familiar/Shell/FamiliarShellExecutor.swift */; };
 		M20000000000000000000013 /* Familiar/Shell/FamiliarShellPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20000000000000000000023 /* Familiar/Shell/FamiliarShellPolicy.swift */; };
 		M20000000000000000000014 /* Familiar/Shell/FamiliarContainerShellExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20000000000000000000024 /* Familiar/Shell/FamiliarContainerShellExecutor.swift */; };
+		D40000000000000000000101 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = D40000000000000000000102; };
+		D40000000000000000000201 /* Yams in Frameworks */ = {isa = PBXBuildFile; productRef = D40000000000000000000202; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -151,6 +153,7 @@
 			);
 			path = Familiar;
 			sourceTree = "<group>";
+			explicitFolders = ("Resources/Skills",);
 		};
 		M10000000000000000000003 /* FamiliarMac */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -196,6 +199,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				E10000000000000000000001 /* SwiftSoup in Frameworks */,
+				D40000000000000000000201 /* Yams in Frameworks */,
+				D40000000000000000000101 /* ZIPFoundation in Frameworks */,
 				F20000000000000000000001 /* AnyDocBridge.xcframework in Frameworks */,
 				F30000000000000000000001 /* ISHRuntime/FamiliarISHRuntime.xcframework in Frameworks */,
 			);
@@ -384,6 +389,8 @@
 			name = Familiar;
 			packageProductDependencies = (
 				E10000000000000000000002 /* SwiftSoup */,
+				D40000000000000000000202 /* Yams */,
+				D40000000000000000000102 /* ZIPFoundation */,
 			);
 			productName = Familiar;
 			productReference = F10000000000000000000001 /* Familiar.app */;
@@ -456,6 +463,8 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				E10000000000000000000003 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
+				D40000000000000000000203 /* Yams */,
+				D40000000000000000000103 /* ZIPFoundation */,
 				M20000000000000000000003 /* XCRemoteSwiftPackageReference "containerization" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -1025,6 +1034,8 @@
 		};
 /* End XCConfigurationList section */
 
+		D40000000000000000000103 = {isa = XCLocalSwiftPackageReference; relativePath = "Vendor/SkillDependencies/ZIPFoundation"; };
+		D40000000000000000000203 = {isa = XCLocalSwiftPackageReference; relativePath = "Vendor/SkillDependencies/Yams"; };
 /* Begin XCRemoteSwiftPackageReference section */
 		E10000000000000000000003 /* XCRemoteSwiftPackageReference "SwiftSoup" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -1055,6 +1066,8 @@
 			package = M20000000000000000000003 /* XCRemoteSwiftPackageReference "containerization" */;
 			productName = Containerization;
 		};
+		D40000000000000000000102 = {isa = XCSwiftPackageProductDependency; package = D40000000000000000000103; productName = ZIPFoundation; };
+		D40000000000000000000202 = {isa = XCSwiftPackageProductDependency; package = D40000000000000000000203; productName = Yams; };
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = F10000000000000000000020 /* Project object */;
