@@ -315,7 +315,8 @@ nonisolated struct FamiliarShellTool: FamiliarTool {
                 taskID: taskID,
                 workspaceID: workspaceID,
                 resources: context.resources,
-                attachments: context.attachments
+                attachments: context.attachments,
+                skills: context.activeSkill.map { [$0] } ?? []
             )
         } catch {
             try? workspaceStore.removeCheckpoint(checkpoint)
@@ -647,11 +648,16 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
         guard let projectID = context.projectID,
               context.workspaceID == .project(projectID)
         else { throw FamiliarEnvironmentError.projectRequired }
-        let packages = try normalizedPackages(input.packages)
+        let requested = try normalizedPackages(input.packages)
+        let previous = try environmentStore.receipt(projectID: projectID)
+        func packageName(_ value: String) -> String { value.components(separatedBy: "==")[0].lowercased().replacingOccurrences(of: "_", with: "-") }
+        let changedNames = Set(requested.map(packageName))
+        let packages = try normalizedPackages((previous?.requestedPackages ?? []).filter { !changedNames.contains(packageName($0)) } + requested)
         let packageSource = packageSourceSettings.selectedSource
-        if let existing = try environmentStore.receipt(projectID: projectID),
-           existing.state == .ready,
-           Set(existing.requestedPackages) == Set(packages) {
+        if let existing = previous,
+           existing.state == .ready, existing.packageIndex == packageSource.indexURL.absoluteString,
+           Set(existing.requestedPackages) == Set(packages),
+           try await verifyEnvironment(existing, context: context) {
             return .result(try result(existing))
         }
         let plan = FamiliarEnvironmentPlan(
@@ -682,6 +688,26 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
         ))
     }
 
+    private func verifyEnvironment(_ receipt: FamiliarEnvironmentReceipt, context: FamiliarToolContext) async throws -> Bool {
+        let root = try workspaceStore.projectEnvironmentURL(receipt.projectID)
+        guard let lock = try? String(contentsOf: root.appendingPathComponent("requirements.lock"), encoding: .utf8),
+              FamiliarHash.sha256(lock) == receipt.lock.contentHash else { return false }
+        let id = UUID()
+        let view = try workspaceStore.prepareShellTaskView(taskID: id, workspaceID: .project(receipt.projectID), resources: [], attachments: [])
+        defer { try? workspaceStore.removeShellTaskView(view) }
+        let request = FamiliarShellRequest(taskID: id, command: Self.environmentProbe,
+            workspaceID: view.workspaceID, workspaceView: view, timeout: 30,
+            runID: context.runID, toolCallID: context.toolCallID, networkPolicy: .disabled)
+        for try await event in executor.execute(request) {
+            if case .finished(let result) = event { return result.status == .succeeded }
+        }
+        return false
+    }
+
+    // Check the installed distributions, files and importable top-level modules in
+    // the guest. A disk receipt alone is not proof that an environment still works.
+    private static let environmentProbe = #"python3 -c 'import importlib, importlib.metadata as m, pathlib; ds=list(m.distributions(path=["/workspace/env/site-packages"])); assert ds; [(_ for _ in ()).throw(RuntimeError(str(f))) for d in ds for f in (d.files or []) if not str(f).startswith("../") and not pathlib.Path(d.locate_file(f)).exists()]; [importlib.import_module(n) for d in ds for n in (d.read_text("top_level.txt") or "").splitlines() if n.isidentifier()]; print("ENVIRONMENT_VERIFIED")'"#
+
     private func prepare(
         plan: FamiliarEnvironmentPlan,
         context: FamiliarToolContext
@@ -700,7 +726,7 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
             + "python3 -m pip install --isolated --disable-pip-version-check --no-input "
             + "--index-url \(plan.packageIndex) --target /workspace/env/site-packages \(packageArguments) && "
             + "python3 -m pip freeze --path /workspace/env/site-packages > /workspace/env/requirements.lock && "
-            + "python3 --version > /workspace/env/python-version.txt"
+            + "python3 --version > /workspace/env/python-version.txt && " + Self.environmentProbe
         let request = FamiliarShellRequest(
             taskID: taskID,
             command: command,

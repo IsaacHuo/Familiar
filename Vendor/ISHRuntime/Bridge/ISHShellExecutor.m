@@ -617,6 +617,42 @@ static BOOL ISHTaskIsDescendantOf(struct task *t, pid_t_ rootPid) {
     });
 }
 
++ (BOOL)terminateProcessTree:(int)pid timeout:(NSTimeInterval)timeout {
+    if (pid <= 1) return NO;
+    NSMutableArray<NSNumber *> *ids = [NSMutableArray array];
+    NSMutableArray<NSValue *> *identities = [NSMutableArray array];
+    lock(&pids_lock);
+    struct task *root = pid_get_task((dword_t)pid);
+    if (root) {
+        pid_t_ group = root->group->pgid;
+        for (int i = 2; i < MAX_PID; i++) {
+            struct task *task = pid_get_task(i);
+            if (task && (ISHTaskIsDescendantOf(task, (pid_t_)pid) || (group > 1 && task->group->pgid == group) || i == pid)) {
+                [ids addObject:@(i)];
+                [identities addObject:[NSValue valueWithPointer:task]];
+            }
+        }
+        for (NSUInteger i = 0; i < ids.count; i++) {
+            struct task *task = pid_get_task(ids[i].intValue);
+            if (task == identities[i].pointerValue) send_signal(task, SIGKILL_, SIGINFO_NIL);
+        }
+    }
+    unlock(&pids_lock);
+    NSTimeInterval deadline = NSProcessInfo.processInfo.systemUptime + timeout;
+    do {
+        BOOL alive = NO;
+        lock(&pids_lock);
+        for (NSUInteger i = 0; i < ids.count; i++) {
+            struct task *task = pid_get_task(ids[i].intValue);
+            if (task && task == identities[i].pointerValue) { alive = YES; break; }
+        }
+        unlock(&pids_lock);
+        if (!alive) return YES;
+        usleep(10000);
+    } while (NSProcessInfo.processInfo.systemUptime < deadline);
+    return NO;
+}
+
 #pragma mark - Process Exit Handling
 
 + (void)processDidExit:(NSNotification *)notification {

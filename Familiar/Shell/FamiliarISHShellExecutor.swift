@@ -78,14 +78,14 @@ nonisolated final class FamiliarISHShellExecutor: FamiliarShellExecutor, @unchec
                     try await prepare()
                     let paths = try workspaceStore.prepare(request.workspaceID)
                     let view = request.workspaceView
-                    let taskRoot = paths.tasks.standardizedFileURL.path + "/"
+                    let taskRoot = paths.tasks.resolvingSymlinksInPath().standardizedFileURL.pathComponents
                     let expectedEnvironment = paths.environment.standardizedFileURL
                     let environmentIsValid = view.environmentIsPersistent
                         ? view.environment.standardizedFileURL == expectedEnvironment
                         : view.environment.standardizedFileURL.path.hasPrefix(view.root.standardizedFileURL.path + "/")
                     guard view.workspaceID == request.workspaceID,
                           view.taskID == request.taskID,
-                          view.root.standardizedFileURL.path.hasPrefix(taskRoot),
+                          view.root.resolvingSymlinksInPath().standardizedFileURL.pathComponents.starts(with: taskRoot),
                           view.outputs.standardizedFileURL == paths.outputs.standardizedFileURL,
                           environmentIsValid,
                           (try? view.environment.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true
@@ -285,7 +285,8 @@ nonisolated final class FamiliarRealISHBridge: FamiliarISHBridge, @unchecked Sen
         Bundle.main.url(forResource: "alpine-3.24.0-aarch64-fakefs", withExtension: "tar.gz") != nil
     }
 
-    private let state = FamiliarRealISHRuntimeState()
+    private static let sharedState = FamiliarRealISHRuntimeState()
+    private var state: FamiliarRealISHRuntimeState { Self.sharedState }
 
     func prepare(configuration: FamiliarISHRuntimeConfiguration) async throws {
         try await state.prepare(configuration: configuration)
@@ -328,14 +329,7 @@ nonisolated final class FamiliarRealISHBridge: FamiliarISHBridge, @unchecked Sen
 }
 
 private actor FamiliarRealISHRuntimeState {
-    private enum Phase: Equatable {
-        case notInstalled
-        case installing
-        case booting
-        case ready
-        case running(UUID)
-        case failed(String)
-    }
+    private typealias Phase = FamiliarShellRuntimePhase
 
     private struct InstallationMarker: Codable, Equatable {
         static let schemaVersion = 1
@@ -351,16 +345,30 @@ private actor FamiliarRealISHRuntimeState {
     private static let rootfsVersion = "3.24.0"
     private static let ishCommit = "54ca185b77f170e12fd353fcd7443232f6cb73fd"
 
-    private var phase: Phase = .notInstalled
+    private var preparation: Task<Void, Error>?
+    private var lifecycleRevision = 0
+    private var phase: Phase = .preparing {
+        didSet {
+            lifecycleRevision += 1
+            let revision = lifecycleRevision
+            let phase = phase
+            Task { @MainActor in FamiliarShellRuntimeStatus.shared.receive(phase, revision: revision) }
+        }
+    }
     private var activeTaskID: UUID?
     private var activePID: Int32?
     private var activeMounts: [String] = []
     private var completionGate: FamiliarISHCompletionGate?
     private var activeContinuation: AsyncThrowingStream<FamiliarISHProcessEvent, Error>.Continuation?
 
-    func prepare(configuration _: FamiliarISHRuntimeConfiguration) throws {
+    func prepare(configuration _: FamiliarISHRuntimeConfiguration) async throws {
         if phase == .ready { return }
         if case .running = phase { return }
+        if let preparation {
+            try await preparation.value
+            if phase == .booting { phase = .ready }
+            return
+        }
         let fileManager = FileManager.default
         do {
             guard let archive = Bundle.main.url(
@@ -423,8 +431,18 @@ private actor FamiliarRealISHRuntimeState {
             guard ISHKernel.shared.boot(withRootPath: installed.path) == 0 else {
                 throw FamiliarShellExecutorError.unavailable
             }
+            let probe = Task.detached {
+                let result = ISHShellExecutor.executeCommandSync("python3 -c 'import ssl, sys; print(\"FAMILIAR_READY\")'", timeout: 30, lineCallback: nil)
+                guard result.exitCode == 0, result.output.contains("FAMILIAR_READY") else {
+                    throw FamiliarExecutionContractError(detail: "iSH Python readiness probe failed (exit \(result.exitCode)): \(result.errorOutput.prefix(1000))")
+                }
+            }
+            preparation = probe
+            try await probe.value
+            preparation = nil
             phase = .ready
         } catch {
+            preparation = nil
             phase = .failed(error.localizedDescription)
             throw error
         }
@@ -438,9 +456,15 @@ private actor FamiliarRealISHRuntimeState {
         networkPolicy: FamiliarShellNetworkPolicy,
         timeout: TimeInterval,
         continuation: AsyncThrowingStream<FamiliarISHProcessEvent, Error>.Continuation
-    ) throws {
+    ) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(timeout))
+        while activeTaskID != nil {
+            try Task.checkCancellation()
+            guard ContinuousClock.now < deadline else { throw FamiliarShellExecutorError.alreadyRunning }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        try Task.checkCancellation()
         guard phase == .ready else { throw FamiliarShellExecutorError.unavailable }
-        guard activeTaskID == nil else { throw FamiliarShellExecutorError.alreadyRunning }
 
         if networkPolicy.enabled, !ISHKernel.shared.configureDNS() {
             throw FamiliarShellExecutorError.networkConfigurationFailed
@@ -500,9 +524,10 @@ private actor FamiliarRealISHRuntimeState {
         Task {
             try? await Task.sleep(for: .seconds(timeout))
             guard gate.finish() else { return }
-            ISHShellExecutor.killProcessGroup(pid)
+            let stopped = ISHShellExecutor.terminateProcessTree(pid, timeout: 5)
             continuation.yield(.timedOut)
-            self.finish(taskID: taskID)
+            if stopped { self.finish(taskID: taskID) }
+            else { self.phase = .failed("Timed-out guest processes did not terminate; restart Familiar before retrying.") }
             continuation.finish()
         }
     }
@@ -510,11 +535,10 @@ private actor FamiliarRealISHRuntimeState {
     func cancel(taskID: UUID) {
         guard activeTaskID == taskID else { return }
         let continuation = activeContinuation
-        if let activePID {
-            ISHShellExecutor.killProcessGroup(activePID)
-        }
         let shouldFinishStream = completionGate?.finish() ?? false
-        finish(taskID: taskID)
+        let stopped = activePID.map { ISHShellExecutor.terminateProcessTree($0, timeout: 5) } ?? true
+        if stopped { finish(taskID: taskID) }
+        else { phase = .failed("Guest processes did not terminate; restart Familiar before retrying.") }
         if shouldFinishStream {
             continuation?.yield(.cancelled)
             continuation?.finish()
@@ -589,12 +613,16 @@ private nonisolated final class FamiliarISHProcessCallbackBox: @unchecked Sendab
 
     var completion: ISHShellCompletionCallback {
         { [self] result in
-            guard gate.finish() else { return }
+            let report = gate.finish()
             let exitCode = Int32(result.exitCode)
             let continuation = continuation
             let state = state
             let taskID = taskID
             Task.detached {
+                if !report {
+                    await state.finishFromCallback(taskID: taskID)
+                    return
+                }
                 let counters = FamiliarISHNetworkController.counters()
                 continuation.yield(.networkStatistics(.init(
                     openedConnections: Int(counters.openedConnections),

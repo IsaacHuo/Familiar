@@ -29,6 +29,9 @@ enum FamiliarSchemaV3: VersionedSchema {
         var updatedAt: Date
         var currentProviderID: String
         var currentModelID: String
+        var parentConversationID: UUID?
+        var contextSummary: String?
+        var summaryThroughSequence: Int?
         var project: FamiliarProject?
 
         @Relationship(deleteRule: .cascade, inverse: \FamiliarMessage.conversation)
@@ -68,6 +71,10 @@ enum FamiliarSchemaV3: VersionedSchema {
         var startedAt: Date
         var finishedAt: Date?
         var firstTokenAt: Date?
+        var inputTokenCount: Int?
+        var outputTokenCount: Int?
+        var cachedInputTokenCount: Int?
+        var modelRequestsJSON: String?
         var finishReason: String?
         var responseMessageID: UUID?
         var responseBlockID: UUID?
@@ -289,6 +296,13 @@ enum FamiliarSchemaV3: VersionedSchema {
 
     @Model
     final class FamiliarProject {
+        /// Stable identity, independent of the localized name and install language.
+        static let dailyProjectID = UUID(uuidString: "FA0111A0-0000-4000-8000-000000000001")!
+        var isDefaultProject: Bool { id == Self.dailyProjectID }
+        var displayName: String {
+            isDefaultProject ? String(localized: "conversation.ordinary") : name
+        }
+        var providerIDOverride: String?
         @Attribute(.unique) var id: UUID
         var name: String
         var summary: String

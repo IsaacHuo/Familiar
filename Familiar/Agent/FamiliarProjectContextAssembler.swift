@@ -42,6 +42,8 @@ nonisolated struct FamiliarProjectContextSeed: Sendable {
     let skills: [FamiliarSkillSnapshot]
     let availableSkills: [FamiliarSkillSnapshot]
     let memories: [FamiliarContextMemory]
+    let conversationSummary: String?
+    let summaryThroughSequence: Int?
 
     init(
         projectID: UUID?,
@@ -51,7 +53,9 @@ nonisolated struct FamiliarProjectContextSeed: Sendable {
         resources: [FamiliarContextResource],
         skills: [FamiliarSkillSnapshot] = [],
         availableSkills: [FamiliarSkillSnapshot] = [],
-        memories: [FamiliarContextMemory] = []
+        memories: [FamiliarContextMemory] = [],
+        conversationSummary: String? = nil,
+        summaryThroughSequence: Int? = nil
     ) {
         self.projectID = projectID
         self.projectName = projectName
@@ -61,6 +65,8 @@ nonisolated struct FamiliarProjectContextSeed: Sendable {
         self.skills = skills
         self.availableSkills = availableSkills
         self.memories = memories
+        self.conversationSummary = conversationSummary
+        self.summaryThroughSequence = summaryThroughSequence
     }
 }
 
@@ -179,8 +185,11 @@ nonisolated enum FamiliarProjectContextAssembler {
                 .user(parts: [.document(text: $0.extractedText, filename: $0.filename)])
             }
         }
+        if let summary = seed.conversationSummary, !summary.isEmpty {
+            providerMessages.append(.user("<conversation_summary>\n" + summary + "\n</conversation_summary>"))
+        }
         let protectedPrefixMessageCount = providerMessages.count
-        providerMessages += messages.map { snapshot in
+        providerMessages += messages.filter { $0.sequence > (seed.summaryThroughSequence ?? -1) }.map { snapshot in
             if snapshot.role == .assistant { return .assistant(snapshot.content) }
             var parts: [FamiliarProviderContent] = snapshot.content.isEmpty ? [] : [.text(snapshot.content)]
             parts += snapshot.attachments.map { attachment in

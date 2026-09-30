@@ -2,6 +2,7 @@ import Foundation
 import SwiftData
 
 enum FamiliarProjectServiceError: LocalizedError, Equatable {
+    case protectedProject
     case emptyName
     case duplicateName
     case projectHasRunningRun
@@ -9,6 +10,7 @@ enum FamiliarProjectServiceError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
+        case .protectedProject: String(localized: "project.error.protected")
         case .emptyName: String(localized: "project.error.empty_name")
         case .duplicateName: String(localized: "project.error.duplicate_name")
         case .projectHasRunningRun: String(localized: "project.error.running")
@@ -36,6 +38,26 @@ struct FamiliarProjectService {
         self.workspaceStore = workspaceStore
     }
 
+    /// Adopt existing unassigned chats without moving files or rewriting historical runs.
+    @discardableResult
+    func ensureDefaultProject(in context: ModelContext) throws -> FamiliarProject {
+        let id = FamiliarProject.dailyProjectID
+        let project: FamiliarProject
+        if let existing = try context.fetch(FetchDescriptor<FamiliarProject>(
+            predicate: #Predicate { $0.id == id }
+        )).first {
+            project = existing
+        } else {
+            project = FamiliarProject(id: id, name: "Daily Chat")
+            context.insert(project)
+        }
+        let unassigned = try context.fetch(FetchDescriptor<FamiliarConversation>())
+            .filter { $0.project == nil }
+        for conversation in unassigned { conversation.project = project }
+        if context.hasChanges { try save(context) }
+        return project
+    }
+
     @discardableResult
     func create(name: String, summary: String = "", in context: ModelContext) throws -> FamiliarProject {
         let normalizedName = try normalizedName(name)
@@ -53,9 +75,11 @@ struct FamiliarProjectService {
     }
 
     func update(_ project: FamiliarProject, name: String, summary: String, in context: ModelContext) throws {
-        let normalizedName = try normalizedName(name)
-        try ensureNameAvailable(normalizedName, excluding: project.id, in: context)
-        project.name = normalizedName
+        if !project.isDefaultProject {
+            let normalizedName = try normalizedName(name)
+            try ensureNameAvailable(normalizedName, excluding: project.id, in: context)
+            project.name = normalizedName
+        }
         project.summary = normalized(summary, maximumLength: Self.maximumSummaryLength)
         project.updatedAt = Date()
         try save(context)
@@ -81,21 +105,24 @@ struct FamiliarProjectService {
     /// An empty value clears the override so the Project follows the global selection.
     /// Unknown IDs are rejected rather than stored, because a stored ID the provider no
     /// longer offers would only surface as a failure at send time.
-    func updateModelOverride(_ project: FamiliarProject, modelID: String, in context: ModelContext) throws {
+    func updateModelOverride(_ project: FamiliarProject, modelID: String, providerID: String = FamiliarProviderCatalog.deepSeek.id, in context: ModelContext) throws {
         let value = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.isEmpty {
             project.modelIDOverride = nil
+            project.providerIDOverride = nil
         } else {
-            guard FamiliarProviderCatalog.deepSeek.curatedModels.contains(where: { $0.id == value }) else {
+            guard FamiliarProviderCatalog.descriptor(for: providerID)?.curatedModels.contains(where: { $0.id == value }) == true else {
                 throw FamiliarProjectServiceError.unknownModel
             }
             project.modelIDOverride = value
+            project.providerIDOverride = providerID
         }
         project.updatedAt = Date()
         try save(context)
     }
 
     func setArchived(_ archived: Bool, for project: FamiliarProject, in context: ModelContext) throws {
+        guard !project.isDefaultProject else { throw FamiliarProjectServiceError.protectedProject }
         project.status = archived ? .archived : .active
         project.updatedAt = Date()
         try save(context)
@@ -142,8 +169,8 @@ struct FamiliarProjectService {
         ))
         guard !bindings.isEmpty else { return manifests }
         let enabled = Set(bindings.filter(\.enabled).map(\.capabilityID))
-        let core: Set<String> = ["task_plan", "ask_user", "skill_list", "skill_read", "environment_status"]
-        return manifests.filter { core.contains($0.name) || enabled.contains($0.id) }
+        let core: Set<String> = ["task_plan", "ask_user", "skill_list", "skill_read", "skill_install", "environment_status"]
+        return manifests.filter { $0.source == .mcp || core.contains($0.name) || enabled.contains($0.id) }
     }
 
     func setSkill(
@@ -199,6 +226,7 @@ struct FamiliarProjectService {
     }
 
     func permanentlyDelete(_ project: FamiliarProject, in context: ModelContext) throws {
+        guard !project.isDefaultProject else { throw FamiliarProjectServiceError.protectedProject }
         guard !project.agentRuns.contains(where: { $0.status == .running }) else {
             throw FamiliarProjectServiceError.projectHasRunningRun
         }
@@ -206,11 +234,12 @@ struct FamiliarProjectService {
         var stagedArtifacts: FamiliarStagedArtifactDirectory?
         var stagedWorkspace: FamiliarStagedWorkspaceDirectory?
         let projectID = project.id
+        let defaultProject = try ensureDefaultProject(in: context)
         do {
             staged = try resourceStore.stageProjectDirectory(projectID: projectID)
             stagedArtifacts = try artifactStore.stageProjectDirectory(projectID: projectID)
             stagedWorkspace = try workspaceStore.stageWorkspace(.project(projectID))
-            project.conversations.forEach { $0.project = nil }
+            Array(project.conversations).forEach { $0.project = defaultProject }
             project.agentRuns.forEach { $0.project = nil }
             let artifacts = try context.fetch(FetchDescriptor<FamiliarArtifact>(
                 predicate: #Predicate { $0.projectID == projectID }
@@ -268,7 +297,7 @@ struct FamiliarProjectService {
     private func ensureNameAvailable(_ name: String, excluding projectID: UUID?, in context: ModelContext) throws {
         let projects = try context.fetch(FetchDescriptor<FamiliarProject>())
         let duplicate = projects.contains {
-            $0.id != projectID && $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame
+            $0.id != projectID && ($0.name.localizedCaseInsensitiveCompare(name) == .orderedSame || $0.displayName.localizedCaseInsensitiveCompare(name) == .orderedSame)
         }
         guard !duplicate else { throw FamiliarProjectServiceError.duplicateName }
     }

@@ -27,7 +27,7 @@ nonisolated struct FamiliarTaskPlanTool: FamiliarTool {
                 "planID": .string("Stable identifier reused for updates to this plan."),
                 "title": .string("Plan title."),
                 "tasks": .objectArray(
-                    "Tasks in display order.",
+                    "Ordered execution steps. Only complete a step after successful tool evidence; reuse stable IDs.",
                     properties: [
                         "id": .string("Stable task identifier, unique within this plan."),
                         "title": .string("Short task title."),
@@ -43,7 +43,9 @@ nonisolated struct FamiliarTaskPlanTool: FamiliarTool {
                     properties: [
                         "id": .string("Stable deliverable identifier."),
                         "title": .string("User-visible deliverable title."),
-                        "format": .string("Artifact format.", enumValues: FamiliarArtifactFormat.allCases.map(\.rawValue))
+                        "format": .string("Artifact format.", enumValues: FamiliarArtifactFormat.allCases.map(\.rawValue)),
+                        "requiredText": .stringArray("Required headings or literal content; cannot be weakened later.", itemDescription: "Required text"),
+                        "minimumSources": .integer("Minimum distinct successfully fetched source pages to cite.", minimum: 0, maximum: 16)
                     ],
                     required: ["id", "title", "format"]
                 )
@@ -71,7 +73,9 @@ nonisolated struct FamiliarTaskPlanTool: FamiliarTool {
         guard Set(deliverables.map(\.id)).count == deliverables.count,
               deliverables.allSatisfy({ !$0.id.isEmpty && !$0.title.isEmpty && formats.contains($0.format) })
         else { throw FamiliarPresentationToolError.invalidInput("Deliverables require unique IDs, titles, and supported formats.") }
+        guard deliverables.allSatisfy({ ($0.requiredText?.count ?? 0) <= 16 && (0...16).contains($0.minimumSources ?? 0) }) else { throw FamiliarPresentationToolError.invalidInput("Invalid delivery checks.") }
         let payload = FamiliarToolPresentationPayload.TaskList(planID: planID, title: title, tasks: input.tasks, expectedDeliverables: deliverables)
+        try await context.execution?.apply(payload)
         return .result(.init(
             envelope: try .init(model: input, presentation: .taskList(payload)),
             deliverables: deliverables

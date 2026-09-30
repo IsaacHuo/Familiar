@@ -17,10 +17,15 @@ nonisolated public struct FamiliarDeliverableSpec: Codable, Equatable, Sendable,
     public let title: String
     public let format: String
 
-    public init(id: String, title: String, format: String) {
+    public let requiredText: [String]?
+    public let minimumSources: Int?
+
+    public init(id: String, title: String, format: String, requiredText: [String]? = nil, minimumSources: Int? = nil) {
         self.id = id
         self.title = title
         self.format = format
+        self.requiredText = requiredText
+        self.minimumSources = minimumSources
     }
 }
 
@@ -717,6 +722,9 @@ nonisolated struct FamiliarToolContext: Sendable {
     let resources: [Resource]
     let attachments: [Attachment]
     let availableSkills: [FamiliarSkillSnapshot]
+    let execution: FamiliarRunExecutionState?
+    let activeSkill: FamiliarSkillSnapshot?
+    let fetchedSources: [FamiliarSource]
     /// The memories the Context Compiler selected for this run, already inside the
     /// prompt. Frozen like resources so the tool and the prompt cannot disagree about
     /// what Familiar remembers mid-run.
@@ -732,6 +740,9 @@ nonisolated struct FamiliarToolContext: Sendable {
         resources: [Resource] = [],
         attachments: [Attachment] = [],
         availableSkills: [FamiliarSkillSnapshot] = [],
+        execution: FamiliarRunExecutionState? = nil,
+        activeSkill: FamiliarSkillSnapshot? = nil,
+        fetchedSources: [FamiliarSource] = [],
         memories: [FamiliarContextMemory] = [],
         progressReporter: ProgressReporter? = nil
     ) {
@@ -743,6 +754,9 @@ nonisolated struct FamiliarToolContext: Sendable {
         self.resources = resources
         self.attachments = attachments
         self.availableSkills = availableSkills
+        self.execution = execution
+        self.activeSkill = activeSkill
+        self.fetchedSources = fetchedSources
         self.memories = memories
         self.progressReporter = progressReporter
     }
@@ -763,11 +777,13 @@ nonisolated struct FamiliarToolExecutionResult: Sendable {
     let environmentReceipt: FamiliarEnvironmentReceipt?
     let loadedSkill: FamiliarSkillSnapshot?
     let deliverables: [FamiliarDeliverableSpec]
+    let deliverableID: String?
+    let installedSkill: FamiliarSkillSnapshot?
     /// Set only by an approved memory write. Tools are `nonisolated` and have no
     /// SwiftData access, so the row is persisted by the controller.
     let memoryWrite: FamiliarMemoryWriteRequest?
 
-    init(envelope: FamiliarToolResultEnvelope, artifactIdentifier: String? = nil, sources: [FamiliarSource] = [], webCaptures: [FamiliarWebCapture] = [], artifact: FamiliarArtifactDescriptor? = nil, environmentReceipt: FamiliarEnvironmentReceipt? = nil, loadedSkill: FamiliarSkillSnapshot? = nil, deliverables: [FamiliarDeliverableSpec] = [], memoryWrite: FamiliarMemoryWriteRequest? = nil) {
+    init(envelope: FamiliarToolResultEnvelope, artifactIdentifier: String? = nil, sources: [FamiliarSource] = [], webCaptures: [FamiliarWebCapture] = [], artifact: FamiliarArtifactDescriptor? = nil, environmentReceipt: FamiliarEnvironmentReceipt? = nil, loadedSkill: FamiliarSkillSnapshot? = nil, deliverables: [FamiliarDeliverableSpec] = [], deliverableID: String? = nil, installedSkill: FamiliarSkillSnapshot? = nil, memoryWrite: FamiliarMemoryWriteRequest? = nil) {
         self.envelope = envelope
         self.artifactIdentifier = artifactIdentifier
         self.sources = sources
@@ -776,6 +792,8 @@ nonisolated struct FamiliarToolExecutionResult: Sendable {
         self.environmentReceipt = environmentReceipt
         self.loadedSkill = loadedSkill
         self.deliverables = deliverables
+        self.deliverableID = deliverableID
+        self.installedSkill = installedSkill
         self.memoryWrite = memoryWrite
     }
 
@@ -1023,6 +1041,10 @@ actor FamiliarToolRegistry {
         }
         toolsByName = values
         self.capabilities = capabilities
+    }
+
+    func snapshotRegistry(adding tools: [AnyFamiliarTool]) throws -> FamiliarToolRegistry {
+        try FamiliarToolRegistry(tools: Array(toolsByName.values) + tools, capabilities: capabilities)
     }
 
     func manifests() async -> [FamiliarToolManifest] {

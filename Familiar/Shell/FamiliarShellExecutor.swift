@@ -1,14 +1,22 @@
 import Foundation
 import Observation
 
+nonisolated enum FamiliarShellRuntimePhase: Equatable, Sendable {
+    case unavailable, preparing, installing, booting, ready
+    case running(UUID)
+    case failed(String)
+}
+
 @MainActor
 @Observable
 final class FamiliarShellRuntimeStatus {
-    enum Phase: Equatable {
-        case unavailable
-        case preparing
-        case ready
-        case failed(String)
+    typealias Phase = FamiliarShellRuntimePhase
+    static let shared = FamiliarShellRuntimeStatus(phase: .preparing)
+    private var lifecycleRevision = 0
+    func receive(_ phase: Phase, revision: Int) {
+        guard revision >= lifecycleRevision else { return }
+        lifecycleRevision = revision
+        self.phase = phase
     }
 
     private(set) var phase: Phase

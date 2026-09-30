@@ -437,7 +437,8 @@ nonisolated enum FamiliarArtifactValidator {
         guard !normalized.isEmpty else { throw FamiliarArtifactError.validationFailed("未提取到可检查的正文。") }
         let required = Array(Set(requiredText.map {
             $0.trimmingCharacters(in: .whitespacesAndNewlines)
-        }.filter { !$0.isEmpty })).prefix(16)
+        }.filter { !$0.isEmpty }))
+        guard required.count <= 16 else { throw FamiliarArtifactError.validationFailed("Too many required content checks.") }
         for term in required where normalized.localizedCaseInsensitiveContains(term) == false {
             throw FamiliarArtifactError.validationFailed("缺少必需内容：\(term)")
         }

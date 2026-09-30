@@ -163,7 +163,10 @@ nonisolated struct FamiliarRuntimeNotice: Equatable, Sendable {
 }
 
 nonisolated enum FamiliarRuntimeEventPayload: Sendable {
+    case modelSelected(FamiliarModelReference)
+    case usage(FamiliarTokenUsage)
     case runPhaseChanged(FamiliarRunPhase)
+    case executionStateChanged(FamiliarRunExecutionState.Snapshot)
     case assistantTurnStarted(id: String, index: Int)
     case assistantTurnCompleted(id: String, index: Int, text: String)
     case responseTextDelta(String)
@@ -260,6 +263,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
     private let clarificationCoordinator: FamiliarClarificationCoordinator
     private let undoStore: FamiliarUndoStore
     private let authorizationRuntime: (any FamiliarAuthorizationServicing)?
+    private let persistResult: (@Sendable (FamiliarToolExecutionResult) async throws -> Void)?
     private let maximumIterations: Int
     private let maximumAttemptsPerRound: Int
     private let maximumToolCalls: Int
@@ -273,11 +277,13 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         clarificationCoordinator: FamiliarClarificationCoordinator = FamiliarClarificationCoordinator(),
         undoStore: FamiliarUndoStore,
         authorizationRuntime: (any FamiliarAuthorizationServicing)? = nil,
-        maximumIterations: Int = 6,
+        persistResult: (@Sendable (FamiliarToolExecutionResult) async throws -> Void)? = nil,
+        maximumIterations: Int = 24,
         maximumAttemptsPerRound: Int = 2,
-        maximumToolCalls: Int = 24,
-        maximumDuration: TimeInterval = 600
+        maximumToolCalls: Int = 64,
+        maximumDuration: TimeInterval = 1_200
     ) {
+        self.persistResult = persistResult
         self.provider = provider
         self.registry = registry
         self.policy = policy
@@ -337,11 +343,11 @@ nonisolated struct FamiliarAgentLoop: Sendable {
 
         var visibleResponse = ""
         var collectedSources: [FamiliarSource] = []
-        var seenFingerprints: Set<String> = []
+        let execution = FamiliarRunExecutionState()
         var executedToolCalls = 0
         var loadedSkill = contextSnapshot.skills.first
-        var expectedDeliverables = Self.inferredDeliverables(from: contextSnapshot.providerMessages)
-        var publishedFormats = Set<String>()
+        var planningAttempts = 0
+        messages.append(.system("For Project work, first call task_plan with ordered steps and explicit expectedDeliverables (use an empty list for an answer-only task). Use Native tools for device capabilities, web_search/web_fetch for research, Linux for computation. Complete steps only with actual tool evidence. Publish each file with its deliverableID; never substitute text for a file. Update task_plan when advancing steps and before final delivery."))
         var repairAttempts = 0
         /// Set once the tool-call budget is spent. From then on tools are withheld
         /// rather than the run being failed, so the work already done survives.
@@ -398,39 +404,54 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                     "No further tool calls are available for this run. Answer now using only the information already gathered. State plainly what you could not verify or complete; never claim an action succeeded when it did not run."
                 ))
             }
+            let hasPlan = await execution.hasPlan()
+            let needsPlan = contextSnapshot.projectID != nil && !hasPlan && manifests.contains(where: { $0.name == "task_plan" })
             let request = FamiliarModelRequest(
                 model: contextSnapshot.modelID,
                 messages: messages,
-                tools: withholdTools ? [] : manifests
+                tools: withholdTools ? [] : (needsPlan ? manifests.filter { ["task_plan", "ask_user"].contains($0.name) } : manifests)
             )
-            let round = try await streamRound(request: request, emitter: emitter, deadline: deadline)
-            await emitter.emit(.assistantTurnCompleted(id: assistantTurnID, index: iteration, text: round.text))
+            let holdsDelivery = !(await execution.missing()).isEmpty || needsPlan
+            let round = try await streamRound(request: request, emitter: emitter, deadline: deadline, holdText: holdsDelivery)
+            if !holdsDelivery { await emitter.emit(.assistantTurnCompleted(id: assistantTurnID, index: iteration, text: round.text)) }
             visibleResponse += round.text
             if round.finishReason == .length || round.finishReason == .unknown { throw FamiliarAgentError.incompleteResponse }
             let calls = try round.pendingCalls.sorted { $0.key < $1.key }.map { try $0.value.completed() }
             guard !calls.isEmpty else {
                 let answer = visibleResponse.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !answer.isEmpty else { throw FamiliarAgentError.emptyResponse }
-                let missing = expectedDeliverables.filter { !publishedFormats.contains($0.format) }
-                if !missing.isEmpty {
-                    guard repairAttempts < 2 else {
+                let missing = await execution.missing()
+                let unfinished = await execution.unfinishedSteps()
+                if needsPlan {
+                    guard planningAttempts < 2 else { throw FamiliarExecutionContractError(detail: "A Project task must declare its plan before completion.") }
+                    planningAttempts += 1
+                    visibleResponse = ""
+                    messages.append(.system("Call task_plan first. For a simple answer, declare one step and no expectedDeliverables."))
+                    continue
+                }
+                if !missing.isEmpty || !unfinished.isEmpty {
+                    guard repairAttempts < 2, !withholdTools else {
                         throw FamiliarAgentError.missingDeliverables(missing.map(\.format))
                     }
-                    repairAttempts += 1
+                    repairAttempts = try await execution.beginRepair()
                     visibleResponse = ""
                     await emitter.emit(.runPhaseChanged(.repairing(attempt: repairAttempts)))
                     messages.append(.system(
                         "The run cannot finish yet. Produce and validate these promised deliverables with artifact_publish: "
                             + missing.map { "\($0.title) [\($0.format)]" }.joined(separator: ", ")
-                            + ". Do not claim success until artifact_publish returns a validation receipt."
+                            + ". Unfinished steps: " + unfinished.joined(separator: ", ") + ". Update task_plan using actual evidence. Do not claim success without committed validation receipts."
                     ))
                     continue
+                }
+                if holdsDelivery {
+                    await emitter.emit(.responseTextDelta(round.text))
+                    await emitter.emit(.assistantTurnCompleted(id: assistantTurnID, index: iteration, text: round.text))
                 }
                 await emitter.emit(.runPhaseChanged(.delivering))
                 await emitter.emit(.responseCompleted(.init(text: answer, sources: collectedSources)))
                 return
             }
-            if calls.contains(where: { $0.name == "skill_read" }), calls.count != 1 {
+            if calls.contains(where: { ["task_plan", "skill_read", "skill_install"].contains($0.name) }), calls.count != 1 {
                 throw FamiliarAgentError.invalidToolCall
             }
 
@@ -456,7 +477,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                     toolMessages[index] = .tool(Self.errorResult(code: "skill_tool_scope_denied", retryable: false, message: detail), toolCallID: call.id, name: call.name)
                     continue
                 }
-                guard seenFingerprints.insert(fingerprint).inserted else {
+                if manifest.effect != .read, await execution.wasWritten(fingerprint) {
                     let detail = String(localized: "error.tool.duplicate_call")
                     let completion = activityCompletion(runID: runID, call: call, manifest: manifest, assistantTurnID: assistantTurnID, detail: detail, confirmation: .notRequired, status: .failed, startedAt: startedAt)
                     await emitter.emit(.activityCompleted(completion))
@@ -491,10 +512,12 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                        try await canRunInParallel(prepared[cursor + 1], projectID: contextSnapshot.projectID, deadline: deadline) {
                         batch.append(prepared[cursor + 1])
                     }
+                    let batchSkill = loadedSkill
+                    let batchSources = collectedSources
                     let outputs = try await withThrowingTaskGroup(of: ToolCallOutput.self) { group in
                         for item in batch {
                             group.addTask {
-                                try await executeToolCall(item, runID: runID, assistantTurnID: assistantTurnID, contextSnapshot: contextSnapshot, emitter: emitter, deadline: deadline)
+                                try await executeToolCall(item, runID: runID, assistantTurnID: assistantTurnID, contextSnapshot: contextSnapshot, emitter: emitter, deadline: deadline, execution: execution, activeSkill: batchSkill, sources: batchSources)
                             }
                         }
                         var values: [ToolCallOutput] = []
@@ -505,17 +528,15 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                         toolMessages[output.index] = output.message
                         collectedSources = Self.mergingSources(collectedSources, with: output.sources)
                         if let skill = output.loadedSkill { loadedSkill = skill }
-                        if !output.deliverables.isEmpty { expectedDeliverables = output.deliverables }
-                        if let format = output.artifactFormat { publishedFormats.insert(format) }
+
                     }
                     cursor += batch.count
                 } else {
-                    let output = try await executeToolCall(current, runID: runID, assistantTurnID: assistantTurnID, contextSnapshot: contextSnapshot, emitter: emitter, deadline: deadline)
+                    let output = try await executeToolCall(current, runID: runID, assistantTurnID: assistantTurnID, contextSnapshot: contextSnapshot, emitter: emitter, deadline: deadline, execution: execution, activeSkill: loadedSkill, sources: collectedSources)
                     toolMessages[output.index] = output.message
                     collectedSources = Self.mergingSources(collectedSources, with: output.sources)
                     if let skill = output.loadedSkill { loadedSkill = skill }
-                    if !output.deliverables.isEmpty { expectedDeliverables = output.deliverables }
-                    if let format = output.artifactFormat { publishedFormats.insert(format) }
+
                     cursor += 1
                 }
             }
@@ -530,7 +551,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         // literally nothing to show is a genuine failure.
         let answer = visibleResponse.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !answer.isEmpty else { throw FamiliarAgentError.maxIterationsExceeded }
-        let missing = expectedDeliverables.filter { !publishedFormats.contains($0.format) }
+        let missing = await execution.missing()
         guard missing.isEmpty else {
             throw FamiliarAgentError.missingDeliverables(missing.map(\.format))
         }
@@ -541,7 +562,8 @@ nonisolated struct FamiliarAgentLoop: Sendable {
     private func streamRound(
         request: FamiliarModelRequest,
         emitter: FamiliarRuntimeEventEmitter,
-        deadline: ContinuousClock.Instant
+        deadline: ContinuousClock.Instant,
+        holdText: Bool = false
     ) async throws -> RoundResult {
         var attempt = 0
         while true {
@@ -565,7 +587,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                                     await emitter.emit(.runPhaseChanged(.responding))
                                 }
                                 roundText += value
-                                await emitter.emit(.responseTextDelta(value))
+                                if !holdText { await emitter.emit(.responseTextDelta(value)) }
                             case .reasoningSummaryDelta(let value):
                                 emittedContent = true
                                 reasoningSummary += value
@@ -577,6 +599,10 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                                 if let name { call.name += name }
                                 if let arguments { call.arguments += arguments }
                                 pendingCalls[index] = call
+                            case .providerSelection(let providerID, let modelID):
+                                await emitter.emit(.modelSelected(.init(providerID: providerID, modelID: modelID)))
+                            case .usage(let usage):
+                                await emitter.emit(.usage(usage))
                             case .completed(let reason):
                                 finishReason = reason
                             }
@@ -620,7 +646,10 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         assistantTurnID: String,
         contextSnapshot: FamiliarContextSnapshot,
         emitter: FamiliarRuntimeEventEmitter,
-        deadline: ContinuousClock.Instant
+        deadline: ContinuousClock.Instant,
+        execution: FamiliarRunExecutionState,
+        activeSkill: FamiliarSkillSnapshot?,
+        sources: [FamiliarSource]
     ) async throws -> ToolCallOutput {
         let call = item.call
         let manifest = item.manifest
@@ -651,7 +680,10 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                 workspaceID: workspaceID,
                 resources: resources,
                 attachments: attachments,
-                availableSkills: contextSnapshot.availableSkills,
+                availableSkills: await execution.skills(available: contextSnapshot.availableSkills),
+                execution: execution,
+                activeSkill: activeSkill,
+                fetchedSources: sources,
                 memories: contextSnapshot.memories,
                 progressReporter: { progress in
                     let detail: String = switch progress {
@@ -666,6 +698,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                     )))
                 }
             )
+            if ["environment_prepare", "shell_execute", "artifact_publish", "artifact_write", "artifact_edit"].contains(call.name) { try await execution.requirePlan() }
             let authorizationAssessment = try await Self.withDeadline(deadline) {
                 try await registry.preflight(
                     name: call.name,
@@ -845,6 +878,11 @@ nonisolated struct FamiliarAgentLoop: Sendable {
             }
             guard resolved.0.modelContent.count <= 48_000 else { throw FamiliarAgentError.toolResultTooLarge }
             let finishedAt = Date()
+            try await persistResult?(resolved.0)
+            if let installed = resolved.0.installedSkill { await execution.admit(installed) }
+            try await execution.record(call: call, result: resolved.0)
+            if manifest.effect != .read { await execution.didWrite(call.name + "|" + FamiliarAuthorizationGrant.argumentsHash(call.arguments)) }
+            await emitter.emit(.executionStateChanged(await execution.snapshot()))
             let completion = activityCompletion(runID: runID, call: call, manifest: manifest, assistantTurnID: assistantTurnID, detail: "", confirmation: resolved.1, status: .succeeded, startedAt: item.startedAt, finishedAt: finishedAt, artifactIdentifier: resolved.0.artifactIdentifier, undoAvailable: undoAvailable, automaticApprovalRequest: automaticApprovalRequest)
             await emitter.emit(.activityCompleted(completion))
             await emitter.emit(.toolResultProduced(.init(runID: runID, toolCallID: call.id, toolName: call.name, effect: manifest.effect, assistantTurnID: assistantTurnID, envelope: resolved.0.envelope, sources: resolved.0.sources, webCaptures: resolved.0.webCaptures, artifact: resolved.0.artifact, environmentReceipt: resolved.0.environmentReceipt, loadedSkill: resolved.0.loadedSkill, memoryWrite: resolved.0.memoryWrite, producedAt: finishedAt)))
@@ -864,9 +902,6 @@ nonisolated struct FamiliarAgentLoop: Sendable {
             let failure = FamiliarRuntimeFailure.kind(for: error)
             let completion = activityCompletion(runID: runID, call: call, manifest: manifest, assistantTurnID: assistantTurnID, detail: error.localizedDescription, confirmation: .notRequired, status: .failed, startedAt: item.startedAt, automaticApprovalRequest: automaticApprovalRequest, failureCode: failure.code, failureRetryable: failure.isRetryable)
             await emitter.emit(.activityCompleted(completion))
-            if call.name == "environment_prepare" {
-                throw error
-            }
             return .init(index: item.index, message: .tool(Self.errorResult(error), toolCallID: call.id, name: call.name), sources: [], failed: true)
         }
     }
@@ -1165,10 +1200,10 @@ nonisolated struct FamiliarAgentLoop: Sendable {
 
     private static func toolIsAllowedAfterLoadingSkill(_ name: String, skill: FamiliarSkillSnapshot) -> Bool {
         let core: Set<String> = [
-            "task_plan", "ask_user", "skill_list", "skill_read",
+            "task_plan", "ask_user", "skill_list", "skill_read", "skill_install",
             "environment_status", "environment_prepare", "artifact_publish"
         ]
-        return core.contains(name) || skill.allowedTools.contains(name)
+        return core.contains(name) || skill.allowedTools.isEmpty || skill.allowedTools.contains(name)
     }
 
     private static func phase(for calls: [FamiliarToolCall]) -> FamiliarRunPhase {
@@ -1176,20 +1211,6 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         if names.contains("environment_prepare") { return .preparingEnvironment }
         if names.contains("artifact_publish") { return .validating }
         return .executing
-    }
-
-    private static func inferredDeliverables(from messages: [FamiliarProviderMessage]) -> [FamiliarDeliverableSpec] {
-        guard let text = messages.last(where: { $0.role == .user })?.networkText?.lowercased(),
-              ["生成", "制作", "导出", "create", "generate", "export"].contains(where: text.contains)
-        else { return [] }
-        let mapping: [(String, [String])] = [
-            (FamiliarArtifactFormat.docx.rawValue, ["docx", "word", "word 文档", "文档"]),
-            (FamiliarArtifactFormat.pdf.rawValue, ["pdf"]),
-            (FamiliarArtifactFormat.xlsx.rawValue, ["xlsx", "excel", "电子表格"]),
-            (FamiliarArtifactFormat.html.rawValue, ["html", "网页文件"])
-        ]
-        guard let format = mapping.first(where: { entry in entry.1.contains(where: text.contains) })?.0 else { return [] }
-        return [.init(id: "requested-file", title: "Requested file", format: format)]
     }
 
     private struct PreparedToolCall: Sendable {

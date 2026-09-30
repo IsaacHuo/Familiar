@@ -121,6 +121,9 @@ typedef void (^ISHShellCompletionCallback)(ISHShellExecutionResult *result);
 /// @param pid Guest process PID — its pgid is used to find the group
 + (void)killProcessGroup:(int)pid;
 
+/// Terminate captured descendants and wait until they can no longer access mounts.
++ (BOOL)terminateProcessTree:(int)pid timeout:(NSTimeInterval)timeout;
+
 @end
 
 NS_ASSUME_NONNULL_END

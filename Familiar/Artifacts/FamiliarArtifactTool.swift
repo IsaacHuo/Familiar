@@ -216,6 +216,7 @@ nonisolated struct FamiliarArtifactPublishTool: FamiliarTool {
         let title: String
         let format: FamiliarArtifactFormat
         let requiredText: [String]?
+        var deliverableID: String?
         /// Identifier of the Artifact this file replaces. Supplying it makes the new file
         /// the next version of the same deliverable instead of an unrelated one.
         ///
@@ -254,6 +255,7 @@ nonisolated struct FamiliarArtifactPublishTool: FamiliarTool {
                     "Optional strings that must be present in the parsed document content.",
                     itemDescription: "A short literal string expected in the parsed content."
                 ),
+                "deliverableID": .string("Exact deliverable identifier declared in task_plan."),
                 "supersedes": .string("Identifier of the Artifact this file replaces, beginning with artifact_. Supply it when revising a file you already published so the result becomes the next version of the same deliverable.")
             ],
             required: ["path", "title", "format"]
@@ -280,11 +282,19 @@ nonisolated struct FamiliarArtifactPublishTool: FamiliarTool {
         let title = input.title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { throw FamiliarArtifactError.invalidPath }
         let output = try resolver.resolveOutput(relativePath: input.path, workspaceID: workspaceID)
-        let validation = try FamiliarArtifactValidator.validate(
-            fileURL: output.fileURL,
-            format: input.format,
-            requiredText: input.requiredText ?? []
-        )
+        let spec: FamiliarDeliverableSpec?
+        if let execution = context.execution { spec = try await execution.spec(id: input.deliverableID, format: input.format.rawValue) }
+        else { spec = nil }
+        let fetched = context.fetchedSources.filter { $0.kind == .fetchedPage }
+        let sourceURLs = Array(Set(fetched.map { $0.url.absoluteString })).sorted()
+        let minimumSources = spec?.minimumSources ?? 0
+        guard sourceURLs.count >= minimumSources else { throw FamiliarArtifactError.validationFailed("Not enough successfully fetched sources.") }
+        let required = Array(Set((spec?.requiredText ?? []) + (input.requiredText ?? [])))
+        let validation = try FamiliarArtifactValidator.validate(fileURL: output.fileURL, format: input.format, requiredText: required)
+        if minimumSources > 0 {
+            let text = try FamiliarArtifactReadTool.extractText(data: Data(contentsOf: output.fileURL), filename: output.fileURL.lastPathComponent).text
+            guard sourceURLs.filter({ text.contains($0) }).count >= minimumSources else { throw FamiliarArtifactError.validationFailed("The document must cite the fetched source URLs.") }
+        }
         let id = UUID()
         let identifier = "artifact_" + id.uuidString
         // A malformed predecessor is rejected rather than ignored: silently publishing an
@@ -323,6 +333,11 @@ nonisolated struct FamiliarArtifactPublishTool: FamiliarTool {
                     maximumBytes: FamiliarArtifactValidator.maximumArtifactBytes
                 )
                 guard imported.hash == output.contentHash else {
+                    try? store.remove(projectID: projectID, artifactID: id)
+                    throw FamiliarArtifactError.transactionFailed
+                }
+                let finalValidation = try FamiliarArtifactValidator.validate(fileURL: store.url(relativePath: imported.path)!, format: input.format, requiredText: required)
+                guard finalValidation.extractedTextHash == validation.extractedTextHash else {
                     try? store.remove(projectID: projectID, artifactID: id)
                     throw FamiliarArtifactError.transactionFailed
                 }
@@ -365,7 +380,8 @@ nonisolated struct FamiliarArtifactPublishTool: FamiliarTool {
                         ))
                     ),
                     artifactIdentifier: identifier,
-                    artifact: descriptor
+                    artifact: descriptor,
+                    deliverableID: input.deliverableID
                 )
                 return FamiliarCommittedAction(result: result) {
                     try store.remove(projectID: projectID, artifactID: id)

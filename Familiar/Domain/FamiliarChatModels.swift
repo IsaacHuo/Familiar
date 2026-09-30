@@ -390,16 +390,16 @@ nonisolated struct FamiliarExecutionBudget: Codable, Equatable, Sendable {
     var maximumToolCalls: Int
     var maximumDuration: TimeInterval
 
-    static let iterationRange = 2...12
+    static let iterationRange = 2...48
     static let toolCallRange = 4...64
     static let durationRange: ClosedRange<TimeInterval> = 60...1_800
 
     /// Mirrors the `FamiliarAgentLoop` initializer defaults. Both sides must agree,
     /// otherwise the UI would present a budget the runtime does not actually apply.
     static let defaultValue = FamiliarExecutionBudget(
-        maximumIterations: 6,
-        maximumToolCalls: 24,
-        maximumDuration: 600
+        maximumIterations: 24,
+        maximumToolCalls: 64,
+        maximumDuration: 1_200
     )
 
     var normalized: FamiliarExecutionBudget {
@@ -515,12 +515,14 @@ nonisolated struct FamiliarSettings: Codable, Equatable, Sendable {
     /// model. A stale or removed ID falls back to the global selection rather than
     /// pinning the Project to a model the app can no longer resolve, which would fail at
     /// send time instead of at the moment the model disappeared.
-    func applyingProjectModelOverride(_ overrideModelID: String?) -> FamiliarSettings {
+    func applyingProjectModelOverride(_ overrideModelID: String?, providerID: String? = nil) -> FamiliarSettings {
         guard let trimmed = overrideModelID?.trimmingCharacters(in: .whitespacesAndNewlines),
               !trimmed.isEmpty,
-              selectedProvider.curatedModels.contains(where: { $0.id == trimmed })
+              let provider = FamiliarProviderCatalog.descriptor(for: providerID ?? self.providerID),
+              provider.curatedModels.contains(where: { $0.id == trimmed })
         else { return self }
         var value = self
+        value.providerID = provider.id
         value.modelID = trimmed
         return value
     }
@@ -538,7 +540,6 @@ enum FamiliarSettingsStore {
         guard let data = UserDefaults.standard.data(forKey: key),
               var settings = try? JSONDecoder().decode(FamiliarSettings.self, from: data)
         else { return .defaultValue }
-        settings.providerID = FamiliarProviderCatalog.deepSeek.id
         settings.modelRoutePolicy = .cloud
         settings.modelID = FamiliarProviderCatalog.normalizedModelID(settings.modelID, providerID: settings.providerID)
         return settings

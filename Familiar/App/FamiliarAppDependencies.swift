@@ -51,11 +51,10 @@ struct FamiliarAppDependencies {
         undoStore = FamiliarUndoStore()
         let outputResolver = FamiliarWorkspaceOutputResolver(store: workspaceStore)
         let shellRuntime = Self.makeShellRuntime(workspaceStore: workspaceStore)
-        shellRuntimeStatus = FamiliarShellRuntimeStatus(
-            phase: shellRuntime == nil ? .unavailable : .preparing
-        )
+        shellRuntimeStatus = .shared
+        if shellRuntime == nil { shellRuntimeStatus.markFailed("Bundled iSH runtime assets are missing.") }
         do {
-            let tools: [AnyFamiliarTool] = [
+            var tools: [AnyFamiliarTool] = [
                 AnyFamiliarTool(FamiliarCurrentDateTimeTool()),
                 AnyFamiliarTool(FamiliarAppInformationTool()),
                 AnyFamiliarTool(FamiliarMapSearchTool(service: map)),
@@ -96,6 +95,7 @@ struct FamiliarAppDependencies {
                 AnyFamiliarTool(FamiliarMemoryRememberTool()),
                 AnyFamiliarTool(FamiliarSkillListTool()),
                 AnyFamiliarTool(FamiliarSkillReadTool()),
+                AnyFamiliarTool(FamiliarSkillInstallTool()),
                 AnyFamiliarTool(FamiliarArtifactWriteTool(store: FamiliarArtifactStore())),
                 AnyFamiliarTool(FamiliarArtifactEditTool(store: FamiliarArtifactStore())),
                 AnyFamiliarTool(FamiliarArtifactReadTool(store: FamiliarArtifactStore())),
@@ -110,6 +110,9 @@ struct FamiliarAppDependencies {
                 AnyFamiliarTool(FamiliarUpdateReminderTool(service: eventKit)),
                 AnyFamiliarTool(FamiliarDeleteReminderTool(service: eventKit))
             ]
+            if let shellRuntime {
+                tools += [shellRuntime.tool, AnyFamiliarTool(FamiliarEnvironmentPrepareTool(executor: shellRuntime.executor, workspaceStore: workspaceStore, packageSourceSettings: pythonPackageSourceSettings))]
+            }
             registry = try FamiliarToolRegistry(
                 tools: tools,
                 capabilities: FamiliarDeviceCapabilityProvider(
@@ -127,22 +130,11 @@ struct FamiliarAppDependencies {
             preconditionFailure("无法创建工具注册表：\(error.localizedDescription)")
         }
         if let shellRuntime {
-            let registry = registry
             let status = shellRuntimeStatus
-            let runtimeWorkspaceStore = workspaceStore
-            let runtimePackageSourceSettings = pythonPackageSourceSettings
             let prepareRuntime: @MainActor @Sendable () -> Void = {
                 Task {
                     do {
                         try await shellRuntime.executor.prepare()
-                        try await registry.registerIfAbsent(AnyFamiliarTool(
-                            FamiliarEnvironmentPrepareTool(
-                                executor: shellRuntime.executor,
-                                workspaceStore: runtimeWorkspaceStore,
-                                packageSourceSettings: runtimePackageSourceSettings
-                            )
-                        ))
-                        try await registry.registerIfAbsent(shellRuntime.tool)
                         status.markReady()
                     } catch {
                         status.markFailed(error.localizedDescription)
@@ -175,10 +167,13 @@ struct FamiliarAppDependencies {
         apiKey: String,
         routePolicy: FamiliarModelRoutePolicy,
         budget: FamiliarExecutionBudget = .defaultValue,
-        authorizationRuntime: (any FamiliarAuthorizationServicing)? = nil
+        runRegistry: FamiliarToolRegistry? = nil,
+        sessionID: String = "",
+        authorizationRuntime: (any FamiliarAuthorizationServicing)? = nil,
+        persistResult: (@Sendable (FamiliarToolExecutionResult) async throws -> Void)? = nil
     ) -> FamiliarAgentLoop {
         let normalized = budget.normalized
-        let cloudProvider = FamiliarProviderFactory.makeProvider(for: descriptor, apiKey: apiKey)
+        let cloudProvider = FamiliarProviderFactory.makeProvider(for: descriptor, apiKey: apiKey, sessionID: sessionID)
         let router = FamiliarModelRouter(
             policy: routePolicy,
             cloudProvider: cloudProvider,
@@ -188,12 +183,13 @@ struct FamiliarAppDependencies {
         )
         return FamiliarAgentLoop(
             provider: router,
-            registry: registry,
+            registry: runRegistry ?? registry,
             policy: policy,
             confirmationCoordinator: confirmationCoordinator,
             clarificationCoordinator: clarificationCoordinator,
             undoStore: undoStore,
             authorizationRuntime: authorizationRuntime,
+            persistResult: persistResult,
             maximumIterations: normalized.maximumIterations,
             maximumToolCalls: normalized.maximumToolCalls,
             maximumDuration: normalized.maximumDuration

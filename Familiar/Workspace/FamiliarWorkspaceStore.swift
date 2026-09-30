@@ -92,17 +92,17 @@ nonisolated enum FamiliarWorkspaceError: LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .invalidPath:
-            "Workspace 路径无效。"
+            String(localized: "workspace.invalid_path")
         case .symbolicLinkNotAllowed:
-            "Workspace 不允许通过符号链接访问文件。"
+            String(localized: "workspace.symlink")
         case .missingFile:
-            "Workspace 文件不存在。"
+            String(localized: "workspace.missing")
         case .quotaExceeded(let limit):
-            "Workspace 已超过 \(limit) 字节的存储上限。"
+            String(format: String(localized: "workspace.quota"), limit)
         case .checkpointUnavailable:
-            "Workspace checkpoint 不可用。"
+            String(localized: "workspace.checkpoint")
         case .invalidTaskView:
-            "Shell task Workspace 视图无效。"
+            String(localized: "workspace.task_view")
         }
     }
 }
@@ -169,6 +169,7 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         workspaceID: FamiliarWorkspaceID,
         resources: [FamiliarToolContext.Resource],
         attachments: [FamiliarToolContext.Attachment],
+        skills: [FamiliarSkillSnapshot] = [],
         useStagingEnvironment: Bool = false
     ) throws -> FamiliarWorkspaceTaskView {
         let paths = try prepare(workspaceID)
@@ -222,6 +223,16 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
                     throw FamiliarWorkspaceError.missingFile
                 }
                 try protectFile(destination)
+            }
+            for skill in skills where skill.resources != nil {
+                guard FamiliarSkillPackageStore.safePath(skill.stableID), !skill.stableID.contains("/") else { throw FamiliarWorkspaceError.invalidTaskView }
+                for path in skill.resources ?? [] {
+                    let source = try FamiliarSkillPackageStore().resource(hash: skill.contentHash, path: path)
+                    let destination = inputs.appendingPathComponent("Skills/\(skill.stableID)/\(path)")
+                    try ensureDirectory(destination.deletingLastPathComponent())
+                    try fileManager.copyItem(at: source, to: destination)
+                    try protectFile(destination)
+                }
             }
             try makeTreeReadOnly(inputs)
         } catch {
@@ -666,9 +677,9 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
     }
 
     private func isConfined(_ url: URL, below directory: URL) -> Bool {
-        let candidate = url.standardizedFileURL.path
-        let root = directory.standardizedFileURL.path
-        return candidate.hasPrefix(root + "/")
+        let candidate = url.resolvingSymlinksInPath().standardizedFileURL.pathComponents
+        let root = directory.resolvingSymlinksInPath().standardizedFileURL.pathComponents
+        return candidate.count > root.count && candidate.starts(with: root)
     }
 
     private func safeFilename(_ value: String) -> String {
