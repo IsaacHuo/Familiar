@@ -247,7 +247,7 @@ struct FamiliarSurfaceTests {
         #expect(!card.contains("Button(String(localized: \"approval.skip\""))
         #expect(card.contains("FamiliarRadius.card"))
         #expect(card.contains(".buttonStyle(.borderedProminent)"))
-        #expect(card.contains(".tint(FamiliarAISurfaceColor.accent)"))
+        #expect(card.contains(".tint(FamiliarTheme.accent)"))
         #expect(card.contains("authorization.once"))
         #expect(card.contains("authorization.session"))
         #expect(card.contains("authorization.always"))

@@ -54,7 +54,7 @@ struct FamiliarSelectionPresentationTests {
         #expect(sources.contains("FamiliarSourceCluster(sources: message.sources)"))
         #expect(sources.contains("AsyncImage(url: faviconURL)"))
         #expect(sources.contains("components.path = \"/favicon.ico\""))
-        #expect(sources.contains("FamiliarAISurfaceColor.inset"))
+        #expect(sources.contains("FamiliarTheme.inset"))
         #expect(typedResult.contains("search.activity.query"))
         #expect(typedResult.contains("search.activity.read_count"))
         #expect(!typedResult.contains("ForEach(search.results"))

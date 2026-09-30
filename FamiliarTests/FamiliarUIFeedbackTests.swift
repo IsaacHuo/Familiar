@@ -134,7 +134,7 @@ struct FamiliarUIFeedbackTests {
 
         // contentShape is required: the background shape alone does not make the padding
         // tappable, which would leave most of the card visually inviting a dead tap.
-        #expect(receipt.contains(".contentShape(RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.card"))
+        #expect(receipt.contains(".contentShape(RoundedRectangle(cornerRadius: FamiliarRadius.card"))
         #expect(receipt.contains(".onTapGesture {"))
         // The title is plain content now: a second overlapping target doing the same thing
         // only shrinks the one the user actually aims at.

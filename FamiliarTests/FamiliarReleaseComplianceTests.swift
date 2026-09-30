@@ -134,9 +134,9 @@ struct FamiliarReleaseComplianceTests {
     @Test("Dynamic AI colors are safe for SwiftUI async rendering")
     func dynamicColorIsolation() throws {
         let theme = try source("Familiar/Support/FamiliarTheme.swift")
-        #expect(theme.contains("nonisolated enum FamiliarAISurfaceColor"))
+        #expect(theme.contains("nonisolated enum FamiliarTheme"))
         #expect(theme.contains("private nonisolated extension UIColor"))
-        #expect(!theme.contains("@MainActor\nenum FamiliarAISurfaceColor"))
+        #expect(!theme.contains("@MainActor\nenum FamiliarTheme"))
     }
 
     private var repositoryRoot: URL {
