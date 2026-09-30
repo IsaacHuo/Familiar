@@ -36,14 +36,14 @@ struct FamiliarApprovalCard: View {
     private var interruptedState: some View {
         HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
             Image(systemName: "questionmark.circle.fill")
-                .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
+                .foregroundStyle(FamiliarTheme.inkTertiary)
             Text(surface.detail ?? String(localized: "approval.interrupted", defaultValue: "This approval was interrupted and can no longer be answered."))
                 .font(.subheadline)
-                .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+                .foregroundStyle(FamiliarTheme.inkSecondary)
         }
         .frame(minHeight: FamiliarControlSize.minimumHitTarget)
         .padding(.horizontal, FamiliarAISurfaceMetric.spaceM)
-        .background(FamiliarAISurfaceColor.inset, in: Capsule())
+        .background(FamiliarTheme.inset, in: Capsule())
         .accessibilityIdentifier("approval.interrupted")
     }
 
@@ -57,12 +57,12 @@ struct FamiliarApprovalCard: View {
         }
         .padding(FamiliarAISurfaceMetric.spaceL)
         .background(
-            FamiliarAISurfaceColor.surface,
+            FamiliarTheme.surface,
             in: RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous)
         )
         .overlay {
             RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous)
-                .stroke(FamiliarAISurfaceColor.line, lineWidth: FamiliarAISurfaceMetric.hairline)
+                .stroke(FamiliarTheme.line, lineWidth: FamiliarAISurfaceMetric.hairline)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("approval.card")
@@ -78,11 +78,11 @@ struct FamiliarApprovalCard: View {
             VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
                 Text(surface.title)
                     .font(.headline)
-                    .foregroundStyle(FamiliarAISurfaceColor.ink)
+                    .foregroundStyle(FamiliarTheme.ink)
                 if let target = surface.approvalTarget, !target.isEmpty {
                     Text(target)
                         .font(.subheadline)
-                        .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+                        .foregroundStyle(FamiliarTheme.inkSecondary)
                 }
             }
         }
@@ -99,21 +99,21 @@ struct FamiliarApprovalCard: View {
                     LabeledContent {
                         Text(field.formattedValue)
                             .font(.subheadline.weight(.medium))
-                            .foregroundStyle(FamiliarAISurfaceColor.ink)
+                            .foregroundStyle(FamiliarTheme.ink)
                             .multilineTextAlignment(.trailing)
                             .textSelection(.enabled)
                     } label: {
                         Text(field.label)
                             .font(.subheadline)
-                            .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+                            .foregroundStyle(FamiliarTheme.inkSecondary)
                     }
                     .padding(.horizontal, FamiliarAISurfaceMetric.spaceM)
                     .frame(minHeight: FamiliarControlSize.minimumHitTarget)
                 }
             }
             .background(
-                FamiliarAISurfaceColor.inset,
-                in: RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.control, style: .continuous)
+                FamiliarTheme.inset,
+                in: RoundedRectangle(cornerRadius: FamiliarRadius.control, style: .continuous)
             )
         }
     }
@@ -129,7 +129,7 @@ struct FamiliarApprovalCard: View {
             }
         }
         .font(.caption)
-        .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+        .foregroundStyle(FamiliarTheme.inkSecondary)
         .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -139,7 +139,7 @@ struct FamiliarApprovalCard: View {
             VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceS) {
                 Text(String(localized: "approval.scope.question", defaultValue: "How long should Familiar allow this action?"))
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+                    .foregroundStyle(FamiliarTheme.inkSecondary)
                 VStack(spacing: FamiliarAISurfaceMetric.spaceXS) {
                     ForEach(authorizationOptions) { option in
                         Button {
@@ -149,18 +149,18 @@ struct FamiliarApprovalCard: View {
                         } label: {
                             HStack(spacing: FamiliarAISurfaceMetric.spaceM) {
                                 Image(systemName: selectedDecision == option.decision ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(selectedDecision == option.decision ? FamiliarAISurfaceColor.accent : FamiliarAISurfaceColor.inkTertiary)
+                                    .foregroundStyle(selectedDecision == option.decision ? FamiliarTheme.accent : FamiliarTheme.inkTertiary)
                                 Text(option.title)
                                     .font(.subheadline)
-                                    .foregroundStyle(FamiliarAISurfaceColor.ink)
+                                    .foregroundStyle(FamiliarTheme.ink)
                                 Spacer(minLength: 0)
                             }
                             .padding(.horizontal, FamiliarAISurfaceMetric.spaceM)
                             .frame(minHeight: FamiliarControlSize.minimumHitTarget)
                             .contentShape(Rectangle())
                             .background(
-                                selectedDecision == option.decision ? FamiliarAISurfaceColor.accentTint : Color.clear,
-                                in: RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.control, style: .continuous)
+                                selectedDecision == option.decision ? FamiliarTheme.accentTint : Color.clear,
+                                in: RoundedRectangle(cornerRadius: FamiliarRadius.control, style: .continuous)
                             )
                         }
                         .buttonStyle(.plain)
@@ -186,7 +186,7 @@ struct FamiliarApprovalCard: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .tint(FamiliarAISurfaceColor.accent)
+            .tint(FamiliarTheme.accent)
             .frame(maxWidth: .infinity, minHeight: FamiliarControlSize.minimumHitTarget)
             .accessibilityIdentifier("approval.confirm")
         }
@@ -195,13 +195,13 @@ struct FamiliarApprovalCard: View {
     private func submittedState(_ decision: FamiliarToolConfirmationDecision) -> some View {
         HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
             Image(systemName: decision == .cancelled ? "xmark.circle.fill" : "checkmark.circle.fill")
-                .foregroundStyle(decision == .cancelled ? FamiliarAISurfaceColor.inkTertiary : FamiliarAISurfaceColor.success)
+                .foregroundStyle(decision == .cancelled ? FamiliarTheme.inkTertiary : FamiliarTheme.success)
             Text(decision == .cancelled
                  ? String(localized: "approval.skipped", defaultValue: "Approval cancelled")
                  : String(localized: "approval.sent", defaultValue: "Approved"))
                 .font(.subheadline.weight(.semibold))
         }
-        .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+        .foregroundStyle(FamiliarTheme.inkSecondary)
         .frame(minHeight: FamiliarControlSize.minimumHitTarget)
         .transition(.opacity)
         .accessibilityIdentifier("approval.sent")
@@ -229,9 +229,9 @@ struct FamiliarApprovalCard: View {
 
     private var riskColor: Color {
         switch surface.approvalRisk {
-        case .high: FamiliarAISurfaceColor.failure
-        case .sensitive: FamiliarAISurfaceColor.warning
-        case .low, nil: FamiliarAISurfaceColor.accent
+        case .high: FamiliarTheme.failure
+        case .sensitive: FamiliarTheme.warning
+        case .low, nil: FamiliarTheme.accent
         }
     }
 

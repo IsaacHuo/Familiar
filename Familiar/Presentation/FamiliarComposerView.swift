@@ -235,6 +235,15 @@ struct FamiliarComposer: View {
         .padding(.top, hasDraftContent ? FamiliarSpacing.medium : FamiliarSpacing.xSmall)
         .padding(.bottom, FamiliarSpacing.xSmall)
         .frame(height: mode == .fullscreen ? fullscreenHeight : nil, alignment: .bottom)
+        .contentShape(RoundedRectangle(cornerRadius: FamiliarRadius.overlay, style: .continuous))
+        .background {
+            // A material draws pixels but does not claim the empty space between controls.
+            // This target sits behind the editor/buttons and owns that space exclusively.
+            RoundedRectangle(cornerRadius: FamiliarRadius.overlay, style: .continuous)
+                .fill(Color.clear)
+                .contentShape(RoundedRectangle(cornerRadius: FamiliarRadius.overlay, style: .continuous))
+                .onTapGesture { focus.wrappedValue = true }
+        }
         .familiarGlassSurface(interactive: true, cornerRadius: FamiliarRadius.overlay)
         .padding(.horizontal, FamiliarSpacing.medium)
         .padding(.top, FamiliarSpacing.small)

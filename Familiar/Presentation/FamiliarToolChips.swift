@@ -108,10 +108,10 @@ struct FamiliarToolChips: View {
                 .font(.caption.weight(.medium))
                 .monospacedDigit()
             }
-            .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+            .foregroundStyle(FamiliarTheme.inkSecondary)
             .padding(.horizontal, FamiliarAISurfaceMetric.spaceS)
             .frame(minHeight: FamiliarControlSize.minimumHitTarget)
-            .contentShape(RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.control, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: FamiliarRadius.control, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityValue(
@@ -153,7 +153,7 @@ struct FamiliarToolChips: View {
                             )
                         )
                         .font(.caption2.monospacedDigit())
-                        .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
+                        .foregroundStyle(FamiliarTheme.inkTertiary)
                         .underline()
                         .frame(minHeight: 28)
                     }
@@ -163,7 +163,7 @@ struct FamiliarToolChips: View {
         .padding(.top, FamiliarAISurfaceMetric.spaceM)
         .overlay(alignment: .top) {
             Rectangle()
-                .fill(FamiliarAISurfaceColor.line)
+                .fill(FamiliarTheme.line)
                 .frame(height: FamiliarAISurfaceMetric.hairline)
         }
         .overlay(alignment: .topLeading) {
@@ -213,29 +213,29 @@ private struct FamiliarToolChipRow: View {
                     leadingIcon
                     Text(item.label)
                         .font(.caption.weight(.medium))
-                        .foregroundStyle(FamiliarAISurfaceColor.ink)
+                        .foregroundStyle(FamiliarTheme.ink)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
                     Text(item.chip)
                         .font(item.isMonospaced ? .caption2.monospaced() : .caption2)
-                        .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+                        .foregroundStyle(FamiliarTheme.inkSecondary)
                         .lineLimit(1)
                         .padding(.horizontal, FamiliarAISurfaceMetric.spaceS)
                         .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
                         .background(
-                            FamiliarAISurfaceColor.field,
+                            FamiliarTheme.field,
                             in: RoundedRectangle(
-                                cornerRadius: FamiliarAISurfaceRadius.chip,
+                                cornerRadius: FamiliarRadius.compact,
                                 style: .continuous
                             )
                         )
                         .overlay {
                             RoundedRectangle(
-                                cornerRadius: FamiliarAISurfaceRadius.chip,
+                                cornerRadius: FamiliarRadius.compact,
                                 style: .continuous
                             )
                             .stroke(
-                                FamiliarAISurfaceColor.line,
+                                FamiliarTheme.line,
                                 lineWidth: FamiliarAISurfaceMetric.hairline
                             )
                         }
@@ -244,14 +244,14 @@ private struct FamiliarToolChipRow: View {
                 .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
                 .contentShape(
                     RoundedRectangle(
-                        cornerRadius: FamiliarAISurfaceRadius.control,
+                        cornerRadius: FamiliarRadius.control,
                         style: .continuous
                     )
                 )
                 .background(
-                    isHovered ? FamiliarAISurfaceColor.hover : Color.clear,
+                    isHovered ? FamiliarTheme.hover : Color.clear,
                     in: RoundedRectangle(
-                        cornerRadius: FamiliarAISurfaceRadius.control,
+                        cornerRadius: FamiliarRadius.control,
                         style: .continuous
                     )
                 )
@@ -268,7 +268,7 @@ private struct FamiliarToolChipRow: View {
             if isOpen {
                 HStack(alignment: .top, spacing: FamiliarAISurfaceMetric.spaceM) {
                     Rectangle()
-                        .fill(FamiliarAISurfaceColor.line)
+                        .fill(FamiliarTheme.line)
                         .frame(width: FamiliarAISurfaceMetric.hairline)
                     VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
                         ForEach(item.details) { detail in
@@ -303,7 +303,7 @@ private struct FamiliarToolChipRow: View {
                 .blur(radius: showsChevron ? 4 : 0)
             Image(systemName: "chevron.down")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(FamiliarAISurfaceColor.inkTertiary)
+                .foregroundStyle(FamiliarTheme.inkTertiary)
                 .rotationEffect(.degrees(isOpen ? 0 : -90))
                 .opacity(showsChevron ? 1 : 0)
                 .scaleEffect(showsChevron ? 1 : 0.25)
@@ -330,23 +330,23 @@ private struct FamiliarToolDiffChipButton: View {
         } label: {
             HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
                 Text(diff.title)
-                    .foregroundStyle(FamiliarAISurfaceColor.ink)
+                    .foregroundStyle(FamiliarTheme.ink)
                     .lineLimit(1)
                 Text("+\(diff.additions)")
-                    .foregroundStyle(FamiliarAISurfaceColor.success)
+                    .foregroundStyle(FamiliarTheme.success)
                     .monospacedDigit()
                 if diff.deletions > 0 {
                     Text("−\(diff.deletions)")
-                        .foregroundStyle(FamiliarAISurfaceColor.failure)
+                        .foregroundStyle(FamiliarTheme.failure)
                         .monospacedDigit()
                 }
             }
             .font(.caption2.monospaced())
             .padding(.horizontal, FamiliarAISurfaceMetric.spaceS)
             .frame(maxWidth: 240, minHeight: 28)
-            .background(FamiliarAISurfaceColor.surface, in: RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.chip, style: .continuous))
+            .background(FamiliarTheme.surface, in: RoundedRectangle(cornerRadius: FamiliarRadius.compact, style: .continuous))
             .shadow(color: Color.black.opacity(0.06), radius: 3, y: 1)
-            .contentShape(RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.chip, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: FamiliarRadius.compact, style: .continuous))
         }
         .buttonStyle(FamiliarToolChipPressStyle())
         .onHover(perform: onPreviewChange)
@@ -384,13 +384,13 @@ private struct FamiliarToolDiffPreview: View {
             HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
                 Text(diff.title)
                     .lineLimit(1)
-                    .foregroundStyle(FamiliarAISurfaceColor.inkSecondary)
+                    .foregroundStyle(FamiliarTheme.inkSecondary)
                 Spacer(minLength: 0)
                 Text("+\(diff.additions)")
-                    .foregroundStyle(FamiliarAISurfaceColor.success)
+                    .foregroundStyle(FamiliarTheme.success)
                 if diff.deletions > 0 {
                     Text("−\(diff.deletions)")
-                        .foregroundStyle(FamiliarAISurfaceColor.failure)
+                        .foregroundStyle(FamiliarTheme.failure)
                 }
             }
             .font(.caption2.monospaced())
@@ -398,7 +398,7 @@ private struct FamiliarToolDiffPreview: View {
             .frame(minHeight: 32)
             .overlay(alignment: .bottom) {
                 Rectangle()
-                    .fill(FamiliarAISurfaceColor.line)
+                    .fill(FamiliarTheme.line)
                     .frame(height: FamiliarAISurfaceMetric.hairline)
             }
 
@@ -421,8 +421,8 @@ private struct FamiliarToolDiffPreview: View {
             .padding(.vertical, FamiliarAISurfaceMetric.spaceXS)
         }
         .frame(width: 288)
-        .background(FamiliarAISurfaceColor.surface)
-        .clipShape(RoundedRectangle(cornerRadius: FamiliarAISurfaceRadius.card, style: .continuous))
+        .background(FamiliarTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous))
         .shadow(color: Color.black.opacity(0.14), radius: 14, y: 6)
         .accessibilityElement(children: .contain)
     }
@@ -508,11 +508,11 @@ private struct FamiliarToolChipItem: Identifiable {
 
     var iconColor: Color {
         switch phase {
-        case .failed: FamiliarAISurfaceColor.failure
-        case .cancelled, .undone: FamiliarAISurfaceColor.inkTertiary
+        case .failed: FamiliarTheme.failure
+        case .cancelled, .undone: FamiliarTheme.inkTertiary
         case .queued, .planning, .running, .awaitingApproval, .awaitingClarification:
-            FamiliarAISurfaceColor.accent
-        case .succeeded: FamiliarAISurfaceColor.inkTertiary
+            FamiliarTheme.accent
+        case .succeeded: FamiliarTheme.inkTertiary
         }
     }
 }
@@ -530,9 +530,9 @@ private struct FamiliarToolChipDetail: Identifiable {
 
     var color: Color {
         switch tone {
-        case .normal: FamiliarAISurfaceColor.inkSecondary
-        case .add: FamiliarAISurfaceColor.success
-        case .delete: FamiliarAISurfaceColor.failure
+        case .normal: FamiliarTheme.inkSecondary
+        case .add: FamiliarTheme.success
+        case .delete: FamiliarTheme.failure
         }
     }
 }
@@ -561,16 +561,16 @@ private struct FamiliarToolDiffLine: Identifiable {
 
         var color: Color {
             switch self {
-            case .add: FamiliarAISurfaceColor.success
-            case .delete: FamiliarAISurfaceColor.failure
-            case .context: FamiliarAISurfaceColor.inkSecondary
+            case .add: FamiliarTheme.success
+            case .delete: FamiliarTheme.failure
+            case .context: FamiliarTheme.inkSecondary
             }
         }
 
         var background: Color {
             switch self {
-            case .add: FamiliarAISurfaceColor.successTint
-            case .delete: FamiliarAISurfaceColor.failureTint
+            case .add: FamiliarTheme.successTint
+            case .delete: FamiliarTheme.failureTint
             case .context: Color.clear
             }
         }

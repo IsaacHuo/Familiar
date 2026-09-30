@@ -51,7 +51,7 @@ struct FamiliarMarkdownWebView: View {
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(mode == .document ? AppSpacing.page : 0)
+                        .padding(mode == .document ? FamiliarSpacing.xLarge : 0)
                 }
             } else {
                 ZStack(alignment: .topLeading) {

@@ -196,6 +196,8 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             updateRunStatus(runID: event.runID, phase: phase, at: event.timestamp)
         case .assistantTurnStarted(let id, _):
             ensureTrace(runID: event.runID, assistantTurnID: id, context: nil, startedAt: event.timestamp)
+        case .modelSelected, .usage, .executionStateChanged:
+            break
         case .assistantTurnCompleted:
             break
         case .activityStarted(let activity):
@@ -644,7 +646,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             kind: isFileExport ? .share : surfaceKind(envelope.presentation.name, hasArtifact: artifact != nil),
             placement: isFileExport ? .topLevel : placement,
             phase: surfacePhase(activity.phase),
-            title: envelope.summary,
+            title: FamiliarToolPresentationName.summary(for: activity.toolName, envelope: envelope),
             detail: activity.detail,
             toolCallID: activity.toolCallID,
             toolName: activity.toolName,
@@ -862,6 +864,21 @@ nonisolated enum FamiliarToolCategory: String, CaseIterable, Sendable {
 }
 
 nonisolated enum FamiliarToolPresentationName {
+    static func summary(for toolName: String?, envelope: FamiliarToolResultEnvelope) -> String {
+        if toolName == "workspace_list", case .recordCollection(let collection) = envelope.presentation.content {
+            return String(format: String(localized: "workspace.file_count"), collection.records.count)
+        }
+        return envelope.summary
+    }
+
+    static func effectDescription(_ manifest: FamiliarToolManifest) -> String {
+        switch manifest.effect {
+        case .read: String(localized: manifest.risk == .low ? "capability.read" : "capability.sensitive")
+        case .reversibleWrite: String(localized: "capability.write")
+        case .destructiveWrite: String(localized: "capability.destructive")
+        }
+    }
+
     static func title(for name: String) -> String {
         switch name {
         case "current_date_time": String(localized: "tool.date_time")
@@ -887,6 +904,10 @@ nonisolated enum FamiliarToolPresentationName {
         case "shell_execute": String(localized: "tool.shell_execute", defaultValue: "Run Workspace Shell")
         case "environment_status": String(localized: "tool.environment_status", defaultValue: "Inspect Project Environment")
         case "environment_prepare": String(localized: "tool.environment_prepare", defaultValue: "Prepare Project Environment")
+        case "skill_install": String(localized: "tool.skill_install")
+        case "memory_search": String(localized: "tool.memory_search")
+        case "memory_remember": String(localized: "tool.memory_remember")
+        case "artifact_read": String(localized: "tool.artifact_read")
         case "skill_list": String(localized: "tool.skill_list", defaultValue: "List Project Skills")
         case "skill_read": String(localized: "tool.skill_read", defaultValue: "Load Project Skill")
         case "artifact_publish": String(localized: "tool.artifact_publish", defaultValue: "Publish Artifact")

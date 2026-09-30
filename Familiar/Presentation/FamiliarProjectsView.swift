@@ -58,7 +58,7 @@ struct FamiliarProjectsView: View {
             List {
                 projectSection(
                     title: String(localized: "project.active"),
-                    projects: projects.filter { $0.status == .active }
+                    projects: projects.filter { $0.status == .active }.sorted { $0.isDefaultProject && !$1.isDefaultProject }
                 )
                 let archived = projects.filter { $0.status == .archived }
                 if !archived.isEmpty {
@@ -124,7 +124,7 @@ struct FamiliarProjectsView: View {
             ForEach(projects) { project in
                 NavigationLink(value: project.id) {
                     VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                        Text(project.name)
+                        Text(project.displayName)
                             .font(FamiliarTypography.body.weight(.medium))
                         if !project.summary.isEmpty {
                             Text(project.summary)
@@ -223,7 +223,7 @@ private struct FamiliarProjectDetailView: View {
             }
 
         }
-        .navigationTitle(project.name)
+        .navigationTitle(project.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -237,6 +237,7 @@ private struct FamiliarProjectDetailView: View {
                     Button(action: onEdit) {
                         Label(String(localized: "common.edit"), systemImage: "pencil")
                     }
+                    if !project.isDefaultProject {
                     Button {
                         perform {
                             try FamiliarProjectService().setArchived(
@@ -259,6 +260,7 @@ private struct FamiliarProjectDetailView: View {
                         Label(String(localized: "project.delete"), systemImage: "trash")
                     }
                     .disabled(project.agentRuns.contains { $0.status == .running })
+                    }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
@@ -361,6 +363,12 @@ private struct FamiliarProjectDetailView: View {
                     symbol: "wand.and.stars",
                     count: nil
                 )
+            }
+
+            NavigationLink {
+                FamiliarMCPSettingsView(projectID: project.id)
+            } label: {
+                FamiliarProjectContextRow(title: String(localized: "mcp.title"), detail: String(localized: "mcp.settings.detail"), symbol: "wrench.and.screwdriver", count: nil)
             }
 
             if let registry {
@@ -712,8 +720,8 @@ private struct FamiliarProjectCapabilitiesView: View {
             }
         )) {
             VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                Text(manifest.title)
-                Text(manifest.description).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                Text(FamiliarToolPresentationName.title(for: manifest.name))
+                Text(FamiliarToolPresentationName.effectDescription(manifest)).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }
         }
         .disabled(coreCapabilities.contains(manifest.name))
@@ -1438,8 +1446,8 @@ private struct FamiliarProjectRunStep: View {
 
     private var statusColor: Color {
         switch activity.phase {
-        case .succeeded: FamiliarAISurfaceColor.success
-        case .failed: FamiliarAISurfaceColor.failure
+        case .succeeded: FamiliarTheme.success
+        case .failed: FamiliarTheme.failure
         case .cancelled, .undone: .secondary
         default: FamiliarTheme.accent
         }
@@ -1467,7 +1475,7 @@ private struct FamiliarProjectRunApproval: View {
                 Spacer(minLength: 0)
                 Text(decisionTitle)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(approval.decision == .approved ? FamiliarAISurfaceColor.success : .secondary)
+                    .foregroundStyle(approval.decision == .approved ? FamiliarTheme.success : .secondary)
             }
             if let target = approval.target, !target.isEmpty {
                 Text(target)
@@ -1608,6 +1616,7 @@ private struct FamiliarProjectEditorView: View {
     @State private var instruction: String
     /// Empty string means "follow the global selection", which is the stored `nil`.
     @State private var modelIDOverride: String
+    @State private var providerIDOverride: String = FamiliarProviderCatalog.deepSeek.id
     @State private var errorMessage: String?
 
     init(destination: FamiliarProjectEditorDestination, onSave: @escaping (FamiliarProject) -> Void) {
@@ -1620,7 +1629,8 @@ private struct FamiliarProjectEditorView: View {
             _instruction = State(initialValue: "")
             _modelIDOverride = State(initialValue: "")
         case .edit(let project):
-            _name = State(initialValue: project.name)
+            _name = State(initialValue: project.displayName)
+            _providerIDOverride = State(initialValue: project.providerIDOverride ?? FamiliarProviderCatalog.deepSeek.id)
             _summary = State(initialValue: project.summary)
             _instruction = State(initialValue: project.instruction?.text ?? "")
             _modelIDOverride = State(initialValue: project.modelIDOverride ?? "")
@@ -1633,13 +1643,20 @@ private struct FamiliarProjectEditorView: View {
                 Section(String(localized: "project.details")) {
                     TextField(String(localized: "project.name"), text: $name)
                         .textInputAutocapitalization(.sentences)
+                        .disabled(isDefaultProject)
                     TextField(String(localized: "project.summary"), text: $summary, axis: .vertical)
                         .lineLimit(2...6)
                 }
                 Section {
+                    Picker(String(localized: "settings.provider"), selection: $providerIDOverride) {
+                        ForEach(FamiliarProviderCatalog.builtIn) { provider in
+                            Text(provider.displayName).tag(provider.id)
+                        }
+                    }
+                    .onChange(of: providerIDOverride) { _, _ in modelIDOverride = "" }
                     Picker(String(localized: "project.model", defaultValue: "Model"), selection: $modelIDOverride) {
                         Text(String(localized: "project.model.follow_global", defaultValue: "Follow global setting")).tag("")
-                        ForEach(FamiliarProviderCatalog.deepSeek.curatedModels) { model in
+                        ForEach(FamiliarProviderCatalog.descriptor(for: providerIDOverride)?.curatedModels ?? []) { model in
                             Text(model.displayName).tag(model.id)
                         }
                     }
@@ -1692,6 +1709,11 @@ private struct FamiliarProjectEditorView: View {
         }
     }
 
+    private var isDefaultProject: Bool {
+        if case .edit(let project) = destination { return project.isDefaultProject }
+        return false
+    }
+
     private func save() {
         let service = FamiliarProjectService()
         do {
@@ -1703,7 +1725,7 @@ private struct FamiliarProjectEditorView: View {
                 try service.update(existing, name: name, summary: summary, in: modelContext)
                 project = existing
             }
-            try service.updateModelOverride(project, modelID: modelIDOverride, in: modelContext)
+            try service.updateModelOverride(project, modelID: modelIDOverride, providerID: providerIDOverride, in: modelContext)
             try service.updateInstruction(project, text: instruction, in: modelContext)
             onSave(project)
         } catch {

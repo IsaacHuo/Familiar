@@ -31,10 +31,13 @@ struct FamiliarChatView: View {
     @State private var pendingDraftNavigation: FamiliarPendingDraftNavigation?
     @State private var conversationPendingDeletion: FamiliarConversation?
     @State private var speechBaseDraft = ""
+    @State private var speechDraftID: UUID?
     @State private var configuredProviderIDs: Set<String> = []
     @State private var isImportingSharedItem = false
     @State private var pendingSharedDraft: FamiliarPreparedSharedDraft?
     @State private var showsSharedDestination = false
+    @State private var confirmsClearChat = false
+    @State private var speechPlayer = FamiliarReplySpeechPlayer()
     @State private var webDestination: FamiliarWebDestination?
     @FocusState private var isComposerFocused: Bool
     private let toolRegistry: FamiliarToolRegistry
@@ -141,18 +144,19 @@ struct FamiliarChatView: View {
                             .allowsHitTesting(isDrawerVisible)
                     }
                     .offset(x: visibleDrawerWidth)
-                    .simultaneousGesture(drawerGesture(width: drawerWidth))
+                    .simultaneousGesture(drawerGesture(width: drawerWidth), including: isComposerFocused ? .none : .all)
 
                     Color.clear
                         .contentShape(Rectangle())
                         .frame(width: 30)
+                        .padding(.bottom, 100 + bottomInset)
                         .frame(maxHeight: .infinity)
                         .onTapGesture {
                             isComposerFocused = false
                             setDrawerOpen(true)
                         }
                         .gesture(drawerGesture(width: drawerWidth))
-                        .allowsHitTesting(!isDrawerOpen)
+                        .allowsHitTesting(!isDrawerOpen && !isComposerFocused)
                         .zIndex(100)
                         .accessibilityLabel(String(localized: "drawer.open"))
                         .accessibilityAddTraits(.isButton)
@@ -180,6 +184,27 @@ struct FamiliarChatView: View {
                         controller.updateSettings($0, in: modelContext)
                         refreshConfiguredProviders()
                     }
+                )
+            case .move:
+                NavigationStack {
+                    List(activeProjects.sorted { $0.isDefaultProject && !$1.isDefaultProject }) { project in
+                        Button(project.displayName) {
+                            controller.moveCurrentConversation(to: project, in: modelContext)
+                            presentedSheet = nil
+                        }
+                    }
+                    .navigationTitle(String(localized: "chat.move"))
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button(String(localized: "common.cancel")) { presentedSheet = nil } } }
+                }
+            case .export:
+                FamiliarChatExportView(messages: controller.messages)
+            case .usage:
+                FamiliarUsageView(conversationID: controller.selectedConversationID)
+            case .files:
+                FamiliarChatFilesView(
+                    store: workspaceStore,
+                    workspaceIDs: [controller.selectedProjectID.map(FamiliarWorkspaceID.project), controller.selectedConversationID.map(FamiliarWorkspaceID.conversation)].compactMap { $0 },
+                    attachments: controller.messages.flatMap(\.attachments)
                 )
             case .projects(let projectID):
                 FamiliarProjectsView(
@@ -226,7 +251,7 @@ struct FamiliarChatView: View {
             Text(controller.errorMessage ?? String(localized: "error.unknown"))
         }
         .confirmationDialog(
-            "切换到 DeepSeek？",
+            String(localized: "chat.cloud.title"),
             isPresented: Binding(
                 get: { !controller.pendingModelEscalations.isEmpty },
                 set: { isPresented in
@@ -239,7 +264,7 @@ struct FamiliarChatView: View {
             titleVisibility: .visible
         ) {
             if let approval = controller.pendingModelEscalations.first {
-                Button("继续使用 DeepSeek") {
+                Button(String(localized: "chat.cloud.continue")) {
                     controller.resolveModelEscalation(id: approval.id, approved: true)
                 }
                 Button(String(localized: "common.cancel"), role: .cancel) {
@@ -298,11 +323,18 @@ struct FamiliarChatView: View {
         } message: {
             Text(String(localized: "conversation.delete.detail", defaultValue: "Messages, attachments, and saved run history in this chat will be deleted from this iPhone."))
         }
+        .confirmationDialog(String(localized: "chat.clear.confirm"), isPresented: $confirmsClearChat, titleVisibility: .visible) {
+            Button(String(localized: "chat.clear"), role: .destructive) {
+                speechPlayer.stop()
+                controller.clearCurrentConversation(in: modelContext)
+            }
+        }
         .onAppear {
+            controller.initializeDefaultProject(in: modelContext)
             controller.recoverInterruptedRuns(in: modelContext)
             try? FamiliarSkillService().installExampleIfNeeded(in: modelContext)
             if controller.selectedConversationID == nil,
-               let first = conversations.first(where: { $0.project == nil }) {
+               let first = conversations.first(where: { $0.project?.isDefaultProject == true }) {
                 controller.select(first.id, in: modelContext)
             }
             refreshConfiguredProviders()
@@ -314,6 +346,10 @@ struct FamiliarChatView: View {
             handleSharedInbox()
             updateSpotlightIndex(spotlightConversations)
         }
+        .onChange(of: speechPlayer.errorMessage) { _, message in
+            if let message { controller.errorMessage = message }
+        }
+        .onChange(of: controller.selectedConversationID) { _, _ in speechPlayer.stop() }
         .onChange(of: speechTranscriber.errorMessage) { _, message in
             if let message { controller.errorMessage = message }
         }
@@ -412,6 +448,7 @@ struct FamiliarChatView: View {
         guard controller.openDeepLink(request.deepLink, conversations: conversations, in: modelContext) else { return }
 
         pendingSystemEntry = nil
+        speechDraftID = nil
         Task { await speechTranscriber.stop() }
         presentedSheet = nil
         closeDrawer()
@@ -574,6 +611,7 @@ struct FamiliarChatView: View {
                         focus: $isComposerFocused,
                         onSpeech: toggleSpeech,
                         onSend: {
+                            speechDraftID = nil
                             Task { await speechTranscriber.stop() }
                             isComposerFocused = false
                             if controller.isSending {
@@ -657,9 +695,31 @@ struct FamiliarChatView: View {
             project: project,
             projects: activeProjects,
             providerOptions: providers,
-            isSending: controller.isSending,
+            isSending: controller.isSending || controller.isCompacting,
             isNewConversation: isInNewConversation,
             onOpenSettings: { presentedSheet = .settings(nil) },
+            onCompact: { controller.compactCurrentConversation(in: modelContext) },
+            canCompact: controller.messages.count > 4,
+            onClear: { confirmsClearChat = true },
+            onFiles: { presentedSheet = .files },
+            onMemory: { presentedSheet = .settings(.memory) },
+            onDiagnostics: { presentedSheet = .settings(.diagnostics) },
+            onUsage: { presentedSheet = .usage },
+            onFork: {
+                let navigation = FamiliarPendingDraftNavigation.fork
+                if hasUnsentDraft { pendingDraftNavigation = navigation }
+                else { perform(navigation) }
+            },
+            onMove: { presentedSheet = .move },
+            onExport: { presentedSheet = .export },
+            onSpeak: {
+                Task { @MainActor in
+                    await speechTranscriber.stop()
+                    if speechPlayer.isSpeaking { speechPlayer.stop() }
+                    else if let reply = controller.messages.last(where: { $0.role == .assistant }) { speechPlayer.speak(reply.content) }
+                }
+            },
+            isSpeaking: speechPlayer.isSpeaking,
             onSelectProject: requestWorkspaceSelection,
             onManageProjects: { presentedSheet = .projects(nil) },
             onSelectModel: { providerID, modelID in
@@ -775,8 +835,12 @@ struct FamiliarChatView: View {
             controller.errorMessage = String(localized: "error.deep_link.busy")
             return
         }
+        speechDraftID = nil
         Task { await speechTranscriber.stop() }
         switch navigation {
+        case .fork:
+            controller.forkCurrentConversation(in: modelContext)
+            isComposerFocused = false
         case .select(let conversation):
             controller.select(conversation.id, in: modelContext)
             isComposerFocused = false
@@ -847,11 +911,15 @@ struct FamiliarChatView: View {
     }
 
     private func toggleSpeech() {
+        speechPlayer.stop()
         if !speechTranscriber.isListening {
             speechBaseDraft = controller.draft
+            speechDraftID = UUID()
         }
+        let expectedDraft = speechDraftID
         Task {
             await speechTranscriber.toggle { transcript in
+                guard speechDraftID == expectedDraft else { return }
                 let separator = speechBaseDraft.isEmpty || transcript.isEmpty ? "" : " "
                 controller.draft = speechBaseDraft + separator + transcript
                 isComposerFocused = true
@@ -860,6 +928,7 @@ struct FamiliarChatView: View {
     }
 
     private func togglePin(_ targetType: FamiliarPinnedTargetType, targetID: UUID) {
+        guard targetType != .project || targetID != FamiliarProject.dailyProjectID else { return }
         do {
             _ = try FamiliarPinService().toggle(targetType, targetID: targetID, in: modelContext)
         } catch {
@@ -943,9 +1012,17 @@ private struct FamiliarSafariView: UIViewControllerRepresentable {
 private enum FamiliarSheetDestination: Identifiable {
     case settings(FamiliarSettingsRoute?)
     case projects(UUID?)
+    case files
+    case usage
+    case move
+    case export
 
     var id: String {
         switch self {
+        case .move: "move"
+        case .export: "export"
+        case .usage: "usage"
+        case .files: "files"
         case .settings(let route): "settings-\(route?.rawValue ?? "root")"
         case .projects(let projectID): "projects-\(projectID?.uuidString ?? "all")"
         }
@@ -965,11 +1042,13 @@ private struct FamiliarRenameRequest: Identifiable {
 }
 
 private enum FamiliarPendingDraftNavigation: Identifiable {
+    case fork
     case select(FamiliarConversation)
     case newConversation(FamiliarProject?)
 
     var id: String {
         switch self {
+        case .fork: "fork"
         case .select(let conversation): "select-\(conversation.id.uuidString)"
         case .newConversation(let project): "new-\(project?.id.uuidString ?? "ordinary")"
         }
@@ -1025,6 +1104,7 @@ private struct FamiliarTopBarInstaller<Bar: View>: ViewModifier {
 }
 
 private struct FamiliarChatTopBar: View {
+    @ScaledMetric(relativeTo: .headline) private var modelLabelSize: CGFloat = 20
     let provider: FamiliarProviderDescriptor
     let model: FamiliarModelDescriptor
     let project: FamiliarProject?
@@ -1033,6 +1113,18 @@ private struct FamiliarChatTopBar: View {
     let isSending: Bool
     let isNewConversation: Bool
     let onOpenSettings: () -> Void
+    let onCompact: () -> Void
+    let canCompact: Bool
+    let onClear: () -> Void
+    let onFiles: () -> Void
+    let onMemory: () -> Void
+    let onDiagnostics: () -> Void
+    let onUsage: () -> Void
+    let onFork: () -> Void
+    let onMove: () -> Void
+    let onExport: () -> Void
+    let onSpeak: () -> Void
+    let isSpeaking: Bool
     let onSelectProject: (FamiliarProject?) -> Void
     let onManageProjects: () -> Void
     let onSelectModel: (String, String) -> Void
@@ -1052,10 +1144,10 @@ private struct FamiliarChatTopBar: View {
     }
 
     private var controls: some View {
-        HStack(spacing: FamiliarSpacing.medium) {
+        HStack(spacing: FamiliarSpacing.small) {
             Button(action: onOpenSettings) {
                 Image(systemName: "gearshape")
-                    .font(.system(size: FamiliarIconSize.standard, weight: .semibold))
+                    .font(.system(size: FamiliarIconSize.standard, weight: .regular))
                 .frame(
                     width: FamiliarControlSize.minimumHitTarget,
                     height: FamiliarControlSize.minimumHitTarget
@@ -1067,22 +1159,22 @@ private struct FamiliarChatTopBar: View {
 
             Menu {
                 Button {
-                    onSelectProject(nil)
+                    onSelectProject(projects.first(where: \.isDefaultProject))
                 } label: {
-                    if project == nil {
+                    if project?.isDefaultProject == true {
                         Label(String(localized: "conversation.ordinary", defaultValue: "Regular Chat"), systemImage: "checkmark")
                     } else {
                         Text(String(localized: "conversation.ordinary", defaultValue: "Regular Chat"))
                     }
                 }
-                ForEach(projects) { option in
+                ForEach(projects.filter { !$0.isDefaultProject }) { option in
                     Button {
                         onSelectProject(option)
                     } label: {
                         if option.id == project?.id {
-                            Label(option.name, systemImage: "checkmark")
+                            Label(option.displayName, systemImage: "checkmark")
                         } else {
-                            Text(option.name)
+                            Text(option.displayName)
                         }
                     }
                 }
@@ -1097,7 +1189,7 @@ private struct FamiliarChatTopBar: View {
                 }
             } label: {
                 Image(systemName: "folder")
-                    .font(.system(size: FamiliarIconSize.standard, weight: .semibold))
+                    .font(.system(size: FamiliarIconSize.standard, weight: .regular))
                     .frame(
                         width: FamiliarControlSize.minimumHitTarget,
                         height: FamiliarControlSize.minimumHitTarget
@@ -1107,7 +1199,7 @@ private struct FamiliarChatTopBar: View {
             .familiarGlassCircle(interactive: true)
             .disabled(isSending)
             .accessibilityLabel(
-                project?.name ?? String(localized: "conversation.ordinary", defaultValue: "Daily Chat")
+                project?.displayName ?? String(localized: "conversation.ordinary", defaultValue: "Daily Chat")
             )
 
             Menu {
@@ -1123,10 +1215,10 @@ private struct FamiliarChatTopBar: View {
             } label: {
                 HStack(spacing: FamiliarSpacing.small) {
                     Text(model.displayName)
-                        .font(FamiliarTypography.secondary.weight(.semibold))
+                        .font(.system(size: modelLabelSize, weight: .regular))
                         .lineLimit(1)
                     Image(systemName: "chevron.down")
-                        .font(.caption2.weight(.bold))
+                        .font(.caption2)
                 }
                 .padding(.horizontal, FamiliarSpacing.large)
                 .frame(height: FamiliarControlSize.minimumHitTarget)
@@ -1138,19 +1230,42 @@ private struct FamiliarChatTopBar: View {
 
             Spacer(minLength: 0)
 
-            Button(action: onNewConversation) {
-                Image(systemName: "plus")
-                    .font(.system(size: FamiliarIconSize.standard, weight: .semibold))
-                    .frame(
-                        width: FamiliarControlSize.minimumHitTarget,
-                        height: FamiliarControlSize.minimumHitTarget
-                    )
+            HStack(spacing: 0) {
+                Button(action: onNewConversation) {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: FamiliarIconSize.standard, weight: .regular))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .disabled(isSending || isNewConversation)
+                .accessibilityLabel(String(localized: "conversation.new"))
+                .accessibilityIdentifier("chat.new")
+                Menu {
+                    Button(action: onOpenProject) { Label(String(localized: "project.details"), systemImage: "folder.badge.gearshape") }
+                    Button(action: onFork) { Label(String(localized: "chat.branch"), systemImage: "arrow.branch") }.disabled(isSending || isNewConversation)
+                    Button(action: onMove) { Label(String(localized: "chat.move"), systemImage: "folder") }.disabled(isSending || isNewConversation)
+                    Button(action: onExport) { Label(String(localized: "chat.export"), systemImage: "square.and.arrow.up") }.disabled(isNewConversation)
+                    Button(action: onCompact) { Label(String(localized: "chat.compact"), systemImage: "arrow.down.right.and.arrow.up.left") }.disabled(isSending || !canCompact)
+                    Button(role: .destructive, action: onClear) { Label(String(localized: "chat.clear"), systemImage: "trash") }.disabled(isSending || isNewConversation)
+                    Divider()
+                    Button(action: onFiles) { Label(String(localized: "chat.files"), systemImage: "folder") }
+                    Button(action: onMemory) { Label(String(localized: "settings.memory.title"), systemImage: "brain.head.profile") }
+                    Button(action: onSpeak) { Label(String(localized: isSpeaking ? "chat.speech.stop" : "chat.speech"), systemImage: "speaker.wave.2") }.disabled(isNewConversation)
+                    Divider()
+                    Button(action: onUsage) { Label(String(localized: "usage.title"), systemImage: "number") }
+                    Button(action: onDiagnostics) { Label(String(localized: "settings.hub.diagnostics"), systemImage: "waveform.path.ecg") }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: FamiliarIconSize.standard, weight: .regular))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel(String(localized: "chat.more"))
+                .accessibilityIdentifier("chat.more")
             }
             .buttonStyle(.plain)
-            .familiarGlassCircle(interactive: true)
-            .disabled(isSending || isNewConversation)
-            .accessibilityLabel(String(localized: "conversation.new"))
-            .accessibilityIdentifier("chat.new")
+            .familiarGlassSurface(interactive: true)
+
         }
     }
 
@@ -1298,9 +1413,8 @@ private struct FamiliarConversationDrawer: View {
     let onToggleProjectPin: (FamiliarProject) -> Void
 
     @State private var isSearchPresented = false
-    @State private var expandedProjectIDs: Set<UUID> = []
+    @State private var expandedProjectIDs: Set<UUID> = [FamiliarProject.dailyProjectID]
     @State private var projectLimits: [UUID: Int] = [:]
-    @State private var recentLimit = 20
 
     private var pinnedConversationIDs: Set<UUID> {
         Set(pinnedItems.filter { $0.targetType == .conversation }.map(\.targetID))
@@ -1318,19 +1432,16 @@ private struct FamiliarConversationDrawer: View {
     }
 
     private var pinnedProjects: [FamiliarProject] {
-        pinnedItems.compactMap { record in
+        projects.filter(\.isDefaultProject) + pinnedItems.compactMap { record in
             guard record.targetType == .project else { return nil }
-            return projects.first { $0.id == record.targetID }
+            return projects.first { $0.id == record.targetID && !$0.isDefaultProject }
         }
     }
 
     private var unpinnedProjects: [FamiliarProject] {
-        projects.filter { !pinnedProjectIDs.contains($0.id) }
+        projects.filter { !$0.isDefaultProject && !pinnedProjectIDs.contains($0.id) }
     }
 
-    private var ordinaryConversations: [FamiliarConversation] {
-        conversations.filter { $0.project == nil && !pinnedConversationIDs.contains($0.id) }
-    }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -1374,24 +1485,7 @@ private struct FamiliarConversationDrawer: View {
                     .buttonStyle(.plain)
                     .padding(.horizontal, FamiliarSpacing.small)
 
-                    sectionTitle(String(localized: "drawer.recent"))
-                        .padding(.top, FamiliarSpacing.small)
-                    if ordinaryConversations.isEmpty {
-                        Text(String(localized: "drawer.no_conversations"))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, FamiliarSpacing.xLarge)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        ForEach(Array(ordinaryConversations.prefix(recentLimit))) { conversation in
-                            conversationRow(conversation, isPinned: false)
-                        }
-                        if ordinaryConversations.count > recentLimit {
-                            showMoreButton {
-                                recentLimit += 20
-                            }
-                        }
-                    }
+
                 }
                 .padding(.top, drawerHeaderHeight + FamiliarSpacing.small)
                 .padding(.bottom, FamiliarSpacing.medium)
@@ -1446,7 +1540,7 @@ private struct FamiliarConversationDrawer: View {
             } label: {
                 HStack(spacing: FamiliarSpacing.small) {
                     Image(systemName: isPinned ? "folder.fill" : "folder")
-                    Text(project.name)
+                    Text(project.displayName)
                         .lineLimit(1)
                     Spacer(minLength: 4)
                     Text("\(projectConversations.count)")
@@ -1596,7 +1690,7 @@ private struct FamiliarConversationDrawer: View {
                 isSearchPresented = true
             } label: {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: FamiliarIconSize.standard, weight: .semibold))
+                    .font(.system(size: FamiliarIconSize.prominent, weight: .regular))
                     .frame(
                         width: FamiliarControlSize.minimumHitTarget,
                         height: FamiliarControlSize.minimumHitTarget
@@ -1644,7 +1738,7 @@ private struct FamiliarConversationSearchView: View {
         return conversations.filter { conversation in
             let inScope: Bool = switch scope {
             case .all: true
-            case .ordinary: conversation.project == nil
+            case .ordinary: conversation.project?.isDefaultProject == true
             case .project(let projectID): conversation.project?.id == projectID
             }
             return inScope && (query.isEmpty || conversation.title.localizedCaseInsensitiveContains(query))
@@ -1661,7 +1755,7 @@ private struct FamiliarConversationSearchView: View {
             }
             return inScope && (
                 query.isEmpty
-                    || project.name.localizedCaseInsensitiveContains(query)
+                    || project.displayName.localizedCaseInsensitiveContains(query)
                     || project.summary.localizedCaseInsensitiveContains(query)
             )
         }
@@ -1677,7 +1771,7 @@ private struct FamiliarConversationSearchView: View {
                         Text(String(localized: "drawer.search.scope.ordinary", defaultValue: "Chats outside projects"))
                             .tag(FamiliarSearchScope.ordinary)
                         ForEach(projects) { project in
-                            Text(project.name)
+                            Text(project.displayName)
                                 .tag(FamiliarSearchScope.project(project.id))
                         }
                     }
@@ -1692,7 +1786,7 @@ private struct FamiliarConversationSearchView: View {
                             } label: {
                                 Label {
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(project.name)
+                                        Text(project.displayName)
                                             .foregroundStyle(.primary)
                                         if !project.summary.isEmpty {
                                             Text(project.summary)
@@ -1722,7 +1816,7 @@ private struct FamiliarConversationSearchView: View {
                                             .foregroundStyle(.primary)
                                             .lineLimit(1)
                                         if let project = conversation.project {
-                                            Text(project.name)
+                                            Text(project.displayName)
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
                                                 .lineLimit(1)
