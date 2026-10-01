@@ -15,19 +15,18 @@ nonisolated struct FamiliarTaskPlanTool: FamiliarTool {
         let planID: String
         let title: String
         let tasks: [FamiliarToolPresentationPayload.TaskItem]
-        let expectedDeliverables: [FamiliarDeliverableSpec]?
     }
 
     let manifest = FamiliarToolManifest(
         name: "task_plan",
         title: "Present task plan",
-        description: "Present or update an ordered task plan. Reuse the same planID to replace that plan in place. Only provide progress when it is known; never invent completion percentages.",
+        description: "Optionally display or update a task checklist when it helps the user. This does not schedule work or gate completion. Reuse the same planID for updates. Only report known progress and actual outcomes.",
         parameters: .object(
             [
                 "planID": .string("Stable identifier reused for updates to this plan."),
                 "title": .string("Plan title."),
                 "tasks": .objectArray(
-                    "Ordered execution steps. Only complete a step after successful tool evidence; reuse stable IDs.",
+                    "Checklist items for display. Report actual outcomes and reuse stable IDs.",
                     properties: [
                         "id": .string("Stable task identifier, unique within this plan."),
                         "title": .string("Short task title."),
@@ -37,17 +36,6 @@ nonisolated struct FamiliarTaskPlanTool: FamiliarTool {
                     ],
                     required: ["id", "title", "status"],
                     minItems: 1
-                ),
-                "expectedDeliverables": .objectArray(
-                    "Optional real files this run must produce before it can claim completion.",
-                    properties: [
-                        "id": .string("Stable deliverable identifier."),
-                        "title": .string("User-visible deliverable title."),
-                        "format": .string("Artifact format.", enumValues: FamiliarArtifactFormat.allCases.map(\.rawValue)),
-                        "requiredText": .stringArray("Required headings or literal content; cannot be weakened later.", itemDescription: "Required text"),
-                        "minimumSources": .integer("Minimum distinct successfully fetched source pages to cite.", minimum: 0, maximum: 16)
-                    ],
-                    required: ["id", "title", "format"]
                 )
             ],
             required: ["planID", "title", "tasks"]
@@ -68,17 +56,9 @@ nonisolated struct FamiliarTaskPlanTool: FamiliarTool {
         else {
             throw FamiliarPresentationToolError.invalidInput("Task IDs must be unique and progress must be between 0 and 1 when supplied.")
         }
-        let deliverables = input.expectedDeliverables ?? []
-        let formats = Set(FamiliarArtifactFormat.allCases.map(\.rawValue))
-        guard Set(deliverables.map(\.id)).count == deliverables.count,
-              deliverables.allSatisfy({ !$0.id.isEmpty && !$0.title.isEmpty && formats.contains($0.format) })
-        else { throw FamiliarPresentationToolError.invalidInput("Deliverables require unique IDs, titles, and supported formats.") }
-        guard deliverables.allSatisfy({ ($0.requiredText?.count ?? 0) <= 16 && (0...16).contains($0.minimumSources ?? 0) }) else { throw FamiliarPresentationToolError.invalidInput("Invalid delivery checks.") }
-        let payload = FamiliarToolPresentationPayload.TaskList(planID: planID, title: title, tasks: input.tasks, expectedDeliverables: deliverables)
-        try await context.execution?.apply(payload)
+        let payload = FamiliarToolPresentationPayload.TaskList(planID: planID, title: title, tasks: input.tasks)
         return .result(.init(
-            envelope: try .init(model: input, presentation: .taskList(payload)),
-            deliverables: deliverables
+            envelope: try .init(model: input, presentation: .taskList(payload))
         ))
     }
 }

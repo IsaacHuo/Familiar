@@ -138,14 +138,6 @@ final class FamiliarRunPersistenceRecorder {
         try context.save()
     }
 
-    func recordExecutionState(_ state: FamiliarRunExecutionState.Snapshot, runtimeID: String, sequence: Int, at date: Date, context: ModelContext) throws {
-        let json = String(decoding: try JSONEncoder().encode(state), as: UTF8.self)
-        context.insert(FamiliarActivityRecord(activityID: "execution:\(runtimeID):\(sequence)", runtimeID: runtimeID,
-            assistantTurnID: "\(runtimeID):plan", kind: .runtimeNotice, phase: .succeeded,
-            summary: json, sequence: sequence, startedAt: date, endedAt: date))
-        try context.save()
-    }
-
     func recordRunPhase(
         _ phase: FamiliarRunPhase,
         runtimeID: String,
@@ -157,13 +149,7 @@ final class FamiliarRunPersistenceRecorder {
         let value: String = switch phase {
         case .starting: "starting"
         case .compactingContext: "compactingContext"
-        case .planning: "planning"
-        case .preparingEnvironment: "preparingEnvironment"
-        case .executing: "executing"
-        case .validating: "validating"
-        case .repairing(let attempt): "repairing:\(attempt)"
-        case .delivering: "delivering"
-        case .reasoning: "reasoning"
+        case .requestingModel: "requestingModel"
         case .responding: "responding"
         case .executingActivities(let names): "executingActivities:\(names.joined(separator: ","))"
         case .awaitingApproval: "awaitingApproval"
