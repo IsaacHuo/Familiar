@@ -62,6 +62,46 @@ final class FamiliarRunRecoveryService {
         try context.save()
     }
 
+    func beginCommit(_ value: FamiliarToolCommitContext, in context: ModelContext) throws {
+        let key = value.idempotencyKey
+        let existing = try context.fetch(FetchDescriptor<FamiliarToolInvocationRecord>(predicate: #Predicate { $0.idempotencyKey == key })).first
+        if let existing {
+            guard existing.state != .committed, existing.state != .committing else { throw Error.invocationAlreadyCommitted }
+            existing.state = .committing
+        } else {
+            context.insert(FamiliarToolInvocationRecord(idempotencyKey: key, runtimeID: value.runID,
+                toolCallID: value.call.id, toolName: value.call.name,
+                argumentsHash: FamiliarAuthorizationGrant.argumentsHash(value.call.arguments),
+                assistantTurnID: value.assistantTurnID,
+                activityID: FamiliarRunPersistenceRecorder.toolActivityID(runtimeID: value.runID, toolCallID: value.call.id), state: .committing))
+        }
+        do { try context.save() } catch { context.rollback(); throw error }
+    }
+
+    /// Regeneration must not erase an action's receipts and replay its original prompt.
+    func requiresInspection(_ run: FamiliarAgentRun, in context: ModelContext) throws -> Bool {
+        let runtimeID = run.runtimeID
+        let invocations = try context.fetch(FetchDescriptor<FamiliarToolInvocationRecord>(predicate: #Predicate { $0.runtimeID == runtimeID }))
+        if invocations.contains(where: { $0.state == .committing }) { return true }
+        let activities = try context.fetch(FetchDescriptor<FamiliarActivityRecord>(predicate: #Predicate { $0.runtimeID == runtimeID }))
+        if activities.contains(where: {
+            guard let effect = $0.effect, effect != .read else { return false }
+            return $0.phase == .succeeded || ["tool_commit_unconfirmed", "tool_persistence_failed", "tool_rollback_failed"].contains($0.failureCode ?? "")
+        }) { return true }
+        var effects: [String: FamiliarToolEffect] = [:]
+        for activity in activities where activity.kind == .tool {
+            if let name = activity.toolName, let effect = activity.effect { effects[name] = effect }
+        }
+        if let snapshotID = run.contextSnapshot?.id {
+            let snapshots = try context.fetch(FetchDescriptor<FamiliarCapabilitySnapshotRecord>(predicate: #Predicate { $0.contextSnapshotID == snapshotID }))
+            for snapshot in snapshots {
+                let manifests = try JSONDecoder().decode([FamiliarToolManifest].self, from: Data(snapshot.manifestsJSON.utf8))
+                for manifest in manifests { effects[manifest.name] = manifest.effect }
+            }
+        }
+        return invocations.contains { $0.state == .committed && effects[$0.toolName] != .read }
+    }
+
     @discardableResult
     func recoverInterruptedRuns(in context: ModelContext, reason: String = "interrupted") throws -> Int {
         let runningRaw = FamiliarAgentRunStatus.running.rawValue
@@ -84,9 +124,9 @@ final class FamiliarRunRecoveryService {
             let invocations = try context.fetch(FetchDescriptor<FamiliarToolInvocationRecord>(predicate: #Predicate { $0.runtimeID == runtimeID }))
             for invocation in invocations {
                 switch invocation.state {
-                case .requested, .approved, .committing:
+                case .requested, .approved:
                     invocation.state = .cancelled
-                case .committed, .failed, .cancelled:
+                case .committing, .committed, .failed, .cancelled:
                     break
                 }
             }

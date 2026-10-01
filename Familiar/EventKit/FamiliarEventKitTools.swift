@@ -7,10 +7,11 @@ nonisolated private enum FamiliarEventKitToolSupport {
     static func object(_ properties: [String: FamiliarJSONSchema], required: [String]) -> FamiliarJSONSchema {
         .init(type: .object, properties: properties, required: required)
     }
-    static func result<T: Encodable>(_ value: T, presentation: FamiliarToolPresentationPayload, artifactIdentifier: String? = nil) throws -> FamiliarToolExecutionResult {
+    static func result<T: Encodable>(_ value: T, presentation: FamiliarToolPresentationPayload, artifactIdentifier: String? = nil, durableUndo: FamiliarDurableUndoDescriptor? = nil) throws -> FamiliarToolExecutionResult {
         FamiliarToolExecutionResult(
             envelope: try FamiliarToolResultEnvelope(model: value, presentation: presentation),
-            artifactIdentifier: artifactIdentifier
+            artifactIdentifier: artifactIdentifier,
+            durableUndo: durableUndo
         )
     }
 
@@ -333,7 +334,8 @@ nonisolated private enum FamiliarEventKitMutationCommit {
                 succeeded: true,
                 undoAvailable: true
             )),
-            artifactIdentifier: commit.identifier
+            artifactIdentifier: commit.identifier,
+            durableUndo: .eventKit(commit.undoDescriptor)
         )
         return FamiliarCommittedAction(result: result) {
             try await service.undoCommit(idempotencyKey: idempotencyKey)

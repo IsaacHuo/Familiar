@@ -5,8 +5,8 @@ enum FamiliarMemoryScope: String, Codable, Sendable, CaseIterable { case global,
 enum FamiliarMemoryCreator: String, Codable, Sendable { case user, agentConfirmed }
 
 /// A memory the Agent proposed and the user approved. Tools are `nonisolated` and have
-/// no SwiftData access, so a write travels back on the tool result and the controller
-/// persists it, the same route artifacts and environment receipts already use.
+/// no SwiftData access, so the controller's commit callback persists the write before
+/// the runtime emits its successful result.
 nonisolated struct FamiliarMemoryWriteRequest: Equatable, Sendable {
     let content: String
     let scope: FamiliarMemoryScope
@@ -57,30 +57,8 @@ struct FamiliarMemoryService {
         return "\(owner)|\(body)"
     }
 
-    /// Returns the memories in scope for this run, most useful first, and stamps
-    /// `lastUsedAt` on exactly the ones returned. Marking here rather than on every
-    /// fetch keeps the field meaning "was actually selected as context", which is what
-    /// the ordering depends on.
-    func search(
-        query: String,
-        projectID: UUID?,
-        conversationID: UUID?,
-        in context: ModelContext,
-        limit: Int = Self.defaultSearchLimit,
-        now: Date = Date()
-    ) throws -> [FamiliarMemoryItem] {
-        let selected = Array(
-            try candidates(query: query, projectID: projectID, conversationID: conversationID, in: context)
-                .prefix(max(limit, 0))
-        )
-        guard !selected.isEmpty else { return [] }
-        for item in selected { item.lastUsedAt = now }
-        try context.save()
-        return selected
-    }
-
-    /// Same selection and ordering as `search` without recording usage, for surfaces
-    /// that only display memory.
+    /// Read-only keyword candidates, ordered by confidence and recency. The compiler
+    /// applies its own budget before accepted submission records actual usage.
     func candidates(
         query: String,
         projectID: UUID?,
@@ -100,6 +78,15 @@ struct FamiliarMemoryService {
                 return tokens.contains { content.contains($0) }
             }
             .sorted(by: Self.isMoreUseful)
+    }
+
+    /// Stage actual use in the same save as the accepted user message. Selection and
+    /// rejected preparations must never advance recency or save memory independently.
+    func stageUsage(ids: Set<UUID>, in context: ModelContext, now: Date = Date()) throws {
+        guard !ids.isEmpty else { return }
+        for item in try context.fetch(FetchDescriptor<FamiliarMemoryItem>()) where ids.contains(item.id) {
+            item.lastUsedAt = now
+        }
     }
 
     /// Confidence outranks recency: a memory the user confirmed should win over one the

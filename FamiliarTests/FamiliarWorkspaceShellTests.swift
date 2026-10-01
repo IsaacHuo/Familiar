@@ -224,7 +224,8 @@ struct FamiliarWorkspaceShellTests {
             useStagingEnvironment: true
         )
         try Data("new".utf8).write(to: staging.environment.appendingPathComponent("version.txt"))
-        try store.commitProjectEnvironment(from: staging, projectID: projectID)
+        let previous = try store.commitProjectEnvironment(from: staging, projectID: projectID)
+        try store.discard(previous)
         #expect(try String(contentsOf: original.appendingPathComponent("version.txt"), encoding: .utf8) == "new")
         try store.removeShellTaskView(staging)
         #expect(try String(contentsOf: original.appendingPathComponent("version.txt"), encoding: .utf8) == "new")

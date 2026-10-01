@@ -156,10 +156,12 @@ nonisolated struct FamiliarSkillPackageStore: Sendable {
     @MainActor
     func persistInstallation(_ snapshot: FamiliarSkillSnapshot, projectID: UUID? = nil, context: ModelContext) throws {
         let package = try manifest(hash: snapshot.contentHash)
-        let skill = try FamiliarSkillService().install(package.document, in: context)
-        skill.contentHash = snapshot.contentHash
-        try context.save()
-        if let projectID { try FamiliarProjectService().setSkill(skill.id, enabled: true, projectID: projectID, in: context) }
+        do {
+            let skill = try FamiliarSkillService().stageInstallation(package.document, in: context)
+            skill.contentHash = snapshot.contentHash
+            if let projectID { try FamiliarProjectService().stageSkill(skill.id, enabled: true, projectID: projectID, in: context) }
+            try context.save()
+        } catch { context.rollback(); throw error }
     }
 }
 

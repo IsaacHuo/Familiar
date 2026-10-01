@@ -1142,7 +1142,7 @@ private struct FamiliarTurnSurface: View {
             case .mutationReceipt, .artifact:
                 FamiliarWriteReceipt(surface: surface, canUndo: canUndo, onUndo: onUndo)
             case .failure:
-                FamiliarFailureRecovery(surface: surface, onRetry: onRetry)
+                FamiliarFailureRecovery(surface: surface, onRetry: onRetry, canUndo: canUndo, onUndo: onUndo)
             case .taskList:
                 FamiliarTaskListSurface(surface: surface)
             case .recommendation:
@@ -2255,6 +2255,8 @@ private struct FamiliarWriteReceipt: View {
 private struct FamiliarFailureRecovery: View {
     let surface: FamiliarSurfaceDescriptor
     let onRetry: (() -> Void)?
+    var canUndo = false
+    var onUndo: () -> Void = {}
 
     var body: some View {
         HStack(alignment: .top, spacing: FamiliarAISurfaceMetric.spaceM) {
@@ -2265,6 +2267,11 @@ private struct FamiliarFailureRecovery: View {
                 Text(surface.title).font(.subheadline.weight(.semibold)).foregroundStyle(FamiliarTheme.ink)
                 if let detail = surface.detail, !detail.isEmpty {
                     Text(detail).font(.caption).foregroundStyle(FamiliarTheme.inkSecondary).textSelection(.enabled)
+                }
+                if canUndo {
+                    Button(String(localized: "common.undo"), action: onUndo)
+                        .font(.subheadline.weight(.semibold))
+                        .frame(minHeight: FamiliarControlSize.minimumHitTarget)
                 }
                 if let onRetry {
                     Button(String(localized: "message.retry"), action: onRetry)

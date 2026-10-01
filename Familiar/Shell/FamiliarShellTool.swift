@@ -787,8 +787,13 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
         )
         let receiptURL = view.environment.appendingPathComponent(FamiliarEnvironmentStore.receiptFilename, isDirectory: false)
         try JSONEncoder().encode(receipt).write(to: receiptURL, options: [.atomic])
-        try workspaceStore.commitProjectEnvironment(from: view, projectID: plan.projectID)
-        return .init(result: try result(receipt))
+        // Build the receipt before swapping bytes, and retain the old directory until
+        // authoritative metadata has been saved by the Run's persistence callback.
+        let executionResult = try result(receipt)
+        let previous = try workspaceStore.commitProjectEnvironment(from: view, projectID: plan.projectID)
+        return .init(result: executionResult,
+                     rollback: { try workspaceStore.rollbackProjectEnvironment(previous, revision: receipt.revision, projectID: plan.projectID) },
+                     finalize: { try? workspaceStore.discard(previous) })
     }
 
     private func result(_ receipt: FamiliarEnvironmentReceipt) throws -> FamiliarToolExecutionResult {

@@ -273,7 +273,7 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
     func commitProjectEnvironment(
         from view: FamiliarWorkspaceTaskView,
         projectID: UUID
-    ) throws {
+    ) throws -> FamiliarStagedWorkspaceDirectory {
         guard view.workspaceID == .project(projectID),
               !view.environmentIsPersistent,
               isConfined(view.environment, below: view.root),
@@ -281,8 +281,10 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         else { throw FamiliarWorkspaceError.invalidTaskView }
         try assertNoSymbolicLinks(below: view.environment)
         let paths = try prepare(.project(projectID))
-        let backup = paths.runtime.appendingPathComponent(
-            "Environment.backup-\(UUID().uuidString.lowercased())",
+        let trash = rootURL.appendingPathComponent(".Trash", isDirectory: true)
+        try ensureDirectory(trash)
+        let backup = trash.appendingPathComponent(
+            "Environment-\(projectID.uuidString)-\(UUID().uuidString.lowercased())",
             isDirectory: true
         )
         do {
@@ -290,9 +292,8 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
                 try fileManager.moveItem(at: paths.environment, to: backup)
             }
             try fileManager.moveItem(at: view.environment, to: paths.environment)
-            if fileManager.fileExists(atPath: backup.path) {
-                try fileManager.removeItem(at: backup)
-            }
+            return .init(workspaceID: .project(projectID), originalURL: paths.environment,
+                         stagedURL: fileManager.fileExists(atPath: backup.path) ? backup : nil)
         } catch {
             if !fileManager.fileExists(atPath: paths.environment.path),
                fileManager.fileExists(atPath: backup.path) {
@@ -300,6 +301,17 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
             }
             throw error
         }
+    }
+
+    func rollbackProjectEnvironment(_ previous: FamiliarStagedWorkspaceDirectory, revision: UUID, projectID: UUID) throws {
+        let environment = try projectEnvironmentURL(projectID)
+        let receiptURL = environment.appendingPathComponent(FamiliarEnvironmentStore.receiptFilename)
+        let receipt = try JSONDecoder().decode(FamiliarEnvironmentReceipt.self, from: Data(contentsOf: receiptURL))
+        guard previous.workspaceID == .project(projectID), previous.originalURL == environment, receipt.revision == revision else {
+            throw FamiliarWorkspaceError.invalidTaskView
+        }
+        try fileManager.removeItem(at: environment)
+        try restore(previous)
     }
 
     func removeWorkspace(_ id: FamiliarWorkspaceID) throws {

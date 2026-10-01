@@ -2,7 +2,7 @@ import Foundation
 
 /// Proposes a long-term memory. The model cannot store memory on its own: this returns
 /// an action proposal, and the row is only written after the user approves and the
-/// controller persists the request that travels back on the result.
+/// controller persists the request through the runtime's success-boundary callback.
 nonisolated struct FamiliarMemoryRememberTool: FamiliarTool {
     struct Input: Decodable, Sendable { let content: String; let scope: String? }
 
