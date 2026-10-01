@@ -34,6 +34,7 @@ Repository knowledge is split by responsibility; read in this order:
 - `logs/` holds only reusable investigation knowledge (symptom → root cause → fix), not activity history.
 - After a task that changes architecture, module boundaries, major feature status, or the current development focus, consider updating `state/CURRENT.md` and `state/ARCHITECTURE.md`. Small UI tweaks and bug fixes do not require it.
 - Do not duplicate git history in Markdown.
+- Read root `PLAN.md` after the current-state documents when continuing the product convergence work. It is the cross-chat task ledger. Update the active slice, completed implementation checkboxes, verification evidence, and next task at each stage; keep real-service/device acceptance separate from compilation.
 
 ## Engineering Principles
 

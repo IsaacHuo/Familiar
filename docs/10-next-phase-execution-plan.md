@@ -1,4 +1,6 @@
-# Familiar 下一版执行计划：DeepSeek + Native Tools + iSH
+# Familiar 历史阶段计划：DeepSeek + Native Tools + iSH
+
+> 此文保留此前阶段的设计范围，不再指导当前开发。当前跨对话任务以 [PLAN.md](../PLAN.md) 为准，真实实现以 state 为准。单 DeepSeek、固定阶段、工具总数等历史描述不能视为当前状态。
 
 > 实际能力与验证证据以 `state/CURRENT.md`、`state/ARCHITECTURE.md` 为准。本文只记录本版固定范围和验收边界。
 
