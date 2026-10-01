@@ -12,23 +12,6 @@ nonisolated public enum FamiliarToolRisk: String, Codable, Sendable {
     case high
 }
 
-nonisolated public struct FamiliarDeliverableSpec: Codable, Equatable, Sendable, Identifiable {
-    public let id: String
-    public let title: String
-    public let format: String
-
-    public let requiredText: [String]?
-    public let minimumSources: Int?
-
-    public init(id: String, title: String, format: String, requiredText: [String]? = nil, minimumSources: Int? = nil) {
-        self.id = id
-        self.title = title
-        self.format = format
-        self.requiredText = requiredText
-        self.minimumSources = minimumSources
-    }
-}
-
 nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, Sendable {
     public static let currentSchemaVersion = 3
 
@@ -238,13 +221,10 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         public let planID: String
         public let title: String
         public let tasks: [TaskItem]
-        public let expectedDeliverables: [FamiliarDeliverableSpec]?
-
-        public init(planID: String, title: String, tasks: [TaskItem], expectedDeliverables: [FamiliarDeliverableSpec]? = nil) {
+        public init(planID: String, title: String, tasks: [TaskItem]) {
             self.planID = planID
             self.title = title
             self.tasks = tasks
-            self.expectedDeliverables = expectedDeliverables
         }
     }
 
@@ -722,8 +702,8 @@ nonisolated struct FamiliarToolContext: Sendable {
     let resources: [Resource]
     let attachments: [Attachment]
     let availableSkills: [FamiliarSkillSnapshot]
-    let execution: FamiliarRunExecutionState?
     let activeSkill: FamiliarSkillSnapshot?
+    let loadTools: (@Sendable ([String], [String]?, Int, FamiliarSkillSnapshot?) async throws -> FamiliarToolLoadResult)?
     let fetchedSources: [FamiliarSource]
     /// The memories the Context Compiler selected for this run, already inside the
     /// prompt. Frozen like resources so the tool and the prompt cannot disagree about
@@ -740,8 +720,8 @@ nonisolated struct FamiliarToolContext: Sendable {
         resources: [Resource] = [],
         attachments: [Attachment] = [],
         availableSkills: [FamiliarSkillSnapshot] = [],
-        execution: FamiliarRunExecutionState? = nil,
         activeSkill: FamiliarSkillSnapshot? = nil,
+        loadTools: (@Sendable ([String], [String]?, Int, FamiliarSkillSnapshot?) async throws -> FamiliarToolLoadResult)? = nil,
         fetchedSources: [FamiliarSource] = [],
         memories: [FamiliarContextMemory] = [],
         progressReporter: ProgressReporter? = nil
@@ -754,8 +734,8 @@ nonisolated struct FamiliarToolContext: Sendable {
         self.resources = resources
         self.attachments = attachments
         self.availableSkills = availableSkills
-        self.execution = execution
         self.activeSkill = activeSkill
+        self.loadTools = loadTools
         self.fetchedSources = fetchedSources
         self.memories = memories
         self.progressReporter = progressReporter
@@ -776,14 +756,14 @@ nonisolated struct FamiliarToolExecutionResult: Sendable {
     let artifact: FamiliarArtifactDescriptor?
     let environmentReceipt: FamiliarEnvironmentReceipt?
     let loadedSkill: FamiliarSkillSnapshot?
-    let deliverables: [FamiliarDeliverableSpec]
-    let deliverableID: String?
     let installedSkill: FamiliarSkillSnapshot?
     /// Set only by an approved memory write. Tools are `nonisolated` and have no
-    /// SwiftData access, so the row is persisted by the controller.
+    /// SwiftData access, so the controller persists it before successful tool events.
     let memoryWrite: FamiliarMemoryWriteRequest?
+    let loadedTools: [FamiliarToolManifest]?
+    let durableUndo: FamiliarDurableUndoDescriptor?
 
-    init(envelope: FamiliarToolResultEnvelope, artifactIdentifier: String? = nil, sources: [FamiliarSource] = [], webCaptures: [FamiliarWebCapture] = [], artifact: FamiliarArtifactDescriptor? = nil, environmentReceipt: FamiliarEnvironmentReceipt? = nil, loadedSkill: FamiliarSkillSnapshot? = nil, deliverables: [FamiliarDeliverableSpec] = [], deliverableID: String? = nil, installedSkill: FamiliarSkillSnapshot? = nil, memoryWrite: FamiliarMemoryWriteRequest? = nil) {
+    init(envelope: FamiliarToolResultEnvelope, artifactIdentifier: String? = nil, sources: [FamiliarSource] = [], webCaptures: [FamiliarWebCapture] = [], artifact: FamiliarArtifactDescriptor? = nil, environmentReceipt: FamiliarEnvironmentReceipt? = nil, loadedSkill: FamiliarSkillSnapshot? = nil, installedSkill: FamiliarSkillSnapshot? = nil, memoryWrite: FamiliarMemoryWriteRequest? = nil, loadedTools: [FamiliarToolManifest]? = nil, durableUndo: FamiliarDurableUndoDescriptor? = nil) {
         self.envelope = envelope
         self.artifactIdentifier = artifactIdentifier
         self.sources = sources
@@ -791,10 +771,10 @@ nonisolated struct FamiliarToolExecutionResult: Sendable {
         self.artifact = artifact
         self.environmentReceipt = environmentReceipt
         self.loadedSkill = loadedSkill
-        self.deliverables = deliverables
-        self.deliverableID = deliverableID
         self.installedSkill = installedSkill
         self.memoryWrite = memoryWrite
+        self.loadedTools = loadedTools
+        self.durableUndo = durableUndo
     }
 
     var modelContent: String { envelope.modelContent }
@@ -803,13 +783,35 @@ nonisolated struct FamiliarToolExecutionResult: Sendable {
 
 typealias FamiliarUndoAction = @Sendable () async throws -> FamiliarToolExecutionResult
 
+nonisolated enum FamiliarDurableUndoDescriptor: Sendable {
+    case eventKit(FamiliarEventKitUndoDescriptor)
+    case alarm(String)
+}
+
+/// Facts needed to journal a write and save its outputs before reporting success.
+nonisolated struct FamiliarToolCommitContext: Sendable {
+    let runID: String
+    let assistantTurnID: String
+    let call: FamiliarToolCall
+    var idempotencyKey: String { runID + ":" + call.id }
+}
+
+typealias FamiliarToolResultPersistence = @Sendable (FamiliarToolExecutionResult, FamiliarToolCommitContext) async throws -> Void
+
 nonisolated struct FamiliarCommittedAction: Sendable {
     let result: FamiliarToolExecutionResult
     let undo: FamiliarUndoAction?
+    /// Compensation for local bytes only. External/native writes are never silently undone.
+    let rollback: (@Sendable () async throws -> Void)?
+    /// Housekeeping after authoritative persistence, such as discarding an old directory.
+    let finalize: (@Sendable () async -> Void)?
 
-    init(result: FamiliarToolExecutionResult, undo: FamiliarUndoAction? = nil) {
+    init(result: FamiliarToolExecutionResult, undo: FamiliarUndoAction? = nil,
+         rollback: (@Sendable () async throws -> Void)? = nil, finalize: (@Sendable () async -> Void)? = nil) {
         self.result = result
         self.undo = undo
+        self.rollback = rollback
+        self.finalize = finalize
     }
 }
 
@@ -1016,7 +1018,7 @@ nonisolated enum FamiliarToolRegistryError: LocalizedError, Sendable {
 /// A tool that exists in the registry but cannot be offered to the model right now,
 /// paired with the concrete reason. Callers must be able to tell the model what is
 /// missing and why instead of presenting a silently shorter tool list.
-nonisolated struct FamiliarUnavailableTool: Equatable, Sendable {
+nonisolated struct FamiliarUnavailableTool: Codable, Equatable, Sendable {
     let name: String
     let title: String
     let reason: String
@@ -1081,6 +1083,15 @@ actor FamiliarToolRegistry {
             throw FamiliarToolRegistryError.duplicateTool(tool.manifest.name)
         }
         toolsByName[tool.manifest.name] = tool
+    }
+
+    func registerGroup(_ tools: [AnyFamiliarTool]) throws {
+        let names = tools.map { $0.manifest.name }
+        guard Set(names).count == names.count else {
+            throw FamiliarToolLoadError("A discovered group contains duplicate tool names.")
+        }
+        for name in names where toolsByName[name] != nil { throw FamiliarToolRegistryError.duplicateTool(name) }
+        for tool in tools { toolsByName[tool.manifest.name] = tool }
     }
 
     func registerIfAbsent(_ tool: AnyFamiliarTool) throws {

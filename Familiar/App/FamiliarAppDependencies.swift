@@ -56,6 +56,7 @@ struct FamiliarAppDependencies {
         do {
             var tools: [AnyFamiliarTool] = [
                 AnyFamiliarTool(FamiliarCurrentDateTimeTool()),
+                AnyFamiliarTool(FamiliarToolsLoadTool()),
                 AnyFamiliarTool(FamiliarAppInformationTool()),
                 AnyFamiliarTool(FamiliarMapSearchTool(service: map)),
                 AnyFamiliarTool(FamiliarWeatherForecastTool(service: weather)),
@@ -142,7 +143,6 @@ struct FamiliarAppDependencies {
                 }
             }
             status.configureRetry(prepareRuntime)
-            prepareRuntime()
         }
     }
 
@@ -170,7 +170,9 @@ struct FamiliarAppDependencies {
         runRegistry: FamiliarToolRegistry? = nil,
         sessionID: String = "",
         authorizationRuntime: (any FamiliarAuthorizationServicing)? = nil,
-        persistResult: (@Sendable (FamiliarToolExecutionResult) async throws -> Void)? = nil
+        persistResult: FamiliarToolResultPersistence? = nil,
+        willCommit: (@Sendable (FamiliarToolCommitContext) async throws -> Void)? = nil,
+        deferredToolGroups: [FamiliarDeferredToolGroup] = []
     ) -> FamiliarAgentLoop {
         let normalized = budget.normalized
         let cloudProvider = FamiliarProviderFactory.makeProvider(for: descriptor, apiKey: apiKey, sessionID: sessionID)
@@ -190,6 +192,8 @@ struct FamiliarAppDependencies {
             undoStore: undoStore,
             authorizationRuntime: authorizationRuntime,
             persistResult: persistResult,
+            willCommit: willCommit,
+            deferredToolGroups: deferredToolGroups,
             maximumIterations: normalized.maximumIterations,
             maximumToolCalls: normalized.maximumToolCalls,
             maximumDuration: normalized.maximumDuration

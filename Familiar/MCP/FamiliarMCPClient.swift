@@ -174,7 +174,9 @@ nonisolated struct FamiliarMCPTool: FamiliarTool {
         let arguments = try JSONEncoder().encode(input)
         return .action(.init(
             title: manifest.title,
-            fields: [.init(id: "server", label: String(localized: "mcp.server"), type: .text, value: configuration.endpoint.absoluteString), .init(id: "arguments", label: String(localized: "mcp.arguments"), type: .text, value: String(decoding: arguments, as: UTF8.self))],
+            fields: [.init(id: "server", label: String(localized: "mcp.server"), type: .text, value: configuration.endpoint.absoluteString),
+                     .init(id: "method", label: String(localized: "mcp.method", defaultValue: "Action"), type: .text, value: definition.name),
+                     .init(id: "arguments", label: String(localized: "mcp.arguments"), type: .text, value: String(decoding: arguments, as: UTF8.self))],
             target: configuration.endpoint.absoluteString, targetKey: configuration.id.uuidString + ":" + definition.name,
             effect: .destructiveWrite, risk: .high,
             consequence: String(localized: "mcp.consequence"), undoPolicy: .unavailable,

@@ -150,5 +150,6 @@ struct FamiliarGroupBoundaryTests {
         #expect(proposal.allowedAuthorizationDurations == [.once])
         #expect(proposal.undoPolicy == .unavailable)
         #expect(proposal.idempotencyKey == context.idempotencyKey)
+        #expect(proposal.fields.first(where: { $0.id == "method" })?.value == "update")
     }
 }

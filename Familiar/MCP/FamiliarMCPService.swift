@@ -15,23 +15,15 @@ import SwiftData
         }
     }
 
-    struct Discovery {
-        let tools: [AnyFamiliarTool]
-        let unavailable: [FamiliarUnavailableTool]
-    }
-    static func snapshotTools(_ configurations: [FamiliarMCPConfiguration]) async throws -> Discovery {
-        var tools: [AnyFamiliarTool] = []
-        var unavailable: [FamiliarUnavailableTool] = []
-        for configuration in configurations {
-            let client = FamiliarMCPClient(configuration: configuration)
-            do {
+    static func deferredGroups(_ configurations: [FamiliarMCPConfiguration]) -> [FamiliarDeferredToolGroup] {
+        configurations.sorted { $0.id.uuidString < $1.id.uuidString }.map { configuration in
+            .init(summary: .init(id: "mcp." + configuration.id.uuidString, title: configuration.name,
+                                summary: "User-enabled remote server. Discover its tool directory, then select exact toolNames. All calls require approval."), discover: {
+                let client = FamiliarMCPClient(configuration: configuration)
                 let definitions = try await client.tools()
-                tools += definitions.map { AnyFamiliarTool(FamiliarMCPTool(definition: $0, configuration: configuration, client: client)) }
-            } catch {
                 try Task.checkCancellation()
-                unavailable.append(.init(name: "mcp_" + configuration.id.uuidString, title: configuration.name, reason: error.localizedDescription))
-            }
+                return definitions.map { AnyFamiliarTool(FamiliarMCPTool(definition: $0, configuration: configuration, client: client)) }
+            })
         }
-        return Discovery(tools: tools, unavailable: unavailable)
     }
 }

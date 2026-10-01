@@ -3,13 +3,7 @@ import Foundation
 nonisolated enum FamiliarRunPhase: Equatable, Sendable {
     case starting
     case compactingContext
-    case planning
-    case preparingEnvironment
-    case executing
-    case validating
-    case repairing(attempt: Int)
-    case delivering
-    case reasoning
+    case requestingModel
     case responding
     case executingActivities([String])
     case awaitingApproval
@@ -100,6 +94,7 @@ nonisolated struct FamiliarToolResultProduced: Sendable {
     let environmentReceipt: FamiliarEnvironmentReceipt?
     let loadedSkill: FamiliarSkillSnapshot?
     let memoryWrite: FamiliarMemoryWriteRequest?
+    let loadedTools: [FamiliarToolManifest]?
     let producedAt: Date
 
     init(
@@ -115,6 +110,7 @@ nonisolated struct FamiliarToolResultProduced: Sendable {
         environmentReceipt: FamiliarEnvironmentReceipt? = nil,
         loadedSkill: FamiliarSkillSnapshot? = nil,
         memoryWrite: FamiliarMemoryWriteRequest? = nil,
+        loadedTools: [FamiliarToolManifest]? = nil,
         producedAt: Date
     ) {
         self.runID = runID
@@ -129,6 +125,7 @@ nonisolated struct FamiliarToolResultProduced: Sendable {
         self.environmentReceipt = environmentReceipt
         self.loadedSkill = loadedSkill
         self.memoryWrite = memoryWrite
+        self.loadedTools = loadedTools
         self.producedAt = producedAt
     }
 }
@@ -166,7 +163,6 @@ nonisolated enum FamiliarRuntimeEventPayload: Sendable {
     case modelSelected(FamiliarModelReference)
     case usage(FamiliarTokenUsage)
     case runPhaseChanged(FamiliarRunPhase)
-    case executionStateChanged(FamiliarRunExecutionState.Snapshot)
     case assistantTurnStarted(id: String, index: Int)
     case assistantTurnCompleted(id: String, index: Int, text: String)
     case responseTextDelta(String)
@@ -217,19 +213,33 @@ private actor FamiliarRuntimeEventEmitter {
 
 actor FamiliarUndoStore {
     private var actions: [String: @Sendable () async throws -> FamiliarToolExecutionResult] = [:]
-    func register(key: String, action: @escaping @Sendable () async throws -> FamiliarToolExecutionResult) { actions[key] = action }
-    func execute(key: String) async throws -> FamiliarToolExecutionResult {
-        guard let action = actions.removeValue(forKey: key) else { throw FamiliarEventKitError.undoUnavailable }
-        return try await action()
+    private var results: [String: FamiliarToolExecutionResult] = [:]
+    private var running: Set<String> = []
+    private var attempted: Set<String> = []
+    func register(key: String, action: @escaping @Sendable () async throws -> FamiliarToolExecutionResult) {
+        guard !attempted.contains(key), actions[key] == nil else { return }
+        actions[key] = action
     }
-    func clear() { actions.removeAll() }
+    func execute(key: String) async throws -> FamiliarToolExecutionResult {
+        if let result = results[key] { return result }
+        guard !running.contains(key) else { throw FamiliarEventKitError.undoUnavailable }
+        guard let action = actions.removeValue(forKey: key) else { throw FamiliarEventKitError.undoUnavailable }
+        attempted.insert(key)
+        running.insert(key)
+        defer { running.remove(key) }
+        let result = try await action()
+        results[key] = result
+        return result
+    }
+    func complete(key: String) { results.removeValue(forKey: key) }
+    func hasCompletedResult(key: String) -> Bool { results[key] != nil }
+    func clear() { actions.removeAll(); results.removeAll(); attempted.removeAll() }
 }
 
 nonisolated enum FamiliarAgentError: LocalizedError, Sendable {
     case emptyResponse, invalidToolCall, incompleteResponse, maxIterationsExceeded
     case contextTooLarge, contextCompactionFailed, toolArgumentsTooLarge, toolResultTooLarge
     case durationExceeded
-    case missingDeliverables([String])
 
     var errorDescription: String? {
         switch self {
@@ -242,7 +252,6 @@ nonisolated enum FamiliarAgentError: LocalizedError, Sendable {
         case .toolArgumentsTooLarge: String(localized: "error.agent.tool_arguments_too_large")
         case .toolResultTooLarge: String(localized: "error.agent.tool_result_too_large")
         case .durationExceeded: String(localized: "error.agent.duration_exceeded")
-        case .missingDeliverables(let formats): "缺少已承诺且经过验证的交付文件：\(formats.joined(separator: ", "))"
         }
     }
 }
@@ -263,7 +272,9 @@ nonisolated struct FamiliarAgentLoop: Sendable {
     private let clarificationCoordinator: FamiliarClarificationCoordinator
     private let undoStore: FamiliarUndoStore
     private let authorizationRuntime: (any FamiliarAuthorizationServicing)?
-    private let persistResult: (@Sendable (FamiliarToolExecutionResult) async throws -> Void)?
+    private let persistResult: FamiliarToolResultPersistence?
+    private let willCommit: (@Sendable (FamiliarToolCommitContext) async throws -> Void)?
+    private let deferredToolGroups: [FamiliarDeferredToolGroup]
     private let maximumIterations: Int
     private let maximumAttemptsPerRound: Int
     private let maximumToolCalls: Int
@@ -277,13 +288,17 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         clarificationCoordinator: FamiliarClarificationCoordinator = FamiliarClarificationCoordinator(),
         undoStore: FamiliarUndoStore,
         authorizationRuntime: (any FamiliarAuthorizationServicing)? = nil,
-        persistResult: (@Sendable (FamiliarToolExecutionResult) async throws -> Void)? = nil,
+        persistResult: FamiliarToolResultPersistence? = nil,
+        willCommit: (@Sendable (FamiliarToolCommitContext) async throws -> Void)? = nil,
+        deferredToolGroups: [FamiliarDeferredToolGroup] = [],
         maximumIterations: Int = 24,
         maximumAttemptsPerRound: Int = 2,
         maximumToolCalls: Int = 64,
         maximumDuration: TimeInterval = 1_200
     ) {
         self.persistResult = persistResult
+        self.willCommit = willCommit
+        self.deferredToolGroups = deferredToolGroups
         self.provider = provider
         self.registry = registry
         self.policy = policy
@@ -336,19 +351,16 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         emitter: FamiliarRuntimeEventEmitter,
         deadline: ContinuousClock.Instant
     ) async throws {
-        let manifests = contextSnapshot.toolManifests
-        let manifestsByName = Dictionary(uniqueKeysWithValues: manifests.map { ($0.name, $0) })
+        var activeManifests = contextSnapshot.toolManifests
+        let loader = FamiliarToolLoader(registry: registry, catalog: contextSnapshot.availableToolManifests, deferred: deferredToolGroups)
         var messages = contextSnapshot.providerMessages
         var contextCompactionCount = 0
 
         var visibleResponse = ""
         var collectedSources: [FamiliarSource] = []
-        let execution = FamiliarRunExecutionState()
+        let toolState = FamiliarRunToolState()
         var executedToolCalls = 0
         var loadedSkill = contextSnapshot.skills.first
-        var planningAttempts = 0
-        messages.append(.system("For Project work, first call task_plan with ordered steps and explicit expectedDeliverables (use an empty list for an answer-only task). Use Native tools for device capabilities, web_search/web_fetch for research, Linux for computation. Complete steps only with actual tool evidence. Publish each file with its deliverableID; never substitute text for a file. Update task_plan when advancing steps and before final delivery."))
-        var repairAttempts = 0
         /// Set once the tool-call budget is spent. From then on tools are withheld
         /// rather than the run being failed, so the work already done survives.
         var toolBudgetExhausted = false
@@ -357,6 +369,9 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         for iteration in 0..<maximumIterations {
             try Task.checkCancellation()
             try Self.checkDeadline(deadline)
+            let withholdTools = toolBudgetExhausted || iteration == maximumIterations - 1
+            let manifests = withholdTools ? [] : FamiliarSkillToolScope.manifests(available: activeManifests, skills: loadedSkill.map { [$0] } ?? [])
+            let manifestsByName = Dictionary(uniqueKeysWithValues: manifests.map { ($0.name, $0) })
             while Self.shouldCompact(
                 messages: messages,
                 manifests: manifests,
@@ -382,10 +397,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                 messages = compacted
                 contextCompactionCount += 1
             }
-            if iteration == 0 {
-                await emitter.emit(.runPhaseChanged(.planning))
-            }
-            if iteration > 0, repairAttempts == 0 { await emitter.emit(.runPhaseChanged(.reasoning)) }
+            await emitter.emit(.runPhaseChanged(.requestingModel))
             let characterCount = FamiliarProjectContextAssembler.inputCharacterCount(messages: messages, manifests: manifests)
             guard characterCount <= contextSnapshot.maximumInputCharacters else { throw FamiliarAgentError.contextTooLarge }
 
@@ -397,113 +409,78 @@ nonisolated struct FamiliarAgentLoop: Sendable {
             // every tool result already gathered and left the user with an error
             // instead of an answer. Withholding forces the model to answer from what
             // it has, which is the outcome the user actually wants at that point.
-            let withholdTools = toolBudgetExhausted || iteration == maximumIterations - 1
             if withholdTools, !announcedToolWithholding {
                 announcedToolWithholding = true
                 messages.append(.system(
                     "No further tool calls are available for this run. Answer now using only the information already gathered. State plainly what you could not verify or complete; never claim an action succeeded when it did not run."
                 ))
             }
-            let hasPlan = await execution.hasPlan()
-            let needsPlan = contextSnapshot.projectID != nil && !hasPlan && manifests.contains(where: { $0.name == "task_plan" })
             let request = FamiliarModelRequest(
                 model: contextSnapshot.modelID,
                 messages: messages,
-                tools: withholdTools ? [] : (needsPlan ? manifests.filter { ["task_plan", "ask_user"].contains($0.name) } : manifests)
+                tools: manifests
             )
-            let holdsDelivery = !(await execution.missing()).isEmpty || needsPlan
-            let round = try await streamRound(request: request, emitter: emitter, deadline: deadline, holdText: holdsDelivery)
-            if !holdsDelivery { await emitter.emit(.assistantTurnCompleted(id: assistantTurnID, index: iteration, text: round.text)) }
+            let round = try await streamRound(request: request, emitter: emitter, deadline: deadline)
+            await emitter.emit(.assistantTurnCompleted(id: assistantTurnID, index: iteration, text: round.text))
             visibleResponse += round.text
             if round.finishReason == .length || round.finishReason == .unknown { throw FamiliarAgentError.incompleteResponse }
             let calls = try round.pendingCalls.sorted { $0.key < $1.key }.map { try $0.value.completed() }
             guard !calls.isEmpty else {
                 let answer = visibleResponse.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !answer.isEmpty else { throw FamiliarAgentError.emptyResponse }
-                let missing = await execution.missing()
-                let unfinished = await execution.unfinishedSteps()
-                if needsPlan {
-                    guard planningAttempts < 2 else { throw FamiliarExecutionContractError(detail: "A Project task must declare its plan before completion.") }
-                    planningAttempts += 1
-                    visibleResponse = ""
-                    messages.append(.system("Call task_plan first. For a simple answer, declare one step and no expectedDeliverables."))
-                    continue
-                }
-                if !missing.isEmpty || !unfinished.isEmpty {
-                    guard repairAttempts < 2, !withholdTools else {
-                        throw FamiliarAgentError.missingDeliverables(missing.map(\.format))
-                    }
-                    repairAttempts = try await execution.beginRepair()
-                    visibleResponse = ""
-                    await emitter.emit(.runPhaseChanged(.repairing(attempt: repairAttempts)))
-                    messages.append(.system(
-                        "The run cannot finish yet. Produce and validate these promised deliverables with artifact_publish: "
-                            + missing.map { "\($0.title) [\($0.format)]" }.joined(separator: ", ")
-                            + ". Unfinished steps: " + unfinished.joined(separator: ", ") + ". Update task_plan using actual evidence. Do not claim success without committed validation receipts."
-                    ))
-                    continue
-                }
-                if holdsDelivery {
-                    await emitter.emit(.responseTextDelta(round.text))
-                    await emitter.emit(.assistantTurnCompleted(id: assistantTurnID, index: iteration, text: round.text))
-                }
-                await emitter.emit(.runPhaseChanged(.delivering))
                 await emitter.emit(.responseCompleted(.init(text: answer, sources: collectedSources)))
                 return
             }
-            if calls.contains(where: { ["task_plan", "skill_read", "skill_install"].contains($0.name) }), calls.count != 1 {
+            if calls.contains(where: { ["skill_read", "skill_install"].contains($0.name) }), calls.count != 1 {
                 throw FamiliarAgentError.invalidToolCall
             }
 
             messages.append(.assistant(round.text.isEmpty ? nil : round.text, toolCalls: calls))
-            await emitter.emit(.runPhaseChanged(Self.phase(for: calls)))
+            await emitter.emit(.runPhaseChanged(.executingActivities(calls.map(\.name))))
             var prepared: [PreparedToolCall] = []
             var toolMessages: [Int: FamiliarProviderMessage] = [:]
             for (index, call) in calls.enumerated() {
                 try Task.checkCancellation()
                 try Self.checkDeadline(deadline)
                 let startedAt = Date()
-                guard let manifest = manifestsByName[call.name] else {
-                    throw FamiliarToolRegistryError.toolNotFound(call.name)
-                }
-                let fingerprint = call.name + "|" + FamiliarAuthorizationGrant.argumentsHash(call.arguments)
-                await emitter.emit(.toolInvocationRequested(id: call.id, name: call.name, arguments: call.arguments, effect: manifest.effect))
-                await emitter.emit(.activityStarted(.init(id: call.id, toolName: call.name, effect: manifest.effect, startedAt: startedAt)))
-                if let loadedSkill,
-                   !Self.toolIsAllowedAfterLoadingSkill(call.name, skill: loadedSkill) {
-                    let detail = "已加载的 Skill 未允许工具 \(call.name)。"
-                    let completion = activityCompletion(runID: runID, call: call, manifest: manifest, assistantTurnID: assistantTurnID, detail: detail, confirmation: .notRequired, status: .failed, startedAt: startedAt)
-                    await emitter.emit(.activityCompleted(completion))
-                    toolMessages[index] = .tool(Self.errorResult(code: "skill_tool_scope_denied", retryable: false, message: detail), toolCallID: call.id, name: call.name)
-                    continue
-                }
-                if manifest.effect != .read, await execution.wasWritten(fingerprint) {
-                    let detail = String(localized: "error.tool.duplicate_call")
-                    let completion = activityCompletion(runID: runID, call: call, manifest: manifest, assistantTurnID: assistantTurnID, detail: detail, confirmation: .notRequired, status: .failed, startedAt: startedAt)
-                    await emitter.emit(.activityCompleted(completion))
-                    toolMessages[index] = .tool(Self.errorResult(code: "duplicate_tool_call", retryable: false, message: detail), toolCallID: call.id, name: call.name)
-                    continue
-                }
-                guard executedToolCalls < maximumToolCalls else {
-                    // The budget is a stop signal, not a run failure. Report it to this
-                    // one call as a structured failure and withhold tools from the next
-                    // round, so the model answers from what it already gathered instead
-                    // of the user getting an error in place of an answer.
+                let wireManifest = manifestsByName[call.name]
+                var auditManifest = wireManifest
+                if auditManifest == nil { auditManifest = try? await registry.manifest(named: call.name) }
+                let effect = auditManifest?.effect ?? .read
+                await emitter.emit(.toolInvocationRequested(id: call.id, name: call.name, arguments: call.arguments, effect: effect))
+                await emitter.emit(.activityStarted(.init(id: call.id, toolName: call.name, effect: effect, startedAt: startedAt)))
+                let rejection: (code: String, message: String)?
+                if executedToolCalls >= maximumToolCalls {
                     if !toolBudgetExhausted {
                         toolBudgetExhausted = true
                         await emitter.emit(.runtimeNotice(.init(kind: .budgetExhausted, failureKind: .maxToolCalls)))
                     }
-                    let detail = String(localized: "error.agent.max_tool_calls")
-                    let completion = activityCompletion(runID: runID, call: call, manifest: manifest, assistantTurnID: assistantTurnID, detail: detail, confirmation: .notRequired, status: .failed, startedAt: startedAt, failureCode: "tool_budget_exhausted", failureRetryable: false)
-                    await emitter.emit(.activityCompleted(completion))
-                    toolMessages[index] = .tool(Self.errorResult(code: "tool_budget_exhausted", retryable: false, message: detail), toolCallID: call.id, name: call.name)
+                    rejection = ("tool_budget_exhausted", String(localized: "error.agent.max_tool_calls"))
+                } else {
+                    // Attempted calls consume the same budget, including guessed names.
+                    executedToolCalls += 1
+                    if wireManifest == nil {
+                        rejection = ("tool_not_exposed", "This tool was not exposed in the current request. Load an allowed group with tools_load before calling it.")
+                    } else if !FamiliarToolGroup.allows(call.name, skill: loadedSkill) {
+                        rejection = ("skill_tool_scope_denied", "The loaded Skill does not allow this tool.")
+                    } else {
+                        rejection = nil
+                    }
+                }
+                if let rejection {
+                    await emitter.emit(.activityCompleted(.init(runID: runID, toolCallID: call.id, toolName: call.name, effect: effect,
+                        assistantTurnID: assistantTurnID, detail: rejection.message, confirmation: .notRequired, status: .failed,
+                        startedAt: startedAt, finishedAt: Date(), artifactIdentifier: nil, undoAvailable: false,
+                        automaticApprovalRequest: nil, failureCode: rejection.code, failureRetryable: false)))
+                    toolMessages[index] = .tool(Self.errorResult(code: rejection.code, retryable: false, message: rejection.message), toolCallID: call.id, name: call.name)
                     continue
                 }
-                executedToolCalls += 1
+                guard let manifest = wireManifest else { throw FamiliarAgentError.invalidToolCall }
                 prepared.append(.init(index: index, call: call, manifest: manifest, startedAt: startedAt))
             }
 
             var cursor = 0
+            let schemaBudget = max(0, contextSnapshot.maximumInputCharacters - FamiliarProjectContextAssembler.inputCharacterCount(messages: messages, manifests: []))
             while cursor < prepared.count {
                 let current = prepared[cursor]
                 if try await canRunInParallel(current, projectID: contextSnapshot.projectID, deadline: deadline) {
@@ -517,7 +494,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                     let outputs = try await withThrowingTaskGroup(of: ToolCallOutput.self) { group in
                         for item in batch {
                             group.addTask {
-                                try await executeToolCall(item, runID: runID, assistantTurnID: assistantTurnID, contextSnapshot: contextSnapshot, emitter: emitter, deadline: deadline, execution: execution, activeSkill: batchSkill, sources: batchSources)
+                                try await executeToolCall(item, runID: runID, assistantTurnID: assistantTurnID, contextSnapshot: contextSnapshot, emitter: emitter, deadline: deadline, toolState: toolState, loader: loader, schemaBudget: schemaBudget, activeSkill: batchSkill, sources: batchSources)
                             }
                         }
                         var values: [ToolCallOutput] = []
@@ -528,14 +505,16 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                         toolMessages[output.index] = output.message
                         collectedSources = Self.mergingSources(collectedSources, with: output.sources)
                         if let skill = output.loadedSkill { loadedSkill = skill }
+                        if let tools = output.loadedTools { activeManifests = tools }
 
                     }
                     cursor += batch.count
                 } else {
-                    let output = try await executeToolCall(current, runID: runID, assistantTurnID: assistantTurnID, contextSnapshot: contextSnapshot, emitter: emitter, deadline: deadline, execution: execution, activeSkill: loadedSkill, sources: collectedSources)
+                    let output = try await executeToolCall(current, runID: runID, assistantTurnID: assistantTurnID, contextSnapshot: contextSnapshot, emitter: emitter, deadline: deadline, toolState: toolState, loader: loader, schemaBudget: schemaBudget, activeSkill: loadedSkill, sources: collectedSources)
                     toolMessages[output.index] = output.message
                     collectedSources = Self.mergingSources(collectedSources, with: output.sources)
                     if let skill = output.loadedSkill { loadedSkill = skill }
+                    if let tools = output.loadedTools { activeManifests = tools }
 
                     cursor += 1
                 }
@@ -551,19 +530,13 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         // literally nothing to show is a genuine failure.
         let answer = visibleResponse.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !answer.isEmpty else { throw FamiliarAgentError.maxIterationsExceeded }
-        let missing = await execution.missing()
-        guard missing.isEmpty else {
-            throw FamiliarAgentError.missingDeliverables(missing.map(\.format))
-        }
-        await emitter.emit(.runPhaseChanged(.delivering))
         await emitter.emit(.responseCompleted(.init(text: answer, sources: collectedSources)))
     }
 
     private func streamRound(
         request: FamiliarModelRequest,
         emitter: FamiliarRuntimeEventEmitter,
-        deadline: ContinuousClock.Instant,
-        holdText: Bool = false
+        deadline: ContinuousClock.Instant
     ) async throws -> RoundResult {
         var attempt = 0
         while true {
@@ -587,7 +560,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                                     await emitter.emit(.runPhaseChanged(.responding))
                                 }
                                 roundText += value
-                                if !holdText { await emitter.emit(.responseTextDelta(value)) }
+                                await emitter.emit(.responseTextDelta(value))
                             case .reasoningSummaryDelta(let value):
                                 emittedContent = true
                                 reasoningSummary += value
@@ -647,7 +620,9 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         contextSnapshot: FamiliarContextSnapshot,
         emitter: FamiliarRuntimeEventEmitter,
         deadline: ContinuousClock.Instant,
-        execution: FamiliarRunExecutionState,
+        toolState: FamiliarRunToolState,
+        loader: FamiliarToolLoader,
+        schemaBudget: Int,
         activeSkill: FamiliarSkillSnapshot?,
         sources: [FamiliarSource]
     ) async throws -> ToolCallOutput {
@@ -657,8 +632,21 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         /// `.confirmed` only when this call actually interrupted the user. A reused
         /// authorization must not be audited as a fresh confirmation.
         var readConfirmation: FamiliarPersistedConfirmationResult = .notRequired
+        let commitContext = FamiliarToolCommitContext(runID: runID, assistantTurnID: assistantTurnID, call: call)
+        var writeAttempted = false
+        var committedAction: FamiliarCommittedAction?
+        var writeConfirmation: FamiliarPersistedConfirmationResult = .notRequired
+        var retainedUndo = false
         do {
             await emitter.emit(.activityProgress(.init(id: call.id, fractionCompleted: nil, detail: nil)))
+            if manifest.effect != .read,
+               await toolState.wasAttempted(call.name + "|" + FamiliarAuthorizationGrant.argumentsHash(call.arguments)) {
+                let detail = String(localized: "error.tool.duplicate_call")
+                await emitter.emit(.activityCompleted(activityCompletion(runID: runID, call: call, manifest: manifest,
+                    assistantTurnID: assistantTurnID, detail: detail, confirmation: .notRequired, status: .failed,
+                    startedAt: item.startedAt, failureCode: "duplicate_tool_call", failureRetryable: false)))
+                return .init(index: item.index, message: .tool(Self.errorResult(code: "duplicate_tool_call", retryable: false, message: detail), toolCallID: call.id, name: call.name), sources: [], failed: true)
+            }
             let availability = try await Self.withDeadline(deadline) {
                 await registry.availability(for: manifest)
             }
@@ -680,9 +668,11 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                 workspaceID: workspaceID,
                 resources: resources,
                 attachments: attachments,
-                availableSkills: await execution.skills(available: contextSnapshot.availableSkills),
-                execution: execution,
+                availableSkills: await toolState.skills(available: contextSnapshot.availableSkills),
                 activeSkill: activeSkill,
+                loadTools: { groups, names, offset, skill in
+                    try await loader.load(groups: groups, toolNames: names, offset: offset, skill: skill, schemaBudget: schemaBudget)
+                },
                 fetchedSources: sources,
                 memories: contextSnapshot.memories,
                 progressReporter: { progress in
@@ -698,7 +688,6 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                     )))
                 }
             )
-            if ["environment_prepare", "shell_execute", "artifact_publish", "artifact_write", "artifact_edit"].contains(call.name) { try await execution.requirePlan() }
             let authorizationAssessment = try await Self.withDeadline(deadline) {
                 try await registry.preflight(
                     name: call.name,
@@ -843,12 +832,22 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                         try await registry.prepareCapabilities(for: manifest)
                     }
                 }
+                if let willCommit {
+                    try await Self.withDeadline(deadline) { try await willCommit(commitContext) }
+                }
+                writeConfirmation = automaticallyAllowed || hasGrant ? .notRequired : .confirmed
+                await toolState.beginWrite(call.name + "|" + FamiliarAuthorizationGrant.argumentsHash(call.arguments))
+                writeAttempted = true
                 let committed = try await Self.withDeadline(deadline) { try await proposal.commit() }
-                if let undo = committed.undo {
+                committedAction = committed
+                // Retain external Undo even if saving its receipt fails. Local bytes
+                // have separate compensation and expose Undo only after persistence.
+                if committed.rollback == nil, let undo = committed.undo {
                     undoAvailable = true
+                    retainedUndo = true
                     await undoStore.register(key: proposal.idempotencyKey, action: undo)
                 }
-                resolved = (committed.result, automaticallyAllowed || hasGrant ? .notRequired : .confirmed)
+                resolved = (committed.result, writeConfirmation)
             case .clarification(let proposal):
                 let request = FamiliarClarificationRequest(
                     runID: runID,
@@ -878,31 +877,56 @@ nonisolated struct FamiliarAgentLoop: Sendable {
             }
             guard resolved.0.modelContent.count <= 48_000 else { throw FamiliarAgentError.toolResultTooLarge }
             let finishedAt = Date()
-            try await persistResult?(resolved.0)
-            if let installed = resolved.0.installedSkill { await execution.admit(installed) }
-            try await execution.record(call: call, result: resolved.0)
-            if manifest.effect != .read { await execution.didWrite(call.name + "|" + FamiliarAuthorizationGrant.argumentsHash(call.arguments)) }
-            await emitter.emit(.executionStateChanged(await execution.snapshot()))
+            if let persistResult {
+                try await Self.withDeadline(deadline) { try await persistResult(resolved.0, commitContext) }
+            }
+            if let committedAction {
+                if let undo = committedAction.undo, !retainedUndo {
+                    await undoStore.register(key: commitContext.idempotencyKey, action: undo)
+                    undoAvailable = true
+                }
+                await committedAction.finalize?()
+            }
+            if let installed = resolved.0.installedSkill { await toolState.admit(installed) }
             let completion = activityCompletion(runID: runID, call: call, manifest: manifest, assistantTurnID: assistantTurnID, detail: "", confirmation: resolved.1, status: .succeeded, startedAt: item.startedAt, finishedAt: finishedAt, artifactIdentifier: resolved.0.artifactIdentifier, undoAvailable: undoAvailable, automaticApprovalRequest: automaticApprovalRequest)
             await emitter.emit(.activityCompleted(completion))
-            await emitter.emit(.toolResultProduced(.init(runID: runID, toolCallID: call.id, toolName: call.name, effect: manifest.effect, assistantTurnID: assistantTurnID, envelope: resolved.0.envelope, sources: resolved.0.sources, webCaptures: resolved.0.webCaptures, artifact: resolved.0.artifact, environmentReceipt: resolved.0.environmentReceipt, loadedSkill: resolved.0.loadedSkill, memoryWrite: resolved.0.memoryWrite, producedAt: finishedAt)))
+            await emitter.emit(.toolResultProduced(.init(runID: runID, toolCallID: call.id, toolName: call.name, effect: manifest.effect, assistantTurnID: assistantTurnID, envelope: resolved.0.envelope, sources: resolved.0.sources, webCaptures: resolved.0.webCaptures, artifact: resolved.0.artifact, environmentReceipt: resolved.0.environmentReceipt, loadedSkill: resolved.0.loadedSkill, memoryWrite: resolved.0.memoryWrite, loadedTools: resolved.0.loadedTools, producedAt: finishedAt)))
             return .init(
                 index: item.index,
                 message: .tool(resolved.0.modelContent, toolCallID: call.id, name: call.name),
                 sources: resolved.0.sources,
                 loadedSkill: resolved.0.loadedSkill,
-                deliverables: resolved.0.deliverables,
-                artifactFormat: resolved.0.artifact?.format.rawValue
+                loadedTools: resolved.0.loadedTools
             )
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch FamiliarAgentError.durationExceeded {
-            throw FamiliarAgentError.durationExceeded
         } catch {
-            let failure = FamiliarRuntimeFailure.kind(for: error)
-            let completion = activityCompletion(runID: runID, call: call, manifest: manifest, assistantTurnID: assistantTurnID, detail: error.localizedDescription, confirmation: .notRequired, status: .failed, startedAt: item.startedAt, automaticApprovalRequest: automaticApprovalRequest, failureCode: failure.code, failureRetryable: failure.isRetryable)
+            var failure = Self.toolFailure(error)
+            if writeAttempted {
+                let original = failure
+                if let rollback = committedAction?.rollback {
+                    do {
+                        try await rollback()
+                        failure = .init(code: "tool_commit_rolled_back", retryable: false,
+                            message: String(format: String(localized: "tool.commit.rolled_back"), original.message))
+                    } catch {
+                        failure = .init(code: "tool_rollback_failed", retryable: false,
+                            message: String(format: String(localized: "tool.commit.rollback_failed"), original.message, error.localizedDescription))
+                    }
+                } else {
+                    failure = .init(code: committedAction == nil ? "tool_commit_unconfirmed" : "tool_persistence_failed", retryable: false,
+                        message: String(format: String(localized: "tool.commit.unconfirmed"), original.message))
+                }
+            } else {
+                if error is CancellationError { throw CancellationError() }
+                if let agent = error as? FamiliarAgentError, case .durationExceeded = agent { throw FamiliarAgentError.durationExceeded }
+            }
+            let completion = activityCompletion(runID: runID, call: call, manifest: manifest, assistantTurnID: assistantTurnID,
+                detail: failure.message, confirmation: writeAttempted ? writeConfirmation : .notRequired, status: .failed,
+                startedAt: item.startedAt, artifactIdentifier: committedAction?.result.artifactIdentifier, undoAvailable: retainedUndo,
+                automaticApprovalRequest: automaticApprovalRequest, failureCode: failure.code, failureRetryable: failure.retryable)
             await emitter.emit(.activityCompleted(completion))
-            return .init(index: item.index, message: .tool(Self.errorResult(error), toolCallID: call.id, name: call.name), sources: [], failed: true)
+            if error is CancellationError { throw CancellationError() }
+            if let agent = error as? FamiliarAgentError, case .durationExceeded = agent { throw FamiliarAgentError.durationExceeded }
+            return .init(index: item.index, message: .tool(Self.errorResult(code: failure.code, retryable: failure.retryable, message: failure.message), toolCallID: call.id, name: call.name), sources: [], failed: true)
         }
     }
 
@@ -1165,15 +1189,21 @@ nonisolated struct FamiliarAgentLoop: Sendable {
     }
 
     private static func errorResult(_ error: any Error) -> String {
+        let failure = toolFailure(error)
+        return errorResult(code: failure.code, retryable: failure.retryable, message: failure.message)
+    }
+
+    /// Audit and model-facing failures must describe the same failed tool commit.
+    private static func toolFailure(_ error: any Error) -> FamiliarToolFailure {
         if let structured = error as? any FamiliarStructuredToolError {
-            return errorResult(
+            return .init(
                 code: structured.code,
                 retryable: structured.isRetryable,
                 message: structured.localizedDescription
             )
         }
         let kind = FamiliarRuntimeFailure.kind(for: error)
-        return errorResult(code: kind.code, retryable: kind.isRetryable, message: error.localizedDescription)
+        return .init(code: kind.code, retryable: kind.isRetryable, message: error.localizedDescription)
     }
 
     private static func errorResult(code: String, retryable: Bool, message: String) -> String {
@@ -1198,21 +1228,6 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         return result
     }
 
-    private static func toolIsAllowedAfterLoadingSkill(_ name: String, skill: FamiliarSkillSnapshot) -> Bool {
-        let core: Set<String> = [
-            "task_plan", "ask_user", "skill_list", "skill_read", "skill_install",
-            "environment_status", "environment_prepare", "artifact_publish"
-        ]
-        return core.contains(name) || skill.allowedTools.isEmpty || skill.allowedTools.contains(name)
-    }
-
-    private static func phase(for calls: [FamiliarToolCall]) -> FamiliarRunPhase {
-        let names = Set(calls.map(\.name))
-        if names.contains("environment_prepare") { return .preparingEnvironment }
-        if names.contains("artifact_publish") { return .validating }
-        return .executing
-    }
-
     private struct PreparedToolCall: Sendable {
         let index: Int
         let call: FamiliarToolCall
@@ -1225,8 +1240,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         let message: FamiliarProviderMessage
         let sources: [FamiliarSource]
         let loadedSkill: FamiliarSkillSnapshot?
-        let deliverables: [FamiliarDeliverableSpec]
-        let artifactFormat: String?
+        let loadedTools: [FamiliarToolManifest]?
         let failed: Bool
 
         init(
@@ -1234,16 +1248,14 @@ nonisolated struct FamiliarAgentLoop: Sendable {
             message: FamiliarProviderMessage,
             sources: [FamiliarSource],
             loadedSkill: FamiliarSkillSnapshot? = nil,
-            deliverables: [FamiliarDeliverableSpec] = [],
-            artifactFormat: String? = nil,
+            loadedTools: [FamiliarToolManifest]? = nil,
             failed: Bool = false
         ) {
             self.index = index
             self.message = message
             self.sources = sources
             self.loadedSkill = loadedSkill
-            self.deliverables = deliverables
-            self.artifactFormat = artifactFormat
+            self.loadedTools = loadedTools
             self.failed = failed
         }
     }

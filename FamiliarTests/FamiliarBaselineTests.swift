@@ -11,6 +11,7 @@ struct FamiliarBaselineTests {
     /// rots whenever a tool is added. Ordering is asserted structurally below.
     static let unconditionallyRegisteredToolNames: Set<String> = [
         "current_date_time",
+        "tools_load",
         "app_information",
         "map_search",
         "weather_forecast",
@@ -53,6 +54,7 @@ struct FamiliarBaselineTests {
         "memory_remember",
         "skill_list",
         "skill_read",
+        "skill_install",
         "artifact_write",
         "artifact_edit",
         "artifact_read",
@@ -71,8 +73,7 @@ struct FamiliarBaselineTests {
         "delete_reminder"
     ]
 
-    /// Registered only after the bundled iSH runtime prepares successfully, so a
-    /// snapshot may or may not contain them depending on timing and platform.
+    /// Registered when bundled runtime assets exist. Preparing the guest is lazy.
     static let conditionallyRegisteredToolNames: Set<String> = [
         "environment_prepare",
         "shell_execute"
