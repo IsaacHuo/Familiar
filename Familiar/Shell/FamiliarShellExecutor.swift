@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 nonisolated enum FamiliarShellRuntimePhase: Equatable, Sendable {
-    case unavailable, preparing, installing, booting, ready
+    case unavailable, notPrepared, preparing, installing, booting, ready
     case running(UUID)
     case failed(String)
 }
@@ -11,7 +11,7 @@ nonisolated enum FamiliarShellRuntimePhase: Equatable, Sendable {
 @Observable
 final class FamiliarShellRuntimeStatus {
     typealias Phase = FamiliarShellRuntimePhase
-    static let shared = FamiliarShellRuntimeStatus(phase: .preparing)
+    static let shared = FamiliarShellRuntimeStatus(phase: .notPrepared)
     private var lifecycleRevision = 0
     func receive(_ phase: Phase, revision: Int) {
         guard revision >= lifecycleRevision else { return }
@@ -245,6 +245,7 @@ nonisolated enum FamiliarShellExecutorError: LocalizedError, Sendable {
     case outputLimitExceeded
     case resourceLimitExceeded(String)
     case networkConfigurationFailed
+    case preparationFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -254,6 +255,7 @@ nonisolated enum FamiliarShellExecutorError: LocalizedError, Sendable {
         case .outputLimitExceeded: "Shell 输出超过允许的大小。"
         case .resourceLimitExceeded(let reason): "Shell 资源限制：\(reason)"
         case .networkConfigurationFailed: "Linux Environment 无法读取当前网络的 DNS 配置。"
+        case .preparationFailed(let reason): reason
         }
     }
 }

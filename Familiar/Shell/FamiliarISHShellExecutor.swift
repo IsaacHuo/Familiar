@@ -49,6 +49,7 @@ nonisolated final class FamiliarISHShellExecutor: FamiliarShellExecutor, @unchec
     let limits = FamiliarShellLimits.iOS
     private let bridge: any FamiliarISHBridge
     private let workspaceStore: FamiliarWorkspaceStore
+    private let preparation: FamiliarISHPreparation
 
     init(
         bridge: any FamiliarISHBridge,
@@ -56,13 +57,13 @@ nonisolated final class FamiliarISHShellExecutor: FamiliarShellExecutor, @unchec
     ) {
         self.bridge = bridge
         self.workspaceStore = workspaceStore
+        self.preparation = FamiliarISHPreparation(bridge: bridge, configuration: .init(
+            maximumProcessCount: FamiliarShellLimits.iOS.maximumProcessCount,
+            maximumMemoryBytes: FamiliarShellLimits.iOS.maximumMemoryBytes))
     }
 
     func prepare() async throws {
-        try await bridge.prepare(configuration: .init(
-            maximumProcessCount: limits.maximumProcessCount,
-            maximumMemoryBytes: limits.maximumMemoryBytes
-        ))
+        try await preparation.prepare()
     }
 
     func execute(
@@ -76,6 +77,7 @@ nonisolated final class FamiliarISHShellExecutor: FamiliarShellExecutor, @unchec
                           request.timeout <= limits.maximumTimeout
                     else { throw FamiliarShellExecutorError.invalidTimeout }
                     try await prepare()
+                    try Task.checkCancellation()
                     let paths = try workspaceStore.prepare(request.workspaceID)
                     let view = request.workspaceView
                     let taskRoot = paths.tasks.resolvingSymlinksInPath().standardizedFileURL.pathComponents
@@ -347,7 +349,7 @@ private actor FamiliarRealISHRuntimeState {
 
     private var preparation: Task<Void, Error>?
     private var lifecycleRevision = 0
-    private var phase: Phase = .preparing {
+    private var phase: Phase = .notPrepared {
         didSet {
             lifecycleRevision += 1
             let revision = lifecycleRevision
@@ -371,6 +373,7 @@ private actor FamiliarRealISHRuntimeState {
         }
         let fileManager = FileManager.default
         do {
+            phase = .preparing
             guard let archive = Bundle.main.url(
                 forResource: "alpine-3.24.0-aarch64-fakefs",
                 withExtension: "tar.gz"
@@ -434,7 +437,7 @@ private actor FamiliarRealISHRuntimeState {
             let probe = Task.detached {
                 let result = ISHShellExecutor.executeCommandSync("python3 -c 'import ssl, sys; print(\"FAMILIAR_READY\")'", timeout: 30, lineCallback: nil)
                 guard result.exitCode == 0, result.output.contains("FAMILIAR_READY") else {
-                    throw FamiliarExecutionContractError(detail: "iSH Python readiness probe failed (exit \(result.exitCode)): \(result.errorOutput.prefix(1000))")
+                    throw FamiliarShellExecutorError.preparationFailed("iSH Python readiness probe failed (exit \(result.exitCode)): \(result.errorOutput.prefix(1000))")
                 }
             }
             preparation = probe
