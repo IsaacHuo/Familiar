@@ -163,14 +163,15 @@ struct FamiliarProjectService {
         projectID: UUID?,
         in context: ModelContext
     ) throws -> [FamiliarToolManifest] {
-        guard let projectID else { return manifests }
-        let bindings = try context.fetch(FetchDescriptor<FamiliarProjectCapabilityBindingRecord>(
-            predicate: #Predicate { $0.projectID == projectID }
-        ))
-        guard !bindings.isEmpty else { return manifests }
+        let bindings: [FamiliarProjectCapabilityBindingRecord]
+        if let projectID {
+            bindings = try context.fetch(FetchDescriptor<FamiliarProjectCapabilityBindingRecord>(predicate: #Predicate { $0.projectID == projectID }))
+        } else { bindings = [] }
         let enabled = Set(bindings.filter(\.enabled).map(\.capabilityID))
-        let core: Set<String> = ["task_plan", "ask_user", "skill_list", "skill_read", "skill_install", "environment_status"]
-        return manifests.filter { $0.source == .mcp || core.contains($0.name) || enabled.contains($0.id) }
+        return manifests.filter {
+            FamiliarToolGroup.baseToolNames.contains($0.name)
+                || (bindings.isEmpty ? FamiliarToolGroup.isDefaultEnabled($0.name) : enabled.contains($0.id))
+        }
     }
 
     func setSkill(
@@ -179,6 +180,11 @@ struct FamiliarProjectService {
         projectID: UUID,
         in context: ModelContext
     ) throws {
+        try stageSkill(skillID, enabled: enabled, projectID: projectID, in: context)
+        try save(context)
+    }
+
+    func stageSkill(_ skillID: UUID, enabled: Bool, projectID: UUID, in context: ModelContext) throws {
         let key = "\(projectID.uuidString):\(skillID.uuidString)"
         if let binding = try context.fetch(FetchDescriptor<FamiliarProjectSkillBindingRecord>(
             predicate: #Predicate { $0.bindingKey == key }
@@ -188,13 +194,12 @@ struct FamiliarProjectService {
         } else {
             context.insert(FamiliarProjectSkillBindingRecord(projectID: projectID, skillID: skillID, enabled: enabled))
         }
-        try save(context)
     }
 
     func setCapability(
         _ capabilityID: String,
         enabled: Bool,
-        allCapabilityIDs: [String],
+        allCapabilities: [FamiliarToolManifest],
         projectID: UUID,
         in context: ModelContext
     ) throws {
@@ -202,11 +207,11 @@ struct FamiliarProjectService {
             predicate: #Predicate { $0.projectID == projectID }
         ))
         if existing.isEmpty {
-            for id in Set(allCapabilityIDs) {
+            for manifest in allCapabilities {
                 context.insert(FamiliarProjectCapabilityBindingRecord(
                     projectID: projectID,
-                    capabilityID: id,
-                    enabled: id == capabilityID ? enabled : true
+                    capabilityID: manifest.id,
+                    enabled: manifest.id == capabilityID ? enabled : FamiliarToolGroup.isDefaultEnabled(manifest.name)
                 ))
             }
         } else {

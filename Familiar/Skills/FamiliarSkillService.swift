@@ -89,7 +89,7 @@ nonisolated enum FamiliarSkillToolScope {
         let declared = skills.filter { !$0.allowedTools.isEmpty }
         guard !declared.isEmpty else { return sorted }
         let allowed = Set(declared.flatMap(\.allowedTools))
-        return sorted.filter { allowed.contains($0.name) }
+        return sorted.filter { FamiliarToolGroup.baseToolNames.contains($0.name) || allowed.contains($0.name) }
     }
 }
 
@@ -153,6 +153,12 @@ struct FamiliarSkillService {
     }
 
     func install(_ document: FamiliarSkillDocument, in context: ModelContext) throws -> FamiliarSkill {
+        let skill = try stageInstallation(document, in: context)
+        do { try context.save() } catch { context.rollback(); throw error }
+        return skill
+    }
+
+    func stageInstallation(_ document: FamiliarSkillDocument, in context: ModelContext) throws -> FamiliarSkill {
         let normalized = FamiliarSkillDocument(
             format: document.format,
             formatVersion: document.formatVersion,
@@ -171,10 +177,10 @@ struct FamiliarSkillService {
         let stableID = normalized.id
         if let existing = try context.fetch(FetchDescriptor<FamiliarSkill>(predicate: #Predicate { $0.stableID == stableID })).first {
             existing.version = normalized.version; existing.name = normalized.name; existing.descriptionText = normalized.description; existing.instructions = normalized.instructions
-            existing.examplesJSON = String(decoding: try JSONEncoder().encode(normalized.examples), as: UTF8.self); existing.allowedToolsJSON = String(decoding: try JSONEncoder().encode(normalized.allowedTools), as: UTF8.self); existing.contentHash = hash; existing.updatedAt = Date(); try context.save(); return existing
+            existing.examplesJSON = String(decoding: try JSONEncoder().encode(normalized.examples), as: UTF8.self); existing.allowedToolsJSON = String(decoding: try JSONEncoder().encode(normalized.allowedTools), as: UTF8.self); existing.contentHash = hash; existing.updatedAt = Date(); return existing
         }
         let skill = FamiliarSkill(stableID: normalized.id, version: normalized.version, name: normalized.name, descriptionText: normalized.description, instructions: normalized.instructions, examplesJSON: String(decoding: try JSONEncoder().encode(normalized.examples), as: UTF8.self), allowedToolsJSON: String(decoding: try JSONEncoder().encode(normalized.allowedTools), as: UTF8.self), contentHash: hash)
-        context.insert(skill); try context.save(); return skill
+        context.insert(skill); return skill
     }
 
     func snapshot(skillID: UUID, in context: ModelContext) throws -> FamiliarSkillSnapshot {
@@ -272,7 +278,7 @@ nonisolated struct FamiliarSkillReadTool: FamiliarTool {
     let manifest = FamiliarToolManifest(
         name: "skill_read",
         title: "Load Project Skill",
-        description: "Load one attached Project Skill during planning. Loading freezes its version and narrows subsequent execution to its allowed tools plus core planning and delivery tools.",
+        description: "Load one relevant attached Project Skill when needed. Loading freezes its version and narrows subsequent tool execution; it does not grant permissions.",
         parameters: .init(
             type: .object,
             properties: ["id": .init(type: .string, description: "Stable Skill identifier from skill_list."), "path": .init(type: .string, description: "Optional relative resource path from the Skill manifest. Omit to load SKILL.md instructions.")],

@@ -111,7 +111,7 @@ struct FamiliarWP4Tests {
         #expect(project.resources.map(\.filename) == ["A.txt", "B.txt"])
         #expect(project.providerMessages.compactMap(\.networkText).joined(separator: "\n").contains("Frozen instruction"))
         #expect(project.providerMessages.compactMap(\.networkText).joined(separator: "\n").contains("first"))
-        #expect(project.exposedToolNames == ["z_tool"])
+        #expect(project.allowedToolNames == ["z_tool"])
         #expect(project.initialInputCharacters == FamiliarProjectContextAssembler.inputCharacterCount(messages: project.providerMessages, manifests: project.toolManifests))
         #expect(!project.providerMessages.compactMap(\.networkText).joined().contains("changed later"))
     }

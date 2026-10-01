@@ -142,7 +142,7 @@ struct FamiliarSkillsTests {
             toolManifests: manifests
         )
         #expect(project.skills.map(\.stableID) == ["alpha", "zeta"])
-        #expect(project.exposedToolNames == ["resource_read", "web_fetch"])
+        #expect(project.allowedToolNames == ["resource_read", "web_fetch"])
 
         let prompt = try #require(project.providerMessages.first?.networkText)
         let base = try #require(prompt.range(of: FamiliarSettings.defaultValue.normalizedSystemPrompt))
@@ -164,7 +164,7 @@ struct FamiliarSkillsTests {
             messages: [],
             toolManifests: manifests
         )
-        #expect(noSkills.exposedToolNames == ["calendar_read", "resource_read", "web_fetch"])
+        #expect(noSkills.allowedToolNames == ["calendar_read", "resource_read", "web_fetch"])
 
         let ordinary = try FamiliarProjectContextAssembler.assemble(
             seed: .init(
@@ -176,7 +176,7 @@ struct FamiliarSkillsTests {
             toolManifests: manifests
         )
         #expect(ordinary.skills.map(\.stableID) == ["alpha", "zeta"])
-        #expect(ordinary.exposedToolNames == ["resource_read", "web_fetch"])
+        #expect(ordinary.allowedToolNames == ["resource_read", "web_fetch"])
     }
 
     @Test("V9 persists immutable Run Skill snapshots across uninstall")

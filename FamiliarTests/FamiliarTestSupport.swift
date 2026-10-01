@@ -27,7 +27,7 @@ func familiarTestContextSnapshot(
     projectInstruction: String? = nil,
     resources: [FamiliarContextResource] = []
 ) throws -> FamiliarContextSnapshot {
-    try FamiliarProjectContextAssembler.assemble(
+    let snapshot = try FamiliarProjectContextAssembler.assemble(
         seed: FamiliarProjectContextSeed(
             projectID: projectID,
             projectName: projectName,
@@ -39,6 +39,17 @@ func familiarTestContextSnapshot(
         messages: messages,
         toolManifests: manifests
     )
+    // Policy fixtures explicitly expose their fake tools so retry/budget/approval tests
+    // isolate those behaviors. Lazy-exposure tests use the production assembler directly.
+    return .init(id: snapshot.id, createdAt: snapshot.createdAt, projectID: snapshot.projectID, projectName: snapshot.projectName,
+        conversationID: snapshot.conversationID, projectInstruction: snapshot.projectInstruction,
+        providerID: snapshot.providerID, modelID: snapshot.modelID, providerMessages: snapshot.providerMessages,
+        toolManifests: manifests, availableToolManifests: snapshot.availableToolManifests,
+        protectedPrefixMessageCount: snapshot.protectedPrefixMessageCount, maximumInputCharacters: snapshot.maximumInputCharacters,
+        initialInputCharacters: FamiliarProjectContextAssembler.inputCharacterCount(messages: snapshot.providerMessages, manifests: manifests),
+        resources: snapshot.resources, attachments: snapshot.attachments, skills: snapshot.skills,
+        availableSkills: snapshot.availableSkills, memories: snapshot.memories, visualEvidence: snapshot.visualEvidence,
+        visualEvidenceMessageID: snapshot.visualEvidenceMessageID)
 }
 
 actor FamiliarFakeCapabilities: FamiliarCapabilityProviding {

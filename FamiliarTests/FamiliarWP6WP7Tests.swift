@@ -77,12 +77,12 @@ struct FamiliarWP6WP7Tests {
         try service.setCapability(
             "shell_execute",
             enabled: false,
-            allCapabilityIDs: manifests.map(\.id),
+            allCapabilities: manifests,
             projectID: project.id,
             in: context
         )
         let filtered = try service.filterCapabilities(manifests, projectID: project.id, in: context)
-        #expect(filtered.map(\.name).sorted() == ["task_plan", "web_fetch"])
+        #expect(filtered.map(\.name).sorted() == ["web_fetch"])
     }
 
     @Test("Interrupted runs are finalized and in-flight invocations cancelled")
