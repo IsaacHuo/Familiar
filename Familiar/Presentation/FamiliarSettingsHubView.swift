@@ -545,6 +545,8 @@ private struct FamiliarShellRuntimeSettingsView: View {
 
     private var runtimeStatusLabel: String {
         switch runtimeStatus.phase {
+        case .notPrepared:
+            String(localized: "settings.shell.not_prepared", defaultValue: "Prepared when needed")
         case .unavailable:
             String(localized: "settings.shell.unavailable", defaultValue: "Runtime assets are not available in this build")
         case .preparing, .installing, .booting:
@@ -1225,6 +1227,8 @@ private struct FamiliarDiagnosticsSettingsView: View {
 
     private var runtimeLabel: String {
         switch runtimeStatus.phase {
+        case .notPrepared:
+            String(localized: "settings.shell.not_prepared", defaultValue: "Prepared when needed")
         case .unavailable:
             String(localized: "settings.shell.unavailable", defaultValue: "Unavailable")
         case .preparing, .installing, .booting:
@@ -1252,7 +1256,7 @@ private struct FamiliarToolsSettingsView: View {
             // Grouped by the same explicit table the Project Capabilities screen uses, so the
             // two screens cannot disagree about where a tool belongs.
             ForEach(orderedCategories, id: \.self) { category in
-                let group = entries.filter { FamiliarToolCategory.category(for: $0.manifest.name) == category }
+                let group = entries.filter { FamiliarToolGroup.group(for: $0.manifest.name) == category }
                 if !group.isEmpty {
                     Section {
                         ForEach(group) { entry in
@@ -1297,9 +1301,9 @@ private struct FamiliarToolsSettingsView: View {
     /// Categories that actually have tools, in the enum's declaration order. Deriving the
     /// order from the enum rather than from the registry keeps the screen from reshuffling
     /// between launches, and it also gives the footer a single stable last section.
-    private var orderedCategories: [FamiliarToolCategory] {
-        FamiliarToolCategory.allCases.filter { category in
-            entries.contains { FamiliarToolCategory.category(for: $0.manifest.name) == category }
+    private var orderedCategories: [FamiliarToolGroup] {
+        FamiliarToolGroup.allCases.filter { category in
+            entries.contains { FamiliarToolGroup.group(for: $0.manifest.name) == category }
         }
     }
 

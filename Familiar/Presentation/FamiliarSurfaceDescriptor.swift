@@ -196,7 +196,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             updateRunStatus(runID: event.runID, phase: phase, at: event.timestamp)
         case .assistantTurnStarted(let id, _):
             ensureTrace(runID: event.runID, assistantTurnID: id, context: nil, startedAt: event.timestamp)
-        case .modelSelected, .usage, .executionStateChanged:
+        case .modelSelected, .usage:
             break
         case .assistantTurnCompleted:
             break
@@ -353,7 +353,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             kind: .approval,
             placement: .topLevel,
             phase: .awaitingApproval,
-            title: FamiliarToolPresentationName.title(for: request.toolName),
+            title: FamiliarToolPresentationName.title(for: request.toolName, fallback: request.title),
             toolCallID: request.toolCallID,
             toolName: request.toolName,
             effect: request.effect,
@@ -458,16 +458,11 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         descriptor.phase = switch phase {
         case .awaitingApproval: .awaitingApproval
         case .awaitingClarification: .awaitingClarification
-        default: .planning
+        default: .running
         }
         descriptor.title = switch phase {
-        case .starting, .planning, .reasoning: String(localized: "agent.status.thinking")
+        case .starting, .requestingModel: String(localized: "agent.status.thinking")
         case .compactingContext: String(localized: "runtime.phase.compacting_context", defaultValue: "Compacting context")
-        case .preparingEnvironment: String(localized: "runtime.phase.preparing_environment", defaultValue: "Preparing environment")
-        case .executing: String(localized: "runtime.phase.executing", defaultValue: "Executing")
-        case .validating: String(localized: "runtime.phase.validating", defaultValue: "Validating deliverables")
-        case .repairing(let attempt): String(format: String(localized: "runtime.phase.repairing", defaultValue: "Repairing · %lld/2"), attempt)
-        case .delivering: String(localized: "runtime.phase.delivering", defaultValue: "Delivering")
         case .responding: String(localized: "agent.status.responding")
         case .awaitingApproval: String(localized: "agent.status.awaiting_confirmation")
         case .awaitingClarification: String(localized: "clarification.awaiting", defaultValue: "Waiting for your answer")
@@ -550,7 +545,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             kind: .approval,
             placement: .topLevel,
             phase: phase,
-            title: FamiliarToolPresentationName.title(for: approval.toolName),
+            title: FamiliarToolPresentationName.title(for: approval.toolName, fallback: approval.title),
             detail: isInterrupted ? String(localized: "approval.interrupted", defaultValue: "This approval was interrupted and can no longer be answered.") : nil,
             toolCallID: approval.toolCallID,
             toolName: approval.toolName,
@@ -793,76 +788,6 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
 /// and the Settings Tools list. Explicit rather than derived from `dataDomains` or name
 /// prefixes: those exist for policy and audit, and reusing them for grouping would make a
 /// display change silently alter what a domain means.
-nonisolated enum FamiliarToolCategory: String, CaseIterable, Sendable {
-    case basics
-    case calendarAndReminders
-    case placesAndWeather
-    case personalData
-    case web
-    case projectContent
-    case workspaceFiles
-    case memory
-    case planningAndInteraction
-    case clipboardAndSharing
-    case runtime
-    case other
-
-    var title: String {
-        switch self {
-        case .basics: String(localized: "tool.category.basics", defaultValue: "Basics")
-        case .calendarAndReminders: String(localized: "tool.category.calendar", defaultValue: "Calendar & Reminders")
-        case .placesAndWeather: String(localized: "tool.category.places", defaultValue: "Places & Weather")
-        case .personalData: String(localized: "tool.category.personal", defaultValue: "Personal Data")
-        case .web: String(localized: "tool.category.web", defaultValue: "Web")
-        case .projectContent: String(localized: "tool.category.project", defaultValue: "Project Resources & Artifacts")
-        case .workspaceFiles: String(localized: "tool.category.workspace", defaultValue: "Workspace Files")
-        case .memory: String(localized: "tool.category.memory", defaultValue: "Memory")
-        case .planningAndInteraction: String(localized: "tool.category.planning", defaultValue: "Planning & Interaction")
-        case .clipboardAndSharing: String(localized: "tool.category.clipboard", defaultValue: "Clipboard & Sharing")
-        case .runtime: String(localized: "tool.category.runtime", defaultValue: "Linux Runtime")
-        case .other: String(localized: "tool.category.other", defaultValue: "Other")
-        }
-    }
-
-    /// Unknown names fall into `.other` rather than being guessed from a prefix: a tool
-    /// added later should show up in a plain bucket instead of being silently filed under
-    /// a category it does not belong to.
-    static func category(for name: String) -> FamiliarToolCategory {
-        switch name {
-        case "current_date_time", "app_information", "familiar_search":
-            .basics
-        case "calendar_events", "create_calendar_event", "update_calendar_event", "delete_calendar_event",
-             "reminders", "create_reminder", "update_reminder", "delete_reminder",
-             "notification_schedule", "alarm_schedule", "alarm_cancel", "alarm_list":
-            .calendarAndReminders
-        case "map_search", "current_location", "weather_forecast", "weather_history":
-            .placesAndWeather
-        case "contacts_search", "health_activity_summary", "photos_recent_metadata",
-             "music_catalog_search", "bluetooth_scan", "natural_language_analyze":
-            .personalData
-        case "web_search", "web_fetch":
-            .web
-        case "resource_list", "resource_read", "resource_search",
-             "artifact_write", "artifact_edit", "artifact_read", "artifact_publish":
-            .projectContent
-        case "workspace_list", "workspace_read", "workspace_search", "workspace_write",
-             "workspace_image_list", "photos_save_output", "prepare_file_export":
-            .workspaceFiles
-        case "memory_search", "memory_remember":
-            .memory
-        case "task_plan", "present_recommendation", "present_insight", "ask_user",
-             "skill_list", "skill_read":
-            .planningAndInteraction
-        case "clipboard_read", "clipboard_write", "prepare_share":
-            .clipboardAndSharing
-        case "environment_status", "environment_prepare", "shell_execute":
-            .runtime
-        default:
-            .other
-        }
-    }
-}
-
 nonisolated enum FamiliarToolPresentationName {
     static func summary(for toolName: String?, envelope: FamiliarToolResultEnvelope) -> String {
         if toolName == "workspace_list", case .recordCollection(let collection) = envelope.presentation.content {
@@ -879,7 +804,7 @@ nonisolated enum FamiliarToolPresentationName {
         }
     }
 
-    static func title(for name: String) -> String {
+    static func title(for name: String, fallback: String? = nil) -> String {
         switch name {
         case "current_date_time": String(localized: "tool.date_time")
         case "app_information": String(localized: "tool.app_information")
@@ -922,6 +847,7 @@ nonisolated enum FamiliarToolPresentationName {
         case "artifact_write": String(localized: "tool.artifact_write", defaultValue: "Write artifact")
         case "artifact_edit": String(localized: "tool.artifact_edit", defaultValue: "Edit artifact")
         case "task_plan": String(localized: "tool.task_plan", defaultValue: "Task plan")
+        case "tools_load": String(localized: "tool.tools_load", defaultValue: "Prepare tools")
         case "present_recommendation": String(localized: "tool.present_recommendation", defaultValue: "Recommendation")
         case "present_insight": String(localized: "tool.present_insight", defaultValue: "Insight")
         case "ask_user": String(localized: "tool.ask_user", defaultValue: "Clarification")
@@ -937,7 +863,7 @@ nonisolated enum FamiliarToolPresentationName {
         case "alarm_schedule": String(localized: "tool.alarm_schedule", defaultValue: "Schedule alarm")
         case "alarm_cancel": String(localized: "tool.alarm_cancel", defaultValue: "Cancel alarm")
         case "alarm_list": String(localized: "tool.alarm_list", defaultValue: "List alarms")
-        default: name.replacingOccurrences(of: "_", with: " ").localizedCapitalized
+        default: fallback ?? name.replacingOccurrences(of: "_", with: " ").localizedCapitalized
         }
     }
 

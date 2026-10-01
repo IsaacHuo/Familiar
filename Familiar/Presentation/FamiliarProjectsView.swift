@@ -690,8 +690,8 @@ private struct FamiliarProjectCapabilitiesView: View {
             // Grouped by category so a 50-plus tool list is scannable. Category order comes
             // from the enum's declaration order, not from whatever order the registry
             // happens to return, so the screen does not reshuffle between launches.
-            ForEach(FamiliarToolCategory.allCases, id: \.self) { category in
-                let group = manifests.filter { FamiliarToolCategory.category(for: $0.name) == category }
+            ForEach(FamiliarToolGroup.allCases, id: \.self) { category in
+                let group = manifests.filter { FamiliarToolGroup.group(for: $0.name) == category }
                 if !group.isEmpty {
                     Section(category.title) {
                         ForEach(group, id: \.id) { manifest in
@@ -713,7 +713,7 @@ private struct FamiliarProjectCapabilitiesView: View {
                 try? FamiliarProjectService().setCapability(
                     manifest.id,
                     enabled: enabled,
-                    allCapabilityIDs: manifests.map(\.id),
+                    allCapabilities: manifests,
                     projectID: projectID,
                     in: modelContext
                 )
@@ -724,14 +724,15 @@ private struct FamiliarProjectCapabilitiesView: View {
                 Text(FamiliarToolPresentationName.effectDescription(manifest)).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }
         }
-        .disabled(coreCapabilities.contains(manifest.name))
+        .disabled(FamiliarToolGroup.baseToolNames.contains(manifest.name))
     }
-
-    private let coreCapabilities: Set<String> = ["task_plan", "ask_user", "skill_list", "skill_read", "environment_status"]
 
     private func isEnabled(_ id: String) -> Bool {
         let projectBindings = allBindings.filter { $0.projectID == projectID }
-        guard !projectBindings.isEmpty else { return true }
+        if let manifest = manifests.first(where: { $0.id == id }), FamiliarToolGroup.baseToolNames.contains(manifest.name) { return true }
+        guard !projectBindings.isEmpty else {
+            return manifests.first(where: { $0.id == id }).map { FamiliarToolGroup.isDefaultEnabled($0.name) } ?? false
+        }
         return projectBindings.first { $0.capabilityID == id }?.enabled == true
     }
 }
@@ -1422,7 +1423,7 @@ private struct FamiliarProjectRunStep: View {
                     .foregroundStyle(statusColor)
                     .frame(width: FamiliarIconSize.standard)
                 VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                    Text(activity.toolName.map(FamiliarToolPresentationName.title) ?? activity.summary)
+                    Text(activity.toolName.map { FamiliarToolPresentationName.title(for: $0) } ?? activity.summary)
                         .foregroundStyle(.primary)
                     Text(activity.phase.rawValue)
                         .font(.caption)
