@@ -743,10 +743,10 @@
 "settings.diagnostics.detail" = "查看当前哪些能力不可用及原因";
 "settings.diagnostics.runtime" = "运行时";
 "settings.diagnostics.runtime.footer" = "读取项目环境 receipt 从不需要 Linux 运行时，因此即使运行时准备失败，它仍然可用。";
-"settings.diagnostics.tools_available" = "当前可用工具";
+"settings.diagnostics.tools_available" = "当前可用的已注册工具";
 "settings.diagnostics.all_available" = "所有能力均可用";
 "settings.diagnostics.unavailable" = "%@ 项不可用";
-"settings.diagnostics.unavailable.footer" = "Familiar 会把这些能力不可用的事实和原因告知模型，让它明确说明做不到什么，而不是改用其他手段猜测。";
+"settings.diagnostics.unavailable.footer" = "请求工具组时会说明不可用的工具和原因。加载工具组不会授予系统访问或操作权限。";
 "settings.memory.title" = "记忆";
 "settings.memory.detail.on" = "记住你确认过的偏好和事实";
 "settings.memory.detail.off" = "已关闭 · 已保存的记忆仍保留但不使用";
@@ -1007,3 +1007,32 @@
 "provider.subtitle.gemini" = "支持 Gemini 系列及 Google AI Studio";
 
 "provider.subtitle.openai" = "支持 OpenAI、DeepSeek、Moonshot、Groq 等兼容服务";
+
+// Lazy tool loading
+"tool.group.web" = "网页";
+"tool.group.calendar" = "日历与提醒";
+"tool.group.places" = "地点与天气";
+"tool.group.files" = "文件";
+"tool.group.artifact" = "输出文件";
+"tool.group.memory" = "记忆";
+"tool.group.skills" = "技能";
+"tool.group.shell" = "环境与 Shell";
+"tool.group.device" = "其他设备工具";
+"tool.group.presentation" = "内容展示";
+"tool.tools_load" = "准备工具";
+"tool.load.complete" = "工具已准备好";
+"tool.load.detail" = "本步所需的工具已准备好。";
+"settings.shell.not_prepared" = "按需准备";
+"tool.load.partial" = "部分工具暂不可用";
+"tool.load.directory" = "已查看可用工具";
+"tool.load.directory.detail" = "只会使用本次任务所需的工具。";
+"mcp.method" = "操作";
+
+// Commit and recovery boundaries
+"tool.commit.rolled_back" = "操作未能保存，相关本地文件已恢复。本次运行不会重复写入。详情：%@";
+"tool.commit.rollback_failed" = "保存失败，本地恢复也未完成。请检查已有结果后再继续。保存：%1$@；恢复：%2$@";
+"tool.commit.unconfirmed" = "操作可能已经发生，但结果未能确认或保存。请先检查已有结果，避免重复执行。详情：%@";
+"tool.commit.retry_blocked" = "这段对话包含已提交或结果待确认的操作。请先检查已有结果，再发送新消息继续。重新生成会删除记录，并可能重复执行操作。";
+"artifact.revision.consequence" = "保存一个新版本，并保留之前的文件。";
+"tool.undo.unconfirmed" = "撤销已开始，但结果尚未确认。请先检查系统中的实际状态，避免重复撤销。";
+"error.draft.changed_during_preparation" = "准备发送时草稿发生了变化，请检查后重新发送。";

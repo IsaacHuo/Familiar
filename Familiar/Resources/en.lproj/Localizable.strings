@@ -743,10 +743,10 @@
 "settings.diagnostics.detail" = "Why a capability is unavailable right now";
 "settings.diagnostics.runtime" = "Runtime";
 "settings.diagnostics.runtime.footer" = "Reading the Project environment receipt never needs the Linux runtime, so it keeps working even when the runtime failed to prepare.";
-"settings.diagnostics.tools_available" = "Tools available now";
+"settings.diagnostics.tools_available" = "Registered tools available now";
 "settings.diagnostics.all_available" = "Every capability is available";
 "settings.diagnostics.unavailable" = "%@ unavailable";
-"settings.diagnostics.unavailable.footer" = "Familiar tells the model these capabilities are unavailable and why, so it reports what it cannot do instead of guessing another way.";
+"settings.diagnostics.unavailable.footer" = "Unavailable tools are reported when their group is requested. Loading a group never grants system access or action approval.";
 "settings.memory.title" = "Memory";
 "settings.memory.detail.on" = "Remembers confirmed preferences and facts";
 "settings.memory.detail.off" = "Off · stored memories are kept but unused";
@@ -1007,3 +1007,32 @@
 "provider.subtitle.gemini" = "Supports Gemini and Google AI Studio";
 
 "provider.subtitle.openai" = "Supports OpenAI, DeepSeek, Moonshot, Groq and compatible services";
+
+// Lazy tool loading
+"tool.group.web" = "Web";
+"tool.group.calendar" = "Calendar & Reminders";
+"tool.group.places" = "Places & Weather";
+"tool.group.files" = "Files";
+"tool.group.artifact" = "Outputs";
+"tool.group.memory" = "Memory";
+"tool.group.skills" = "Skills";
+"tool.group.shell" = "Environment & Shell";
+"tool.group.device" = "Other Device Tools";
+"tool.group.presentation" = "Presentation";
+"tool.tools_load" = "Prepare tools";
+"tool.load.complete" = "Tools prepared";
+"tool.load.detail" = "The tools needed for this step are ready.";
+"settings.shell.not_prepared" = "Prepared when needed";
+"tool.load.partial" = "Some tools are unavailable";
+"tool.load.directory" = "Available tools checked";
+"tool.load.directory.detail" = "Only the tools needed for this task will be used.";
+"mcp.method" = "Action";
+
+// Commit and recovery boundaries
+"tool.commit.rolled_back" = "The operation could not be saved. Its local files were restored. This run will not repeat the write. Details: %@";
+"tool.commit.rollback_failed" = "Saving failed and local recovery also failed. Inspect the existing result before continuing. Save: %1$@ Recovery: %2$@";
+"tool.commit.unconfirmed" = "The action may already have happened, but its result could not be confirmed or saved. Do not repeat it blindly. Details: %@";
+"tool.commit.retry_blocked" = "This conversation has a committed or uncertain action. Review its results first, then send a new message to continue. Regenerating would erase the receipt and might repeat the action.";
+"artifact.revision.consequence" = "Save a new version and keep the previous file.";
+"tool.undo.unconfirmed" = "Undo has started but its result is not confirmed. Inspect the system state before repeating it.";
+"error.draft.changed_during_preparation" = "The draft changed while preparing. Review it and send again.";
