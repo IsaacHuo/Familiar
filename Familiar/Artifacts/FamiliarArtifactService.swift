@@ -229,6 +229,16 @@ nonisolated struct FamiliarArtifactStore: @unchecked Sendable {
         return FamiliarStagedArtifactDirectory(originalURL: originalURL, stagedURL: stagedURL)
     }
 
+    func stageArtifactDirectory(projectID: UUID, artifactID: UUID) throws -> FamiliarStagedArtifactDirectory {
+        let original = try validate("Projects/\(projectID.uuidString)/Artifacts/\(artifactID.uuidString)")
+        guard fileManager.fileExists(atPath: original.path) else { throw FamiliarArtifactError.missingArtifact }
+        let trash = rootURL.appendingPathComponent("Trash", isDirectory: true)
+        try fileManager.createDirectory(at: trash, withIntermediateDirectories: true)
+        let staged = trash.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try fileManager.moveItem(at: original, to: staged)
+        return .init(originalURL: original, stagedURL: staged)
+    }
+
     func restore(_ staged: FamiliarStagedArtifactDirectory) throws {
         try fileManager.createDirectory(at: staged.originalURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try fileManager.moveItem(at: staged.stagedURL, to: staged.originalURL)
@@ -292,9 +302,17 @@ struct FamiliarArtifactService {
         // Lineage and version are resolved here rather than trusted from the descriptor:
         // the tools are nonisolated and cannot query the store, so a tool-supplied number
         // would collide as soon as two revisions of the same deliverable are published.
-        let predecessor = descriptor.supersedesArtifactID.flatMap { storedArtifact(id: $0, in: context) }
+        let predecessor: FamiliarArtifact?
+        if let id = descriptor.supersedesArtifactID {
+            guard let found = try context.fetch(FetchDescriptor<FamiliarArtifact>(predicate: #Predicate { $0.id == id })).first,
+                  found.projectID == descriptor.projectID else { throw FamiliarArtifactError.missingArtifact }
+            predecessor = found
+        } else { predecessor = nil }
         let lineageID = predecessor?.lineageID
-        let version = lineageID.map { nextVersion(inLineage: $0, in: context) } ?? 1
+        let version = try lineageID.map { id in
+            let rows = try context.fetch(FetchDescriptor<FamiliarArtifact>(predicate: #Predicate { $0.lineageID == id }))
+            return (rows.map(\.version).max() ?? 0) + 1
+        } ?? 1
         let artifact = FamiliarArtifact(id: descriptor.id, projectID: descriptor.projectID, identifier: descriptor.identifier,
             title: descriptor.title, lineageID: lineageID, version: version,
             format: descriptor.format, relativePath: descriptor.relativePath,
@@ -332,9 +350,17 @@ struct FamiliarArtifactService {
     }
 
     func delete(_ artifact: FamiliarArtifact, in context: ModelContext) throws {
-        context.delete(artifact)
-        do { try context.save(); try store.remove(projectID: artifact.projectID, artifactID: artifact.id) }
-        catch { context.rollback(); throw error }
+        let staged = try store.stageArtifactDirectory(projectID: artifact.projectID, artifactID: artifact.id)
+        do {
+            context.delete(artifact)
+            try context.save()
+        } catch {
+            context.rollback()
+            do { try store.restore(staged) }
+            catch { throw FamiliarArtifactError.validationFailed("Artifact deletion rollback failed: \(error.localizedDescription)") }
+            throw error
+        }
+        try? store.discard(staged)
     }
 
     func removeProjectArtifacts(projectID: UUID, in context: ModelContext) throws {

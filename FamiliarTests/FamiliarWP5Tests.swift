@@ -36,7 +36,7 @@ struct FamiliarWP5Tests {
         #expect(committed.result.artifact != nil)
     }
 
-    @Test("Artifact edit preserves the original file for same-session undo")
+    @Test("Artifact edit creates a revision and compensation preserves the predecessor")
     func artifactEditAndUndo() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("FamiliarArtifactEdit-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -58,17 +58,16 @@ struct FamiliarWP5Tests {
 
         let committed = try await proposal.commit()
         let editedArtifact = try #require(committed.result.artifact)
-        #expect(committed.result.artifactIdentifier == identifier)
+        #expect(committed.result.artifactIdentifier != identifier)
         #expect(editedArtifact.title == "renamed")
         #expect(try store.read(relativePath: editedArtifact.relativePath) == Data("edited body".utf8))
-        #expect(store.url(relativePath: original.path) == nil)
+        #expect(try store.read(relativePath: original.path) == Data("original body".utf8))
 
-        let undo = try #require(committed.undo)
-        let restored = try await undo()
-        let restoredArtifact = try #require(restored.artifact)
-        #expect(restored.artifactIdentifier == identifier)
-        #expect(restoredArtifact.title == "original")
-        #expect(try store.read(relativePath: restoredArtifact.relativePath) == Data("original body".utf8))
+        #expect(editedArtifact.supersedesArtifactID == artifactID)
+        let rollback = try #require(committed.rollback)
+        try await rollback()
+        #expect(store.url(relativePath: editedArtifact.relativePath) == nil)
+        #expect(try store.read(relativePath: original.path) == Data("original body".utf8))
     }
 
     @Test("Fetched web text imports from the capture without a second fetch")

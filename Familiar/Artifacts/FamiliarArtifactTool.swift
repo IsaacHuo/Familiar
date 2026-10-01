@@ -6,18 +6,20 @@ nonisolated struct FamiliarArtifactWriteTool: FamiliarTool {
     private struct UndoOutput: Encodable { let undone: Bool; let artifactIdentifier: String }
     let store: FamiliarArtifactStore
     let manifest = FamiliarToolManifest(
-        name: "artifact_write", title: "写入 Artifact", description: "将 Markdown 或纯文本保存到当前项目的 Artifact 目录。普通聊天没有项目作用域，不能使用此工具。",
+        name: "artifact_write", title: "写入 Artifact", description: "Save Markdown or plain text as an output in the current Project, including Daily Chat. Other formats require creating a real file and validating it with artifact_publish when that capability is enabled.",
         parameters: FamiliarJSONSchema(type: .object, properties: [
             "title": .init(type: .string, description: "文件标题"), "content": .init(type: .string, description: "Markdown 或纯文本正文"),
-            "format": .init(type: .string, description: "markdown 或 plainText")
+            "format": .init(type: .string, description: "markdown 或 plainText", enumValues: ["markdown", "plainText"])
         ], required: ["title", "content"]), effect: .reversibleWrite, risk: .low, requirements: [])
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
         guard let projectID = context.projectID else { throw FamiliarArtifactError.projectRequired }
         let format = input.format ?? .markdown
+        guard format == .markdown || format == .plainText else { throw FamiliarArtifactError.unsupportedFormat }
         let id = UUID()
         let filename = input.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "artifact.md" : input.title + (format == .markdown ? ".md" : ".txt")
         let data = Data(input.content.utf8)
+        guard !data.isEmpty else { throw FamiliarArtifactError.emptyFile }
         let identifier = "artifact_" + id.uuidString
         return .action(FamiliarActionProposal(title: "写入 Artifact", fields: [
             .init(id: "title", label: "标题", type: .text, value: input.title),
@@ -36,13 +38,12 @@ nonisolated struct FamiliarArtifactWriteTool: FamiliarTool {
                     artifactIdentifier: identifier,
                     artifact: descriptor
                 )
-                return FamiliarCommittedAction(result: result) {
-                    try store.remove(projectID: projectID, artifactID: id)
+                return FamiliarCommittedAction(result: result, undo: {
                     return .init(envelope: try FamiliarToolResultEnvelope(
                         model: UndoOutput(undone: true, artifactIdentifier: identifier),
                         presentation: .mutationReceipt(.init(summary: "已撤销写入 \(input.title)", operation: "undoArtifactWrite", targetIdentifier: identifier, succeeded: true, undoAvailable: false))
                     ))
-                }
+                }, rollback: { try store.remove(projectID: projectID, artifactID: id) })
             }))
     }
 }
@@ -50,83 +51,54 @@ nonisolated struct FamiliarArtifactWriteTool: FamiliarTool {
 nonisolated struct FamiliarArtifactEditTool: FamiliarTool {
     struct Input: Decodable, Sendable { let identifier: String; let content: String; let title: String? }
     private struct Output: Encodable { let artifactIdentifier: String; let contentHash: String }
-    private struct UndoOutput: Encodable { let undone: Bool; let artifactIdentifier: String; let contentHash: String }
+    private struct UndoOutput: Encodable { let undone: Bool; let artifactIdentifier: String }
     let store: FamiliarArtifactStore
     let manifest = FamiliarToolManifest(
-        name: "artifact_edit", title: "编辑 Artifact", description: "修改当前项目中指定 Artifact 的内容或标题。编辑会显示写入卡，并可在当前 App 会话中撤销。",
+        name: "artifact_edit", title: "编辑 Artifact", description: "Save a new Markdown or text revision of the specified Project Artifact. The previous version remains intact. Undo removes only the new revision.",
         parameters: FamiliarJSONSchema(type: .object, properties: [
-            "identifier": .init(type: .string, description: "artifact_ 开头的 Artifact 标识"),
-            "content": .init(type: .string, description: "替换后的完整 Markdown 或纯文本内容"),
-            "title": .init(type: .string, description: "可选的新标题")
-        ], required: ["identifier", "content"]), effect: .reversibleWrite, risk: .low, requirements: []
-    )
+            "identifier": .init(type: .string, description: "Predecessor artifact_ identifier"),
+            "content": .init(type: .string, description: "New complete Markdown or plain-text content"),
+            "title": .init(type: .string, description: "Optional new title")
+        ], required: ["identifier", "content"]), effect: .reversibleWrite, risk: .low, requirements: [])
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
         guard let projectID = context.projectID else { throw FamiliarArtifactError.projectRequired }
         let original = try store.editableArtifact(projectID: projectID, identifier: input.identifier)
+        guard ["md", "markdown", "txt"].contains(URL(fileURLWithPath: original.filename).pathExtension.lowercased()) else {
+            throw FamiliarArtifactError.unsupportedFormat
+        }
         let originalTitle = URL(fileURLWithPath: original.filename).deletingPathExtension().lastPathComponent
-        let title = input.title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? input.title! : originalTitle
-        let format: FamiliarArtifactFormat = original.filename.hasSuffix(".txt") ? .plainText : .markdown
-        let filename = title + (format == .markdown ? ".md" : ".txt")
+        let proposedTitle = input.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = proposedTitle.flatMap { $0.isEmpty ? nil : $0 } ?? originalTitle
+        let format: FamiliarArtifactFormat = original.filename.lowercased().hasSuffix(".txt") ? .plainText : .markdown
+        let filename = title + "." + format.filenameExtension
         let data = Data(input.content.utf8)
-        let artifactID = original.id
-        return .action(FamiliarActionProposal(
-            title: "编辑 Artifact",
-            fields: [
-                .init(id: "title", label: "标题", type: .text, value: title),
-                .init(id: "size", label: "大小", type: .number, value: String(data.count))
-            ],
-            target: input.identifier,
-            effect: manifest.effect,
-            risk: manifest.risk,
-            consequence: "将替换此 Artifact 的完整内容。",
-            undoPolicy: .currentSession,
-            idempotencyKey: context.idempotencyKey,
-            commit: {
+        guard !data.isEmpty else { throw FamiliarArtifactError.emptyFile }
+        let artifactID = UUID()
+        let identifier = "artifact_" + artifactID.uuidString
+        return .action(FamiliarActionProposal(title: "编辑 Artifact", fields: [
+            .init(id: "title", label: "标题", type: .text, value: title),
+            .init(id: "size", label: "大小", type: .number, value: String(data.count))
+        ], target: input.identifier, effect: manifest.effect, risk: manifest.risk,
+            consequence: String(localized: "artifact.revision.consequence", defaultValue: "Save a new version and keep the previous file."),
+            undoPolicy: .currentSession, idempotencyKey: context.idempotencyKey, commit: {
                 let stored = try store.write(data, projectID: projectID, artifactID: artifactID, filename: filename)
-                if stored.path != original.relativePath { try? FileManager.default.removeItem(at: store.rootURL.appendingPathComponent(original.relativePath)) }
-                let descriptor = FamiliarArtifactDescriptor(
-                    id: artifactID, identifier: input.identifier, projectID: projectID, title: title, format: format,
-                    relativePath: stored.path, byteSize: Int64(data.count), contentHash: stored.hash, source: .generated,
-                    sourceURLString: nil, sourceResourceID: nil, sourceResourceVersionID: nil, sourceCaptureID: nil, createdByRunID: context.runID
-                )
-                let result = FamiliarToolExecutionResult(
-                    envelope: try FamiliarToolResultEnvelope(
-                        model: Output(artifactIdentifier: input.identifier, contentHash: stored.hash),
-                        presentation: .artifactMutation(.init(summary: "已编辑 \(title)", operation: "edit", identifier: input.identifier, title: title, byteSize: Int64(data.count), contentHash: stored.hash))
-                    ),
-                    artifactIdentifier: input.identifier,
-                    artifact: descriptor
-                )
-                return FamiliarCommittedAction(result: result) {
-                    let replacementPath = "Projects/\(projectID.uuidString)/Artifacts/\(artifactID.uuidString)/\(filename)"
-                    if replacementPath != original.relativePath {
-                        try? FileManager.default.removeItem(at: store.rootURL.appendingPathComponent(replacementPath))
-                    }
-                    let stored = try store.write(original.data, projectID: projectID, artifactID: artifactID, filename: original.filename)
-                    let descriptor = FamiliarArtifactDescriptor(
-                        id: artifactID, identifier: input.identifier, projectID: projectID, title: originalTitle, format: format,
-                        relativePath: stored.path, byteSize: Int64(original.data.count), contentHash: stored.hash, source: .generated,
-                        sourceURLString: nil, sourceResourceID: nil, sourceResourceVersionID: nil, sourceCaptureID: nil, createdByRunID: context.runID
-                    )
-                    return .init(
-                        envelope: try FamiliarToolResultEnvelope(
-                            model: UndoOutput(undone: true, artifactIdentifier: input.identifier, contentHash: stored.hash),
-                            presentation: .artifactMutation(.init(summary: "已撤销编辑 \(originalTitle)", operation: "undoEdit", identifier: input.identifier, title: originalTitle, byteSize: Int64(original.data.count), contentHash: stored.hash))
-                        ),
-                        artifactIdentifier: input.identifier,
-                        artifact: descriptor
-                    )
-                }
-            }
-        ))
+                let descriptor = FamiliarArtifactDescriptor(id: artifactID, identifier: identifier, projectID: projectID, title: title,
+                    supersedesArtifactID: original.id, format: format, relativePath: stored.path, byteSize: Int64(data.count),
+                    contentHash: stored.hash, source: .generated, sourceURLString: nil, sourceResourceID: nil,
+                    sourceResourceVersionID: nil, sourceCaptureID: nil, createdByRunID: context.runID)
+                let result = FamiliarToolExecutionResult(envelope: try .init(model: Output(artifactIdentifier: identifier, contentHash: stored.hash),
+                    presentation: .artifactMutation(.init(summary: "已保存新版本 \(title)", operation: "edit", identifier: identifier,
+                        title: title, byteSize: Int64(data.count), contentHash: stored.hash))), artifactIdentifier: identifier, artifact: descriptor)
+                return FamiliarCommittedAction(result: result, undo: {
+                    .init(envelope: try .init(model: UndoOutput(undone: true, artifactIdentifier: identifier),
+                        presentation: .mutationReceipt(.init(summary: "已撤销新版本 \(title)", operation: "undoArtifactEdit",
+                            targetIdentifier: identifier, succeeded: true, undoAvailable: false))))
+                }, rollback: { try store.remove(projectID: projectID, artifactID: artifactID) })
+            }))
     }
 }
 
-/// Reads a published Artifact back as text so the Agent can verify or revise its own
-/// deliverable. Without this, a DOCX could be published and never re-opened:
-/// `workspace_read` only sees the Workspace copy and rejects non-UTF-8 content, so the
-/// only evidence about a published binary was the publish receipt.
 nonisolated struct FamiliarArtifactReadTool: FamiliarTool {
     struct Input: Decodable, Sendable { let identifier: String }
 
@@ -216,7 +188,7 @@ nonisolated struct FamiliarArtifactPublishTool: FamiliarTool {
         let title: String
         let format: FamiliarArtifactFormat
         let requiredText: [String]?
-        var deliverableID: String?
+        var minimumSources: Int? = nil
         /// Identifier of the Artifact this file replaces. Supplying it makes the new file
         /// the next version of the same deliverable instead of an unrelated one.
         ///
@@ -255,7 +227,7 @@ nonisolated struct FamiliarArtifactPublishTool: FamiliarTool {
                     "Optional strings that must be present in the parsed document content.",
                     itemDescription: "A short literal string expected in the parsed content."
                 ),
-                "deliverableID": .string("Exact deliverable identifier declared in task_plan."),
+                "minimumSources": .integer("Optional minimum distinct fetched source URLs that must be cited in the file.", minimum: 0, maximum: 16),
                 "supersedes": .string("Identifier of the Artifact this file replaces, beginning with artifact_. Supply it when revising a file you already published so the result becomes the next version of the same deliverable.")
             ],
             required: ["path", "title", "format"]
@@ -282,14 +254,14 @@ nonisolated struct FamiliarArtifactPublishTool: FamiliarTool {
         let title = input.title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { throw FamiliarArtifactError.invalidPath }
         let output = try resolver.resolveOutput(relativePath: input.path, workspaceID: workspaceID)
-        let spec: FamiliarDeliverableSpec?
-        if let execution = context.execution { spec = try await execution.spec(id: input.deliverableID, format: input.format.rawValue) }
-        else { spec = nil }
         let fetched = context.fetchedSources.filter { $0.kind == .fetchedPage }
         let sourceURLs = Array(Set(fetched.map { $0.url.absoluteString })).sorted()
-        let minimumSources = spec?.minimumSources ?? 0
+        let minimumSources = input.minimumSources ?? 0
+        guard (0...16).contains(minimumSources), (input.requiredText?.count ?? 0) <= 16 else {
+            throw FamiliarArtifactError.validationFailed("Invalid document validation requirements.")
+        }
         guard sourceURLs.count >= minimumSources else { throw FamiliarArtifactError.validationFailed("Not enough successfully fetched sources.") }
-        let required = Array(Set((spec?.requiredText ?? []) + (input.requiredText ?? [])))
+        let required = Array(Set(input.requiredText ?? []))
         let validation = try FamiliarArtifactValidator.validate(fileURL: output.fileURL, format: input.format, requiredText: required)
         if minimumSources > 0 {
             let text = try FamiliarArtifactReadTool.extractText(data: Data(contentsOf: output.fileURL), filename: output.fileURL.lastPathComponent).text
@@ -380,11 +352,9 @@ nonisolated struct FamiliarArtifactPublishTool: FamiliarTool {
                         ))
                     ),
                     artifactIdentifier: identifier,
-                    artifact: descriptor,
-                    deliverableID: input.deliverableID
+                    artifact: descriptor
                 )
-                return FamiliarCommittedAction(result: result) {
-                    try store.remove(projectID: projectID, artifactID: id)
+                return FamiliarCommittedAction(result: result, undo: {
                     return .init(envelope: try .init(
                         model: UndoOutput(undone: true, artifactIdentifier: identifier),
                         presentation: .mutationReceipt(.init(
@@ -395,7 +365,7 @@ nonisolated struct FamiliarArtifactPublishTool: FamiliarTool {
                             undoAvailable: false
                         ))
                     ))
-                }
+                }, rollback: { try store.remove(projectID: projectID, artifactID: id) })
             }
         ))
     }
