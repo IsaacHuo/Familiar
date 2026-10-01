@@ -187,10 +187,7 @@ nonisolated enum FamiliarAttachmentStore {
         guard size <= maximumSourceBytes else { throw FamiliarAttachmentStoreError.fileTooLarge }
         let directory = messagesURL(for: messageID)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
-        let destinationURL = directory.appendingPathComponent(
-            draft.id.uuidString + "-" + sanitizedFilename(draft.filename),
-            isDirectory: false
-        )
+        let destinationURL = try validatedStoreURL(for: committedRelativePath(of: draft, messageID: messageID))
         do {
             try fileManager.copyItem(at: sourceURL, to: destinationURL)
             try verifyCopiedFile(destinationURL, expectedSize: size)
@@ -202,6 +199,12 @@ nonisolated enum FamiliarAttachmentStore {
             throw FamiliarAttachmentStoreError.copyFailed
         }
         return relativePath(for: destinationURL)
+    }
+
+    /// The final identity can be frozen before copying or committing any bytes.
+    static func committedRelativePath(of draft: FamiliarAttachmentDraft, messageID: UUID) -> String {
+        relativePath(for: messagesURL(for: messageID).appendingPathComponent(
+            draft.id.uuidString + "-" + sanitizedFilename(draft.filename), isDirectory: false))
     }
 
     static func url(for relativePath: String) -> URL? {

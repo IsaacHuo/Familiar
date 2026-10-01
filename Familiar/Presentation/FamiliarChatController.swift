@@ -2,6 +2,11 @@ import Foundation
 import Observation
 import SwiftData
 
+private nonisolated enum FamiliarDraftPreparationError: LocalizedError {
+    case changed
+    var errorDescription: String? { String(localized: "error.draft.changed_during_preparation", defaultValue: "The draft changed while preparing. Review it and send again.") }
+}
+
 @MainActor
 @Observable
 final class FamiliarChatController {
@@ -30,6 +35,7 @@ final class FamiliarChatController {
     var surfaces = FamiliarSurfaceStore()
     var availableUndoKeys: Set<String> = []
     var completedUndoKeys: Set<String> = []
+    @ObservationIgnored private var sessionUndoKeys: Set<String> = []
     var isCompacting = false
     var isSending = false
     var errorMessage: String?
@@ -295,218 +301,154 @@ final class FamiliarChatController {
     }
 
     func startSending(in context: ModelContext) {
-        startSending(in: context, preparedImageDrafts: nil, visualEvidence: nil)
-    }
-
-    private func startSending(
-        in context: ModelContext,
-        preparedImageDrafts: [FamiliarAttachmentDraft]?,
-        visualEvidence: [FamiliarVisualEvidence]?
-    ) {
         guard !isSending && !isCompacting else { return }
-        let prompt = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !prompt.isEmpty || !draftAttachments.isEmpty || !draftImages.isEmpty || preparedImageDrafts?.isEmpty == false else { return }
-
-        // Resolved before requestSettings because the Project override has to be in
-        // place for the image, document and context-budget gates below; applying it later
-        // would validate the request against a model the run will not use.
-        let selectedProject = selectedConversation(in: context)?.project
-            ?? selectedProjectID.flatMap { fetchProject(id: $0, in: context) }
-            ?? defaultProject(in: context)
-        guard selectedProject != nil else { return }
-        let requestSettings = settings.applyingProjectModelOverride(selectedProject?.modelIDOverride, providerID: selectedProject?.providerIDOverride)
+        let capturedDraft = draft
+        let prompt = capturedDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let capturedAttachments = draftAttachments
+        let capturedImages = draftImages
+        let capturedSkillID = selectedSkillID
+        guard !prompt.isEmpty || !capturedAttachments.isEmpty || !capturedImages.isEmpty else { return }
+        let existingConversation = selectedConversation(in: context)
+        guard let project = existingConversation?.project
+            ?? selectedProjectID.flatMap({ fetchProject(id: $0, in: context) })
+            ?? defaultProject(in: context) else { return }
+        let requestSettings = settings.applyingProjectModelOverride(project.modelIDOverride, providerID: project.providerIDOverride)
         guard let descriptor = requestSettings.resolvedProvider else {
-            errorMessage = String(
-                format: String(localized: "error.provider.invalid_configuration"),
-                FamiliarProviderCatalog.deepSeek.displayName
-            )
+            errorMessage = String(format: String(localized: "error.provider.invalid_configuration"), requestSettings.providerID)
             return
         }
-        guard let apiKey = FamiliarKeychainStore.load(for: requestSettings.providerID) ?? FamiliarOAuthCredentialStore.load(instanceID: requestSettings.providerID)?.accessToken ?? (descriptor.routes != nil ? "" : nil) else {
+        guard let apiKey = FamiliarKeychainStore.load(for: requestSettings.providerID)
+            ?? FamiliarOAuthCredentialStore.load(instanceID: requestSettings.providerID)?.accessToken
+            ?? (descriptor.routes != nil ? "" : nil) else {
             errorMessage = String(localized: "error.api_key_missing")
             return
         }
-
-        var importedImageDrafts: [FamiliarAttachmentDraft] = []
-        var shouldRemoveImportedDrafts = true
-        defer {
-            if shouldRemoveImportedDrafts, !importedImageDrafts.isEmpty {
-                FamiliarAttachmentStore.remove(relativePaths: importedImageDrafts.map(\.relativePath))
-            }
-        }
-        do {
-            importedImageDrafts = if let preparedImageDrafts {
-                preparedImageDrafts
-            } else {
-                try draftImages.enumerated().map { index, draftImage in
-                    try FamiliarAttachmentStore.importImage(draftImage.image, filename: "photo-\(index + 1).jpg")
-                }
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-            return
-        }
-        let combinedAttachments = draftAttachments + importedImageDrafts
-
-        guard !prompt.isEmpty || !combinedAttachments.isEmpty else { return }
-        let imageAttachments = combinedAttachments.filter { $0.kind == .image }
-        if !imageAttachments.isEmpty,
-           !requestSettings.selectedModel.capabilities.supportsImages,
-           visualEvidence == nil {
-            shouldRemoveImportedDrafts = false
-            let imageDraftsForTask = importedImageDrafts
-            isSending = true
-            resetTransientRunState()
-            let preflightRunID = "vision-preflight-" + UUID().uuidString
-            surfaces.apply(.init(runID: preflightRunID, sequence: 0, timestamp: Date(), assistantTurnID: nil, payload: .runPhaseChanged(.starting)))
-            surfaces.apply(.init(runID: preflightRunID, sequence: 1, timestamp: Date(), assistantTurnID: nil, payload: .runPhaseChanged(.executingActivities(["vision_recognition"]))))
-            runningTask = Task { [weak self] in
-                guard let self else { return }
-                do {
-                    let evidence = try await dependencies.visionProcessor.process(imageAttachments)
-                    isSending = false
-                    runningTask = nil
-                    resetTransientRunState()
-                    startSending(in: context, preparedImageDrafts: imageDraftsForTask, visualEvidence: evidence)
-                } catch is CancellationError {
-                    FamiliarAttachmentStore.remove(relativePaths: imageDraftsForTask.map(\.relativePath))
-                    isSending = false
-                    runningTask = nil
-                    resetTransientRunState()
-                } catch {
-                    FamiliarAttachmentStore.remove(relativePaths: imageDraftsForTask.map(\.relativePath))
-                    isSending = false
-                    runningTask = nil
-                    resetTransientRunState()
-                    errorMessage = error.localizedDescription
-                }
-            }
-            return
-        }
-        let invokedSkills: [FamiliarSkillSnapshot]
-        do {
-            if let selectedSkillID {
-                invokedSkills = [try FamiliarSkillService().snapshot(skillID: selectedSkillID, in: context)]
-            } else {
-                invokedSkills = []
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-            return
-        }
-        let hasProjectResources = selectedProject?.resources.isEmpty == false
-        let hasDocumentAttachments = combinedAttachments.contains { $0.kind == .document }
-        guard (!hasDocumentAttachments && !hasProjectResources) || requestSettings.selectedModel.capabilities.supportsDocuments else {
+        guard (project.resources.isEmpty && !capturedAttachments.contains(where: { $0.kind == .document }))
+                || requestSettings.selectedModel.capabilities.supportsDocuments else {
             errorMessage = String(localized: "attachment.error.model_unsupported")
             return
         }
-        let requestCharacterCount = prompt.count
-            + combinedAttachments.reduce(0) { $0 + $1.extractedText.count }
-            + (visualEvidence ?? []).reduce(0) { $0 + $1.renderedText.count }
-            + invokedSkills.reduce(0) { $0 + $1.instructions.count }
-        guard requestCharacterCount <= requestSettings.selectedModel.capabilities.maximumInputCharacters else {
-            errorMessage = String(localized: "error.message.context_too_large")
-            return
-        }
-        let conversation: FamiliarConversation
-        let createdConversation: Bool
-        if let existing = selectedConversation(in: context) {
-            conversation = existing
-            createdConversation = false
-        } else {
-            let created = FamiliarConversation(
-                currentProviderID: requestSettings.providerID,
-                currentModelID: requestSettings.modelID,
-                project: selectedProject
-            )
-            context.insert(created)
-            conversation = created
-            createdConversation = true
-            selectedConversationID = created.id
-        }
-        conversation.currentProviderID = requestSettings.providerID
-        conversation.currentModelID = requestSettings.modelID
-
-        let nextSequence = nextConversationSequence(in: conversation)
+        let skills: [FamiliarSkillSnapshot]
+        do { skills = try capturedSkillID.map { [try FamiliarSkillService().snapshot(skillID: $0, in: context)] } ?? [] }
+        catch { errorMessage = error.localizedDescription; return }
+        let conversationID = existingConversation?.id ?? UUID()
         let messageID = UUID()
-        var committedPaths: [String] = []
-        do {
-            committedPaths = try committedAttachmentPaths(for: combinedAttachments, messageID: messageID)
-        } catch {
-            context.rollback()
-            if createdConversation { selectedConversationID = nil }
-            FamiliarAttachmentStore.remove(relativePaths: committedPaths)
-            errorMessage = error.localizedDescription
-            return
-        }
-        let userMessage = FamiliarMessage(
-            id: messageID,
-            role: .user,
-            content: prompt,
-            sequence: nextSequence,
-            conversation: conversation
-        )
-        context.insert(userMessage)
-        for (draftAttachment, relativePath) in zip(combinedAttachments, committedPaths) {
-            let attachment = FamiliarAttachment(
-                id: draftAttachment.id,
-                kind: draftAttachment.kind,
-                filename: draftAttachment.filename,
-                mimeType: draftAttachment.mimeType,
-                relativePath: relativePath,
-                extractedText: draftAttachment.extractedText,
-                byteSize: draftAttachment.byteSize,
-                extractionEngine: draftAttachment.extractionEngine,
-                extractionVersion: draftAttachment.extractionVersion,
-                detectedFormat: draftAttachment.detectedFormat,
-                usedOCR: draftAttachment.usedOCR,
-                message: userMessage
-            )
-            context.insert(attachment)
-        }
-        conversation.updatedAt = Date()
-        if conversation.messages.count == 1 {
-            let titleSource = prompt.isEmpty ? (combinedAttachments.first?.filename ?? String(localized: "conversation.new")) : prompt
-            conversation.title = String(titleSource.prefix(28))
-        }
-
-        do {
-            try context.save()
-        } catch {
-            context.rollback()
-            if createdConversation { selectedConversationID = nil }
-            FamiliarAttachmentStore.remove(relativePaths: committedPaths)
-            errorMessage = String(format: String(localized: "error.save_prompt"), error.localizedDescription)
-            return
-        }
-
-        FamiliarAttachmentStore.remove(relativePaths: combinedAttachments.map(\.relativePath))
-        draft = ""
-        draftAttachments = []
-        draftImages = []
-        reloadMessages(in: context)
-        let requestMessages = messages
-        let contextSeed = makeContextSeed(conversation: conversation, skills: invokedSkills, query: prompt, context: context)
-        selectedSkillID = nil
-        let responseID = UUID()
+        let createdAt = Date()
+        let nextSequence = nextConversationSequence(in: existingConversation)
+        let history = messages
         isSending = true
-        availableUndoKeys = []
+        errorMessage = nil
         resetTransientRunState()
-        streamingMessageID = responseID
-
         runningTask = Task { [weak self] in
             guard let self else { return }
-            await self.performSend(
-                requestMessages: requestMessages,
-                conversationID: conversation.id,
-                apiKey: apiKey,
-                descriptor: descriptor,
-                settings: requestSettings,
-                contextSeed: contextSeed,
-                visualEvidence: visualEvidence ?? [],
-                responseID: responseID,
-                context: context
-            )
+            var imageDrafts: [FamiliarAttachmentDraft] = []
+            defer {
+                FamiliarAttachmentStore.remove(relativePaths: imageDrafts.map(\.relativePath))
+                isSending = false
+                runningTask = nil
+            }
+            do {
+                let runRegistry = try await dependencies.registry.snapshotRegistry(adding: [])
+                let available = requestSettings.selectedModel.capabilities.supportsTools ? await runRegistry.snapshot() : []
+                try Task.checkCancellation()
+                let seed = try makeContextSeed(project: project, conversation: existingConversation, conversationID: conversationID,
+                    skills: skills, query: prompt, settings: requestSettings, context: context)
+                let manifests = try FamiliarProjectService().filterCapabilities(available, projectID: project.id, in: context)
+                    .filter { FamiliarToolGroup.group(for: $0.name) != .memory || requestSettings.isAutomaticMemoryEnabled }
+                let configurations = try FamiliarMCPService.configurations(projectID: project.id, conversationID: conversationID, in: context)
+                let deferredGroups = requestSettings.selectedModel.capabilities.supportsTools ? FamiliarMCPService.deferredGroups(configurations) : []
+                for (index, image) in capturedImages.enumerated() {
+                    try Task.checkCancellation()
+                    imageDrafts.append(try FamiliarAttachmentStore.importImage(image.image, filename: "photo-\(index + 1).jpg"))
+                }
+                let attachments = capturedAttachments + imageDrafts
+                let finalPaths = Dictionary(uniqueKeysWithValues: attachments.map { ($0.id, FamiliarAttachmentStore.committedRelativePath(of: $0, messageID: messageID)) })
+                let readPaths = Dictionary(uniqueKeysWithValues: attachments.map { ($0.id, $0.relativePath) })
+                let pending = FamiliarMessageSnapshot(id: messageID, role: .user, content: prompt, createdAt: createdAt,
+                    sequence: nextSequence, providerID: nil, modelID: nil, attachments: attachments.map { item in
+                        FamiliarAttachmentSnapshot(id: item.id, kind: item.kind, filename: item.filename, mimeType: item.mimeType,
+                            relativePath: finalPaths[item.id]!, extractedText: item.extractedText, byteSize: item.byteSize,
+                            extractionEngine: item.extractionEngine, extractionVersion: item.extractionVersion,
+                            detectedFormat: item.detectedFormat, usedOCR: item.usedOCR)
+                    })
+                // No Conversation, Message or committed file exists yet. The preliminary
+                // check also avoids expensive Vision work for impossible Project input.
+                var snapshot = try FamiliarProjectContextAssembler.assemble(seed: seed, settings: requestSettings,
+                    messages: history + [pending], toolManifests: manifests, additionalToolGroups: deferredGroups.map(\.summary),
+                    attachmentReadPaths: readPaths)
+                try FamiliarProjectContextAssembler.validateSubmission(snapshot)
+                let images = attachments.filter { $0.kind == .image }
+                if !images.isEmpty && !requestSettings.selectedModel.capabilities.supportsImages {
+                    let preflightID = "vision-preflight-" + UUID().uuidString
+                    surfaces.apply(.init(runID: preflightID, sequence: 0, timestamp: Date(), assistantTurnID: nil, payload: .runPhaseChanged(.starting)))
+                    surfaces.apply(.init(runID: preflightID, sequence: 1, timestamp: Date(), assistantTurnID: nil, payload: .runPhaseChanged(.executingActivities(["vision_recognition"]))))
+                    let recognized = try await dependencies.visionProcessor.process(images)
+                    try Task.checkCancellation()
+                    let evidence = recognized.map { item in
+                        FamiliarVisualEvidence(id: item.id, attachmentID: item.attachmentID, filename: item.filename,
+                            sourceRelativePath: finalPaths[item.attachmentID] ?? item.sourceRelativePath, renderedText: item.renderedText,
+                            processingMethod: item.processingMethod, engineVersion: item.engineVersion, createdAt: item.createdAt)
+                    }
+                    snapshot = try FamiliarProjectContextAssembler.assemble(seed: seed, settings: requestSettings,
+                        messages: history + [pending], toolManifests: manifests, additionalToolGroups: deferredGroups.map(\.summary),
+                        visualEvidence: evidence, attachmentReadPaths: readPaths)
+                    try FamiliarProjectContextAssembler.validateSubmission(snapshot)
+                }
+                try Task.checkCancellation()
+                guard draft == capturedDraft, draftAttachments == capturedAttachments,
+                      draftImages.map(\.id) == capturedImages.map(\.id), selectedSkillID == capturedSkillID,
+                      fetchProject(id: project.id, in: context) != nil,
+                      existingConversation == nil || fetchConversation(id: conversationID, in: context) != nil else {
+                    throw FamiliarDraftPreparationError.changed
+                }
+                let conversation = existingConversation ?? FamiliarConversation(id: conversationID,
+                    currentProviderID: requestSettings.providerID, currentModelID: requestSettings.modelID, project: project)
+                var copiedPaths: [String] = []
+                do {
+                    if existingConversation == nil { context.insert(conversation) }
+                    copiedPaths = try committedAttachmentPaths(for: attachments, messageID: messageID)
+                    let userMessage = FamiliarMessage(id: messageID, role: .user, content: prompt, createdAt: createdAt,
+                        sequence: nextSequence, conversation: conversation)
+                    context.insert(userMessage)
+                    for (item, path) in zip(attachments, copiedPaths) {
+                        context.insert(FamiliarAttachment(id: item.id, kind: item.kind, filename: item.filename, mimeType: item.mimeType,
+                            relativePath: path, extractedText: item.extractedText, byteSize: item.byteSize, extractionEngine: item.extractionEngine,
+                            extractionVersion: item.extractionVersion, detectedFormat: item.detectedFormat, usedOCR: item.usedOCR, message: userMessage))
+                    }
+                    conversation.currentProviderID = requestSettings.providerID
+                    conversation.currentModelID = requestSettings.modelID
+                    conversation.updatedAt = Date()
+                    if existingConversation == nil || conversation.messages.count == 1 {
+                        conversation.title = String((prompt.isEmpty ? attachments.first?.filename ?? String(localized: "conversation.new") : prompt).prefix(28))
+                    }
+                    try FamiliarMemoryService().stageUsage(ids: Set(snapshot.memories.map(\.id)), in: context)
+                    try context.save()
+                } catch {
+                    context.rollback()
+                    FamiliarAttachmentStore.remove(relativePaths: copiedPaths)
+                    throw error
+                }
+                // Consume the draft only after the complete submission save succeeds.
+                selectedConversationID = conversationID
+                FamiliarAttachmentStore.remove(relativePaths: attachments.map(\.relativePath))
+                imageDrafts = []
+                draft = ""
+                draftAttachments = []
+                draftImages = []
+                selectedSkillID = nil
+                reloadMessages(in: context)
+                availableUndoKeys = []
+                resetTransientRunState()
+                let responseID = UUID()
+                streamingMessageID = responseID
+                await performSend(contextSnapshot: snapshot, runRegistry: runRegistry, deferredGroups: deferredGroups,
+                    apiKey: apiKey, descriptor: descriptor, settings: requestSettings, responseID: responseID, context: context)
+            } catch is CancellationError {
+                resetTransientRunState()
+            } catch {
+                resetTransientRunState()
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -557,6 +499,7 @@ final class FamiliarChatController {
               message.role == .user,
               let conversation = selectedConversation(in: context)
         else { return }
+        guard permitsRegeneration(conversation.agentRuns.filter { $0.startedAt >= message.createdAt }, in: context) else { return }
 
         let stagedAttachments: [FamiliarAttachmentDraft]
         do {
@@ -605,6 +548,7 @@ final class FamiliarChatController {
         else { return }
 
         let prompt = userMessage.content
+        guard permitsRegeneration(conversation.agentRuns.filter { $0.startedAt >= userMessage.createdAt }, in: context) else { return }
         let userSnapshotAttachments = userMessage.attachments.map {
             FamiliarAttachmentSnapshot(
                 id: $0.id,
@@ -671,6 +615,7 @@ final class FamiliarChatController {
         }
         guard let userMessage = sortedMessages.last(where: { $0.role == .user && $0.createdAt <= run.startedAt }) else { return }
         let prompt = userMessage.content
+        guard permitsRegeneration(conversation.agentRuns.filter { $0.startedAt >= userMessage.createdAt }, in: context) else { return }
         let providerID = run.contextSnapshot?.providerID
         let modelID = run.contextSnapshot?.modelID
         let snapshots = userMessage.attachments.map {
@@ -736,6 +681,16 @@ final class FamiliarChatController {
         } catch {
             errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
         }
+    }
+
+    private func permitsRegeneration(_ runs: [FamiliarAgentRun], in context: ModelContext) -> Bool {
+        do {
+            for run in runs where try runRecovery.requiresInspection(run, in: context) {
+                errorMessage = String(localized: "tool.commit.retry_blocked")
+                return false
+            }
+            return true
+        } catch { errorMessage = error.localizedDescription; return false }
     }
 
     func reloadMessages(in context: ModelContext) {
@@ -1010,21 +965,16 @@ final class FamiliarChatController {
     }
 
     private func performSend(
-        requestMessages: [FamiliarMessageSnapshot],
-        conversationID: UUID,
+        contextSnapshot: FamiliarContextSnapshot,
+        runRegistry: FamiliarToolRegistry,
+        deferredGroups: [FamiliarDeferredToolGroup],
         apiKey: String,
         descriptor: FamiliarProviderDescriptor,
         settings: FamiliarSettings,
-        contextSeed: FamiliarProjectContextSeed,
-        visualEvidence: [FamiliarVisualEvidence],
         responseID: UUID,
         context: ModelContext
     ) async {
-        defer {
-            isSending = false
-            runningTask = nil
-        }
-
+        let conversationID = contextSnapshot.conversationID
         var activeRunID: UUID?
         var activeRuntimeID: String?
         var completedAssistantTurnID: String?
@@ -1032,26 +982,6 @@ final class FamiliarChatController {
         var runOutcome: FamiliarRunOutcome?
         var separatesNextReasoningSummary = false
         do {
-            let mcpConfigurations = try FamiliarMCPService.configurations(projectID: contextSeed.projectID, conversationID: conversationID, in: context)
-            let mcpDiscovery = settings.selectedModel.capabilities.supportsTools ? try await FamiliarMCPService.snapshotTools(mcpConfigurations) : FamiliarMCPService.Discovery(tools: [], unavailable: [])
-            let runRegistry = try await dependencies.registry.snapshotRegistry(adding: mcpDiscovery.tools)
-            let availabilityReport = settings.selectedModel.capabilities.supportsTools
-                ? await runRegistry.availabilityReport()
-                : FamiliarToolAvailabilityReport(manifests: [], unavailable: [])
-            let availableManifests = availabilityReport.manifests
-            let manifests = try FamiliarProjectService().filterCapabilities(
-                availableManifests,
-                projectID: contextSeed.projectID,
-                in: context
-            )
-            let contextSnapshot = try FamiliarProjectContextAssembler.assemble(
-                seed: contextSeed,
-                settings: settings,
-                messages: requestMessages,
-                toolManifests: manifests,
-                unavailableTools: availabilityReport.unavailable + mcpDiscovery.unavailable,
-                visualEvidence: visualEvidence
-            )
             let agentLoop = dependencies.makeRuntime(
                 for: descriptor,
                 apiKey: apiKey,
@@ -1060,12 +990,31 @@ final class FamiliarChatController {
                 runRegistry: runRegistry,
                 sessionID: conversationID.uuidString,
                 authorizationRuntime: FamiliarAuthorizationRuntime(context: context, sessionID: dependencies.sessionID),
-                persistResult: { @MainActor result in
-                    if let artifact = result.artifact { try FamiliarArtifactService().persist(artifact, in: context) }
-                    if let skill = result.installedSkill, let projectID = contextSnapshot.projectID {
-                        try FamiliarSkillPackageStore().persistInstallation(skill, projectID: projectID, context: context)
+                persistResult: { @MainActor result, commit in
+                    do {
+                        if let durableUndo = result.durableUndo {
+                            try self.stageDurableUndo(durableUndo, commit: commit, context: context)
+                            try context.save()
+                        }
+                        if let artifact = result.artifact { try FamiliarArtifactService().persist(artifact, in: context) }
+                        if let skill = result.installedSkill, let projectID = contextSnapshot.projectID {
+                            try FamiliarSkillPackageStore().persistInstallation(skill, projectID: projectID, context: context)
+                        }
+                        if let memory = result.memoryWrite {
+                            try FamiliarMemoryService().persist(memory, in: context)
+                        }
+                        if let receipt = result.environmentReceipt { try FamiliarProjectService().persistEnvironment(receipt, in: context) }
+                        if let loadedTools = result.loadedTools {
+                            let capabilitySnapshot = FamiliarCapabilitySnapshot(id: UUID(), createdAt: Date(), projectID: contextSnapshot.projectID, manifests: loadedTools)
+                            try FamiliarRunRecoveryService().persistCapabilitySnapshot(capabilitySnapshot, contextSnapshotID: contextSnapshot.id, conversationID: conversationID, in: context)
+                        }
+                    } catch {
+                        context.rollback()
+                        throw error
                     }
-                }
+                },
+                willCommit: { @MainActor commit in try FamiliarRunRecoveryService().beginCommit(commit, in: context) },
+                deferredToolGroups: deferredGroups
             )
             var completedResponse: FamiliarCompletedResponse?
             for try await event in agentLoop.stream(
@@ -1076,7 +1025,7 @@ final class FamiliarChatController {
                     activeRunID = UUID(uuidString: event.runID)
                     runRecorder.ensureRun(runtimeID: event.runID, snapshot: contextSnapshot, startedAt: event.timestamp, context: context)
                     do {
-                        let capabilitySnapshot = FamiliarCapabilitySnapshot(id: UUID(), createdAt: contextSnapshot.createdAt, projectID: contextSnapshot.projectID, manifests: contextSnapshot.toolManifests)
+                        let capabilitySnapshot = FamiliarCapabilitySnapshot(id: UUID(), createdAt: contextSnapshot.createdAt, projectID: contextSnapshot.projectID, manifests: contextSnapshot.availableToolManifests)
                         try runRecovery.persistCapabilitySnapshot(capabilitySnapshot, contextSnapshotID: contextSnapshot.id, conversationID: conversationID, in: context)
                         _ = try runRecovery.beginCursor(runtimeID: event.runID, runID: activeRunID, contextSnapshotID: contextSnapshot.id, in: context)
                     } catch {
@@ -1099,8 +1048,6 @@ final class FamiliarChatController {
                         if let count = usage.cachedInputTokens { run.cachedInputTokenCount = (run.cachedInputTokenCount ?? 0) + count }
                         try context.save()
                     }
-                case .executionStateChanged(let state):
-                    try runRecorder.recordExecutionState(state, runtimeID: event.runID, sequence: event.sequence, at: event.timestamp, context: context)
                 case .runPhaseChanged(let phase):
                     try? runRecorder.recordRunPhase(
                         phase,
@@ -1253,7 +1200,7 @@ final class FamiliarChatController {
                         errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
                     }
                     if record.undoAvailable {
-                        await persistDurableUndo(record, context: context)
+                        sessionUndoKeys.insert(record.runID + ":" + record.toolCallID)
                         availableUndoKeys.insert(record.runID + ":" + record.toolCallID)
                     }
                 case .toolResultProduced(let record):
@@ -1404,110 +1351,105 @@ final class FamiliarChatController {
 
     func undo(runID: String, toolCallID: String, in context: ModelContext) {
         let key = runID + ":" + toolCallID
-        guard availableUndoKeys.contains(key) else { return }
+        guard availableUndoKeys.remove(key) != nil else { return }
+        sessionUndoKeys.remove(key)
         Task {
+            var attempted = false
             do {
-                let alarmDescriptor = FetchDescriptor<FamiliarAlarmUndoRecord>(predicate: #Predicate { $0.idempotencyKey == key })
-                let descriptor = FetchDescriptor<FamiliarEventKitUndoRecord>(predicate: #Predicate { $0.idempotencyKey == key })
-                let result: FamiliarToolExecutionResult
-                // Rebuilt from the persisted record rather than the in-memory undo
-                // closure, which does not survive a relaunch. An alarm almost always
-                // outlives the session that scheduled it.
-                if let alarmRecord = try context.fetch(alarmDescriptor).first {
-                    guard alarmRecord.state == .available,
-                          let alarmID = UUID(uuidString: alarmRecord.alarmIdentifier)
-                    else { throw FamiliarAlarmError.unknownAlarm(alarmRecord.alarmIdentifier) }
-                    try await dependencies.alarm.cancel(id: alarmID)
-                    result = .init(envelope: try FamiliarToolResultEnvelope(
-                        model: AlarmUndoOutput(cancelled: true, alarmID: alarmRecord.alarmIdentifier),
-                        presentation: .mutationReceipt(.init(
-                            summary: String(localized: "alarm.receipt.cancelled", defaultValue: "Alarm cancelled"),
-                            operation: "alarmCancel",
-                            targetIdentifier: alarmRecord.alarmIdentifier,
-                            succeeded: true,
-                            undoAvailable: false
-                        ))
-                    ))
-                    alarmRecord.state = .undone
-                    alarmRecord.undoneAt = Date()
-                    try context.save()
-                } else if let record = try context.fetch(descriptor).first {
-                    guard record.state == .available else { throw FamiliarEventKitError.undoUnavailable }
-                    let mutationDescriptor = FetchDescriptor<FamiliarEventKitUndoMutationRecord>(predicate: #Predicate { $0.idempotencyKey == key })
-                    if let mutation = try context.fetch(mutationDescriptor).first {
-                        result = try await dependencies.eventKit.undo(try mutation.descriptor())
-                        mutation.restoredCalendarItemIdentifier = result.artifactIdentifier
-                    } else {
-                        result = try await dependencies.eventKit.undo(kind: record.kind, identifier: record.calendarItemIdentifier)
+                let alarmRecord = try context.fetch(FetchDescriptor<FamiliarAlarmUndoRecord>(predicate: #Predicate { $0.idempotencyKey == key })).first
+                let eventRecord = try context.fetch(FetchDescriptor<FamiliarEventKitUndoRecord>(predicate: #Predicate { $0.idempotencyKey == key })).first
+                let mutation = try context.fetch(FetchDescriptor<FamiliarEventKitUndoMutationRecord>(predicate: #Predicate { $0.idempotencyKey == key })).first
+                let cached = await dependencies.undoStore.hasCompletedResult(key: key)
+                if let record = alarmRecord {
+                    guard record.state == .available || cached, let alarmID = UUID(uuidString: record.alarmIdentifier) else { throw FamiliarEventKitError.undoUnavailable }
+                    let alarm = dependencies.alarm
+                    let identifier = record.alarmIdentifier
+                    await dependencies.undoStore.register(key: key) {
+                        try await alarm.cancel(id: alarmID)
+                        return .init(envelope: try .init(model: AlarmUndoOutput(cancelled: true, alarmID: identifier),
+                            presentation: .mutationReceipt(.init(summary: String(localized: "alarm.receipt.cancelled"), operation: "alarmCancel",
+                                targetIdentifier: identifier, succeeded: true, undoAvailable: false))))
                     }
-                    record.state = .undone
-                    record.undoneAt = Date()
-                    try context.save()
-                } else {
-                    result = try await dependencies.undoStore.execute(key: key)
+                } else if let record = eventRecord {
+                    guard record.state == .available || cached else { throw FamiliarEventKitError.undoUnavailable }
+                    let eventKit = dependencies.eventKit
+                    let descriptor = try mutation?.descriptor() ?? FamiliarEventKitUndoDescriptor(operation: .create,
+                        kind: record.kind, calendarItemIdentifier: record.calendarItemIdentifier, snapshot: nil)
+                    await dependencies.undoStore.register(key: key) { try await eventKit.undo(descriptor) }
                 }
-                availableUndoKeys.remove(key)
-                completedUndoKeys.insert(key)
+                if !cached, alarmRecord != nil || eventRecord != nil {
+                    // After a crash this is an uncertain Undo, never an action to replay.
+                    alarmRecord?.state = .unavailable
+                    eventRecord?.state = .unavailable
+                    alarmRecord?.lastError = String(localized: "tool.undo.unconfirmed")
+                    eventRecord?.lastError = String(localized: "tool.undo.unconfirmed")
+                    try context.save()
+                }
+                attempted = true
+                // A completed external Undo is cached until its metadata commit succeeds;
+                // retrying that save must not invoke the native action again.
+                let result = try await dependencies.undoStore.execute(key: key)
+                alarmRecord?.state = .undone
+                alarmRecord?.undoneAt = Date()
+                alarmRecord?.lastError = nil
+                eventRecord?.state = .undone
+                eventRecord?.undoneAt = Date()
+                eventRecord?.lastError = nil
+                if let mutation { mutation.restoredCalendarItemIdentifier = result.artifactIdentifier }
                 let activityID = FamiliarRunPersistenceRecorder.toolActivityID(runtimeID: runID, toolCallID: toolCallID)
-                let activityDescriptor = FetchDescriptor<FamiliarActivityRecord>(predicate: #Predicate { $0.activityID == activityID })
-                let activity = try context.fetch(activityDescriptor).first
+                let activity = try context.fetch(FetchDescriptor<FamiliarActivityRecord>(predicate: #Predicate { $0.activityID == activityID })).first
                 activity?.detail = result.summary
                 activity?.phase = .undone
-                if let artifact = result.artifact {
-                    try FamiliarArtifactService().persist(artifact, in: context)
-                } else if activity?.toolName == "artifact_write",
-                          let identifier = artifactIdentifier(activityID: activityID, context: context) {
-                    let artifactDescriptor = FetchDescriptor<FamiliarArtifact>(predicate: #Predicate { $0.identifier == identifier })
-                    if let artifact = try context.fetch(artifactDescriptor).first {
-                        context.delete(artifact)
-                    }
+                if ["artifact_write", "artifact_edit", "artifact_publish"].contains(activity?.toolName ?? ""),
+                   let identifier = artifactIdentifier(activityID: activityID, context: context),
+                   let artifact = try context.fetch(FetchDescriptor<FamiliarArtifact>(predicate: #Predicate { $0.identifier == identifier })).first {
+                    try FamiliarArtifactService().delete(artifact, in: context)
+                } else {
+                    try context.save()
                 }
-                try? context.save()
+                await dependencies.undoStore.complete(key: key)
+                completedUndoKeys.insert(key)
                 reloadMessages(in: context)
             } catch {
+                context.rollback()
+                let canRetryMetadata = await dependencies.undoStore.hasCompletedResult(key: key)
+                if !attempted || canRetryMetadata {
+                    sessionUndoKeys.insert(key)
+                    availableUndoKeys.insert(key)
+                }
                 errorMessage = error.localizedDescription
             }
         }
     }
 
-    private struct AlarmUndoOutput: Encodable {
+    private nonisolated struct AlarmUndoOutput: Encodable {
         let cancelled: Bool
         let alarmID: String
     }
 
-    private func persistDurableUndo(_ event: FamiliarRuntimeActivityCompletion, context: ModelContext) async {
-        guard let identifier = event.artifactIdentifier else { return }
-        let key = event.runID + ":" + event.toolCallID
-        if event.toolName == "alarm_schedule" {
-            let descriptor = FetchDescriptor<FamiliarAlarmUndoRecord>(predicate: #Predicate { $0.idempotencyKey == key })
-            guard (try? context.fetch(descriptor).first) == nil else { return }
-            context.insert(FamiliarAlarmUndoRecord(
-                idempotencyKey: key,
-                runtimeID: event.runID,
-                toolCallID: event.toolCallID,
-                toolName: event.toolName,
-                alarmIdentifier: identifier
-            ))
-            try? context.save()
-            return
-        }
-        let kind: FamiliarEventKitAccessKind
-        switch event.toolName {
-        case "create_calendar_event", "update_calendar_event", "delete_calendar_event": kind = .events
-        case "create_reminder", "update_reminder", "delete_reminder": kind = .reminders
-        default: return
-        }
-        let descriptor = FetchDescriptor<FamiliarEventKitUndoRecord>(predicate: #Predicate { $0.idempotencyKey == key })
-        guard (try? context.fetch(descriptor).first) == nil else { return }
-        context.insert(FamiliarEventKitUndoRecord(idempotencyKey: key, runtimeID: event.runID, toolCallID: event.toolCallID, toolName: event.toolName, kind: kind, calendarItemIdentifier: identifier))
-        if let undoDescriptor = await dependencies.eventKit.undoDescriptor(idempotencyKey: key),
-           undoDescriptor.operation != .create,
-           (try? context.fetch(FetchDescriptor<FamiliarEventKitUndoMutationRecord>(predicate: #Predicate { $0.idempotencyKey == key })).first) == nil {
-            if let mutation = try? FamiliarEventKitUndoMutationRecord(idempotencyKey: key, descriptor: undoDescriptor) {
-                context.insert(mutation)
+    private func stageDurableUndo(_ descriptor: FamiliarDurableUndoDescriptor, commit: FamiliarToolCommitContext, context: ModelContext) throws {
+        let key = commit.idempotencyKey
+        switch descriptor {
+        case .alarm(let identifier):
+            let query = FetchDescriptor<FamiliarAlarmUndoRecord>(predicate: #Predicate { $0.idempotencyKey == key })
+            if try context.fetch(query).isEmpty {
+                context.insert(FamiliarAlarmUndoRecord(idempotencyKey: key, runtimeID: commit.runID,
+                    toolCallID: commit.call.id, toolName: commit.call.name, alarmIdentifier: identifier))
+            }
+        case .eventKit(let value):
+            let query = FetchDescriptor<FamiliarEventKitUndoRecord>(predicate: #Predicate { $0.idempotencyKey == key })
+            if try context.fetch(query).isEmpty {
+                context.insert(FamiliarEventKitUndoRecord(idempotencyKey: key, runtimeID: commit.runID,
+                    toolCallID: commit.call.id, toolName: commit.call.name, kind: value.kind,
+                    calendarItemIdentifier: value.calendarItemIdentifier))
+            }
+            if value.operation != .create {
+                let mutationQuery = FetchDescriptor<FamiliarEventKitUndoMutationRecord>(predicate: #Predicate { $0.idempotencyKey == key })
+                if try context.fetch(mutationQuery).isEmpty {
+                    context.insert(try FamiliarEventKitUndoMutationRecord(idempotencyKey: key, descriptor: value))
+                }
             }
         }
-        try? context.save()
     }
 
     private func reloadDurableUndo(in context: ModelContext) {
@@ -1515,8 +1457,8 @@ final class FamiliarChatController {
         let alarmRecords = (try? context.fetch(FetchDescriptor<FamiliarAlarmUndoRecord>())) ?? []
         let states = eventKitRecords.map { ($0.idempotencyKey, $0.state) }
             + alarmRecords.map { ($0.idempotencyKey, $0.state) }
-        availableUndoKeys = Set(states.filter { $0.1 == .available }.map(\.0))
-        completedUndoKeys = Set(states.filter { $0.1 == .undone }.map(\.0))
+        completedUndoKeys.formUnion(states.filter { $0.1 == .undone }.map(\.0))
+        availableUndoKeys = sessionUndoKeys.union(states.filter { $0.1 == .available }.map(\.0)).subtracting(completedUndoKeys)
     }
 
     private func resetTransientRunState() {
@@ -1596,7 +1538,8 @@ final class FamiliarChatController {
         switch event.status {
         case .succeeded: state = .committed
         case .cancelled: state = .cancelled
-        case .failed: state = .failed
+        case .failed:
+            state = ["tool_commit_unconfirmed", "tool_persistence_failed", "tool_rollback_failed"].contains(event.failureCode ?? "") ? .committing : .failed
         }
         do {
             try runRecovery.setInvocationState(
@@ -1623,12 +1566,6 @@ final class FamiliarChatController {
 
     private func persistToolOutputs(_ event: FamiliarToolResultProduced, conversationID: UUID, context: ModelContext) {
         do {
-            if let receipt = event.environmentReceipt {
-                try FamiliarProjectService().persistEnvironment(receipt, in: context)
-            }
-            if let memoryWrite = event.memoryWrite {
-                try FamiliarMemoryService().persist(memoryWrite, in: context)
-            }
             if let skill = event.loadedSkill {
                 try runRecorder.recordLoadedSkill(
                     runtimeID: event.runID,
@@ -1757,21 +1694,19 @@ final class FamiliarChatController {
             .forEach(context.delete)
     }
 
-    /// Context Compiler: selects only the memory relevant to this prompt, then lets the
-    /// assembler apply its character budget. Reading here also stamps `lastUsedAt`, so
-    /// the field means "was actually selected as context".
+    /// Read-only candidates; final budgeted usage is staged with the accepted message.
     private func selectedMemories(
         query: String,
         projectID: UUID?,
         conversationID: UUID,
         context: ModelContext
-    ) -> [FamiliarContextMemory] {
-        let items = (try? FamiliarMemoryService().search(
+    ) throws -> [FamiliarContextMemory] {
+        let items = Array(try FamiliarMemoryService().candidates(
             query: query,
             projectID: projectID,
             conversationID: conversationID,
             in: context
-        )) ?? []
+        ).prefix(FamiliarMemoryService.defaultSearchLimit))
         return items.map {
             FamiliarContextMemory(
                 id: $0.id,
@@ -1784,13 +1719,15 @@ final class FamiliarChatController {
     }
 
     private func makeContextSeed(
-        conversation: FamiliarConversation,
+        project: FamiliarProject,
+        conversation: FamiliarConversation?,
+        conversationID: UUID,
         skills: [FamiliarSkillSnapshot],
         query: String,
+        settings: FamiliarSettings,
         context: ModelContext
-    ) -> FamiliarProjectContextSeed {
-        let project = conversation.project
-        let resources = (project?.resources ?? []).compactMap { resource -> FamiliarContextResource? in
+    ) throws -> FamiliarProjectContextSeed {
+        let resources = project.resources.compactMap { resource -> FamiliarContextResource? in
             guard let version = resource.versions.max(by: {
                 $0.version == $1.version ? $0.createdAt < $1.createdAt : $0.version < $1.version
             }) else { return nil }
@@ -1806,23 +1743,21 @@ final class FamiliarChatController {
                 extractedTextHash: version.extractedTextHash
             )
         }
-        let availableSkills = project.flatMap {
-            try? FamiliarProjectService().boundSkillSnapshots(projectID: $0.id, in: context)
-        } ?? []
+        let availableSkills = try FamiliarProjectService().boundSkillSnapshots(projectID: project.id, in: context)
         let memories = settings.isAutomaticMemoryEnabled
-            ? selectedMemories(query: query, projectID: project?.id, conversationID: conversation.id, context: context)
+            ? try selectedMemories(query: query, projectID: project.id, conversationID: conversationID, context: context)
             : []
         return FamiliarProjectContextSeed(
-            projectID: project?.id,
-            projectName: project?.displayName,
-            conversationID: conversation.id,
-            projectInstruction: project?.instruction?.text,
+            projectID: project.id,
+            projectName: project.displayName,
+            conversationID: conversationID,
+            projectInstruction: project.instruction?.text,
             resources: resources,
             skills: skills,
             availableSkills: availableSkills,
             memories: memories,
-            conversationSummary: conversation.contextSummary,
-            summaryThroughSequence: conversation.summaryThroughSequence
+            conversationSummary: conversation?.contextSummary,
+            summaryThroughSequence: conversation?.summaryThroughSequence
         )
     }
 

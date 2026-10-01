@@ -28,7 +28,7 @@ struct FamiliarMemoryTests {
         #expect(try context.fetch(FetchDescriptor<FamiliarMemoryItem>()).count == 3)
     }
 
-    @Test("Search only returns in-scope memory and records that it was used")
+    @Test("Candidates only return in-scope memory; accepted selection records usage")
     func searchScopeAndUsage() throws {
         let container = try FamiliarTestStore.make()
         let context = container.mainContext
@@ -43,12 +43,13 @@ struct FamiliarMemoryTests {
         try service.insert(content: "Other conversation fact about beijing", scope: .conversation, projectID: nil, conversationID: UUID(), provenance: "t", creator: .user, in: context)
 
         let used = Date(timeIntervalSince1970: 5_000)
-        let results = try service.search(query: "beijing", projectID: project, conversationID: conversation, in: context, now: used)
+        let results = try service.candidates(query: "beijing", projectID: project, conversationID: conversation, in: context)
 
         #expect(results.count == 3)
         #expect(results.allSatisfy { $0.isInScope(projectID: project, conversationID: conversation) })
-        // lastUsedAt must be stamped on exactly the returned rows; it was never assigned
-        // anywhere before, so the ordering that depends on it degenerated to updatedAt.
+        #expect(results.allSatisfy { $0.lastUsedAt == nil })
+        try service.stageUsage(ids: Set(results.map(\.id)), in: context, now: used)
+        try context.save()
         #expect(results.allSatisfy { $0.lastUsedAt == used })
 
         let outOfScope = try context.fetch(FetchDescriptor<FamiliarMemoryItem>())
