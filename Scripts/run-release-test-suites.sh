@@ -19,6 +19,10 @@ suites=(
     FamiliarBeautifulUIRuntimeTests
     FamiliarBenchmarkTests
     FamiliarEventKitPolicyTests
+    FamiliarHarnessTests
+    FamiliarLazyToolTests
+    FamiliarCommitBoundaryTests
+    FamiliarSendPreflightTests
     FamiliarMemoryTests
     FamiliarNativeFirstArchitectureTests
     FamiliarNativeOutputToolTests
