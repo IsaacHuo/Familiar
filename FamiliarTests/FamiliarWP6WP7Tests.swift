@@ -12,35 +12,15 @@ struct FamiliarWP6WP7Tests {
         let changed = #"{"title":"B","details":{"enabled":true,"count":2}}"#
 
         #expect(FamiliarCanonicalJSON.string(for: first) == FamiliarCanonicalJSON.string(for: reordered))
-        #expect(FamiliarAuthorizationGrant.argumentsHash(first) == FamiliarAuthorizationGrant.argumentsHash(reordered))
-        #expect(FamiliarAuthorizationGrant.argumentsHash(first) != FamiliarAuthorizationGrant.argumentsHash(changed))
+        #expect(FamiliarCanonicalJSON.argumentsHash(first) == FamiliarCanonicalJSON.argumentsHash(reordered))
+        #expect(FamiliarCanonicalJSON.argumentsHash(first) != FamiliarCanonicalJSON.argumentsHash(changed))
     }
 
-    @Test("Manifest snapshots are deterministic and grants are bound to exact arguments")
-    func capabilityContract() throws {
-        let manifest = FamiliarToolManifest(name: "fixture", title: "Fixture", description: "Fixture", parameters: .object([:]), effect: .reversibleWrite, risk: .low)
-        let catalog = FamiliarCapabilityCatalog(manifests: [manifest])
-        let now = Date(timeIntervalSince1970: 100)
-        let snapshot = catalog.snapshot(now: now)
-        #expect(snapshot.manifests.map(\.id) == ["fixture"])
-        let projectID = UUID()
-        let grant = FamiliarAuthorizationGrant(id: UUID(), userAction: "confirm", source: .builtIn, capabilityID: manifest.id, capabilityVersion: manifest.version, argumentsHash: FamiliarAuthorizationGrant.argumentsHash("{}"), projectID: projectID, expiresAt: now.addingTimeInterval(60), singleUse: true, evidence: "fixture", consumedAt: nil, state: .issued)
-        #expect(grant.isValid(for: manifest, arguments: "{}", projectID: projectID, now: now))
-        #expect(!grant.isValid(for: manifest, arguments: "{\"changed\":true}", projectID: projectID, now: now))
-        #expect(!grant.isValid(for: manifest, arguments: "{}", projectID: nil, now: now))
-        // The grant contract is consumed by FamiliarRunRecoveryService for external
-        // entry points. FamiliarExecutionPolicy deliberately cannot see it, so a
-        // grant alone never turns an approval into an automatic execution.
-        #expect(FamiliarExecutionPolicy().decide(manifest: manifest, availability: .available) == .requestApproval)
-    }
-
-    @Test("Share, Intent, and Deep Link sources cannot issue write grants")
+    @Test("Committed invocations cannot be started again")
     @MainActor
-    func grantSourceAndInvocationState() throws {
+    func committedInvocationState() throws {
         let container = try FamiliarTestStore.make()
         let service = FamiliarRunRecoveryService()
-        let grant = FamiliarAuthorizationGrant(id: UUID(), userAction: "share", source: .shareExtension, capabilityID: "fixture", capabilityVersion: "1", argumentsHash: "hash", projectID: nil, expiresAt: Date().addingTimeInterval(60), singleUse: true, evidence: "provenance", consumedAt: nil, state: .issued)
-        #expect(throws: FamiliarRunRecoveryService.Error.self) { try service.issueGrant(grant, in: container.mainContext) }
         let invocation = try service.beginInvocation(idempotencyKey: "run:call", runtimeID: "run", toolCallID: "call", toolName: "fixture", arguments: "{}", assistantTurnID: "run:turn:0", activityID: "tool:run:call", in: container.mainContext)
         try service.setInvocationState(invocation, state: .committed, resultReference: "artifact", in: container.mainContext)
         #expect(throws: FamiliarRunRecoveryService.Error.self) { try service.beginInvocation(idempotencyKey: "run:call", runtimeID: "run", toolCallID: "call", toolName: "fixture", arguments: "{}", assistantTurnID: "run:turn:0", activityID: "tool:run:call", in: container.mainContext) }

@@ -3,27 +3,12 @@ import SwiftData
 
 @MainActor
 final class FamiliarRunRecoveryService {
-    enum Error: Swift.Error { case invalidGrantSource, grantMismatch, alreadyConsumed, invocationAlreadyCommitted }
+    enum Error: Swift.Error { case invocationAlreadyCommitted }
 
     func persistCapabilitySnapshot(_ snapshot: FamiliarCapabilitySnapshot, contextSnapshotID: UUID, conversationID: UUID, in context: ModelContext) throws {
         let data = try JSONEncoder().encode(snapshot.manifests)
         let record = FamiliarCapabilitySnapshotRecord(createdAt: snapshot.createdAt, projectID: snapshot.projectID, conversationID: conversationID, contextSnapshotID: contextSnapshotID, manifestsJSON: String(decoding: data, as: UTF8.self))
         context.insert(record)
-        try context.save()
-    }
-
-    func issueGrant(_ grant: FamiliarAuthorizationGrant, in context: ModelContext) throws {
-        guard grant.source == .builtIn else { throw Error.invalidGrantSource }
-        context.insert(FamiliarAuthorizationGrantRecord(grant: grant))
-        try context.save()
-    }
-
-    func consumeGrant(_ grant: FamiliarAuthorizationGrant, manifest: FamiliarToolManifest, arguments: String, projectID: UUID?, in context: ModelContext, now: Date = Date()) throws {
-        guard grant.isValid(for: manifest, arguments: arguments, projectID: projectID, now: now) else { throw Error.grantMismatch }
-        guard let record = try context.fetch(FetchDescriptor<FamiliarAuthorizationGrantRecord>(predicate: #Predicate { $0.id == grant.id })).first else { throw Error.grantMismatch }
-        guard record.state == .issued else { throw Error.alreadyConsumed }
-        record.state = .consumed
-        record.consumedAt = now
         try context.save()
     }
 
@@ -49,7 +34,7 @@ final class FamiliarRunRecoveryService {
             if existing.state == .committed { throw Error.invocationAlreadyCommitted }
             return existing
         }
-        let record = FamiliarToolInvocationRecord(idempotencyKey: idempotencyKey, runtimeID: runtimeID, toolCallID: toolCallID, toolName: toolName, argumentsHash: FamiliarAuthorizationGrant.argumentsHash(arguments), assistantTurnID: assistantTurnID, activityID: activityID, state: .requested)
+        let record = FamiliarToolInvocationRecord(idempotencyKey: idempotencyKey, runtimeID: runtimeID, toolCallID: toolCallID, toolName: toolName, argumentsHash: FamiliarCanonicalJSON.argumentsHash(arguments), assistantTurnID: assistantTurnID, activityID: activityID, state: .requested)
         context.insert(record)
         try context.save()
         return record
@@ -71,7 +56,7 @@ final class FamiliarRunRecoveryService {
         } else {
             context.insert(FamiliarToolInvocationRecord(idempotencyKey: key, runtimeID: value.runID,
                 toolCallID: value.call.id, toolName: value.call.name,
-                argumentsHash: FamiliarAuthorizationGrant.argumentsHash(value.call.arguments),
+                argumentsHash: FamiliarCanonicalJSON.argumentsHash(value.call.arguments),
                 assistantTurnID: value.assistantTurnID,
                 activityID: FamiliarRunPersistenceRecorder.toolActivityID(runtimeID: value.runID, toolCallID: value.call.id), state: .committing))
         }

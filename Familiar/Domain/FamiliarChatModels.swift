@@ -414,7 +414,6 @@ nonisolated struct FamiliarExecutionBudget: Codable, Equatable, Sendable {
 nonisolated struct FamiliarSettings: Codable, Equatable, Sendable {
     var providerID: String
     var modelID: String
-    var modelRoutePolicy: FamiliarModelRoutePolicy
     var systemPrompt: String
     var providerConfigurations: [String: FamiliarProviderConfiguration]
     var executionBudget: FamiliarExecutionBudget
@@ -425,7 +424,6 @@ nonisolated struct FamiliarSettings: Codable, Equatable, Sendable {
     static let defaultValue = FamiliarSettings(
         providerID: FamiliarProviderCatalog.deepSeek.id,
         modelID: FamiliarProviderCatalog.deepSeek.defaultModel.id,
-        modelRoutePolicy: .cloud,
         systemPrompt: String(localized: "settings.system_prompt.default"),
         providerConfigurations: [:],
         executionBudget: .defaultValue,
@@ -435,7 +433,6 @@ nonisolated struct FamiliarSettings: Codable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case providerID
         case modelID
-        case modelRoutePolicy
         case systemPrompt
         case providerConfigurations
         case executionBudget
@@ -450,7 +447,6 @@ nonisolated struct FamiliarSettings: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         providerID = try container.decode(String.self, forKey: .providerID)
         modelID = try container.decode(String.self, forKey: .modelID)
-        modelRoutePolicy = try container.decode(FamiliarModelRoutePolicy.self, forKey: .modelRoutePolicy)
         systemPrompt = try container.decode(String.self, forKey: .systemPrompt)
         providerConfigurations = try container.decodeIfPresent(
             [String: FamiliarProviderConfiguration].self,
@@ -469,7 +465,6 @@ nonisolated struct FamiliarSettings: Codable, Equatable, Sendable {
     init(
         providerID: String,
         modelID: String,
-        modelRoutePolicy: FamiliarModelRoutePolicy,
         systemPrompt: String,
         providerConfigurations: [String: FamiliarProviderConfiguration],
         executionBudget: FamiliarExecutionBudget,
@@ -477,7 +472,6 @@ nonisolated struct FamiliarSettings: Codable, Equatable, Sendable {
     ) {
         self.providerID = providerID
         self.modelID = modelID
-        self.modelRoutePolicy = modelRoutePolicy
         self.systemPrompt = systemPrompt
         self.providerConfigurations = providerConfigurations
         self.executionBudget = executionBudget
@@ -540,7 +534,6 @@ enum FamiliarSettingsStore {
         guard let data = UserDefaults.standard.data(forKey: key),
               var settings = try? JSONDecoder().decode(FamiliarSettings.self, from: data)
         else { return .defaultValue }
-        settings.modelRoutePolicy = .cloud
         settings.modelID = FamiliarProviderCatalog.normalizedModelID(settings.modelID, providerID: settings.providerID)
         return settings
     }

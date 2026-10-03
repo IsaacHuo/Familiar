@@ -8,7 +8,7 @@ nonisolated public enum FamiliarAuthorizationDuration: String, Codable, CaseIter
 }
 
 nonisolated protocol FamiliarAuthorizationServicing: Sendable {
-    func matchingAuthorizationScope(manifest: FamiliarToolManifest, arguments: String, projectID: UUID?, targetKey: String) async -> FamiliarAuthorizationDuration?
+    func matchingAuthorizationScope(manifest: FamiliarToolManifest, arguments: String, projectID: UUID?, targetKey: String) async throws -> FamiliarAuthorizationDuration?
     func issueAuthorization(duration: FamiliarAuthorizationDuration, manifest: FamiliarToolManifest, arguments: String, projectID: UUID?, targetKey: String, evidence: String) async throws
 }
 
@@ -22,12 +22,13 @@ final class FamiliarAuthorizationRuntime: FamiliarAuthorizationServicing {
         self.sessionID = sessionID
     }
 
-    func matchingAuthorizationScope(manifest: FamiliarToolManifest, arguments: String, projectID: UUID?, targetKey: String) -> FamiliarAuthorizationDuration? {
+    func matchingAuthorizationScope(manifest: FamiliarToolManifest, arguments: String, projectID: UUID?, targetKey: String) throws -> FamiliarAuthorizationDuration? {
         let now = Date()
-        let records = (try? context.fetch(FetchDescriptor<FamiliarAuthorizationRuleRecord>())) ?? []
-        let argumentHash = FamiliarAuthorizationGrant.argumentsHash(arguments)
+        let records = try context.fetch(FetchDescriptor<FamiliarAuthorizationRuleRecord>())
+        let argumentHash = FamiliarCanonicalJSON.argumentsHash(arguments)
         guard let record = records.first(where: {
             $0.revokedAt == nil && $0.expiresAt > now && $0.projectID == projectID
+                && FamiliarAuthorizationDuration(rawValue: $0.durationRawValue) != nil
                 && $0.capabilityID == manifest.id && $0.capabilityVersion == manifest.version
                 && $0.targetKey == targetKey
                 && $0.argumentsHash == argumentHash
@@ -35,7 +36,7 @@ final class FamiliarAuthorizationRuntime: FamiliarAuthorizationServicing {
         }) else { return nil }
         record.lastUsedAt = now
         if record.duration == .once { record.revokedAt = now }
-        try? context.save()
+        do { try context.save() } catch { context.rollback(); throw error }
         return record.duration
     }
 
@@ -51,12 +52,12 @@ final class FamiliarAuthorizationRuntime: FamiliarAuthorizationServicing {
             capabilityID: manifest.id,
             capabilityVersion: manifest.version,
             targetKey: targetKey,
-            argumentsHash: FamiliarAuthorizationGrant.argumentsHash(arguments),
+            argumentsHash: FamiliarCanonicalJSON.argumentsHash(arguments),
             duration: duration,
             sessionID: duration == .session ? sessionID : nil,
             expiresAt: now.addingTimeInterval(lifetime),
             evidence: evidence
         ))
-        try context.save()
+        do { try context.save() } catch { context.rollback(); throw error }
     }
 }

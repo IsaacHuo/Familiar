@@ -47,30 +47,6 @@ struct FamiliarNativeFirstArchitectureTests {
         #expect(response.finishReason == .toolCalls)
     }
 
-    @Test("ModelRouter keeps explicit cloud routing and approved local fallback deterministic")
-    func modelRouting() async throws {
-        let local = FamiliarArchitectureFixtureProvider(providerID: "local", text: "Local")
-        let cloud = FamiliarArchitectureFixtureProvider(providerID: "deepseek", text: "Cloud")
-        let request = FamiliarModelRequest(model: "fixture", messages: [.user("Hello")], tools: [])
-
-        let localResponse = try await FamiliarModelRouter(
-            policy: .localOnly,
-            localProvider: local,
-            cloudProvider: cloud
-        ).generate(request: request)
-        #expect(localResponse.text == "Local")
-
-        let cloudResponse = try await FamiliarModelRouter(
-            policy: .preferLocal,
-            localProvider: nil,
-            cloudProvider: cloud,
-            authorizeCloudEscalation: { request in
-                request.reason == .localUnavailable && request.cloudProviderID == "deepseek"
-            }
-        ).generate(request: request)
-        #expect(cloudResponse.text == "Cloud")
-    }
-
     @Test("Workspace confines paths and checkpoint diff can be restored")
     func workspaceCheckpoint() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
@@ -115,24 +91,4 @@ struct FamiliarNativeFirstArchitectureTests {
         #expect(policy.evaluate(command: "rm -rf Outputs/build") == .requiresConfirmation(reason: "命令可能删除、覆盖或重置 Workspace 文件。"))
     }
 
-    @Test("Cloud escalation stays suspended until the user resolves it")
-    func modelEscalationApproval() async throws {
-        let coordinator = FamiliarModelEscalationCoordinator()
-        var updates = await coordinator.updates().makeAsyncIterator()
-        _ = await updates.next()
-        let request = FamiliarModelEscalationRequest(
-            reason: .localUnavailable,
-            localProviderID: nil,
-            cloudProviderID: "deepseek",
-            modelID: "deepseek-v4-flash",
-            messageCount: 2,
-            includesDocuments: true,
-            includesImages: false
-        )
-        let approvalTask = Task { await coordinator.requestApproval(request) }
-        let pending = try #require(await updates.next()?.first)
-        #expect(pending.request.includesDocuments)
-        #expect(await coordinator.resolve(id: pending.id, approved: false))
-        #expect(await approvalTask.value == false)
-    }
 }

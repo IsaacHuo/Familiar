@@ -111,21 +111,9 @@ struct FamiliarProjectWorkspaceTests {
             serverIdentity: "fixture"
         )
         let mcpBinding = FamiliarMCPBindingRecord(serverID: server.id, projectID: project.id, enabled: true)
-        let grant = FamiliarAuthorizationGrant(
-            id: UUID(),
-            userAction: "confirm",
-            source: .builtIn,
-            capabilityID: "artifact_write",
-            capabilityVersion: "1",
-            argumentsHash: "hash",
-            projectID: project.id,
-            expiresAt: Date().addingTimeInterval(60),
-            singleUse: false,
-            evidence: "fixture",
-            consumedAt: nil,
-            state: .issued
-        )
-        let grantRecord = FamiliarAuthorizationGrantRecord(grant: grant)
+        let grantRecord = FamiliarAuthorizationGrantRecord(id: UUID(), userAction: "confirm", sourceRawValue: "builtIn",
+            capabilityID: "artifact_write", capabilityVersion: "1", argumentsHash: "hash", projectID: project.id,
+            expiresAt: Date().addingTimeInterval(60), singleUse: false, evidence: "historical audit", consumedAt: nil, stateRawValue: "issued")
         let rule = FamiliarAuthorizationRuleRecord(
             projectID: project.id,
             capabilityID: "artifact_write",

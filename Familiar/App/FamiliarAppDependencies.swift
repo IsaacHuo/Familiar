@@ -6,7 +6,6 @@ struct FamiliarAppDependencies {
     let policy: FamiliarExecutionPolicy
     let confirmationCoordinator: FamiliarToolConfirmationCoordinator
     let clarificationCoordinator: FamiliarClarificationCoordinator
-    let modelEscalationCoordinator: FamiliarModelEscalationCoordinator
     let undoStore: FamiliarUndoStore
     let eventKit: FamiliarEventKitService
     let contacts: FamiliarContactsService
@@ -46,7 +45,6 @@ struct FamiliarAppDependencies {
         workspaceStore = FamiliarWorkspaceStore()
         confirmationCoordinator = FamiliarToolConfirmationCoordinator()
         clarificationCoordinator = FamiliarClarificationCoordinator()
-        modelEscalationCoordinator = FamiliarModelEscalationCoordinator()
         policy = FamiliarExecutionPolicy()
         undoStore = FamiliarUndoStore()
         let outputResolver = FamiliarWorkspaceOutputResolver(store: workspaceStore)
@@ -165,7 +163,6 @@ struct FamiliarAppDependencies {
     func makeRuntime(
         for descriptor: FamiliarProviderDescriptor,
         apiKey: String,
-        routePolicy: FamiliarModelRoutePolicy,
         budget: FamiliarExecutionBudget = .defaultValue,
         runRegistry: FamiliarToolRegistry? = nil,
         sessionID: String = "",
@@ -175,16 +172,9 @@ struct FamiliarAppDependencies {
         deferredToolGroups: [FamiliarDeferredToolGroup] = []
     ) -> FamiliarAgentLoop {
         let normalized = budget.normalized
-        let cloudProvider = FamiliarProviderFactory.makeProvider(for: descriptor, apiKey: apiKey, sessionID: sessionID)
-        let router = FamiliarModelRouter(
-            policy: routePolicy,
-            cloudProvider: cloudProvider,
-            authorizeCloudEscalation: { request in
-                await modelEscalationCoordinator.requestApproval(request)
-            }
-        )
+        let provider = FamiliarProviderFactory.makeProvider(for: descriptor, apiKey: apiKey, sessionID: sessionID)
         return FamiliarAgentLoop(
-            provider: router,
+            provider: provider,
             registry: runRegistry ?? registry,
             policy: policy,
             confirmationCoordinator: confirmationCoordinator,

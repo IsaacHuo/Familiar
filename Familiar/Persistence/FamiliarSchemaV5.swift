@@ -28,6 +28,8 @@ enum FamiliarSchemaV5: VersionedSchema {
     }
 
     @Model
+    // Stored historical audit columns only. No runtime signs or consumes these rows;
+    // current authorization uses FamiliarAuthorizationRuleRecord.
     final class FamiliarAuthorizationGrantRecord {
         @Attribute(.unique) var id: UUID
         var userAction: String
@@ -42,24 +44,21 @@ enum FamiliarSchemaV5: VersionedSchema {
         var consumedAt: Date?
         var stateRawValue: String
 
-        init(grant: FamiliarAuthorizationGrant) {
-            id = grant.id
-            userAction = grant.userAction
-            sourceRawValue = grant.source.rawValue
-            capabilityID = grant.capabilityID
-            capabilityVersion = grant.capabilityVersion
-            argumentsHash = grant.argumentsHash
-            projectID = grant.projectID
-            expiresAt = grant.expiresAt
-            singleUse = grant.singleUse
-            evidence = grant.evidence
-            consumedAt = grant.consumedAt
-            stateRawValue = grant.state.rawValue
-        }
-
-        var state: FamiliarAuthorizationGrantState {
-            get { FamiliarAuthorizationGrantState(rawValue: stateRawValue) ?? .rejected }
-            set { stateRawValue = newValue.rawValue }
+        init(id: UUID, userAction: String, sourceRawValue: String, capabilityID: String,
+             capabilityVersion: String, argumentsHash: String, projectID: UUID?, expiresAt: Date,
+             singleUse: Bool, evidence: String, consumedAt: Date?, stateRawValue: String) {
+            self.id = id
+            self.userAction = userAction
+            self.sourceRawValue = sourceRawValue
+            self.capabilityID = capabilityID
+            self.capabilityVersion = capabilityVersion
+            self.argumentsHash = argumentsHash
+            self.projectID = projectID
+            self.expiresAt = expiresAt
+            self.singleUse = singleUse
+            self.evidence = evidence
+            self.consumedAt = consumedAt
+            self.stateRawValue = stateRawValue
         }
     }
 }

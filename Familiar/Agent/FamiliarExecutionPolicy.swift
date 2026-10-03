@@ -8,12 +8,8 @@ nonisolated enum FamiliarExecutionPolicyDecision: Equatable, Sendable {
 
 /// Pure, stateless gate applied before any tool runs.
 ///
-/// Persisted authorizations are matched by `FamiliarAuthorizationRuntime`, which
-/// requires SwiftData and a session identity. An earlier overload accepted a
-/// `FamiliarAuthorizationGrant` here, but production always passed `nil`, so it
-/// was a second authorization path that never actually granted anything. The
-/// source-based `FamiliarOneShotAuthorization` overload had no production caller
-/// at all. Both are removed rather than kept as unused branches.
+/// Persisted authorizations are matched only by `FamiliarAuthorizationRuntime`
+/// against exact arguments, target, Project, capability version and session.
 nonisolated struct FamiliarExecutionPolicy: Sendable {
     func decide(
         manifest: FamiliarToolManifest,

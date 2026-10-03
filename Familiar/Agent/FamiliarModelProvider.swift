@@ -328,14 +328,6 @@ nonisolated struct FamiliarModelResponse: Sendable {
     let finishReason: FamiliarModelFinishReason
 }
 
-nonisolated enum FamiliarModelRoutePolicy: String, CaseIterable, Codable, Identifiable, Sendable {
-    case localOnly
-    case preferLocal
-    case cloud
-
-    var id: String { rawValue }
-}
-
 nonisolated protocol FamiliarModelProvider: Sendable {
     var providerID: String { get }
 
