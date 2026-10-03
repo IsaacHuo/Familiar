@@ -427,6 +427,22 @@ final class FamiliarRunPersistenceRecorder {
         try? context.save()
     }
 
+    func recordModelSelection(_ reference: FamiliarModelReference, runtimeID: String, context: ModelContext) throws {
+        guard let run = fetchRun(runtimeID: runtimeID, in: context) else { return }
+        var requests = try JSONDecoder().decode([FamiliarModelReference].self, from: Data((run.modelRequestsJSON ?? "[]").utf8))
+        requests.append(reference)
+        run.modelRequestsJSON = String(decoding: try JSONEncoder().encode(requests), as: UTF8.self)
+        do { try context.save() } catch { context.rollback(); throw error }
+    }
+
+    func recordUsage(_ usage: FamiliarTokenUsage, runtimeID: String, context: ModelContext) throws {
+        guard let run = fetchRun(runtimeID: runtimeID, in: context) else { return }
+        if let count = usage.inputTokens { run.inputTokenCount = (run.inputTokenCount ?? 0) + count }
+        if let count = usage.outputTokens { run.outputTokenCount = (run.outputTokenCount ?? 0) + count }
+        if let count = usage.cachedInputTokens { run.cachedInputTokenCount = (run.cachedInputTokenCount ?? 0) + count }
+        do { try context.save() } catch { context.rollback(); throw error }
+    }
+
     func finishRun(
         runtimeID: String,
         outcome: FamiliarRunOutcome,

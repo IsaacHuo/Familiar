@@ -29,6 +29,10 @@ struct FamiliarUsageView: View {
     }
     private func usageRow(_ key: String.LocalizationValue, values: [Int?]) -> some View {
         let reported = values.compactMap { $0 }
-        return LabeledContent(String(localized: key), value: reported.isEmpty ? String(localized: "usage.unreported") : reported.reduce(0, +).formatted())
+        let total = reported.reduce(0, +).formatted()
+        let value = reported.isEmpty ? String(localized: "usage.unreported")
+            : reported.count == values.count ? total
+            : String(format: String(localized: "usage.partial", defaultValue: "%@ (partial)"), total)
+        return LabeledContent(String(localized: key), value: value)
     }
 }

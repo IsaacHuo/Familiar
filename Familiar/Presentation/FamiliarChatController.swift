@@ -18,7 +18,6 @@ final class FamiliarChatController {
     var agentRuns: [FamiliarAgentRunSnapshot] = []
     var pendingConfirmations: [FamiliarToolConfirmationRequest] = []
     var pendingClarifications: [FamiliarClarificationRequest] = []
-    var pendingModelEscalations: [FamiliarModelEscalationApproval] = []
     var draft = ""
     var draftImages: [FamiliarDraftImage] = []
     var draftAttachments: [FamiliarAttachmentDraft] = []
@@ -44,7 +43,6 @@ final class FamiliarChatController {
     private let dependencies: FamiliarAppDependencies
     private let confirmationCoordinator: FamiliarToolConfirmationCoordinator
     private let clarificationCoordinator: FamiliarClarificationCoordinator
-    private let modelEscalationCoordinator: FamiliarModelEscalationCoordinator
     private let runRecorder: FamiliarRunPersistenceRecorder
     private let runRecovery: FamiliarRunRecoveryService
     private var runningTask: Task<Void, Never>?
@@ -53,14 +51,8 @@ final class FamiliarChatController {
         self.dependencies = dependencies
         confirmationCoordinator = dependencies.confirmationCoordinator
         clarificationCoordinator = dependencies.clarificationCoordinator
-        modelEscalationCoordinator = dependencies.modelEscalationCoordinator
         runRecorder = FamiliarRunPersistenceRecorder()
         runRecovery = FamiliarRunRecoveryService()
-        Task { [weak self, modelEscalationCoordinator] in
-            for await approvals in await modelEscalationCoordinator.updates() {
-                self?.pendingModelEscalations = approvals
-            }
-        }
     }
 
     func moveCurrentConversation(to project: FamiliarProject, in context: ModelContext) {
@@ -115,7 +107,7 @@ final class FamiliarChatController {
         let prefix = Array(messages.dropLast(4)).filter { $0.sequence > (conversation.summaryThroughSequence ?? -1) }
         guard let last = prefix.last else { return }
         let value = settings.applyingProjectModelOverride(conversation.project?.modelIDOverride, providerID: conversation.project?.providerIDOverride)
-        guard let descriptor = value.resolvedProvider, let key = FamiliarKeychainStore.load(for: descriptor.id) ?? FamiliarOAuthCredentialStore.load(instanceID: descriptor.id)?.accessToken ?? (descriptor.routes != nil ? "" : nil) else {
+        guard let descriptor = value.resolvedProvider, let key = FamiliarProviderFactory.credential(for: descriptor) else {
             errorMessage = String(localized: "error.api_key_missing"); return
         }
         let transcript = prefix.map { "\($0.role.rawValue): \($0.content)" }.joined(separator: "\n\n")
@@ -171,10 +163,6 @@ final class FamiliarChatController {
             return
         }
         selectedProjectID = conversation.project?.id ?? FamiliarProject.dailyProjectID
-        var value = settings
-        value.providerID = conversation.currentProviderID
-        value.modelID = FamiliarProviderCatalog.normalizedModelID(conversation.currentModelID, providerID: conversation.currentProviderID)
-        settings = value
     }
 
     @discardableResult
@@ -312,14 +300,12 @@ final class FamiliarChatController {
         guard let project = existingConversation?.project
             ?? selectedProjectID.flatMap({ fetchProject(id: $0, in: context) })
             ?? defaultProject(in: context) else { return }
-        let requestSettings = settings.applyingProjectModelOverride(project.modelIDOverride, providerID: project.providerIDOverride)
+        let requestSettings = effectiveSettings(for: project)
         guard let descriptor = requestSettings.resolvedProvider else {
             errorMessage = String(format: String(localized: "error.provider.invalid_configuration"), requestSettings.providerID)
             return
         }
-        guard let apiKey = FamiliarKeychainStore.load(for: requestSettings.providerID)
-            ?? FamiliarOAuthCredentialStore.load(instanceID: requestSettings.providerID)?.accessToken
-            ?? (descriptor.routes != nil ? "" : nil) else {
+        guard let apiKey = FamiliarProviderFactory.credential(for: descriptor) else {
             errorMessage = String(localized: "error.api_key_missing")
             return
         }
@@ -395,6 +381,9 @@ final class FamiliarChatController {
                     try FamiliarProjectContextAssembler.validateSubmission(snapshot)
                 }
                 try Task.checkCancellation()
+                guard FamiliarProviderFactory.credential(for: descriptor) != nil else {
+                    throw FamiliarOAuthError.missingCredential
+                }
                 guard draft == capturedDraft, draftAttachments == capturedAttachments,
                       draftImages.map(\.id) == capturedImages.map(\.id), selectedSkillID == capturedSkillID,
                       fetchProject(id: project.id, in: context) != nil,
@@ -455,11 +444,9 @@ final class FamiliarChatController {
     func cancelSending(in _: ModelContext) {
         pendingConfirmations = []
         pendingClarifications = []
-        pendingModelEscalations = []
         runningTask?.cancel()
         Task { await confirmationCoordinator.cancelAll() }
         Task { await clarificationCoordinator.cancelAll() }
-        Task { await modelEscalationCoordinator.cancelAll() }
     }
 
     func resolveConfirmation(
@@ -477,10 +464,6 @@ final class FamiliarChatController {
         }
     }
 
-    func resolveModelEscalation(id: UUID, approved: Bool) {
-        Task { await modelEscalationCoordinator.resolve(id: id, approved: approved) }
-    }
-
     func updateSettings(_ value: FamiliarSettings, in context: ModelContext) {
         guard !isSending && !isCompacting else { return }
         applySettings(value, recordingSwitchIn: context)
@@ -488,10 +471,29 @@ final class FamiliarChatController {
 
     func selectModel(providerID: String, modelID: String, in context: ModelContext) {
         guard !isSending && !isCompacting else { return }
+        if let project = selectedConversation(in: context)?.project
+            ?? selectedProjectID.flatMap({ fetchProject(id: $0, in: context) }), project.modelIDOverride != nil {
+            do {
+                try FamiliarProjectService().updateModelOverride(project, modelID: modelID, providerID: providerID, in: context)
+            } catch { errorMessage = error.localizedDescription }
+            return
+        }
         var value = settings
         value.providerID = providerID
         value.modelID = modelID
         applySettings(value, recordingSwitchIn: context)
+    }
+
+    func effectiveSettings(for project: FamiliarProject?) -> FamiliarSettings {
+        settings.applyingProjectModelOverride(project?.modelIDOverride, providerID: project?.providerIDOverride)
+    }
+
+    func followDefaultModel(in context: ModelContext) {
+        guard !isSending && !isCompacting,
+              let project = selectedConversation(in: context)?.project
+                ?? selectedProjectID.flatMap({ fetchProject(id: $0, in: context) }) else { return }
+        do { try FamiliarProjectService().updateModelOverride(project, modelID: "", in: context) }
+        catch { errorMessage = error.localizedDescription }
     }
 
     func prepareToEdit(_ message: FamiliarMessageSnapshot, in context: ModelContext) {
@@ -548,6 +550,9 @@ final class FamiliarChatController {
         else { return }
 
         let prompt = userMessage.content
+        let originalSnapshot = conversation.agentRuns.first(where: { $0.responseMessageID == message.id })?.contextSnapshot
+        let originalProviderID = originalSnapshot?.providerID ?? message.providerID
+        let originalModelID = originalSnapshot?.modelID ?? message.modelID
         guard permitsRegeneration(conversation.agentRuns.filter { $0.startedAt >= userMessage.createdAt }, in: context) else { return }
         let userSnapshotAttachments = userMessage.attachments.map {
             FamiliarAttachmentSnapshot(
@@ -582,7 +587,7 @@ final class FamiliarChatController {
         let runsToDelete = conversation.agentRuns.filter { $0.startedAt >= userMessage.createdAt }
         deleteSkillSnapshots(for: runsToDelete, in: context)
         runsToDelete.forEach(context.delete)
-        if let providerID = message.providerID, let modelID = message.modelID {
+        if let providerID = originalProviderID, let modelID = originalModelID {
             settings.providerID = providerID
             settings.modelID = modelID
             conversation.currentProviderID = providerID
@@ -674,6 +679,7 @@ final class FamiliarChatController {
     }
 
     func recoverInterruptedRuns(in context: ModelContext) {
+        guard !isSending && !isCompacting else { return }
         do {
             if try runRecovery.recoverInterruptedRuns(in: context) > 0 {
                 reloadMessages(in: context)
@@ -936,23 +942,26 @@ final class FamiliarChatController {
             return
         }
         let oldValue = settings
+        let project = selectedConversation(in: context)?.project
+        let previous = effectiveSettings(for: project)
+        let current = value.applyingProjectModelOverride(project?.modelIDOverride, providerID: project?.providerIDOverride)
         do {
             try FamiliarSettingsStore.save(value)
             settings = value
             guard let conversation = selectedConversation(in: context) else { return }
-            if oldValue.providerID != value.providerID || oldValue.modelID != value.modelID {
+            if previous.providerID != current.providerID || previous.modelID != current.modelID {
                 let nextSequence = nextConversationSequence(in: conversation)
                 let record = FamiliarModelSwitchRecord(
                     previousProviderID: conversation.currentProviderID,
                     previousModelID: conversation.currentModelID,
-                    currentProviderID: value.providerID,
-                    currentModelID: value.modelID,
+                    currentProviderID: current.providerID,
+                    currentModelID: current.modelID,
                     sequence: nextSequence,
                     conversation: conversation
                 )
                 context.insert(record)
-                conversation.currentProviderID = value.providerID
-                conversation.currentModelID = value.modelID
+                conversation.currentProviderID = current.providerID
+                conversation.currentModelID = current.modelID
                 conversation.updatedAt = Date()
                 try context.save()
                 reloadMessages(in: context)
@@ -960,6 +969,7 @@ final class FamiliarChatController {
         } catch {
             context.rollback()
             settings = oldValue
+            try? FamiliarSettingsStore.save(oldValue)
             errorMessage = String(format: String(localized: "error.save_settings"), error.localizedDescription)
         }
     }
@@ -981,11 +991,11 @@ final class FamiliarChatController {
         var retrievalActivityIDsBySourceID: [String: String] = [:]
         var runOutcome: FamiliarRunOutcome?
         var separatesNextReasoningSummary = false
+        var responseModel = FamiliarModelReference(providerID: settings.providerID, modelID: settings.modelID)
         do {
             let agentLoop = dependencies.makeRuntime(
                 for: descriptor,
                 apiKey: apiKey,
-                routePolicy: settings.modelRoutePolicy,
                 budget: settings.executionBudget,
                 runRegistry: runRegistry,
                 sessionID: conversationID.uuidString,
@@ -1035,19 +1045,10 @@ final class FamiliarChatController {
                 surfaces.apply(event)
                 switch event.payload {
                 case .modelSelected(let reference):
-                    if let run = fetchRun(runtimeID: event.runID, in: context) {
-                        var values = (try? JSONDecoder().decode([FamiliarModelReference].self, from: Data((run.modelRequestsJSON ?? "[]").utf8))) ?? []
-                        values.append(reference)
-                        run.modelRequestsJSON = String(decoding: try JSONEncoder().encode(values), as: UTF8.self)
-                        try context.save()
-                    }
+                    responseModel = reference
+                    try runRecorder.recordModelSelection(reference, runtimeID: event.runID, context: context)
                 case .usage(let usage):
-                    if let run = fetchRun(runtimeID: event.runID, in: context) {
-                        if let count = usage.inputTokens { run.inputTokenCount = (run.inputTokenCount ?? 0) + count }
-                        if let count = usage.outputTokens { run.outputTokenCount = (run.outputTokenCount ?? 0) + count }
-                        if let count = usage.cachedInputTokens { run.cachedInputTokenCount = (run.cachedInputTokenCount ?? 0) + count }
-                        try context.save()
-                    }
+                    try runRecorder.recordUsage(usage, runtimeID: event.runID, context: context)
                 case .runPhaseChanged(let phase):
                     try? runRecorder.recordRunPhase(
                         phase,
@@ -1209,7 +1210,7 @@ final class FamiliarChatController {
                         retrievalActivityIDsBySourceID[source.id] = activityID
                     }
                     persistToolRecord(record, eventSequence: event.sequence, conversationID: conversationID, context: context)
-                    persistToolOutputs(record, conversationID: conversationID, context: context)
+                    persistLoadedSkill(record, context: context)
                 case .runtimeNotice(let notice):
                     guard let assistantTurnID = event.assistantTurnID else { break }
                     try? runRecorder.recordRuntimeNotice(notice, runtimeID: event.runID, assistantTurnID: assistantTurnID, eventSequence: event.sequence, at: event.timestamp, context: context)
@@ -1251,8 +1252,8 @@ final class FamiliarChatController {
                 role: .assistant,
                 content: answer,
                 sequence: nextSequence,
-                providerID: settings.providerID,
-                modelID: settings.modelID,
+                providerID: responseModel.providerID,
+                modelID: responseModel.modelID,
                 runtimeID: runtimeID,
                 assistantTurnID: assistantTurnID,
                 responseBlockID: responseBlockID,
@@ -1564,7 +1565,7 @@ final class FamiliarChatController {
         try? runRecovery.setInvocationState(invocation, state: .approved, in: context)
     }
 
-    private func persistToolOutputs(_ event: FamiliarToolResultProduced, conversationID: UUID, context: ModelContext) {
+    private func persistLoadedSkill(_ event: FamiliarToolResultProduced, context: ModelContext) {
         do {
             if let skill = event.loadedSkill {
                 try runRecorder.recordLoadedSkill(
@@ -1573,12 +1574,6 @@ final class FamiliarChatController {
                     at: event.producedAt,
                     context: context
                 )
-            }
-            if let project = fetchConversation(id: conversationID, in: context)?.project {
-                let service = FamiliarProjectResourceService()
-                for capture in event.sources.contains(where: { $0.kind == .fetchedPage }) ? event.webCaptures : [] {
-                    _ = try service.importFetchedWebText(capture, into: project, in: context)
-                }
             }
         } catch {
             errorMessage = error.localizedDescription

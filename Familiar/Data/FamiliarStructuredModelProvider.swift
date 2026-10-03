@@ -22,6 +22,7 @@ nonisolated struct FamiliarStructuredModelProvider: FamiliarModelProvider, Senda
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
                     let body = try await requestBody(input)
                     request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                    continuation.yield(.providerSelection(providerID: descriptor.id, modelID: input.model))
                     let (bytes, response) = try await FamiliarProviderHTTP.session.bytes(for: request)
                     guard let http = response as? HTTPURLResponse else { throw invalidResponse }
                     guard (200..<300).contains(http.statusCode) else {
@@ -104,7 +105,7 @@ nonisolated struct FamiliarStructuredModelProvider: FamiliarModelProvider, Senda
                         }
                     }
                     guard finished else { throw invalidResponse }
-                    if inputTokens != nil || outputTokens != nil {
+                    if inputTokens != nil || outputTokens != nil || cachedTokens != nil {
                         continuation.yield(.usage(.init(inputTokens: inputTokens, outputTokens: outputTokens, cachedInputTokens: cachedTokens)))
                     }
                     continuation.yield(.completed(finishReason))
