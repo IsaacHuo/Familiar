@@ -1,6 +1,7 @@
 import Foundation
 
-nonisolated struct FamiliarPreparedSharedDraft: Sendable {
+nonisolated struct FamiliarPreparedSharedDraft: Identifiable, Sendable {
+    var id: UUID { sourceItem.payload.id }
     let sourceItem: FamiliarSharedInboxItem
     let text: String
     let attachments: [FamiliarAttachmentDraft]

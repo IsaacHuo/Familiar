@@ -5,7 +5,6 @@ struct FamiliarModelServiceSettingsView: View {
     let initialSettings: FamiliarSettings
     let onSaveSettings: (FamiliarSettings) -> Void
     @State private var providers = FamiliarProviderCatalog.instances
-    @State private var voiceProviders = FamiliarVoiceStore.load()
     @State private var destination: EditorDestination?
     @State private var importing = false
     @State private var errorMessage: String?
@@ -13,12 +12,10 @@ struct FamiliarModelServiceSettingsView: View {
     private enum EditorDestination: Identifiable {
         case chooser
         case provider(FamiliarProviderDescriptor)
-        case voice(FamiliarVoiceConfiguration)
         var id: String {
             switch self {
             case .chooser: "chooser"
             case .provider(let value): value.id
-            case .voice(let value): value.id
             }
         }
     }
@@ -30,24 +27,18 @@ struct FamiliarModelServiceSettingsView: View {
                     Button { destination = .provider(provider) } label: {
                         HStack(spacing: FamiliarSpacing.medium) {
                             FamiliarProviderIcon(provider: provider)
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                                 Text(provider.displayName).foregroundStyle(.primary)
-                                Text(provider.baseURL.host ?? "").font(.caption).foregroundStyle(.secondary)
+                                Text(provider.baseURL.host ?? "").font(FamiliarTypography.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
                             if initialSettings.providerID == provider.id { Image(systemName: "checkmark") }
-                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                            Image(systemName: "chevron.right").font(FamiliarTypography.caption).foregroundStyle(.tertiary)
                         }.frame(minHeight: 44)
                     }
                 }
                 Button { destination = .chooser } label: { Label(String(localized: "provider.add"), systemImage: "plus") }
                 Button { importing = true } label: { Label(String(localized: "provider.import"), systemImage: "square.and.arrow.down") }
-            }
-            Section(String(localized: "voice.providers")) {
-                ForEach(voiceProviders) { voice in
-                    Button(FamiliarVoiceStore.displayName(voice.name)) { destination = .voice(voice) }
-                }
-                NavigationLink(String(localized: "voice.title")) { FamiliarVoiceSettingsView() }
             }
         }
         .navigationTitle(String(localized: "settings.hub.model_service"))
@@ -57,10 +48,9 @@ struct FamiliarModelServiceSettingsView: View {
             case .provider(let provider):
                 FamiliarProviderEditor(provider: provider, isCurrent: initialSettings.providerID == provider.id, selectedModelID: initialSettings.providerID == provider.id ? initialSettings.modelID : nil) { descriptor, modelID in
                     var value = initialSettings
-                    value.providerID = descriptor.id; value.modelID = modelID; value.modelRoutePolicy = .cloud
+                    value.providerID = descriptor.id; value.modelID = modelID
                     onSaveSettings(value)
                 }
-            case .voice(let voice): FamiliarVoiceProviderEditor(value: voice)
             }
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
@@ -85,39 +75,26 @@ struct FamiliarModelServiceSettingsView: View {
                 Section {
                     ForEach(FamiliarProviderCatalog.templates) { template in
                         Button { destination = .provider(template.instance(id: UUID().uuidString)) } label: {
-                            HStack(spacing: 12) {
+                            HStack(spacing: FamiliarSpacing.medium) {
                                 FamiliarProviderIcon(provider: template)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(template.localizedName).font(.body.weight(.semibold)).foregroundStyle(.primary)
-                                    Text(template.pickerSubtitle).font(.subheadline).foregroundStyle(.secondary)
+                                VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
+                                    Text(template.localizedName).font(FamiliarTypography.body.weight(.semibold)).foregroundStyle(.primary)
+                                    Text(template.pickerSubtitle).font(FamiliarTypography.secondary).foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
-                            }.padding(.vertical, 6)
+                                Image(systemName: "chevron.right").font(FamiliarTypography.caption).foregroundStyle(.tertiary)
+                            }.padding(.vertical, FamiliarSpacing.small)
                         }
                     }
                 } header: { Text(String(localized: "provider.choose")) }
                 footer: { Text(String(localized: "provider.instances.footer")) }
-                Section(String(localized: "voice.providers")) {
-                    ForEach(FamiliarVoiceStore.templates, id: \.0) { vendor, name, endpoint in
-                        Button { destination = .voice(.init(vendor: vendor, name: name, baseURL: endpoint)) } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "waveform").font(.title3).foregroundStyle(.blue)
-                                    .frame(width: 36, height: 36).background(Color.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: FamiliarRadius.compact))
-                                Text(FamiliarVoiceStore.displayName(name)).font(.body.weight(.semibold)).foregroundStyle(.primary)
-                                Spacer()
-                                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
-                            }.padding(.vertical, 6)
-                        }
-                    }
-                }
             }
             .navigationTitle(String(localized: "provider.add"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button(String(localized: "common.cancel")) { destination = nil } } }
         }
     }
-    private func reload() { providers = FamiliarProviderCatalog.instances; voiceProviders = FamiliarVoiceStore.load() }
+    private func reload() { providers = FamiliarProviderCatalog.instances }
 }
 
 private struct FamiliarProviderIcon: View {
@@ -204,7 +181,7 @@ private struct FamiliarProviderEditor: View {
                 .id(loginRevision)
                 Section(String(localized: "settings.model")) {
                     ForEach(models) { model in
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: FamiliarSpacing.small) {
                             Button { modelID = model.id } label: {
                                 HStack {
                                     Text(model.displayName).foregroundStyle(.primary)
@@ -214,7 +191,7 @@ private struct FamiliarProviderEditor: View {
                             }
                             Toggle(String(localized: "provider.tools"), isOn: capabilityBinding(model.id, images: false))
                             Toggle(String(localized: "provider.images"), isOn: capabilityBinding(model.id, images: true))
-                        }.padding(.vertical, 4)
+                        }.padding(.vertical, FamiliarSpacing.xSmall)
                     }
                     .onDelete { offsets in
                         models.remove(atOffsets: offsets)

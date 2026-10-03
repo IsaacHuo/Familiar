@@ -6,7 +6,7 @@ nonisolated struct FamiliarArtifactWriteTool: FamiliarTool {
     private struct UndoOutput: Encodable { let undone: Bool; let artifactIdentifier: String }
     let store: FamiliarArtifactStore
     let manifest = FamiliarToolManifest(
-        name: "artifact_write", title: "写入 Artifact", description: "Save Markdown or plain text as an output in the current Project, including Daily Chat. Other formats require creating a real file and validating it with artifact_publish when that capability is enabled.",
+        name: "artifact_write", title: String(localized: "tool.artifact_write", defaultValue: "Save output"), description: "Save Markdown or plain text as an output in the current Project, including Daily Chat. Other formats require creating a real file and validating it with artifact_publish when that capability is enabled.",
         parameters: FamiliarJSONSchema(type: .object, properties: [
             "title": .init(type: .string, description: "文件标题"), "content": .init(type: .string, description: "Markdown 或纯文本正文"),
             "format": .init(type: .string, description: "markdown 或 plainText", enumValues: ["markdown", "plainText"])
@@ -21,10 +21,10 @@ nonisolated struct FamiliarArtifactWriteTool: FamiliarTool {
         let data = Data(input.content.utf8)
         guard !data.isEmpty else { throw FamiliarArtifactError.emptyFile }
         let identifier = "artifact_" + id.uuidString
-        return .action(FamiliarActionProposal(title: "写入 Artifact", fields: [
-            .init(id: "title", label: "标题", type: .text, value: input.title),
-            .init(id: "size", label: "大小", type: .number, value: String(data.count))
-        ], target: identifier, effect: manifest.effect, risk: manifest.risk, consequence: "将在当前项目中写入新的 Artifact。", undoPolicy: .currentSession,
+        return .action(FamiliarActionProposal(title: String(localized: "tool.artifact_write", defaultValue: "Save output"), fields: [
+            .init(id: "title", label: String(localized: "file.field.title"), type: .text, value: input.title),
+            .init(id: "size", label: String(localized: "file.field.size"), type: .text, value: ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file))
+        ], target: filename, targetKey: identifier, effect: manifest.effect, risk: manifest.risk, consequence: String(localized: "file.save.consequence"), undoPolicy: .currentSession,
             idempotencyKey: context.idempotencyKey, commit: {
                 let stored = try store.write(data, projectID: projectID, artifactID: id, filename: filename)
                 let descriptor = FamiliarArtifactDescriptor(id: id, identifier: identifier, projectID: projectID, title: input.title,
@@ -33,7 +33,7 @@ nonisolated struct FamiliarArtifactWriteTool: FamiliarTool {
                 let result = FamiliarToolExecutionResult(
                     envelope: try FamiliarToolResultEnvelope(
                         model: Output(artifactIdentifier: identifier, contentHash: stored.hash),
-                        presentation: .artifactMutation(.init(summary: "已写入 \(input.title)", operation: "write", identifier: identifier, title: input.title, byteSize: Int64(data.count), contentHash: stored.hash))
+                        presentation: .artifactMutation(.init(summary: String(format: String(localized: "file.saved"), input.title), operation: "write", identifier: identifier, title: input.title, byteSize: Int64(data.count), contentHash: stored.hash))
                     ),
                     artifactIdentifier: identifier,
                     artifact: descriptor
@@ -41,7 +41,7 @@ nonisolated struct FamiliarArtifactWriteTool: FamiliarTool {
                 return FamiliarCommittedAction(result: result, undo: {
                     return .init(envelope: try FamiliarToolResultEnvelope(
                         model: UndoOutput(undone: true, artifactIdentifier: identifier),
-                        presentation: .mutationReceipt(.init(summary: "已撤销写入 \(input.title)", operation: "undoArtifactWrite", targetIdentifier: identifier, succeeded: true, undoAvailable: false))
+                        presentation: .mutationReceipt(.init(summary: String(format: String(localized: "file.removed"), input.title), operation: "undoArtifactWrite", targetIdentifier: identifier, succeeded: true, undoAvailable: false))
                     ))
                 }, rollback: { try store.remove(projectID: projectID, artifactID: id) })
             }))
@@ -54,7 +54,7 @@ nonisolated struct FamiliarArtifactEditTool: FamiliarTool {
     private struct UndoOutput: Encodable { let undone: Bool; let artifactIdentifier: String }
     let store: FamiliarArtifactStore
     let manifest = FamiliarToolManifest(
-        name: "artifact_edit", title: "编辑 Artifact", description: "Save a new Markdown or text revision of the specified Project Artifact. The previous version remains intact. Undo removes only the new revision.",
+        name: "artifact_edit", title: String(localized: "tool.artifact_edit", defaultValue: "Revise output"), description: "Save a new Markdown or text revision of the specified Project Artifact. The previous version remains intact. Undo removes only the new revision.",
         parameters: FamiliarJSONSchema(type: .object, properties: [
             "identifier": .init(type: .string, description: "Predecessor artifact_ identifier"),
             "content": .init(type: .string, description: "New complete Markdown or plain-text content"),
@@ -76,10 +76,10 @@ nonisolated struct FamiliarArtifactEditTool: FamiliarTool {
         guard !data.isEmpty else { throw FamiliarArtifactError.emptyFile }
         let artifactID = UUID()
         let identifier = "artifact_" + artifactID.uuidString
-        return .action(FamiliarActionProposal(title: "编辑 Artifact", fields: [
-            .init(id: "title", label: "标题", type: .text, value: title),
-            .init(id: "size", label: "大小", type: .number, value: String(data.count))
-        ], target: input.identifier, effect: manifest.effect, risk: manifest.risk,
+        return .action(FamiliarActionProposal(title: String(localized: "tool.artifact_edit", defaultValue: "Revise output"), fields: [
+            .init(id: "title", label: String(localized: "file.field.title"), type: .text, value: title),
+            .init(id: "size", label: String(localized: "file.field.size"), type: .text, value: ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file))
+        ], target: filename, targetKey: input.identifier, effect: manifest.effect, risk: manifest.risk,
             consequence: String(localized: "artifact.revision.consequence", defaultValue: "Save a new version and keep the previous file."),
             undoPolicy: .currentSession, idempotencyKey: context.idempotencyKey, commit: {
                 let stored = try store.write(data, projectID: projectID, artifactID: artifactID, filename: filename)
@@ -88,11 +88,11 @@ nonisolated struct FamiliarArtifactEditTool: FamiliarTool {
                     contentHash: stored.hash, source: .generated, sourceURLString: nil, sourceResourceID: nil,
                     sourceResourceVersionID: nil, sourceCaptureID: nil, createdByRunID: context.runID)
                 let result = FamiliarToolExecutionResult(envelope: try .init(model: Output(artifactIdentifier: identifier, contentHash: stored.hash),
-                    presentation: .artifactMutation(.init(summary: "已保存新版本 \(title)", operation: "edit", identifier: identifier,
+                    presentation: .artifactMutation(.init(summary: String(format: String(localized: "file.revised"), title), operation: "edit", identifier: identifier,
                         title: title, byteSize: Int64(data.count), contentHash: stored.hash))), artifactIdentifier: identifier, artifact: descriptor)
                 return FamiliarCommittedAction(result: result, undo: {
                     .init(envelope: try .init(model: UndoOutput(undone: true, artifactIdentifier: identifier),
-                        presentation: .mutationReceipt(.init(summary: "已撤销新版本 \(title)", operation: "undoArtifactEdit",
+                        presentation: .mutationReceipt(.init(summary: String(format: String(localized: "file.removed"), title), operation: "undoArtifactEdit",
                             targetIdentifier: identifier, succeeded: true, undoAvailable: false))))
                 }, rollback: { try store.remove(projectID: projectID, artifactID: artifactID) })
             }))
@@ -118,7 +118,7 @@ nonisolated struct FamiliarArtifactReadTool: FamiliarTool {
     let store: FamiliarArtifactStore
     let manifest = FamiliarToolManifest(
         name: "artifact_read",
-        title: "Read published Artifact",
+        title: String(localized: "tool.artifact_read", defaultValue: "Read output"),
         description: "Read the current text of an Artifact already published in this Project. DOCX, PDF and XLSX are parsed into Markdown; Markdown, text and HTML are returned as stored. Use this to check or revise a file you produced instead of assuming its contents.",
         parameters: .object(
             ["identifier": .string("Artifact identifier beginning with artifact_.")],
@@ -216,7 +216,7 @@ nonisolated struct FamiliarArtifactPublishTool: FamiliarTool {
     let store: FamiliarArtifactStore
     let manifest = FamiliarToolManifest(
         name: "artifact_publish",
-        title: "Publish validated Artifact",
+        title: String(localized: "tool.artifact_publish", defaultValue: "Save generated file"),
         description: "Validate a real file already created in the current Workspace Outputs and publish it as a Project Artifact. Supports DOCX, PDF, XLSX, HTML, Markdown, and plain text. Never claim delivery before this tool succeeds.",
         parameters: .object(
             [
@@ -282,18 +282,17 @@ nonisolated struct FamiliarArtifactPublishTool: FamiliarTool {
             ? title
             : title + "." + input.format.filenameExtension
         return .action(.init(
-            title: "发布已验证 Artifact",
+            title: String(localized: "tool.artifact_publish", defaultValue: "Save generated file"),
             fields: [
-                .init(id: "title", label: "Title", type: .text, value: title),
-                .init(id: "format", label: "Format", type: .text, value: input.format.rawValue.uppercased()),
-                .init(id: "size", label: "Size", type: .number, value: String(output.byteSize)),
-                .init(id: "validator", label: "Validator", type: .text, value: "\(validation.validator) \(validation.validatorVersion)"),
-                .init(id: "hash", label: "SHA-256", type: .text, value: output.contentHash)
+                .init(id: "title", label: String(localized: "file.field.title"), type: .text, value: title),
+                .init(id: "format", label: String(localized: "file.field.format"), type: .text, value: input.format.rawValue.uppercased()),
+                .init(id: "size", label: String(localized: "file.field.size"), type: .text, value: ByteCountFormatter.string(fromByteCount: output.byteSize, countStyle: .file))
             ],
-            target: identifier,
+            target: filename,
+            targetKey: identifier,
             effect: manifest.effect,
             risk: manifest.risk,
-            consequence: "将经过验证的真实文件复制到当前 Project Artifacts，并提供系统预览和分享。",
+            consequence: String(localized: "file.save.consequence"),
             undoPolicy: .currentSession,
             idempotencyKey: context.idempotencyKey,
             commit: {
@@ -343,7 +342,7 @@ nonisolated struct FamiliarArtifactPublishTool: FamiliarTool {
                             validation: validation
                         ),
                         presentation: .artifactMutation(.init(
-                            summary: "已发布并验证 \(title)",
+                            summary: String(format: String(localized: "file.saved"), title),
                             operation: "publish",
                             identifier: identifier,
                             title: title,
@@ -358,7 +357,7 @@ nonisolated struct FamiliarArtifactPublishTool: FamiliarTool {
                     return .init(envelope: try .init(
                         model: UndoOutput(undone: true, artifactIdentifier: identifier),
                         presentation: .mutationReceipt(.init(
-                            summary: "已撤销发布 \(title)",
+                            summary: String(format: String(localized: "file.removed"), title),
                             operation: "undoArtifactPublish",
                             targetIdentifier: identifier,
                             succeeded: true,

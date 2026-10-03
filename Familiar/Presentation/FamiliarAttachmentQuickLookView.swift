@@ -25,10 +25,8 @@ struct FamiliarAttachmentPreviewView: View {
                 .navigationTitle(url.lastPathComponent)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button(String(localized: "common.done", defaultValue: "Done")) {
-                            dismiss()
-                        }
+                    ToolbarItem(placement: .confirmationAction) {
+                        FamiliarDismissButton()
                     }
                 }
         }

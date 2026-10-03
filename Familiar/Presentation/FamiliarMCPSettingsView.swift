@@ -19,9 +19,9 @@ struct FamiliarMCPSettingsView: View {
                 ForEach(servers) { server in
                     HStack {
                         Button { editing = .init(id: server.id, server: server) } label: {
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                                 Text(server.displayName)
-                                Text(server.endpointString).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                Text(server.endpointString).font(FamiliarTypography.caption).foregroundStyle(.secondary).lineLimit(1)
                             }
                         }
                         Toggle(server.displayName, isOn: enabledBinding(server)).labelsHidden()
@@ -37,7 +37,7 @@ struct FamiliarMCPSettingsView: View {
         }
         .sheet(isPresented: $showsImport) {
             NavigationStack {
-                Form { TextEditor(text: $importJSON).font(.body.monospaced()).frame(minHeight: 240) }
+                Form { TextEditor(text: $importJSON).font(FamiliarTypography.body.monospaced()).frame(minHeight: 240) }
                     .navigationTitle(String(localized: "mcp.import"))
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) { Button(String(localized: "common.cancel")) { showsImport = false } }

@@ -135,7 +135,7 @@ struct FamiliarReleaseComplianceTests {
     func dynamicColorIsolation() throws {
         let theme = try source("Familiar/Support/FamiliarTheme.swift")
         #expect(theme.contains("nonisolated enum FamiliarTheme"))
-        #expect(theme.contains("private nonisolated extension UIColor"))
+        #expect(theme.contains("Color(uiColor:"))
         #expect(!theme.contains("@MainActor\nenum FamiliarTheme"))
     }
 

@@ -13,6 +13,7 @@ import UIKit
 import UniformTypeIdentifiers
 
 enum FamiliarSettingsRoute: String, Hashable {
+    case advanced
     case mcp
     case voice
     case appLock
@@ -84,8 +85,7 @@ struct FamiliarSettingsView: View {
     var body: some View {
         NavigationStack(path: $path) {
             List {
-                Section(String(localized: "settings.hub.models", defaultValue: "Models")) {
-                    settingsLink(.modelGroups, title: String(localized: "group.title"), subtitle: String(localized: "group.detail"), symbol: "square.stack", color: .blue)
+                Section(String(localized: "settings.hub.models")) {
                     settingsLink(
                         .modelService,
                         title: String(localized: "settings.hub.model_service", defaultValue: "Model Service"),
@@ -93,47 +93,25 @@ struct FamiliarSettingsView: View {
                         symbol: "key.horizontal.fill",
                         color: FamiliarTheme.accent
                     )
-                }
-
-                Section(String(localized: "settings.hub.agent", defaultValue: "Agent")) {
-                    settingsLink(
-                        .searchService,
-                        title: String(localized: "settings.search.title", defaultValue: "Web Search"),
-                        subtitle: FamiliarSearchProviderCatalog.descriptor(
-                            for: searchService.settingsStore.selectedProviderID
-                        )?.displayName ?? "DuckDuckGo",
-                        symbol: "magnifyingglass",
-                        color: .blue
-                    )
-                    settingsLink(
-                        .tools,
-                        title: String(localized: "settings.hub.tools", defaultValue: "Tools"),
-                        subtitle: String(localized: "settings.hub.tools.detail", defaultValue: "Capabilities registered with the Agent Runtime"),
-                        symbol: "puzzlepiece.extension.fill",
-                        color: .blue
-                    )
-                    settingsLink(
-                        .executionBudget,
-                        title: String(localized: "settings.budget.title", defaultValue: "Execution Limits"),
-                        subtitle: executionBudgetSubtitle,
-                        symbol: "gauge.with.needle",
-                        color: .purple
-                    )
-                    settingsLink(
-                        .diagnostics,
-                        title: String(localized: "settings.diagnostics.title", defaultValue: "Diagnostics"),
-                        subtitle: String(localized: "settings.diagnostics.detail", defaultValue: "Why a capability is unavailable right now"),
-                        symbol: "stethoscope",
-                        color: .teal
-                    )
                     settingsLink(.voice, title: String(localized: "voice.title"), subtitle: String(localized: "voice.providers"), symbol: "waveform", color: .blue)
                     settingsLink(
-                        .mcp,
-                        title: String(localized: "mcp.title"),
-                        subtitle: String(localized: "mcp.settings.detail"),
-                        symbol: "wrench.and.screwdriver",
-                        color: .blue
+                        .soul,
+                        title: String(localized: "settings.hub.soul", defaultValue: "Response Preferences"),
+                        subtitle: String(localized: "settings.hub.soul.detail", defaultValue: "Tone, language and response style"),
+                        symbol: "sparkles",
+                        color: .pink
                     )
+                }
+                Section(String(localized: "settings.hub.appearance")) {
+                    settingsLink(
+                        .appearance,
+                        title: String(localized: "settings.hub.appearance", defaultValue: "Appearance"),
+                        subtitle: FamiliarAppearancePreference.current.localizedTitle,
+                        symbol: "paintbrush.fill",
+                        color: .indigo
+                    )
+                }
+                Section(String(localized: "settings.hub.privacy_data")) {
                     settingsLink(
                         .memory,
                         title: String(localized: "settings.memory.title", defaultValue: "Memory"),
@@ -144,51 +122,20 @@ struct FamiliarSettingsView: View {
                         color: .pink
                     )
                     settingsLink(
-                        .shellRuntime,
-                        title: String(localized: "settings.shell.title", defaultValue: "Shell Runtime"),
-                        subtitle: String(localized: "settings.shell.detail", defaultValue: "Alpine Linux in the current Familiar Workspace"),
-                        symbol: "shippingbox",
-                        color: .gray
-                    )
-                    settingsLink(
-                        .pythonPackageSource,
-                        title: String(localized: "settings.python_source.title", defaultValue: "Python Package Source"),
-                        subtitle: pythonPackageSourceSettings.selectedSource.displayName,
-                        symbol: "shippingbox.fill",
+                        .permissions,
+                        title: String(localized: "settings.hub.permissions", defaultValue: "Permissions"),
+                        subtitle: String(localized: "settings.hub.permissions.detail", defaultValue: "Review access managed by iOS"),
+                        symbol: "hand.raised.fill",
                         color: .orange
                     )
-                    settingsLink(.appLock, title: String(localized: "lock.setting"), subtitle: String(localized: "lock.footer"), symbol: "lock", color: .blue)
                     settingsLink(
                         .authorizations,
-                        title: String(localized: "settings.hub.authorizations", defaultValue: "Authorizations"),
-                        subtitle: String(localized: "settings.hub.authorizations.detail", defaultValue: "Review remembered Agent actions"),
+                        title: String(localized: "settings.hub.authorizations", defaultValue: "Approved Actions"),
+                        subtitle: String(localized: "settings.hub.authorizations.detail", defaultValue: "Review or revoke remembered permissions"),
                         symbol: "checkmark.shield.fill",
                         color: .green
                     )
-                    settingsLink(
-                        .skills,
-                        title: String(localized: "settings.skills.title", defaultValue: "Skills"),
-                        subtitle: String(localized: "settings.skills.detail", defaultValue: "Instruction-only guidance available from the composer"),
-                        symbol: "wand.and.stars",
-                        color: .purple
-                    )
-                    settingsLink(
-                        .soul,
-                        title: String(localized: "settings.hub.soul", defaultValue: "Soul"),
-                        subtitle: String(localized: "settings.hub.soul.detail", defaultValue: "Personality and response style"),
-                        symbol: "sparkles",
-                        color: .pink
-                    )
-                }
-
-                Section(String(localized: "settings.hub.app", defaultValue: "App")) {
-                    settingsLink(
-                        .appearance,
-                        title: String(localized: "settings.hub.appearance", defaultValue: "Appearance"),
-                        subtitle: FamiliarAppearancePreference.current.localizedTitle,
-                        symbol: "paintbrush.fill",
-                        color: .indigo
-                    )
+                    settingsLink(.appLock, title: String(localized: "lock.setting"), subtitle: String(localized: "lock.footer"), symbol: "lock", color: .blue)
                     settingsLink(
                         .storage,
                         title: String(localized: "settings.hub.storage", defaultValue: "Local Storage"),
@@ -197,29 +144,16 @@ struct FamiliarSettingsView: View {
                         color: .blue
                     )
                     settingsLink(
-                        .permissions,
-                        title: String(localized: "settings.hub.permissions", defaultValue: "Permissions"),
-                        subtitle: String(localized: "settings.hub.permissions.detail", defaultValue: "Review access managed by iOS"),
-                        symbol: "hand.raised.fill",
-                        color: .orange
-                    )
-                    settingsLink(
-                        .runHistory,
-                        title: String(localized: "settings.hub.run_history", defaultValue: "Run History"),
-                        subtitle: String(localized: "settings.hub.run_history.detail", defaultValue: "Local Agent activity"),
-                        symbol: "clock.arrow.circlepath",
-                        color: .gray
-                    )
-                }
-
-                Section(String(localized: "settings.hub.support", defaultValue: "Privacy & Support")) {
-                    settingsLink(
                         .privacy,
                         title: String(localized: "settings.privacy.title"),
                         subtitle: String(localized: "settings.hub.privacy.detail", defaultValue: "How Familiar handles your data"),
                         symbol: "hand.raised.square.fill",
                         color: .cyan
                     )
+                }
+                Section(String(localized: "settings.hub.support")) {
+                    settingsLink(.advanced, title: String(localized: "settings.advanced.title"),
+                        subtitle: String(localized: "settings.advanced.detail"), symbol: "slider.horizontal.3", color: .gray)
                     settingsLink(
                         .about,
                         title: String(localized: "settings.hub.about", defaultValue: "About Familiar"),
@@ -243,6 +177,83 @@ struct FamiliarSettingsView: View {
             .navigationDestination(for: FamiliarSettingsRoute.self, destination: destination)
         }
         .tint(FamiliarTheme.accent)
+    }
+
+    private var advancedSettings: some View {
+        List {
+            Section(String(localized: "settings.advanced.configuration")) {
+                settingsLink(.modelGroups, title: String(localized: "group.title"), subtitle: String(localized: "group.detail"), symbol: "square.stack", color: .blue)
+                settingsLink(
+                    .searchService,
+                    title: String(localized: "settings.search.title", defaultValue: "Web Search"),
+                    subtitle: FamiliarSearchProviderCatalog.descriptor(
+                        for: searchService.settingsStore.selectedProviderID
+                    )?.displayName ?? "DuckDuckGo",
+                    symbol: "magnifyingglass",
+                    color: .blue
+                )
+                settingsLink(
+                    .tools,
+                    title: String(localized: "settings.hub.tools", defaultValue: "Tools"),
+                    subtitle: String(localized: "settings.hub.tools.detail", defaultValue: "Capabilities registered with the Agent Runtime"),
+                    symbol: "puzzlepiece.extension.fill",
+                    color: .blue
+                )
+                settingsLink(
+                    .executionBudget,
+                    title: String(localized: "settings.budget.title", defaultValue: "Execution Limits"),
+                    subtitle: executionBudgetSubtitle,
+                    symbol: "gauge.with.needle",
+                    color: .purple
+                )
+                settingsLink(
+                    .shellRuntime,
+                    title: String(localized: "settings.shell.title", defaultValue: "Shell Runtime"),
+                    subtitle: String(localized: "settings.shell.detail", defaultValue: "Alpine Linux in the current Familiar Workspace"),
+                    symbol: "shippingbox",
+                    color: .gray
+                )
+                settingsLink(
+                    .pythonPackageSource,
+                    title: String(localized: "settings.python_source.title", defaultValue: "Python Package Source"),
+                    subtitle: pythonPackageSourceSettings.selectedSource.displayName,
+                    symbol: "shippingbox.fill",
+                    color: .orange
+                )
+                settingsLink(
+                    .mcp,
+                    title: String(localized: "mcp.title"),
+                    subtitle: String(localized: "mcp.settings.detail"),
+                    symbol: "wrench.and.screwdriver",
+                    color: .blue
+                )
+                settingsLink(
+                    .skills,
+                    title: String(localized: "settings.skills.title", defaultValue: "Skills"),
+                    subtitle: String(localized: "settings.skills.detail", defaultValue: "Instruction-only guidance available from the composer"),
+                    symbol: "wand.and.stars",
+                    color: .purple
+                )
+            }
+            Section(String(localized: "settings.advanced.activity")) {
+                settingsLink(
+                    .runHistory,
+                    title: String(localized: "settings.hub.run_history", defaultValue: "Run History"),
+                    subtitle: String(localized: "settings.hub.run_history.detail", defaultValue: "Local Agent activity"),
+                    symbol: "clock.arrow.circlepath",
+                    color: .gray
+                )
+                settingsLink(
+                    .diagnostics,
+                    title: String(localized: "settings.diagnostics.title", defaultValue: "Diagnostics"),
+                    subtitle: String(localized: "settings.diagnostics.detail", defaultValue: "Why a capability is unavailable right now"),
+                    symbol: "stethoscope",
+                    color: .teal
+                )
+            }
+        }
+        .navigationTitle(String(localized: "settings.advanced.title"))
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func settingsLink(
@@ -284,6 +295,8 @@ struct FamiliarSettingsView: View {
     @ViewBuilder
     private func destination(_ route: FamiliarSettingsRoute) -> some View {
         switch route {
+        case .advanced:
+            advancedSettings
         case .modelGroups:
             FamiliarModelGroupsView(settings: settings) { value in
                 settings = value; onSaveSettings(value)
@@ -615,9 +628,9 @@ private struct FamiliarSkillsSettingsView: View {
                             _ = try FamiliarSkillService().install(document, in: modelContext)
                         }
                     } label: {
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                             Text(skill.name)
-                            Text("\(skill.stableID) · \(skill.version)").font(.caption).foregroundStyle(.secondary)
+                            Text("\(skill.stableID) · \(skill.version)").font(FamiliarTypography.caption).foregroundStyle(.secondary)
                         }
                     }
                     .accessibilityHint(String(localized: "settings.skills.edit.hint", defaultValue: "Opens this Skill for viewing and editing"))
@@ -858,11 +871,11 @@ private struct FamiliarAuthorizationSettingsView: View {
             } else {
                 Section {
                     ForEach(activeRecords) { record in
-                        VStack(alignment: .leading, spacing: 5) {
+                        VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                             Text(record.capabilityID)
-                                .font(.body.weight(.medium))
+                                .font(FamiliarTypography.body.weight(.medium))
                             Text(record.targetKey)
-                                .font(.caption)
+                                .font(FamiliarTypography.caption)
                                 .foregroundStyle(.secondary)
                             Text(record.duration == .session
                                  ? String(localized: "authorization.session", defaultValue: "This Session")
@@ -890,7 +903,7 @@ private struct FamiliarAuthorizationSettingsView: View {
                 }
             }
         }
-        .navigationTitle(String(localized: "settings.hub.authorizations", defaultValue: "Authorizations"))
+        .navigationTitle(String(localized: "settings.hub.authorizations", defaultValue: "Approved Actions"))
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -982,9 +995,9 @@ private struct FamiliarMemorySettingsView: View {
     }
 
     private func memoryRow(_ item: FamiliarMemoryItem) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
             Text(item.content)
-                .font(.body)
+                .font(FamiliarTypography.body)
                 .multilineTextAlignment(.leading)
             HStack(spacing: FamiliarSpacing.xSmall) {
                 Text(scopeLabel(item.scope))
@@ -1104,7 +1117,7 @@ private struct FamiliarSoulSettingsView: View {
         .onChange(of: systemPrompt) { _, value in
             if value.count > 3_000 { systemPrompt = String(value.prefix(3_000)) }
         }
-        .navigationTitle(String(localized: "settings.hub.soul", defaultValue: "Soul"))
+        .navigationTitle(String(localized: "settings.hub.soul", defaultValue: "Response Preferences"))
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -1202,7 +1215,7 @@ private struct FamiliarDiagnosticsSettingsView: View {
                         VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                             Text(FamiliarToolPresentationName.title(for: tool.name))
                             Text(tool.reason)
-                                .font(.caption)
+                                .font(FamiliarTypography.caption)
                                 .foregroundStyle(.secondary)
                             Text(tool.name)
                                 .font(.caption2.monospaced())
@@ -1261,10 +1274,10 @@ private struct FamiliarToolsSettingsView: View {
                     Section {
                         ForEach(group) { entry in
                             Label {
-                                VStack(alignment: .leading, spacing: 2) {
+                                VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                                     Text(FamiliarToolPresentationName.title(for: entry.manifest.name))
                                     Text("\(executionClassLabel(entry.manifest.executionClass)) · \(availabilityLabel(entry.availability))")
-                                        .font(.caption.monospaced())
+                                        .font(FamiliarTypography.caption.monospaced())
                                         .foregroundStyle(.secondary)
                                 }
                             } icon: {
@@ -1588,19 +1601,19 @@ private struct FamiliarRunHistoryView: View {
                     NavigationLink {
                         FamiliarRunDetailView(run: run)
                     } label: {
-                        VStack(alignment: .leading, spacing: 5) {
+                        VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                             HStack {
                                 Text(run.conversation?.title ?? String(localized: "conversation.new"))
-                                    .font(.headline)
+                                    .font(FamiliarTypography.sectionTitle)
                                     .lineLimit(1)
                                 Spacer()
-                                Text(runStatus(run)).font(.caption).foregroundStyle(.secondary)
+                                Text(runStatus(run)).font(FamiliarTypography.caption).foregroundStyle(.secondary)
                             }
                             Text(run.startedAt, format: .dateTime.year().month().day().hour().minute())
-                                .font(.caption)
+                                .font(FamiliarTypography.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        .padding(.vertical, 3)
+                        .padding(.vertical, FamiliarSpacing.xSmall)
                     }
                 }
             }
@@ -1655,13 +1668,13 @@ private struct FamiliarRunDetailView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(visibleActivities) { activity in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(activity.summary).font(.headline)
+                        VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
+                            Text(activity.summary).font(FamiliarTypography.sectionTitle)
                             if let detail = activity.detail, !detail.isEmpty {
-                                Text(detail).font(.subheadline).foregroundStyle(.secondary)
+                                Text(detail).font(FamiliarTypography.secondary).foregroundStyle(.secondary)
                             }
                         }
-                        .padding(.vertical, 3)
+                        .padding(.vertical, FamiliarSpacing.xSmall)
                     }
                 }
             }
@@ -1695,13 +1708,13 @@ private struct FamiliarAboutView: View {
     var body: some View {
         List {
             Section {
-                VStack(spacing: 10) {
+                VStack(spacing: FamiliarSpacing.small) {
                     appIconView
                     Text(String(localized: "app.name")).font(.title2.bold())
-                    Text(version).font(.subheadline).foregroundStyle(.secondary)
+                    Text(version).font(FamiliarTypography.secondary).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
+                .padding(.vertical, FamiliarSpacing.medium)
             }
 
             Section {
@@ -1735,13 +1748,13 @@ private struct FamiliarAboutView: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: 72, height: 72)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: FamiliarRadius.control, style: .continuous))
         } else {
             Image(systemName: "app.fill")
                 .font(.system(size: 34, weight: .medium))
                 .foregroundStyle(FamiliarTheme.accent)
                 .frame(width: 72, height: 72)
-                .background(FamiliarTheme.brandGlow, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .background(FamiliarTheme.brandGlow, in: RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous))
         }
     }
 

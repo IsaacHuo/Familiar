@@ -100,11 +100,11 @@ struct FamiliarChatFilesView: View {
         NavigationStack {
             List(files.filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }) { file in
                 Button { open(file) } label: {
-                    HStack(spacing: 12) {
+                    HStack(spacing: FamiliarSpacing.medium) {
                         Image(systemName: "doc").frame(width: 24)
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                             Text(file.name).foregroundStyle(.primary)
-                            Text(ByteCountFormatter.string(fromByteCount: file.byteSize, countStyle: .file)).font(.caption).foregroundStyle(.secondary)
+                            Text(ByteCountFormatter.string(fromByteCount: file.byteSize, countStyle: .file)).font(FamiliarTypography.caption).foregroundStyle(.secondary)
                         }
                     }.frame(minHeight: 44)
                 }

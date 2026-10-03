@@ -61,7 +61,7 @@ private struct FamiliarAppLockScreen: View {
             if lock.isLocked {
                 VStack(spacing: FamiliarSpacing.section) {
                     Image(systemName: "lock.fill").font(.largeTitle)
-                    Text(String(localized: "lock.title")).font(.title2.bold())
+                    Text(String(localized: "lock.title")).font(FamiliarTypography.screenTitle)
                     if let error = lock.errorMessage { Text(error).foregroundStyle(.secondary) }
                     Button(String(localized: "lock.unlock")) { lock.authenticate() }
                         .buttonStyle(.borderedProminent).disabled(lock.isAuthenticating)

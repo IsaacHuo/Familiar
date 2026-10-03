@@ -8,15 +8,15 @@ nonisolated enum FamiliarArtifactError: LocalizedError, Sendable {
     case emptyFile, unsupportedFormat, contentMismatch, validationFailed(String), fileTooLarge
     var errorDescription: String? {
         switch self {
-        case .projectRequired: "Artifact 只能写入项目。"
-        case .invalidIdentifier, .invalidPath: "Artifact 路径无效。"
-        case .missingArtifact: "Artifact 不存在。"
-        case .transactionFailed: "Artifact 操作未完成。"
-        case .emptyFile: "Artifact 文件为空。"
-        case .unsupportedFormat: "Artifact 文件格式不受支持。"
-        case .contentMismatch: "Artifact 扩展名与真实文件内容不匹配。"
-        case .validationFailed(let detail): "Artifact 验证失败：\(detail)"
-        case .fileTooLarge: "Artifact 文件超过允许大小。"
+        case .projectRequired: String(localized: "file.error.project_required")
+        case .invalidIdentifier, .invalidPath: String(localized: "file.error.invalid_path")
+        case .missingArtifact: String(localized: "file.error.missing")
+        case .transactionFailed: String(localized: "file.error.failed")
+        case .emptyFile: String(localized: "file.error.empty")
+        case .unsupportedFormat: String(localized: "file.error.unsupported")
+        case .contentMismatch: String(localized: "file.error.mismatch")
+        case .validationFailed(let detail): String(format: String(localized: "file.error.validation"), detail)
+        case .fileTooLarge: String(localized: "file.error.too_large")
         }
     }
 }

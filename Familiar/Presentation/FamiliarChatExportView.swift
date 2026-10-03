@@ -7,16 +7,16 @@ struct FamiliarChatExportView: View {
     @State private var errorMessage: String?
     var body: some View {
         NavigationStack {
-            VStack(spacing: 20) {
+            VStack(spacing: FamiliarSpacing.xLarge) {
                 if let document {
-                    Image(systemName: "doc.text").font(.largeTitle)
+                    Image(systemName: "doc.text").font(FamiliarTypography.largeTitle)
                     ShareLink(item: document) { Label(String(localized: "chat.export"), systemImage: "square.and.arrow.up") }
                         .buttonStyle(.borderedProminent)
                     Text(String(localized: "chat.export.footer")).font(.footnote).foregroundStyle(.secondary)
                 } else if let errorMessage { Text(errorMessage) }
                 else { ProgressView() }
             }
-            .padding(24)
+            .padding(FamiliarSpacing.section)
             .navigationTitle(String(localized: "chat.export"))
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button(String(localized: "common.done")) { dismiss() } } }
             .task {

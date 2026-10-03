@@ -13,8 +13,10 @@ struct FamiliarUIFeedbackTests {
         #expect(!root.contains("FamiliarOnboardingView"))
         #expect(!root.contains("hasCompletedOnboarding"))
 
-        let keyGuard = try #require(controller.range(of: "FamiliarKeychainStore.load(for: requestSettings.providerID)"))
-        let imageImport = try #require(controller.range(of: "FamiliarAttachmentStore.importImage"))
+        let sending = try #require(controller.range(of: "func startSending(in context: ModelContext)"))
+        let submission = controller[sending.lowerBound...]
+        let keyGuard = try #require(submission.range(of: "FamiliarProviderFactory.credential(for: descriptor)"))
+        let imageImport = try #require(submission.range(of: "FamiliarAttachmentStore.importImage"))
         #expect(keyGuard.lowerBound < imageImport.lowerBound)
         #expect(controller.contains("errorMessage = String(localized: \"error.api_key_missing\")"))
     }
@@ -51,27 +53,13 @@ struct FamiliarUIFeedbackTests {
         #expect(settings.contains("if let skill { return skill.stableID }"))
     }
 
-    @Test("Tool calls render as ordered stable blocks with anchored disclosure")
+    @Test("Production timeline and visual fixtures share stable execution blocks")
     func toolBlockPresentation() throws {
         let messages = try source("Familiar/Presentation/FamiliarChatMessageViews.swift")
-        let chips = try source("Familiar/Presentation/FamiliarToolChips.swift")
-
-        #expect(!messages.contains("surfaces: toolChipSurfaces"))
         #expect(messages.contains("private var contentBlocks: [FamiliarAssistantContentBlock]"))
         #expect(messages.contains("private struct FamiliarExecutionBlock"))
-        #expect(messages.contains("FamiliarMotion.expansion"))
-        #expect(messages.contains(".transition(.opacity)"))
-        #expect(!messages.contains("variant: .coding"))
-        #expect(chips.contains("@State private var isOpen = true"))
-        #expect(chips.contains("@State private var openRows: Set<String>"))
-        #expect(chips.contains(".onHover { isHovered = $0 }"))
-        #expect(chips.contains("FamiliarToolChipFlowLayout"))
-        #expect(chips.contains("afterLines.difference(from: beforeLines)"))
-        #expect(chips.contains("FamiliarToolDiffPreview"))
-        #expect(chips.contains("scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)"))
-        #expect(!chips.contains(".move(edge:"))
-        #expect(chips.contains("Dictionary(grouping: eligible)"))
-        #expect(chips.contains("static func thinkingItem("))
+        #expect(messages.contains("ForEach(Self.executionSurfaces)"))
+        #expect(!messages.contains("FamiliarToolChips("))
     }
 
     @Test("Artifact lists group versions by lineage instead of listing each version flatly")

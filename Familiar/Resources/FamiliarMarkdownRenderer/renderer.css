@@ -1,10 +1,35 @@
+/* Defaults are native system colors; Swift injects resolved FamiliarTheme values. */
+:root {
+  color-scheme: light dark;
+  --familiar-ink: CanvasText;
+  --familiar-secondary: GrayText;
+  --familiar-tertiary: GrayText;
+  --familiar-surface: Canvas;
+  --familiar-inset: Canvas;
+  --familiar-accent: LinkText;
+  --familiar-accent-tint: color-mix(in srgb, LinkText 12%, transparent);
+  --familiar-line: color-mix(in srgb, CanvasText 12%, transparent);
+  --familiar-line-strong: color-mix(in srgb, CanvasText 24%, transparent);
+  --familiar-code-fill: color-mix(in srgb, CanvasText 6%, transparent);
+  --familiar-success: CanvasText;
+  --familiar-failure: CanvasText;
+  --familiar-warning: CanvasText;
+  --familiar-keyword: LinkText;
+  --familiar-body-size: 17px;
+  --familiar-caption-size: 12px;
+  --familiar-radius-compact: 10px;
+  --familiar-radius-control: 14px;
+  --familiar-width: 780px;
+}
+
 html,
 body {
   margin: 0;
   padding: 0;
   background: transparent;
-  color: #111111;
+  color: var(--familiar-ink);
   font: -apple-system-body;
+  font-size: var(--familiar-body-size);
   line-height: 1.55;
   overflow-x: hidden;
 }
@@ -16,7 +41,7 @@ body {
 #content {
   box-sizing: border-box;
   width: 100%;
-  max-width: 780px;
+  max-width: var(--familiar-width);
   margin: 0 auto;
   padding: 0;
   overflow-wrap: anywhere;
@@ -103,11 +128,11 @@ li + li {
 }
 
 blockquote {
-  border: 1px solid rgba(126, 164, 104, 0.2);
-  border-left: 3px solid rgba(126, 164, 104, 0.62);
-  border-radius: 0 10px 10px 0;
-  background: rgba(126, 164, 104, 0.07);
-  color: #555b52;
+  border: 1px solid var(--familiar-line);
+  border-left: 3px solid var(--familiar-accent);
+  border-radius: 0 var(--familiar-radius-compact) var(--familiar-radius-compact) 0;
+  background: var(--familiar-inset);
+  color: var(--familiar-secondary);
   padding: 0.65em 0.8em;
 }
 
@@ -116,11 +141,11 @@ blockquote > :last-child { margin-bottom: 0; }
 
 hr {
   border: 0;
-  border-top: 1px solid rgba(0, 0, 0, 0.12);
+  border-top: 1px solid var(--familiar-line);
 }
 
 a {
-  color: #1a87fa;
+  color: var(--familiar-accent);
   text-decoration: none;
 }
 
@@ -129,7 +154,7 @@ a:active {
 }
 
 a:focus-visible {
-  outline: 2px solid #1a87fa;
+  outline: 2px solid var(--familiar-accent);
   outline-offset: 3px;
   border-radius: 4px;
 }
@@ -143,9 +168,9 @@ a:focus-visible {
   box-sizing: border-box;
   margin: 0 0.12em;
   padding: 0 0.34em;
-  border: 1px solid rgba(26, 135, 250, 0.24);
+  border: 1px solid var(--familiar-accent);
   border-radius: 999px;
-  background: rgba(26, 135, 250, 0.1);
+  background: var(--familiar-accent-tint);
   font-size: 0.72em;
   font-weight: 700;
   line-height: 1;
@@ -160,9 +185,9 @@ a:focus-visible {
   max-width: 100%;
   margin: 0.65em 0;
   padding: 0.5em 0.7em;
-  border: 1px solid rgba(26, 135, 250, 0.22);
-  border-radius: 8px;
-  background: rgba(26, 135, 250, 0.06);
+  border: 1px solid var(--familiar-accent);
+  border-radius: var(--familiar-radius-control);
+  background: var(--familiar-accent-tint);
 }
 
 .remote-image-link::before {
@@ -176,20 +201,20 @@ a:focus-visible {
 }
 
 .remote-image-host {
-  color: #666666;
-  font-size: 0.82em;
+  color: var(--familiar-secondary);
+  font-size: var(--familiar-caption-size);
 }
 
 img {
   display: block;
   max-width: 100%;
   height: auto;
-  border-radius: 8px;
+  border-radius: var(--familiar-radius-control);
 }
 
 code {
-  border-radius: 5px;
-  background: rgba(0, 0, 0, 0.055);
+  border-radius: var(--familiar-radius-compact);
+  background: var(--familiar-code-fill);
   padding: 0.12em 0.32em;
   font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace;
   font-size: 0.92em;
@@ -211,9 +236,9 @@ pre code {
 }
 
 .code-block {
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--familiar-line);
+  border-radius: var(--familiar-radius-control);
+  background: var(--familiar-code-fill);
   overflow: hidden;
   margin: 0.75em 0;
 }
@@ -223,9 +248,9 @@ pre code {
   align-items: center;
   justify-content: space-between;
   gap: 0.75em;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-  color: #666666;
-  font-size: 0.82em;
+  border-bottom: 1px solid var(--familiar-line);
+  color: var(--familiar-secondary);
+  font-size: var(--familiar-caption-size);
   padding: 0.5em 0.7em;
 }
 
@@ -237,11 +262,11 @@ pre code {
 
 .copy-code {
   border: 0;
-  border-radius: 6px;
-  background: rgba(26, 135, 250, 0.14);
-  color: #1a87fa;
+  border-radius: var(--familiar-radius-compact);
+  background: var(--familiar-accent-tint);
+  color: var(--familiar-accent);
   font: inherit;
-  font-size: 0.82em;
+  font-size: var(--familiar-caption-size);
   padding: 0.25em 0.55em;
 }
 
@@ -254,7 +279,7 @@ pre code {
 .hljs-built_in,
 .hljs-name,
 .hljs-tag {
-  color: #6f42c1;
+  color: var(--familiar-keyword);
 }
 
 .hljs-string,
@@ -266,20 +291,20 @@ pre code {
 .hljs-template-variable,
 .hljs-type,
 .hljs-addition {
-  color: #2f7d32;
+  color: var(--familiar-success);
 }
 
 .hljs-comment,
 .hljs-quote,
 .hljs-deletion,
 .hljs-meta {
-  color: #7a7a7a;
+  color: var(--familiar-tertiary);
 }
 
 .hljs-number,
 .hljs-regexp,
 .hljs-link {
-  color: #b35c00;
+  color: var(--familiar-warning);
 }
 
 .table-scroll {
@@ -300,7 +325,7 @@ pre code {
 
 th,
 td {
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--familiar-line);
   padding: 0.45em 0.6em;
   vertical-align: top;
   word-break: normal;
@@ -308,7 +333,7 @@ td {
 }
 
 th {
-  background: rgba(0, 0, 0, 0.045);
+  background: var(--familiar-code-fill);
   font-weight: 700;
 }
 
@@ -317,14 +342,14 @@ th {
   width: 0.95em;
   height: 0.95em;
   margin-right: 0.35em;
-  border: 1.5px solid rgba(0, 0, 0, 0.25);
+  border: 1.5px solid var(--familiar-line-strong);
   border-radius: 4px;
   transform: translateY(0.12em);
 }
 
 .task-marker.checked {
-  border-color: rgba(26, 135, 250, 0.85);
-  background: rgba(26, 135, 250, 0.16);
+  border-color: var(--familiar-accent);
+  background: var(--familiar-accent-tint);
   position: relative;
 }
 
@@ -335,15 +360,15 @@ th {
   top: 0.07em;
   width: 0.32em;
   height: 0.56em;
-  border: solid #1a87fa;
+  border: solid var(--familiar-accent);
   border-width: 0 0.14em 0.14em 0;
   transform: rotate(45deg);
 }
 
 .footnotes {
   margin-top: 1em;
-  border-top: 1px solid rgba(0, 0, 0, 0.1);
-  color: #666666;
+  border-top: 1px solid var(--familiar-line);
+  color: var(--familiar-secondary);
   font-size: 0.9em;
 }
 
@@ -368,9 +393,9 @@ th {
   overflow-x: auto;
   margin: 0.75em 0;
   padding: 0.75em;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 8px;
-  background: rgba(26, 135, 250, 0.055);
+  border: 1px solid var(--familiar-line);
+  border-radius: var(--familiar-radius-control);
+  background: var(--familiar-accent-tint);
   -webkit-overflow-scrolling: touch;
 }
 
@@ -386,16 +411,16 @@ th {
   margin: 0 0 0.65em auto;
   border: 0;
   border-radius: 999px;
-  background: rgba(26, 135, 250, 0.14);
-  color: #1a87fa;
+  background: var(--familiar-accent-tint);
+  color: var(--familiar-accent);
   font: inherit;
-  font-size: 0.82em;
+  font-size: var(--familiar-caption-size);
   font-weight: 600;
   padding: 0.4em 0.7em;
 }
 
 details {
-  border-radius: 8px;
+  border-radius: var(--familiar-radius-control);
 }
 
 summary {
@@ -403,49 +428,14 @@ summary {
   font-weight: 600;
 }
 
-@media (prefers-color-scheme: dark) {
-  html,
-  body {
-    color: #f2f2f2;
-  }
 
-  blockquote {
-    color: #b7b7b7;
-    border-color: rgba(163, 204, 140, 0.24);
-    border-left-color: rgba(163, 204, 140, 0.62);
-    background: rgba(163, 204, 140, 0.08);
-  }
-
-  code,
-  .code-block {
-    background: rgba(255, 255, 255, 0.08);
-  }
-
-  .code-block {
-    border-color: rgba(255, 255, 255, 0.12);
-  }
-
-  .mermaid-diagram {
-    border-color: rgba(255, 255, 255, 0.12);
-    background: rgba(255, 255, 255, 0.05);
-  }
-
-  .code-header {
-    border-bottom-color: rgba(255, 255, 255, 0.1);
-    color: #b7b7b7;
-  }
-
-  th,
-  td {
-    border-color: rgba(255, 255, 255, 0.16);
-  }
-
-  th {
-    background: rgba(255, 255, 255, 0.08);
-  }
-
-  hr,
-  .footnotes {
-    border-color: rgba(255, 255, 255, 0.14);
-  }
+.copy-code, .mermaid-preview-button {
+  min-height: 44px;
+  min-width: 44px;
+  cursor: pointer;
 }
+.copy-code:focus-visible, .mermaid-preview-button:focus-visible {
+  outline: 2px solid var(--familiar-accent);
+  outline-offset: 3px;
+}
+.hljs-deletion { color: var(--familiar-failure); }

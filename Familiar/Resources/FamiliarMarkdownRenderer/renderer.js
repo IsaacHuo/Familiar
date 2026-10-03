@@ -382,12 +382,12 @@
         theme: "base",
         themeVariables: {
           background: "transparent",
-          mainBkg: "#f7f9ff",
-          primaryColor: "#edf4ff",
-          primaryTextColor: "#172033",
-          primaryBorderColor: "#bfd2f2",
-          lineColor: "#536985",
-          textColor: "#172033",
+          mainBkg: getComputedStyle(document.documentElement).getPropertyValue("--familiar-inset").trim(),
+          primaryColor: getComputedStyle(document.documentElement).getPropertyValue("--familiar-accent-tint").trim(),
+          primaryTextColor: getComputedStyle(document.documentElement).getPropertyValue("--familiar-ink").trim(),
+          primaryBorderColor: getComputedStyle(document.documentElement).getPropertyValue("--familiar-line-strong").trim(),
+          lineColor: getComputedStyle(document.documentElement).getPropertyValue("--familiar-secondary").trim(),
+          textColor: getComputedStyle(document.documentElement).getPropertyValue("--familiar-ink").trim(),
           fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif"
         }
       });
@@ -431,7 +431,7 @@
     });
   }
 
-  function decorateCodeBlocks(root) {
+  function decorateCodeBlocks(root, options) {
     root.querySelectorAll("pre > code").forEach(function (code) {
       const pre = code.parentElement;
       if (!pre || pre.parentElement.classList.contains("code-block")) {
@@ -452,12 +452,12 @@
       const button = document.createElement("button");
       button.className = "copy-code";
       button.type = "button";
-      button.textContent = "\u590d\u5236";
+      button.textContent = options.copyLabel;
       button.addEventListener("click", function () {
         post("copyCode", code.textContent || "");
-        button.textContent = "\u5df2\u590d\u5236";
+        button.textContent = options.copiedLabel;
         window.setTimeout(function () {
-          button.textContent = "\u590d\u5236";
+          button.textContent = options.copyLabel;
         }, 1200);
       });
       header.appendChild(label);
@@ -482,6 +482,10 @@
 
   function render(markdown, options) {
     try {
+      const style = options && options.style;
+      if (style) Object.keys(style).forEach(function (key) {
+        if (key.indexOf("--familiar-") === 0) document.documentElement.style.setProperty(key, String(style[key]));
+      });
       setSelectionEnabled(!(options && options.streaming));
       content.classList.toggle("streaming", Boolean(options && options.streaming));
       const md = createMarkdownIt();
@@ -509,7 +513,7 @@
         })
         .then(function () {
           decorateMermaidPreviews(content, mermaidResult.diagrams, options);
-          decorateCodeBlocks(content);
+          decorateCodeBlocks(content, options);
           decorateTables(content);
           reportHeight();
         });

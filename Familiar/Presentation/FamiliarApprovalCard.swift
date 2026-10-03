@@ -38,7 +38,7 @@ struct FamiliarApprovalCard: View {
             Image(systemName: "questionmark.circle.fill")
                 .foregroundStyle(FamiliarTheme.inkTertiary)
             Text(surface.detail ?? String(localized: "approval.interrupted", defaultValue: "This approval was interrupted and can no longer be answered."))
-                .font(.subheadline)
+                .font(FamiliarTypography.secondary)
                 .foregroundStyle(FamiliarTheme.inkSecondary)
         }
         .frame(minHeight: FamiliarControlSize.minimumHitTarget)
@@ -77,11 +77,11 @@ struct FamiliarApprovalCard: View {
                 .background(riskColor.opacity(0.12), in: Circle())
             VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
                 Text(surface.title)
-                    .font(.headline)
+                    .font(FamiliarTypography.sectionTitle)
                     .foregroundStyle(FamiliarTheme.ink)
                 if let target = surface.approvalTarget, !target.isEmpty {
                     Text(target)
-                        .font(.subheadline)
+                        .font(FamiliarTypography.secondary)
                         .foregroundStyle(FamiliarTheme.inkSecondary)
                 }
             }
@@ -98,13 +98,13 @@ struct FamiliarApprovalCard: View {
                     }
                     LabeledContent {
                         Text(field.formattedValue)
-                            .font(.subheadline.weight(.medium))
+                            .font(FamiliarTypography.secondary.weight(.medium))
                             .foregroundStyle(FamiliarTheme.ink)
                             .multilineTextAlignment(.trailing)
                             .textSelection(.enabled)
                     } label: {
                         Text(field.label)
-                            .font(.subheadline)
+                            .font(FamiliarTypography.secondary)
                             .foregroundStyle(FamiliarTheme.inkSecondary)
                     }
                     .padding(.horizontal, FamiliarAISurfaceMetric.spaceM)
@@ -128,7 +128,7 @@ struct FamiliarApprovalCard: View {
                 Label(undoTitle(undoPolicy), systemImage: undoPolicy == .unavailable ? "arrow.uturn.backward.slash" : "arrow.uturn.backward")
             }
         }
-        .font(.caption)
+        .font(FamiliarTypography.caption)
         .foregroundStyle(FamiliarTheme.inkSecondary)
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -138,7 +138,7 @@ struct FamiliarApprovalCard: View {
         if authorizationOptions.count > 1 {
             VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceS) {
                 Text(String(localized: "approval.scope.question", defaultValue: "How long should Familiar allow this action?"))
-                    .font(.caption.weight(.semibold))
+                    .font(FamiliarTypography.caption.weight(.semibold))
                     .foregroundStyle(FamiliarTheme.inkSecondary)
                 VStack(spacing: FamiliarAISurfaceMetric.spaceXS) {
                     ForEach(authorizationOptions) { option in
@@ -151,7 +151,7 @@ struct FamiliarApprovalCard: View {
                                 Image(systemName: selectedDecision == option.decision ? "checkmark.circle.fill" : "circle")
                                     .foregroundStyle(selectedDecision == option.decision ? FamiliarTheme.accent : FamiliarTheme.inkTertiary)
                                 Text(option.title)
-                                    .font(.subheadline)
+                                    .font(FamiliarTypography.secondary)
                                     .foregroundStyle(FamiliarTheme.ink)
                                 Spacer(minLength: 0)
                             }
@@ -199,7 +199,7 @@ struct FamiliarApprovalCard: View {
             Text(decision == .cancelled
                  ? String(localized: "approval.skipped", defaultValue: "Approval cancelled")
                  : String(localized: "approval.sent", defaultValue: "Approved"))
-                .font(.subheadline.weight(.semibold))
+                .font(FamiliarTypography.secondary.weight(.semibold))
         }
         .foregroundStyle(FamiliarTheme.inkSecondary)
         .frame(minHeight: FamiliarControlSize.minimumHitTarget)

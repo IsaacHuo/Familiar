@@ -257,9 +257,9 @@ private struct FamiliarMessageRow: View {
                             Image(systemName: attachment.mimeType == "application/pdf" ? "doc.richtext" : "doc.text")
                                 .foregroundStyle(FamiliarTheme.accent)
                             VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
-                                Text(attachment.filename).font(.subheadline.weight(.medium)).lineLimit(2)
+                                Text(attachment.filename).font(FamiliarTypography.secondary.weight(.medium)).lineLimit(2)
                                 Text("\(attachment.detectedFormat.uppercased()) · \(ByteCountFormatter.string(fromByteCount: attachment.byteSize, countStyle: .file))")
-                                    .font(.caption)
+                                    .font(FamiliarTypography.caption)
                                     .foregroundStyle(FamiliarTheme.inkSecondary)
                             }
                         }
@@ -273,7 +273,7 @@ private struct FamiliarMessageRow: View {
 
                 if !message.content.isEmpty {
                     Text(message.content)
-                        .font(.body)
+                        .font(FamiliarTypography.body)
                         .textSelection(.enabled)
                         .padding(FamiliarAISurfaceMetric.spaceM)
                         .background(FamiliarTheme.userFill, in: RoundedRectangle(cornerRadius: FamiliarRadius.overlay, style: .continuous))
@@ -624,11 +624,11 @@ private struct FamiliarReasoningSummaryDisclosure: View {
                         .font(.system(size: FamiliarIconSize.compact, weight: .semibold))
                         .foregroundStyle(FamiliarTheme.inkTertiary)
                     Text(title)
-                        .font(.caption.weight(.medium))
+                        .font(FamiliarTypography.caption.weight(.medium))
                         .foregroundStyle(FamiliarTheme.inkSecondary)
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.down")
-                        .font(.caption.weight(.semibold))
+                        .font(FamiliarTypography.caption.weight(.semibold))
                         .foregroundStyle(FamiliarTheme.inkTertiary)
                         .rotationEffect(.degrees(isExpanded ? 180 : 0))
                 }
@@ -642,7 +642,7 @@ private struct FamiliarReasoningSummaryDisclosure: View {
 
             if isExpanded {
                 Text(content)
-                    .font(.caption)
+                    .font(FamiliarTypography.caption)
                     .foregroundStyle(FamiliarTheme.inkSecondary)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -673,7 +673,7 @@ private struct FamiliarRunActivitySummary: View {
                 Text("s")
             }
         }
-        .font(.caption)
+        .font(FamiliarTypography.caption)
         .foregroundStyle(FamiliarTheme.inkTertiary)
         .accessibilityElement(children: .combine)
     }
@@ -686,13 +686,13 @@ private struct FamiliarShimmerLabel: View {
     var body: some View {
         if reduceMotion {
             Text(text)
-                .font(.subheadline.weight(.semibold))
+                .font(FamiliarTypography.secondary.weight(.semibold))
                 .foregroundStyle(FamiliarTheme.ink)
         } else {
             TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
                 let cycle = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.4) / 1.4
                 Text(text)
-                    .font(.subheadline.weight(.semibold))
+                    .font(FamiliarTypography.secondary.weight(.semibold))
                     .foregroundStyle(
                         LinearGradient(
                             colors: [FamiliarTheme.inkSecondary, FamiliarTheme.ink, FamiliarTheme.inkSecondary],
@@ -771,7 +771,7 @@ private struct FamiliarThinkingState: View {
                 .foregroundStyle(settled ? FamiliarTheme.inkTertiary : FamiliarTheme.ink)
             if settled {
                 Text(content.settledHeader)
-                    .font(.subheadline.weight(.semibold))
+                    .font(FamiliarTypography.secondary.weight(.semibold))
                     .foregroundStyle(FamiliarTheme.inkSecondary)
             } else {
                 FamiliarShimmerLabel(text: content.header, reduceMotion: reduceMotion)
@@ -795,7 +795,7 @@ private struct FamiliarThinkingState: View {
             }
             if content.truncatedCount > 0 {
                 Text(String(format: String(localized: "search.more", defaultValue: "+%lld more"), content.truncatedCount))
-                    .font(.caption)
+                    .font(FamiliarTypography.caption)
                     .foregroundStyle(FamiliarTheme.inkTertiary)
                     .transition(.opacity)
             }
@@ -809,7 +809,7 @@ private struct FamiliarThinkingState: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(FamiliarTheme.inkTertiary)
             Text(query)
-                .font(.caption)
+                .font(FamiliarTypography.caption)
                 .foregroundStyle(FamiliarTheme.inkSecondary)
                 .lineLimit(1)
         }
@@ -831,7 +831,7 @@ private struct FamiliarThinkingState: View {
             FamiliarThinkingRowView(row: row, index: index, isLink: row.href != nil) { _ in
                 FamiliarThinkingDot(color: toneColor(row.tone))
                 Text(row.primary)
-                    .font(.caption.weight(.medium))
+                    .font(FamiliarTypography.caption.weight(.medium))
                     .foregroundStyle(FamiliarTheme.ink)
                     .lineLimit(1)
                 if let secondary = row.secondary {
@@ -852,7 +852,7 @@ private struct FamiliarThinkingState: View {
                     FamiliarThinkingSpinner(reduceMotion: reduceMotion)
                 }
                 Text(row.primary)
-                    .font(.caption.weight(.medium))
+                    .font(FamiliarTypography.caption.weight(.medium))
                     .foregroundStyle(FamiliarTheme.ink)
                     .lineLimit(1)
                 if let secondary = row.secondary {
@@ -992,18 +992,18 @@ private struct FamiliarExecutionBlock: View {
                             .foregroundStyle(iconColor)
                             .frame(width: FamiliarAISurfaceMetric.icon)
                         Text(surface.title)
-                            .font(.subheadline.weight(.semibold))
+                            .font(FamiliarTypography.secondary.weight(.semibold))
                             .foregroundStyle(FamiliarTheme.ink)
                             .multilineTextAlignment(.leading)
                         Spacer(minLength: FamiliarAISurfaceMetric.spaceS)
                         if let count {
                             Text(count, format: .number)
-                                .font(.caption.monospacedDigit())
+                                .font(FamiliarTypography.caption.monospacedDigit())
                                 .foregroundStyle(FamiliarTheme.inkTertiary)
                         }
                         if hasDetails {
                             Image(systemName: "chevron.down")
-                                .font(.caption.weight(.semibold))
+                                .font(FamiliarTypography.caption.weight(.semibold))
                                 .foregroundStyle(FamiliarTheme.inkTertiary)
                                 .rotationEffect(.degrees(isExpanded ? 180 : 0))
                         }
@@ -1103,8 +1103,15 @@ private struct FamiliarExecutionBlock: View {
     private var detail: some View {
         if let content = surface.resultEnvelope?.presentation.content {
             switch content {
-            case .searchResults, .document:
+            case .searchResults:
                 FamiliarTypedResult(surface: surface, showsHeader: false)
+            case .document:
+                FamiliarTypedResult(surface: surface, showsHeader: false)
+                if surface.toolName == "web_fetch", surface.phase == .succeeded,
+                   let callID = surface.toolCallID, let envelope = surface.resultEnvelope,
+                   let output = try? JSONDecoder().decode(FamiliarWebFetchOutput.self, from: Data(envelope.modelContent.utf8)) {
+                    FamiliarWebCaptureSaveButton(runtimeID: surface.runID, toolCallID: callID, truncated: output.truncated)
+                }
             case .contextMatches(let matches):
                 ForEach(matches.matches.prefix(3), id: \.versionID) { match in
                     FamiliarContextChunk(match: match)
@@ -1118,7 +1125,7 @@ private struct FamiliarExecutionBlock: View {
             }
         } else if let value = surface.detail, !value.isEmpty {
             Text(value)
-                .font(.caption)
+                .font(FamiliarTypography.caption)
                 .foregroundStyle(FamiliarTheme.inkSecondary)
                 .textSelection(.enabled)
         }
@@ -1195,10 +1202,10 @@ private struct FamiliarShareDraftSurface: View {
                             .frame(width: FamiliarAISurfaceMetric.icon)
                         VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
                             Text(draft.title ?? String(localized: "common.share"))
-                                .font(.subheadline.weight(.semibold))
+                                .font(FamiliarTypography.secondary.weight(.semibold))
                                 .foregroundStyle(FamiliarTheme.ink)
                             Text(draft.text)
-                                .font(.caption)
+                                .font(FamiliarTypography.caption)
                                 .foregroundStyle(FamiliarTheme.inkSecondary)
                                 .lineLimit(6)
                                 .textSelection(.enabled)
@@ -1206,7 +1213,7 @@ private struct FamiliarShareDraftSurface: View {
                     }
                     ShareLink(item: draft.text) {
                         Label(String(localized: "common.share"), systemImage: "square.and.arrow.up")
-                            .font(.subheadline.weight(.semibold))
+                            .font(FamiliarTypography.secondary.weight(.semibold))
                             .frame(minHeight: 44)
                     }
                     .accessibilityHint(String(localized: "share.draft.accessibility_hint", defaultValue: "Opens the system share sheet. Familiar does not send this automatically."))
@@ -1220,7 +1227,7 @@ private struct FamiliarShareDraftSurface: View {
                       url.isFileURL {
                 VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceM) {
                     Label(document.title ?? document.summary, systemImage: "doc")
-                        .font(.subheadline.weight(.semibold))
+                        .font(FamiliarTypography.secondary.weight(.semibold))
                         .foregroundStyle(FamiliarTheme.ink)
                     HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
                         Button {
@@ -1250,6 +1257,7 @@ private struct FamiliarShareDraftSurface: View {
 
 private struct FamiliarPreparedFilePreview: Identifiable {
     let url: URL
+    var format: FamiliarArtifactFormat? = nil
     var id: String { url.absoluteString }
 }
 
@@ -1263,11 +1271,11 @@ private struct FamiliarTaskListSurface: View {
                     Image(systemName: "checklist")
                         .foregroundStyle(FamiliarTheme.accent)
                     Text(plan.title)
-                        .font(.headline)
+                        .font(FamiliarTypography.sectionTitle)
                         .foregroundStyle(FamiliarTheme.ink)
                     Spacer(minLength: 0)
                     Text("\(plan.tasks.filter { $0.status == .completed }.count)/\(plan.tasks.count)")
-                        .font(.caption.monospacedDigit().weight(.semibold))
+                        .font(FamiliarTypography.caption.monospacedDigit().weight(.semibold))
                         .foregroundStyle(FamiliarTheme.inkSecondary)
                 }
 
@@ -1306,11 +1314,11 @@ private struct FamiliarTaskRow: View {
                 .frame(width: FamiliarAISurfaceMetric.icon, height: FamiliarAISurfaceMetric.icon)
             VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
                 Text(task.title)
-                    .font(.subheadline.weight(.medium))
+                    .font(FamiliarTypography.secondary.weight(.medium))
                     .foregroundStyle(FamiliarTheme.ink)
                 if let detail = task.detail, !detail.isEmpty {
                     Text(detail)
-                        .font(.caption)
+                        .font(FamiliarTypography.caption)
                         .foregroundStyle(FamiliarTheme.inkSecondary)
                 }
                 if let progress = task.progress, progress.isFinite {
@@ -1376,7 +1384,7 @@ private struct FamiliarRecommendationSurface: View {
                     Image(systemName: "sparkles")
                         .foregroundStyle(FamiliarTheme.accent)
                     Text(recommendation.title)
-                        .font(.headline)
+                        .font(FamiliarTypography.sectionTitle)
                         .foregroundStyle(FamiliarTheme.ink)
                     Spacer(minLength: 0)
                     if let confidence = recommendation.confidenceLevel {
@@ -1389,7 +1397,7 @@ private struct FamiliarRecommendationSurface: View {
                     }
                 }
                 Text(recommendation.explanation)
-                    .font(.subheadline)
+                    .font(FamiliarTypography.secondary)
                     .foregroundStyle(FamiliarTheme.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -1398,7 +1406,7 @@ private struct FamiliarRecommendationSurface: View {
                 } label: {
                     HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
                         Text(recommendation.nextPrompt)
-                            .font(.subheadline.weight(.semibold))
+                            .font(FamiliarTypography.secondary.weight(.semibold))
                             .multilineTextAlignment(.leading)
                         Spacer(minLength: 0)
                         Image(systemName: "arrow.up.left")
@@ -1417,10 +1425,10 @@ private struct FamiliarRecommendationSurface: View {
                     } label: {
                         HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
                             Text(alternative.title)
-                                .font(.subheadline.weight(.medium))
+                                .font(FamiliarTypography.secondary.weight(.medium))
                             Spacer(minLength: 0)
                             Image(systemName: "plus")
-                                .font(.caption.weight(.semibold))
+                                .font(FamiliarTypography.caption.weight(.semibold))
                         }
                         .foregroundStyle(FamiliarTheme.ink)
                         .contentShape(Rectangle())
@@ -1451,10 +1459,10 @@ private struct FamiliarInsightSurface: View {
         if case .insight(let insight) = surface.resultEnvelope?.presentation.content {
             VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceM) {
                 Label(insight.title, systemImage: "chart.xyaxis.line")
-                    .font(.headline)
+                    .font(FamiliarTypography.sectionTitle)
                     .foregroundStyle(FamiliarTheme.ink)
                 Text(insight.explanation)
-                    .font(.subheadline)
+                    .font(FamiliarTypography.secondary)
                     .foregroundStyle(FamiliarTheme.inkSecondary)
 
                 if !insight.metrics.isEmpty {
@@ -1480,7 +1488,7 @@ private struct FamiliarInsightSurface: View {
                     .chartYAxis {
                         AxisMarks(position: .leading) { _ in
                             AxisValueLabel()
-                                .font(.caption)
+                                .font(FamiliarTypography.caption)
                                 .foregroundStyle(FamiliarTheme.inkSecondary)
                         }
                     }
@@ -1511,10 +1519,10 @@ private struct FamiliarClarificationSurface: View {
                     .foregroundStyle(surface.phase == .failed ? FamiliarTheme.inkTertiary : FamiliarTheme.accent)
                 VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
                     Text(String(localized: "clarification.title", defaultValue: "One question"))
-                        .font(.caption.weight(.semibold))
+                        .font(FamiliarTypography.caption.weight(.semibold))
                         .foregroundStyle(FamiliarTheme.inkSecondary)
                     Text(surface.title)
-                        .font(.headline)
+                        .font(FamiliarTypography.sectionTitle)
                         .foregroundStyle(FamiliarTheme.ink)
                 }
             }
@@ -1526,11 +1534,11 @@ private struct FamiliarClarificationSurface: View {
                     } label: {
                         HStack {
                             Text(option.label)
-                                .font(.subheadline.weight(.medium))
+                                .font(FamiliarTypography.secondary.weight(.medium))
                                 .multilineTextAlignment(.leading)
                             Spacer(minLength: 0)
                             Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
+                                .font(FamiliarTypography.caption.weight(.semibold))
                                 .foregroundStyle(FamiliarTheme.inkTertiary)
                         }
                         .foregroundStyle(FamiliarTheme.ink)
@@ -1568,11 +1576,11 @@ private struct FamiliarClarificationSurface: View {
                 }
             } else if let answer = surface.clarificationResolution?.answer {
                 Label(answer, systemImage: "checkmark.circle.fill")
-                    .font(.subheadline)
+                    .font(FamiliarTypography.secondary)
                     .foregroundStyle(FamiliarTheme.success)
             } else if let detail = surface.detail {
                 Text(detail)
-                    .font(.caption)
+                    .font(FamiliarTypography.caption)
                     .foregroundStyle(FamiliarTheme.inkSecondary)
             }
         }
@@ -1591,7 +1599,7 @@ private struct FamiliarCodeSurface: View {
             VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceS) {
                 HStack(alignment: .firstTextBaseline, spacing: FamiliarAISurfaceMetric.spaceS) {
                     Label(code.summary, systemImage: "chevron.left.forwardslash.chevron.right")
-                        .font(.subheadline.weight(.semibold))
+                        .font(FamiliarTypography.secondary.weight(.semibold))
                     Spacer(minLength: 0)
                     Button {
                         UIPasteboard.general.string = code.code
@@ -1619,7 +1627,7 @@ private struct FamiliarCodeSurface: View {
 
                 ScrollView(.horizontal) {
                     Text(codePreview(code.code))
-                        .font(.caption.monospaced())
+                        .font(FamiliarTypography.caption.monospaced())
                         .foregroundStyle(FamiliarTheme.ink)
                         .textSelection(.enabled)
                         .padding(FamiliarAISurfaceMetric.spaceM)
@@ -1631,7 +1639,7 @@ private struct FamiliarCodeSurface: View {
                         showsFullCode = true
                     } label: {
                         Label(String(localized: "code.view_full", defaultValue: "View full code"), systemImage: "arrow.up.left.and.arrow.down.right")
-                            .font(.caption.weight(.semibold))
+                            .font(FamiliarTypography.caption.weight(.semibold))
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(FamiliarTheme.accentInk)
@@ -1662,7 +1670,7 @@ private struct FamiliarCodeDetailView: View {
         NavigationStack {
             ScrollView([.horizontal, .vertical]) {
                 Text(code.code)
-                    .font(.body.monospaced())
+                    .font(FamiliarTypography.body.monospaced())
                     .textSelection(.enabled)
                     .padding(FamiliarAISurfaceMetric.spaceL)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1671,8 +1679,8 @@ private struct FamiliarCodeDetailView: View {
             .navigationTitle(code.filename ?? code.summary)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(String(localized: "common.done")) { dismiss() }
+                ToolbarItem(placement: .confirmationAction) {
+                    FamiliarDismissButton()
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -1695,18 +1703,18 @@ private struct FamiliarContextMatchesSurface: View {
             VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceM) {
                 HStack(alignment: .firstTextBaseline, spacing: FamiliarAISurfaceMetric.spaceS) {
                     Label(context.summary, systemImage: "text.magnifyingglass")
-                        .font(.subheadline.weight(.semibold))
+                        .font(FamiliarTypography.secondary.weight(.semibold))
                         .foregroundStyle(FamiliarTheme.ink)
                     Spacer(minLength: 0)
                     Text(context.query)
-                        .font(.caption)
+                        .font(FamiliarTypography.caption)
                         .foregroundStyle(FamiliarTheme.inkTertiary)
                         .lineLimit(1)
                 }
 
                 if context.matches.isEmpty {
                     Text(String(localized: "context.matches.empty", defaultValue: "No matching context"))
-                        .font(.caption)
+                        .font(FamiliarTypography.caption)
                         .foregroundStyle(FamiliarTheme.inkSecondary)
                 } else {
                     ForEach(context.matches.prefix(2), id: \.versionID) { match in
@@ -1722,7 +1730,7 @@ private struct FamiliarContextMatchesSurface: View {
                             String(format: String(localized: "context.matches.view_all", defaultValue: "View all %lld matches"), context.matches.count),
                             systemImage: "list.bullet"
                         )
-                        .font(.caption.weight(.semibold))
+                        .font(FamiliarTypography.caption.weight(.semibold))
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(FamiliarTheme.accentInk)
@@ -1744,7 +1752,7 @@ private struct FamiliarContextChunk: View {
         VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
             HStack(alignment: .firstTextBaseline, spacing: FamiliarAISurfaceMetric.spaceS) {
                 Text(match.title)
-                    .font(.caption.weight(.semibold))
+                    .font(FamiliarTypography.caption.weight(.semibold))
                     .foregroundStyle(FamiliarTheme.ink)
                     .lineLimit(2)
                 Spacer(minLength: 0)
@@ -1753,7 +1761,7 @@ private struct FamiliarContextChunk: View {
                     .foregroundStyle(FamiliarTheme.inkTertiary)
             }
             Text(match.excerpt)
-                .font(.caption)
+                .font(FamiliarTypography.caption)
                 .foregroundStyle(FamiliarTheme.inkSecondary)
                 .lineLimit(4)
                 .textSelection(.enabled)
@@ -1790,8 +1798,8 @@ private struct FamiliarContextMatchesDetailView: View {
             .navigationTitle(String(localized: "context.matches.title", defaultValue: "Context matches"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(String(localized: "common.done")) { dismiss() }
+                ToolbarItem(placement: .confirmationAction) {
+                    FamiliarDismissButton()
                 }
             }
         }
@@ -1815,11 +1823,11 @@ private struct FamiliarRecordCollectionSurface: View {
             VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceM) {
                 HStack(alignment: .firstTextBaseline, spacing: FamiliarAISurfaceMetric.spaceS) {
                     Label(surface.title, systemImage: "list.bullet.rectangle")
-                        .font(.subheadline.weight(.semibold))
+                        .font(FamiliarTypography.secondary.weight(.semibold))
                         .foregroundStyle(FamiliarTheme.ink)
                     Spacer(minLength: 0)
                     Text(collection.records.count, format: .number)
-                        .font(.caption.monospacedDigit())
+                        .font(FamiliarTypography.caption.monospacedDigit())
                         .foregroundStyle(FamiliarTheme.inkTertiary)
                 }
 
@@ -1829,7 +1837,7 @@ private struct FamiliarRecordCollectionSurface: View {
 
                 if records.isEmpty {
                     Text(String(localized: "records.empty", defaultValue: "No records"))
-                        .font(.caption)
+                        .font(FamiliarTypography.caption)
                         .foregroundStyle(FamiliarTheme.inkSecondary)
                 } else {
                     VStack(spacing: 0) {
@@ -1849,7 +1857,7 @@ private struct FamiliarRecordCollectionSurface: View {
                         showsAllRecords = true
                     } label: {
                         Label(String(localized: "records.view_all", defaultValue: "Search all records"), systemImage: "magnifyingglass")
-                            .font(.caption.weight(.semibold))
+                            .font(FamiliarTypography.caption.weight(.semibold))
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(FamiliarTheme.accentInk)
@@ -1932,7 +1940,7 @@ private struct FamiliarRecordFilterChips: View {
             selected = value
         } label: {
             Text(title)
-                .font(.caption.weight(.medium))
+                .font(FamiliarTypography.caption.weight(.medium))
                 .foregroundStyle(selected == value ? FamiliarTheme.accentInk : FamiliarTheme.inkSecondary)
                 .padding(.horizontal, FamiliarAISurfaceMetric.spaceM)
                 .frame(minHeight: 30)
@@ -1965,17 +1973,17 @@ private struct FamiliarRecordRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: FamiliarAISurfaceMetric.spaceM) {
             Image(systemName: statusSymbol)
-                .font(.caption.weight(.semibold))
+                .font(FamiliarTypography.caption.weight(.semibold))
                 .foregroundStyle(FamiliarTheme.accent)
                 .frame(width: FamiliarAISurfaceMetric.icon, height: FamiliarAISurfaceMetric.icon)
             VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
                 Text(primary?.value ?? record.id)
-                    .font(.subheadline.weight(.medium))
+                    .font(FamiliarTypography.secondary.weight(.medium))
                     .foregroundStyle(FamiliarTheme.ink)
                     .lineLimit(2)
                 ForEach(secondary, id: \.name) { field in
                     Text("\(fieldTitle(field.name)): \(formatted(field))")
-                        .font(.caption)
+                        .font(FamiliarTypography.caption)
                         .foregroundStyle(FamiliarTheme.inkSecondary)
                         .lineLimit(2)
                 }
@@ -2048,8 +2056,8 @@ private struct FamiliarRecordCollectionDetailView: View {
             .navigationTitle(collection.summary)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(String(localized: "common.done")) { dismiss() }
+                ToolbarItem(placement: .confirmationAction) {
+                    FamiliarDismissButton()
                 }
             }
         }
@@ -2064,16 +2072,16 @@ private struct FamiliarDiffSurface: View {
         if case .diff(let diff) = surface.resultEnvelope?.presentation.content {
             VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceS) {
                 Label(diff.summary, systemImage: "arrow.left.arrow.right")
-                    .font(.subheadline.weight(.semibold))
+                    .font(FamiliarTypography.secondary.weight(.semibold))
                     .foregroundStyle(FamiliarTheme.ink)
                 Text(changeSummary(diff))
-                    .font(.caption)
+                    .font(FamiliarTypography.caption)
                     .foregroundStyle(FamiliarTheme.inkSecondary)
                 Button {
                     showsDiff = true
                 } label: {
                     Label(String(localized: "diff.view_full", defaultValue: "Review full change"), systemImage: "doc.text.magnifyingglass")
-                        .font(.caption.weight(.semibold))
+                        .font(FamiliarTypography.caption.weight(.semibold))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(FamiliarTheme.accentInk)
@@ -2119,8 +2127,8 @@ private struct FamiliarDiffDetailView: View {
             .navigationTitle(diff.summary)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(String(localized: "common.done")) { dismiss() }
+                ToolbarItem(placement: .confirmationAction) {
+                    FamiliarDismissButton()
                 }
             }
         }
@@ -2136,10 +2144,10 @@ private struct FamiliarDiffBlock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceS) {
             Label(title, systemImage: symbol)
-                .font(.headline)
+                .font(FamiliarTypography.sectionTitle)
             ScrollView(.horizontal) {
                 Text(text)
-                    .font(.body.monospaced())
+                    .font(FamiliarTypography.body.monospaced())
                     .textSelection(.enabled)
                     .padding(FamiliarAISurfaceMetric.spaceM)
             }
@@ -2153,7 +2161,7 @@ private struct FamiliarWriteReceipt: View {
     let surface: FamiliarSurfaceDescriptor
     let canUndo: Bool
     let onUndo: () -> Void
-    @State private var previewURL: URL?
+    @State private var previewFile: FamiliarPreparedFilePreview?
 
     var body: some View {
         VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceM) {
@@ -2162,9 +2170,9 @@ private struct FamiliarWriteReceipt: View {
                     .foregroundStyle(surface.phase == .undone ? FamiliarTheme.inkTertiary : FamiliarTheme.success)
                     .frame(width: FamiliarAISurfaceMetric.icon)
                 VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
-                    Text(surface.title).font(.subheadline.weight(.semibold)).foregroundStyle(FamiliarTheme.ink)
+                    Text(surface.title).font(FamiliarTypography.secondary.weight(.semibold)).foregroundStyle(FamiliarTheme.ink)
                     if let detail = receiptDetail {
-                        Text(detail).font(.caption).foregroundStyle(FamiliarTheme.inkSecondary)
+                        Text(detail).font(FamiliarTypography.caption).foregroundStyle(FamiliarTheme.inkSecondary)
                     }
                 }
                 Spacer(minLength: 0)
@@ -2176,7 +2184,7 @@ private struct FamiliarWriteReceipt: View {
                     // second overlapping target doing the same thing would only shrink the one
                     // the user actually aims at.
                     Label(artifact.title, systemImage: "doc.richtext")
-                        .font(.subheadline.weight(.medium))
+                        .font(FamiliarTypography.secondary.weight(.medium))
                         .foregroundStyle(FamiliarTheme.accentInk)
                     Spacer(minLength: 0)
                     if let artifactURL {
@@ -2184,7 +2192,7 @@ private struct FamiliarWriteReceipt: View {
                             .accessibilityLabel(String(localized: "common.share"))
                             .frame(minWidth: FamiliarControlSize.minimumHitTarget, minHeight: FamiliarControlSize.minimumHitTarget)
                         Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
+                            .font(FamiliarTypography.caption.weight(.semibold))
                             .foregroundStyle(FamiliarTheme.inkTertiary)
                     }
                 }
@@ -2192,13 +2200,13 @@ private struct FamiliarWriteReceipt: View {
 
             if let authorizationSummary {
                 Label(authorizationSummary, systemImage: surface.automaticAuthorization ? "checkmark.shield.fill" : "hand.raised")
-                    .font(.caption)
+                    .font(FamiliarTypography.caption)
                     .foregroundStyle(FamiliarTheme.inkSecondary)
             }
 
             if canUndo {
                 Button(String(localized: "common.undo"), action: onUndo)
-                    .font(.subheadline.weight(.semibold))
+                    .font(FamiliarTypography.secondary.weight(.semibold))
                     .foregroundStyle(FamiliarTheme.accentInk)
                     .frame(minHeight: FamiliarControlSize.minimumHitTarget)
             }
@@ -2211,13 +2219,17 @@ private struct FamiliarWriteReceipt: View {
         .contentShape(RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous))
         .onTapGesture {
             guard let artifactURL else { return }
-            previewURL = artifactURL
+            previewFile = .init(url: artifactURL, format: surface.artifact?.format)
         }
         // Only announce the card as a button when there is a file to open; Undo and Share
         // stay separate elements so VoiceOver can still reach them.
         .accessibilityAddTraits(artifactURL == nil ? [] : .isButton)
-        .sheet(isPresented: Binding(get: { previewURL != nil }, set: { if !$0 { previewURL = nil } })) {
-            if let previewURL { FamiliarAttachmentPreviewView(url: previewURL, format: surface.artifact?.format) }
+        .accessibilityAction {
+            guard let url = artifactURL else { return }
+            previewFile = .init(url: url, format: surface.artifact?.format)
+        }
+        .sheet(item: $previewFile) { file in
+            FamiliarAttachmentPreviewView(url: file.url, format: file.format)
         }
     }
 
@@ -2245,7 +2257,7 @@ private struct FamiliarWriteReceipt: View {
     private var receiptDetail: String? {
         guard let content = surface.resultEnvelope?.presentation.content else { return surface.detail }
         switch content {
-        case .mutationReceipt(let receipt): return receipt.operation
+        case .mutationReceipt: return nil
         case .artifactMutation(let artifact): return "\(artifact.operation) · \(ByteCountFormatter.string(fromByteCount: artifact.byteSize, countStyle: .file))"
         case .scalar, .searchResults, .document, .contextMatches, .recordCollection, .diff, .taskList, .recommendation, .insight, .code, .shareDraft, .shellExecution: return surface.detail
         }
@@ -2264,18 +2276,18 @@ private struct FamiliarFailureRecovery: View {
                 .foregroundStyle(surface.phase == .cancelled ? FamiliarTheme.inkTertiary : FamiliarTheme.failure)
                 .frame(width: FamiliarAISurfaceMetric.icon)
             VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceS) {
-                Text(surface.title).font(.subheadline.weight(.semibold)).foregroundStyle(FamiliarTheme.ink)
+                Text(surface.title).font(FamiliarTypography.secondary.weight(.semibold)).foregroundStyle(FamiliarTheme.ink)
                 if let detail = surface.detail, !detail.isEmpty {
-                    Text(detail).font(.caption).foregroundStyle(FamiliarTheme.inkSecondary).textSelection(.enabled)
+                    Text(detail).font(FamiliarTypography.caption).foregroundStyle(FamiliarTheme.inkSecondary).textSelection(.enabled)
                 }
                 if canUndo {
                     Button(String(localized: "common.undo"), action: onUndo)
-                        .font(.subheadline.weight(.semibold))
+                        .font(FamiliarTypography.secondary.weight(.semibold))
                         .frame(minHeight: FamiliarControlSize.minimumHitTarget)
                 }
                 if let onRetry {
                     Button(String(localized: "message.retry"), action: onRetry)
-                        .font(.subheadline.weight(.semibold))
+                        .font(FamiliarTypography.secondary.weight(.semibold))
                         .foregroundStyle(FamiliarTheme.failure)
                         .frame(minHeight: FamiliarControlSize.minimumHitTarget)
                 }
@@ -2318,7 +2330,7 @@ private struct FamiliarActivityTrace: View {
                     Text(duration(startedAt, end)).font(.caption2.monospacedDigit()).foregroundStyle(FamiliarTheme.inkTertiary)
                 }
             }
-            .font(.caption.weight(.semibold))
+            .font(FamiliarTypography.caption.weight(.semibold))
             .foregroundStyle(FamiliarTheme.inkSecondary)
         }
         .tint(FamiliarTheme.inkSecondary)
@@ -2359,7 +2371,7 @@ private struct FamiliarContextTrace: View {
         HStack(alignment: .top, spacing: FamiliarAISurfaceMetric.spaceS) {
             Image(systemName: symbol).frame(width: FamiliarAISurfaceMetric.icon).foregroundStyle(FamiliarTheme.inkTertiary)
             VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
-                Text(title).font(.caption.weight(.semibold)).foregroundStyle(FamiliarTheme.ink)
+                Text(title).font(FamiliarTypography.caption.weight(.semibold)).foregroundStyle(FamiliarTheme.ink)
                 Text(detail).font(.caption2).foregroundStyle(FamiliarTheme.inkSecondary).textSelection(.enabled)
             }
         }
@@ -2376,12 +2388,12 @@ private struct FamiliarTypedResult: View {
             if showsHeader {
                 HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
                     Image(systemName: symbol).frame(width: FamiliarAISurfaceMetric.icon)
-                    Text(surface.title).font(.caption.weight(.semibold))
+                    Text(surface.title).font(FamiliarTypography.caption.weight(.semibold))
                 }
                 .foregroundStyle(FamiliarTheme.inkSecondary)
             }
             if let content = surface.resultEnvelope?.presentation.content { contentView(content) }
-            else if let detail = surface.detail { Text(detail).font(.caption).foregroundStyle(FamiliarTheme.inkSecondary) }
+            else if let detail = surface.detail { Text(detail).font(FamiliarTypography.caption).foregroundStyle(FamiliarTheme.inkSecondary) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -2410,7 +2422,7 @@ private struct FamiliarTypedResult: View {
                 .foregroundStyle(FamiliarTheme.inkTertiary)
         case .document(let document):
             HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
-                if let title = document.title { Text(title).font(.caption.weight(.medium)).foregroundStyle(FamiliarTheme.ink) }
+                if let title = document.title { Text(title).font(FamiliarTypography.caption.weight(.medium)).foregroundStyle(FamiliarTheme.ink) }
                 Spacer(minLength: 0)
                 FamiliarSourceStatusLabel(title: String(localized: "source.status.read", defaultValue: "Read"), isRead: true)
             }
@@ -2427,7 +2439,7 @@ private struct FamiliarTypedResult: View {
     private func traceValue(label: String?, value: String) -> some View {
         VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
             if let label { Text(label).font(.caption2.weight(.semibold)).foregroundStyle(FamiliarTheme.inkTertiary) }
-            Text(value).font(.caption).foregroundStyle(FamiliarTheme.ink).textSelection(.enabled)
+            Text(value).font(FamiliarTypography.caption).foregroundStyle(FamiliarTheme.ink).textSelection(.enabled)
         }
     }
 
@@ -2465,7 +2477,7 @@ private struct FamiliarShellExecutionSurface: View {
                     Image(systemName: "terminal")
                         .foregroundStyle(FamiliarTheme.accentInk)
                     Text(shell.summary)
-                        .font(.subheadline.weight(.semibold))
+                        .font(FamiliarTypography.secondary.weight(.semibold))
                     Spacer(minLength: 0)
                     Text(shell.status)
                         .font(.caption2.weight(.semibold))
@@ -2477,7 +2489,7 @@ private struct FamiliarShellExecutionSurface: View {
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(FamiliarTheme.inkTertiary)
                     Text(shell.command)
-                        .font(.caption.monospaced())
+                        .font(FamiliarTypography.caption.monospaced())
                         .foregroundStyle(FamiliarTheme.ink)
                         .textSelection(.enabled)
                     Text("\(shell.workingDirectory) · \(shell.networkEnabled ? String(localized: "shell.network.enabled", defaultValue: "Public Internet On") : String(localized: "shell.network.disabled", defaultValue: "Network Off"))")
@@ -2505,7 +2517,7 @@ private struct FamiliarShellExecutionSurface: View {
                         shell.modifiedFiles.count,
                         shell.removedFiles.count
                     ))
-                    .font(.caption)
+                    .font(FamiliarTypography.caption)
                     .foregroundStyle(FamiliarTheme.inkSecondary)
                 }
             }
@@ -2558,7 +2570,7 @@ private struct FamiliarAssistantFooter: View {
                         HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
                             FamiliarSourceCluster(sources: message.sources)
                             Text(String(format: String(localized: "message.sources.count", defaultValue: "%lld sources"), message.sources.count))
-                                .font(.caption)
+                                .font(FamiliarTypography.caption)
                                 .foregroundStyle(FamiliarTheme.inkSecondary)
                         }
                         .padding(.horizontal, FamiliarAISurfaceMetric.spaceXS)
@@ -2610,7 +2622,7 @@ private struct FamiliarInlineSources: View {
             HStack(alignment: .center, spacing: FamiliarAISurfaceMetric.spaceS) {
                 FamiliarSourceGlyph(source: source)
                 Text(source.title)
-                    .font(.caption.weight(.medium))
+                    .font(FamiliarTypography.caption.weight(.medium))
                     .foregroundStyle(FamiliarTheme.ink)
                     .lineLimit(1)
                 Spacer(minLength: 0)
@@ -2620,7 +2632,7 @@ private struct FamiliarInlineSources: View {
                     .lineLimit(1)
             }
             .padding(.horizontal, FamiliarAISurfaceMetric.spaceS)
-            .frame(minHeight: 32)
+            .frame(minHeight: FamiliarControlSize.minimumHitTarget)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -2728,7 +2740,7 @@ private struct FamiliarFollowUps: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(String(localized: "message.follow_ups", defaultValue: "Follow-ups"))
-                .font(.caption.weight(.semibold))
+                .font(FamiliarTypography.caption.weight(.semibold))
                 .foregroundStyle(FamiliarTheme.inkSecondary)
                 .padding(.bottom, FamiliarAISurfaceMetric.spaceXS)
 
@@ -2747,7 +2759,7 @@ private struct FamiliarFollowUps: View {
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(FamiliarTheme.inkTertiary)
                         Text(followUp.title)
-                            .font(.subheadline)
+                            .font(FamiliarTypography.secondary)
                             .foregroundStyle(FamiliarTheme.ink)
                             .multilineTextAlignment(.leading)
                         Spacer(minLength: 0)
@@ -2837,10 +2849,10 @@ private struct FamiliarSelectionActions: View {
                         onInsertPrompt(action.prompt(for: selection))
                     } label: {
                         Label(action.title, systemImage: action.symbol)
-                            .font(.caption.weight(.medium))
+                            .font(FamiliarTypography.caption.weight(.medium))
                             .foregroundStyle(FamiliarTheme.ink)
                             .padding(.horizontal, FamiliarAISurfaceMetric.spaceS)
-                            .frame(minHeight: 32)
+                            .frame(minHeight: FamiliarControlSize.minimumHitTarget)
                             .background(FamiliarTheme.surface, in: Capsule())
                             .overlay { Capsule().stroke(FamiliarTheme.line, lineWidth: FamiliarAISurfaceMetric.hairline) }
                     }
@@ -2866,11 +2878,11 @@ private struct FamiliarMessageAction: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 14, weight: .regular))
-                .frame(width: 28, height: 28)
+                .font(.system(size: FamiliarIconSize.standard, weight: .regular))
+                .frame(width: FamiliarControlSize.minimumHitTarget, height: FamiliarControlSize.minimumHitTarget)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FamiliarIconButtonStyle())
         .accessibilityLabel(label)
     }
 }
@@ -2961,18 +2973,18 @@ struct FamiliarAssistantTurnVisualFixture: View {
                             .foregroundStyle(FamiliarTheme.inkSecondary)
                     } label: {
                         Label(String(localized: "response.reasoning_summary", defaultValue: "Reasoning summary"), systemImage: "sparkles")
-                            .font(.caption.weight(.semibold))
+                            .font(FamiliarTypography.caption.weight(.semibold))
                     }
                 }
                 fixtureSection(String(localized: "visual.fixture.search", defaultValue: "Search"), id: "search") {
                     FamiliarTypedResult(surface: Self.searchSurface, readURLs: ["https://example.com/read"])
                 }
-                fixtureSection(String(localized: "visual.fixture.tool_chips", defaultValue: "Tool Chips"), id: "tool-chips") {
-                    FamiliarToolChips(
-                        surfaces: Self.toolChipSurfaces,
-                        status: Self.loadingSurface,
-                        reasoningSummary: String(localized: "visual.fixture.reasoning.detail", defaultValue: "Compared the request with the available context and checked the important constraints.")
-                    )
+                fixtureSection(String(localized: "visual.fixture.tool_results", defaultValue: "Tool results"), id: "tool-results") {
+                    ForEach(Self.executionSurfaces) { surface in
+                        FamiliarExecutionBlock(surface: surface, canUndo: false,
+                            onResolveApproval: { _, _ in }, onResolveClarification: { _, _ in },
+                            onInsertPrompt: { _ in }, onUndo: {}, onRetry: nil)
+                    }
                 }
                 fixtureSection(String(localized: "visual.fixture.approval", defaultValue: "Approval"), id: "approval") {
                     turnSurface(Self.approvalSurface)
@@ -3090,7 +3102,7 @@ struct FamiliarAssistantTurnVisualFixture: View {
         approvalUndoPolicy: .durable
     )
 
-    private static let toolChipSurfaces = [
+    private static let executionSurfaces = [
         FamiliarSurfaceDescriptor(
             id: "fixture-tool-date",
             runID: "fixture",

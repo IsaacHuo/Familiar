@@ -54,7 +54,7 @@ struct FamiliarVoiceProviderEditor: View {
                 TextField(String(localized: "provider.name"), text: $value.name)
                 TextField(String(localized: "provider.endpoint"), text: $value.baseURL).textInputAutocapitalization(.never).autocorrectionDisabled()
                 SecureField(String(localized: "settings.api_key.replace_placeholder"), text: $key).textInputAutocapitalization(.never).autocorrectionDisabled()
-                if value.vendor == "xunfei" { Text("App ID;API Key;API Secret").font(.caption) }
+                if value.vendor == "xunfei" { Text("App ID;API Key;API Secret").font(FamiliarTypography.caption) }
                 Section(String(localized: "settings.model")) {
                     TextField(String(localized: "voice.input_model"), text: $value.inputModel)
                     TextField(String(localized: "voice.output_model"), text: $value.outputModel)

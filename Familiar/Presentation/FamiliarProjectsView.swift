@@ -178,6 +178,14 @@ private struct FamiliarProjectDetailView: View {
 
     var body: some View {
         List {
+            Section {
+                Button {
+                    onConversationRequest(.create(projectID: project.id))
+                } label: {
+                    Label(String(localized: "project.new_chat"), systemImage: "square.and.pencil")
+                }
+                .disabled(project.status != .active)
+            }
             if !project.summary.isEmpty {
                 Section {
                     FamiliarProjectHero(project: project)
@@ -228,12 +236,6 @@ private struct FamiliarProjectDetailView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
-                    Button {
-                        onConversationRequest(.create(projectID: project.id))
-                    } label: {
-                        Label(String(localized: "project.new_chat"), systemImage: "square.and.pencil")
-                    }
-                    Divider()
                     Button(action: onEdit) {
                         Label(String(localized: "common.edit"), systemImage: "pencil")
                     }
@@ -344,47 +346,6 @@ private struct FamiliarProjectDetailView: View {
             .buttonStyle(.plain)
 
             NavigationLink {
-                FamiliarProjectEnvironmentView(projectID: project.id)
-            } label: {
-                FamiliarProjectContextRow(
-                    title: String(localized: "project.environment", defaultValue: "Environment"),
-                    detail: String(localized: "project.environment.detail", defaultValue: "Isolated Linux dependencies and verified lock"),
-                    symbol: "shippingbox",
-                    count: nil
-                )
-            }
-
-            NavigationLink {
-                FamiliarProjectSkillsView(projectID: project.id)
-            } label: {
-                FamiliarProjectContextRow(
-                    title: String(localized: "settings.skills.title", defaultValue: "Skills"),
-                    detail: String(localized: "project.skills.context_detail", defaultValue: "Instruction-only Skills available for on-demand loading"),
-                    symbol: "wand.and.stars",
-                    count: nil
-                )
-            }
-
-            NavigationLink {
-                FamiliarMCPSettingsView(projectID: project.id)
-            } label: {
-                FamiliarProjectContextRow(title: String(localized: "mcp.title"), detail: String(localized: "mcp.settings.detail"), symbol: "wrench.and.screwdriver", count: nil)
-            }
-
-            if let registry {
-                NavigationLink {
-                    FamiliarProjectCapabilitiesView(projectID: project.id, registry: registry)
-                } label: {
-                    FamiliarProjectContextRow(
-                        title: String(localized: "project.capabilities", defaultValue: "Capabilities"),
-                        detail: String(localized: "project.capabilities.detail", defaultValue: "Tools this Project may expose to the Agent"),
-                        symbol: "switch.2",
-                        count: nil
-                    )
-                }
-            }
-
-            NavigationLink {
                 FamiliarProjectConversationsView(
                     conversations: sortedConversations,
                     onSelect: { onConversationRequest(.open(conversationID: $0.id)) },
@@ -403,26 +364,84 @@ private struct FamiliarProjectDetailView: View {
             }
 
             NavigationLink {
-                FamiliarProjectRunsView(runs: sortedRuns)
+                projectAdvancedSettings
             } label: {
-                FamiliarProjectContextRow(
-                    title: String(localized: "project.runs", defaultValue: "Runs"),
-                    detail: String(
-                        localized: "project.runs.context_detail",
-                        defaultValue: "Execution history and frozen context"
-                    ),
-                    symbol: "bolt",
-                    count: sortedRuns.count
-                )
+                FamiliarProjectContextRow(title: String(localized: "settings.advanced.title"),
+                    detail: String(localized: "project.advanced.detail"), symbol: "slider.horizontal.3", count: nil)
             }
         }
+    }
+
+    private var projectAdvancedSettings: some View {
+        List {
+            Section(String(localized: "settings.advanced.configuration")) {
+                NavigationLink {
+                    FamiliarProjectEnvironmentView(projectID: project.id)
+                } label: {
+                    FamiliarProjectContextRow(
+                        title: String(localized: "project.environment", defaultValue: "Environment"),
+                        detail: String(localized: "project.environment.detail", defaultValue: "Dependencies for advanced file tasks"),
+                        symbol: "shippingbox",
+                        count: nil
+                    )
+                }
+
+                NavigationLink {
+                    FamiliarProjectSkillsView(projectID: project.id)
+                } label: {
+                    FamiliarProjectContextRow(
+                        title: String(localized: "settings.skills.title", defaultValue: "Skills"),
+                        detail: String(localized: "project.skills.context_detail", defaultValue: "Guidance available for this Project"),
+                        symbol: "wand.and.stars",
+                        count: nil
+                    )
+                }
+
+                NavigationLink {
+                    FamiliarMCPSettingsView(projectID: project.id)
+                } label: {
+                    FamiliarProjectContextRow(title: String(localized: "mcp.title"), detail: String(localized: "mcp.settings.detail"), symbol: "wrench.and.screwdriver", count: nil)
+                }
+
+                if let registry {
+                    NavigationLink {
+                        FamiliarProjectCapabilitiesView(projectID: project.id, registry: registry)
+                    } label: {
+                        FamiliarProjectContextRow(
+                            title: String(localized: "project.capabilities", defaultValue: "Capabilities"),
+                            detail: String(localized: "project.capabilities.detail", defaultValue: "Choose the tools this Project can use"),
+                            symbol: "switch.2",
+                            count: nil
+                        )
+                    }
+                }
+
+            }
+            Section(String(localized: "settings.advanced.activity")) {
+                NavigationLink {
+                    FamiliarProjectRunsView(runs: sortedRuns)
+                } label: {
+                    FamiliarProjectContextRow(
+                        title: String(localized: "project.runs", defaultValue: "Runs"),
+                        detail: String(
+                            localized: "project.runs.context_detail",
+                            defaultValue: "Execution history and frozen context"
+                        ),
+                        symbol: "bolt",
+                        count: sortedRuns.count
+                    )
+                }
+            }
+        }
+        .navigationTitle(String(localized: "settings.advanced.title"))
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private var artifactsSection: some View {
         Section {
             if recentArtifacts.isEmpty {
                 emptyRow(
-                    String(localized: "artifact.empty", defaultValue: "No artifacts yet"),
+                    String(localized: "artifact.empty", defaultValue: "No outputs yet"),
                     systemImage: "doc.badge.gearshape"
                 )
             } else {
@@ -432,7 +451,7 @@ private struct FamiliarProjectDetailView: View {
             }
         } header: {
             FamiliarProjectSectionHeader(
-                title: String(localized: "artifact.section", defaultValue: "Artifacts"),
+                title: String(localized: "artifact.section", defaultValue: "Outputs"),
                 count: projectArtifacts.count,
                 destination: {
                     FamiliarProjectArtifactsView(
@@ -623,7 +642,7 @@ private struct FamiliarProjectEnvironmentView: View {
                 }
                 Section(String(localized: "environment.packages", defaultValue: "Resolved Packages")) {
                     ForEach(decodedPackages(record), id: \.self) { package in
-                        Text(package).font(.body.monospaced())
+                        Text(package).font(FamiliarTypography.body.monospaced())
                     }
                 }
             } else {
@@ -664,7 +683,7 @@ private struct FamiliarProjectSkillsView: View {
                 )) {
                     VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                         Text(skill.name)
-                        Text(skill.descriptionText).font(.caption).foregroundStyle(.secondary)
+                        Text(skill.descriptionText).font(FamiliarTypography.caption).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -721,7 +740,7 @@ private struct FamiliarProjectCapabilitiesView: View {
         )) {
             VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                 Text(FamiliarToolPresentationName.title(for: manifest.name))
-                Text(FamiliarToolPresentationName.effectDescription(manifest)).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                Text(FamiliarToolPresentationName.effectDescription(manifest)).font(FamiliarTypography.caption).foregroundStyle(.secondary).lineLimit(2)
             }
         }
         .disabled(FamiliarToolGroup.baseToolNames.contains(manifest.name))
@@ -986,12 +1005,12 @@ private struct FamiliarProjectArtifactsView: View {
                         String(format: String(localized: "artifact.versions.count", defaultValue: "%@ earlier versions"), NSNumber(value: lineage.earlier.count)),
                         systemImage: "clock.arrow.circlepath"
                     )
-                    .font(.caption)
+                    .font(FamiliarTypography.caption)
                     .foregroundStyle(.secondary)
                 }
             }
         }
-        .navigationTitle(String(localized: "artifact.section", defaultValue: "Artifacts"))
+        .navigationTitle(String(localized: "artifact.section", defaultValue: "Outputs"))
     }
 }
 
@@ -1034,7 +1053,7 @@ private struct FamiliarProjectArtifactRow: View {
                     VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                         Text(artifact.title).foregroundStyle(.primary)
                         Text(detail)
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(FamiliarTypography.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
                 }
@@ -1095,7 +1114,7 @@ private struct FamiliarProjectConversationsView: View {
                 VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                     Text(conversation.title).foregroundStyle(.primary)
                     Text(conversation.updatedAt, format: .dateTime.month(.abbreviated).day().hour().minute())
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(FamiliarTypography.caption).foregroundStyle(.secondary)
                 }
             }
         }
@@ -1159,7 +1178,7 @@ private struct FamiliarProjectRunRow: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Text(run.startedAt, format: .dateTime.month(.abbreviated).day().hour().minute())
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(FamiliarTypography.caption).foregroundStyle(.secondary)
             }
         }
     }
@@ -1279,7 +1298,7 @@ private struct FamiliarProjectRunDetailView: View {
                         VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                             Text(reference.filename)
                             Text("v\(reference.version) · \(String(reference.contentHash.prefix(12)))")
-                                .font(.caption.monospaced()).foregroundStyle(.secondary)
+                                .font(FamiliarTypography.caption.monospaced()).foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -1294,10 +1313,10 @@ private struct FamiliarProjectRunDetailView: View {
                         VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                             Text(skill.name)
                             Text("\(skill.stableID) · v\(skill.version) · \(String(skill.contentHash.prefix(12)))")
-                                .font(.caption.monospaced()).foregroundStyle(.secondary)
+                                .font(FamiliarTypography.caption.monospaced()).foregroundStyle(.secondary)
                             if !skill.allowedTools.isEmpty {
                                 Text(skill.allowedTools.joined(separator: ", "))
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    .font(FamiliarTypography.caption).foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -1378,7 +1397,7 @@ private struct FamiliarProjectRunStep: View {
                     LabeledContent(String(localized: "project.run.step.invocation", defaultValue: "Invocation"), value: invocation.state.rawValue)
                     LabeledContent(String(localized: "project.run.step.arguments_hash", defaultValue: "Arguments hash")) {
                         Text(invocation.argumentsHash)
-                            .font(.caption.monospaced())
+                            .font(FamiliarTypography.caption.monospaced())
                             .textSelection(.enabled)
                     }
                 }
@@ -1405,7 +1424,7 @@ private struct FamiliarProjectRunStep: View {
                     LabeledContent(String(localized: "project.run.step.payload", defaultValue: "Result payload"), value: result.payloadName)
                     LabeledContent(String(localized: "project.run.step.payload_hash", defaultValue: "Payload hash")) {
                         Text(result.payloadHash)
-                            .font(.caption.monospaced())
+                            .font(FamiliarTypography.caption.monospaced())
                             .textSelection(.enabled)
                     }
                     if let envelope = try? JSONDecoder().decode(FamiliarToolResultEnvelope.self, from: Data(result.envelopeJSON.utf8)) {
@@ -1415,7 +1434,7 @@ private struct FamiliarProjectRunStep: View {
                     }
                 }
             }
-            .font(.caption)
+            .font(FamiliarTypography.caption)
             .padding(.vertical, FamiliarSpacing.small)
         } label: {
             HStack(spacing: FamiliarSpacing.medium) {
@@ -1426,7 +1445,7 @@ private struct FamiliarProjectRunStep: View {
                     Text(activity.toolName.map { FamiliarToolPresentationName.title(for: $0) } ?? activity.summary)
                         .foregroundStyle(.primary)
                     Text(activity.phase.rawValue)
-                        .font(.caption)
+                        .font(FamiliarTypography.caption)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -1472,29 +1491,29 @@ private struct FamiliarProjectRunApproval: View {
         VStack(alignment: .leading, spacing: FamiliarSpacing.small) {
             HStack {
                 Label(FamiliarToolPresentationName.title(for: approval.toolName), systemImage: approval.automaticAuthorization ? "checkmark.shield.fill" : "hand.raised.fill")
-                    .font(.headline)
+                    .font(FamiliarTypography.sectionTitle)
                 Spacer(minLength: 0)
                 Text(decisionTitle)
-                    .font(.caption.weight(.semibold))
+                    .font(FamiliarTypography.caption.weight(.semibold))
                     .foregroundStyle(approval.decision == .approved ? FamiliarTheme.success : .secondary)
             }
             if let target = approval.target, !target.isEmpty {
                 Text(target)
-                    .font(.subheadline)
+                    .font(FamiliarTypography.secondary)
                     .foregroundStyle(.secondary)
             }
             ForEach(fields) { field in
                 LabeledContent(field.label, value: field.formattedValue)
-                    .font(.caption)
+                    .font(FamiliarTypography.caption)
             }
             LabeledContent(String(localized: "project.run.authorization.risk", defaultValue: "Risk"), value: approval.risk.rawValue)
-                .font(.caption)
+                .font(FamiliarTypography.caption)
             LabeledContent(String(localized: "project.run.authorization.scope", defaultValue: "Scope"), value: approval.scope?.rawValue ?? "-")
-                .font(.caption)
+                .font(FamiliarTypography.caption)
             LabeledContent(String(localized: "project.run.authorization.allowed", defaultValue: "Allowed choices"), value: allowedDurations.map(\.rawValue).joined(separator: ", "))
-                .font(.caption)
+                .font(FamiliarTypography.caption)
             Text(approval.consequence)
-                .font(.caption)
+                .font(FamiliarTypography.caption)
                 .foregroundStyle(.secondary)
             Text(approval.requestedAt, format: .dateTime.year().month().day().hour().minute().second())
                 .font(.caption2.monospacedDigit())
@@ -1668,7 +1687,7 @@ private struct FamiliarProjectEditorView: View {
                     TextEditor(text: $instruction)
                         .frame(minHeight: 160)
                     Text("\(min(instruction.count, FamiliarProjectService.maximumInstructionLength)) / \(FamiliarProjectService.maximumInstructionLength)")
-                        .font(.caption.monospacedDigit())
+                        .font(FamiliarTypography.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }

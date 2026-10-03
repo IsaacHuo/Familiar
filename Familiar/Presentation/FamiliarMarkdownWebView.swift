@@ -99,8 +99,8 @@ struct FamiliarMarkdownWebView: View {
                 .navigationTitle(String(localized: "mermaid.preview.title", defaultValue: "Diagram preview"))
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button(String(localized: "common.done")) { previewedDiagram = nil }
+                    ToolbarItem(placement: .confirmationAction) {
+                        FamiliarDismissButton()
                     }
                 }
             }
@@ -227,6 +227,9 @@ enum FamiliarMarkdownHTML {
 
 #if os(iOS)
 private struct FamiliarMarkdownPlatformWebView: UIViewRepresentable {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.colorSchemeContrast) private var accessibilityContrast
     let markdown: String
     let sources: [FamiliarSource]
     @Binding var height: CGFloat
@@ -259,7 +262,7 @@ private struct FamiliarMarkdownPlatformWebView: UIViewRepresentable {
         context.coordinator.openURL = openURL
         context.coordinator.onSelectionChange = onSelectionChange
         context.coordinator.onMermaidPreview = onMermaidPreview
-        context.coordinator.update(markdown: markdown, sources: sources, isStreaming: isStreaming, allowsMermaidPreview: allowsMermaidPreview, reduceMotion: reduceMotion, in: webView)
+        context.coordinator.update(markdown: markdown, sources: sources, isStreaming: isStreaming, allowsMermaidPreview: allowsMermaidPreview, reduceMotion: reduceMotion, styleJSON: FamiliarMarkdownStyle.json(colorScheme: colorScheme, size: dynamicTypeSize, contrast: accessibilityContrast), in: webView)
     }
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: FamiliarMarkdownWebCoordinator) {
@@ -354,7 +357,7 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
     private weak var webView: WKWebView?
     private var didStartLoading = false
     private var isRendererReady = false
-    private var pendingRender = FamiliarMarkdownRenderState(markdown: "", sourcesJSON: "[]", isStreaming: false, allowsMermaidPreview: true, reduceMotion: false)
+    private var pendingRender = FamiliarMarkdownRenderState(markdown: "", sourcesJSON: "[]", isStreaming: false, allowsMermaidPreview: true, reduceMotion: false, styleJSON: "{}")
     private var renderedState: FamiliarMarkdownRenderState?
     private var isRendering = false
     private var scheduledRender: DispatchWorkItem?
@@ -382,7 +385,7 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
         self.webView = webView
     }
 
-    func update(markdown: String, sources: [FamiliarSource], isStreaming: Bool, allowsMermaidPreview: Bool, reduceMotion: Bool, in webView: WKWebView) {
+    func update(markdown: String, sources: [FamiliarSource], isStreaming: Bool, allowsMermaidPreview: Bool, reduceMotion: Bool, styleJSON: String = "{}", in webView: WKWebView) {
         self.webView = webView
         if isStreaming {
             deliverSelection(nil)
@@ -392,7 +395,8 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
             sourcesJSON: FamiliarMarkdownHTML.sourcesJSONString(sources),
             isStreaming: isStreaming,
             allowsMermaidPreview: allowsMermaidPreview,
-            reduceMotion: reduceMotion
+            reduceMotion: reduceMotion,
+            styleJSON: styleJSON
         )
 
         if renderedState != pendingRender && didFailRendering.wrappedValue {
@@ -517,8 +521,10 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
         let target = pendingRender
         let literal = FamiliarMarkdownHTML.javascriptStringLiteral(target.markdown)
         let mermaidPreviewLabel = FamiliarMarkdownHTML.javascriptStringLiteral(String(localized: "mermaid.preview.action", defaultValue: "Open full-screen diagram"))
+        let copyLabel = FamiliarMarkdownHTML.javascriptStringLiteral(String(localized: "common.copy"))
+        let copiedLabel = FamiliarMarkdownHTML.javascriptStringLiteral(String(localized: "common.copied", defaultValue: "Copied"))
         isRendering = true
-        webView.evaluateJavaScript("window.FamiliarMarkdown.render(\(literal), { sources: \(target.sourcesJSON), streaming: \(target.isStreaming), mermaidPreviewEnabled: \(target.allowsMermaidPreview), mermaidPreviewLabel: \(mermaidPreviewLabel), reduceMotion: \(target.reduceMotion) });") { [weak self] _, error in
+        webView.evaluateJavaScript("window.FamiliarMarkdown.render(\(literal), { sources: \(target.sourcesJSON), streaming: \(target.isStreaming), mermaidPreviewEnabled: \(target.allowsMermaidPreview), mermaidPreviewLabel: \(mermaidPreviewLabel), reduceMotion: \(target.reduceMotion), style: \(target.styleJSON), copyLabel: \(copyLabel), copiedLabel: \(copiedLabel) });") { [weak self] _, error in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isRendering = false
@@ -582,4 +588,5 @@ private struct FamiliarMarkdownRenderState: Equatable {
     let isStreaming: Bool
     let allowsMermaidPreview: Bool
     let reduceMotion: Bool
+    let styleJSON: String
 }

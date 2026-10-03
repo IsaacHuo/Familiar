@@ -7,10 +7,10 @@ struct FamiliarKimiLoginView: View {
     @State private var errorMessage: String?
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
+            VStack(spacing: FamiliarSpacing.section) {
                 if let authorization {
                     Text(String(localized: "oauth.device.instructions")).multilineTextAlignment(.center)
-                    Text(authorization.userCode).font(.largeTitle.monospaced().bold()).textSelection(.enabled)
+                    Text(authorization.userCode).font(FamiliarTypography.largeTitle.monospaced().bold()).textSelection(.enabled)
                     if let url = URL(string: authorization.openURL), url.scheme == "https" {
                         Link(String(localized: "oauth.open"), destination: url).buttonStyle(.borderedProminent)
                     }
@@ -18,7 +18,7 @@ struct FamiliarKimiLoginView: View {
                 if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
                 else { ProgressView(String(localized: "oauth.waiting")) }
             }
-            .padding(24)
+            .padding(FamiliarSpacing.section)
             .navigationTitle("Kimi Code")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button(String(localized: "common.cancel")) { dismiss() } } }
             .task {

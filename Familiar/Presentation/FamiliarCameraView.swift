@@ -53,7 +53,7 @@ struct FamiliarCameraView: View {
                     }
                     .frame(width: 76, height: 76)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(FamiliarIconButtonStyle())
                 .disabled(camera.state != .ready || camera.isCapturing)
                 .accessibilityLabel(String(localized: "camera.capture"))
                 .accessibilityValue(camera.isCapturing ? String(localized: "camera.capturing") : "")
@@ -61,14 +61,14 @@ struct FamiliarCameraView: View {
                 cameraButton(systemName: "arrow.triangle.2.circlepath.camera", label: String(localized: "camera.switch"), disabled: !camera.canSwitchCamera, action: camera.switchCamera)
             }
         }
-        .padding(18)
+        .padding(FamiliarSpacing.large)
     }
 
     private func cameraButton(systemName: String, label: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName).font(.system(size: 20, weight: .semibold)).foregroundStyle(.white).frame(width: 48, height: 48)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FamiliarIconButtonStyle())
         .familiarGlassCircle(interactive: true)
         .disabled(disabled)
         .opacity(disabled ? 0.38 : 1)
@@ -76,10 +76,10 @@ struct FamiliarCameraView: View {
     }
 
     private func unavailable(title: String, message: String, settings: Bool) -> some View {
-        VStack(spacing: 18) {
+        VStack(spacing: FamiliarSpacing.large) {
             Image(systemName: "camera.fill").font(.system(size: 36, weight: .medium))
-            Text(title).font(.headline)
-            Text(message).font(.subheadline).multilineTextAlignment(.center).foregroundStyle(.white.opacity(0.72))
+            Text(title).font(FamiliarTypography.sectionTitle)
+            Text(message).font(FamiliarTypography.secondary).multilineTextAlignment(.center).foregroundStyle(.white.opacity(0.72))
             if settings {
                 Button(String(localized: "camera.open_settings")) {
                     guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
@@ -89,7 +89,7 @@ struct FamiliarCameraView: View {
             }
             Button(String(localized: "camera.close"), action: dismiss.callAsFunction).buttonStyle(.bordered)
         }
-        .foregroundStyle(.white).frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.black.ignoresSafeArea()).padding(28)
+        .foregroundStyle(.white).frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.black.ignoresSafeArea()).padding(FamiliarSpacing.section)
     }
 }
 

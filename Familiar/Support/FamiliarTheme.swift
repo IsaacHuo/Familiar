@@ -98,11 +98,11 @@ nonisolated enum FamiliarAISurfaceMetric {
     static let spaceM = FamiliarSpacing.medium
     static let spaceL = FamiliarSpacing.large
     static let spaceXL = FamiliarSpacing.section
-    static let cardPadding: CGFloat = 12
-    static let rowHeight: CGFloat = 44
+    static let cardPadding = FamiliarSpacing.medium
+    static let rowHeight = FamiliarControlSize.minimumHitTarget
     static let icon = FamiliarIconSize.standard
     static let compactIcon = FamiliarIconSize.compact
-    static let traceIndent: CGFloat = 18
+    static let traceIndent = FamiliarSpacing.large
     static let timelineWidth: CGFloat = 780
 }
 
@@ -177,6 +177,28 @@ struct FamiliarPillButtonStyle: ButtonStyle {
             .opacity(configuration.isPressed ? 0.82 : 1)
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
             .animation(FamiliarMotion.micro, value: configuration.isPressed)
+    }
+}
+
+/// Shared feedback and target size for custom icon actions. Native form/list
+/// buttons keep their system treatment; labels remain owned by each action.
+struct FamiliarIconButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .frame(minWidth: FamiliarControlSize.minimumHitTarget, minHeight: FamiliarControlSize.minimumHitTarget)
+            .contentShape(Rectangle())
+            .opacity(configuration.isPressed ? 0.65 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
+            .animation(FamiliarMotion.micro, value: configuration.isPressed)
+    }
+}
+
+struct FamiliarDismissButton: View {
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        Button(String(localized: "common.done", defaultValue: "Done")) { dismiss() }
+            .font(FamiliarTypography.button)
     }
 }
 

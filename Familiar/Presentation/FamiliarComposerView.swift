@@ -115,7 +115,7 @@ private struct FamiliarInlinePhotoPickerSheet: View {
                     dismiss()
                 } label: {
                     Text(pending.isEmpty ? String(localized: "attachment.all_photos") : String(format: String(localized: "attachment.add_photos_count"), pending.count))
-                        .font(.subheadline.weight(.semibold))
+                        .font(FamiliarTypography.secondary.weight(.semibold))
                         .padding(.horizontal, FamiliarSpacing.large)
                         .frame(height: FamiliarControlSize.minimumHitTarget)
                 }
@@ -298,9 +298,9 @@ struct FamiliarComposer: View {
                             .foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                             Text(String(localized: "slash.empty", defaultValue: "No Skills Available"))
-                                .font(.headline)
+                                .font(FamiliarTypography.sectionTitle)
                             Text(String(localized: "slash.empty.detail", defaultValue: "Create a Skill in Settings."))
-                                .font(.caption)
+                                .font(FamiliarTypography.caption)
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
@@ -322,10 +322,10 @@ struct FamiliarComposer: View {
                                             .foregroundStyle(.secondary)
                                         VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                                             Text("/\(skill.stableID)")
-                                                .font(.headline)
+                                                .font(FamiliarTypography.sectionTitle)
                                                 .foregroundStyle(.primary)
                                             Text(skill.detail.isEmpty ? skill.name : skill.detail)
-                                                .font(.caption)
+                                                .font(FamiliarTypography.caption)
                                                 .foregroundStyle(.secondary)
                                                 .lineLimit(1)
                                         }
@@ -408,7 +408,7 @@ struct FamiliarComposer: View {
                         Image(systemName: mode == .fullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
                             .foregroundStyle(.secondary).frame(width: 44, height: 44)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(FamiliarIconButtonStyle())
                     .accessibilityLabel(String(localized: mode == .fullscreen ? "composer.collapse" : "composer.expand"))
                 }
             }
@@ -436,7 +436,7 @@ struct FamiliarComposer: View {
                 )
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FamiliarIconButtonStyle())
         .popover(isPresented: $showsAddMenu, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 0) {
                 addMenuButton(.camera, title: String(localized: "attachment.camera"), symbol: "camera")
@@ -459,15 +459,15 @@ struct FamiliarComposer: View {
             showsSkillPalette = true
         } label: {
             Text("/")
-                .font(.system(size: 20, weight: .semibold, design: .rounded))
+                .font(FamiliarTypography.button)
                 .foregroundStyle(.primary)
                 .frame(
-                    width: 28,
+                    width: FamiliarControlSize.minimumHitTarget,
                     height: FamiliarControlSize.minimumHitTarget
                 )
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FamiliarIconButtonStyle())
         .disabled(isSending || skills.isEmpty)
         .accessibilityLabel(String(localized: "slash.open", defaultValue: "Choose a Skill"))
     }
@@ -482,7 +482,7 @@ struct FamiliarComposer: View {
                 .padding(.horizontal, FamiliarSpacing.large)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FamiliarIconButtonStyle())
     }
 
     private var micButton: some View {
@@ -496,7 +496,7 @@ struct FamiliarComposer: View {
                     height: FamiliarControlSize.minimumHitTarget
                 )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FamiliarIconButtonStyle())
         .accessibilityLabel(String(localized: isListening ? "speech.stop" : "speech.start"))
     }
 
@@ -516,7 +516,7 @@ struct FamiliarComposer: View {
                     height: FamiliarControlSize.minimumHitTarget
                 )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FamiliarIconButtonStyle())
         .disabled(!canSend)
         .accessibilityLabel(String(localized: isSending ? "message.stop" : "message.send"))
         .accessibilityHint(sendDisabledReason ?? "")
@@ -538,7 +538,7 @@ struct FamiliarComposer: View {
                             Image(systemName: "wand.and.stars")
                                 .foregroundStyle(FamiliarTheme.accent)
                             Text(selectedSkill.name)
-                                .font(.caption.weight(.semibold))
+                                .font(FamiliarTypography.caption.weight(.semibold))
                                 .lineLimit(1)
                             removeButton(label: String(localized: "slash.remove", defaultValue: "Remove Skill")) {
                                 selectedSkillID = nil
@@ -567,13 +567,14 @@ struct FamiliarComposer: View {
                                 images.removeAll { $0.id == item.id }
                             } label: {
                                 Image(systemName: "xmark")
-                                    .font(.caption.bold())
+                                    .font(FamiliarTypography.caption.bold())
                                     .foregroundStyle(.primary)
                                     .frame(width: 28, height: 28)
                                     .background(.regularMaterial, in: Circle())
                                     .frame(width: FamiliarControlSize.minimumHitTarget, height: FamiliarControlSize.minimumHitTarget)
                             }
                             .buttonStyle(.plain)
+                            .frame(minWidth: FamiliarControlSize.minimumHitTarget, minHeight: FamiliarControlSize.minimumHitTarget)
                             .accessibilityLabel(String(localized: "attachment.remove_image"))
                             .offset(x: 8, y: -8)
                         }
@@ -584,7 +585,7 @@ struct FamiliarComposer: View {
                             Image(systemName: file.mimeType == "application/pdf" ? "doc.richtext" : "doc.text")
                                 .foregroundStyle(FamiliarTheme.accent)
                             VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                                Text(file.filename).font(.caption).lineLimit(1)
+                                Text(file.filename).font(FamiliarTypography.caption).lineLimit(1)
                                 Text(
                                     "\(file.detectedFormat.uppercased()) · "
                                     + ByteCountFormatter.string(fromByteCount: file.byteSize, countStyle: .file)
@@ -605,7 +606,7 @@ struct FamiliarComposer: View {
                         HStack(spacing: FamiliarSpacing.small) {
                             ProgressView().controlSize(.small)
                             Text(String(localized: "attachment.processing"))
-                                .font(.caption)
+                                .font(FamiliarTypography.caption)
                         }
                         .padding(.horizontal, FamiliarSpacing.medium)
                         .frame(height: 48)
@@ -762,14 +763,7 @@ private struct FamiliarDraftImagePreviewView: View {
                     .accessibilityLabel(String(localized: "attachment.preview_image", defaultValue: "Image preview"))
             }
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                    }
-                    .accessibilityLabel(String(localized: "common.done", defaultValue: "Done"))
-                }
+                ToolbarItem(placement: .confirmationAction) { FamiliarDismissButton() }
                 ToolbarItem(placement: .destructiveAction) {
                     Button(role: .destructive) {
                         onDelete()
