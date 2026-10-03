@@ -1,6 +1,6 @@
 # Familiar 产品收敛与 Agent Harness 长期计划
 
-最后更新：2026-10-01。此清单跨对话持续维护。
+最后更新：2026-10-03。此清单跨对话持续维护。
 
 ## 目标与工作规则
 
@@ -31,7 +31,7 @@ Harness 收敛为 **One Agent + One Loop + Lazy Tools + Progressive Escalation**
 
 ## 当前切片
 
-**B1、B2、C1、C2、C3、C6 与 C7 的实现／静态／编译验证已完成；下一个切片是 C4 网页长期保存显式化。** 运行测试与真机验收仍独立待办。写入 journal、失败补偿和不可重复撤销的机制已接线；仍不能将外部系统写入与本地保存称为跨进程原子事务。
+**B1–B3、C1–C9、F1 与 D 阶段全部实现项／静态／编译验证已完成。D 的真机验收独立留 F14 与 docs/14-design-system-device-acceptance.md，未标为完成；后续进入 E 的性能／维护审查。** 运行测试与真机验收仍独立待办。写入 journal、失败补偿和不可重复撤销的机制已接线；仍不能将外部系统写入与本地保存称为跨进程原子事务。
 
 ## 审查基线
 
@@ -94,23 +94,23 @@ Harness 收敛为 **One Agent + One Loop + Lazy Tools + Progressive Escalation**
 
 ### B3 Progressive Escalation 与状态清理
 
-- [ ] B3.1 系统策略围绕最低必要复杂度、直接回答、按需工具、真实回执与失败诚实表达，不预设任务的阶段。
-- [ ] B3.2 保留首字节前有界 Provider 重试、独立 read 最多并行两路、write 不自动重放、预算耗尽收尾。
-- [ ] B3.3 清理无生产调用的 CapabilityResolver/Catalog/Grant 路径，保留唯一实际授权路径。持久数据结构的删除必须先确认引用和数据影响。
-- [ ] B3.4 不新增跨重启续跑、后台执行或 Plan 调度器。启动恢复继续把未完成 Run 明确终结，并保留已取得结果。
-- [ ] B3.5 不增加任务 Router。现有 Provider group fallback 仅负责用户所选模型服务；本地模型的未接通路径退出生产调用图。
+- [x] B3.1 系统策略围绕最低必要复杂度、直接回答、按需工具、真实回执与失败诚实表达，不预设任务的阶段。
+- [x] B3.2 保留首字节前有界 Provider 重试、独立 read 最多并行两路、write 不自动重放、预算耗尽收尾。
+- [x] B3.3 清理无生产调用的 CapabilityResolver/Catalog/Grant 路径，保留唯一实际授权路径。持久数据结构的删除必须先确认引用和数据影响。
+- [x] B3.4 不新增跨重启续跑、后台执行或 Plan 调度器。启动恢复继续把未完成 Run 明确终结，并保留已取得结果。
+- [x] B3.5 不增加任务 Router。现有 Provider group fallback 仅负责用户所选模型服务；本地模型的未接通路径退出生产调用图。
 
 ## C. 核心数据与输出可靠性
 
 - [x] C1 Memory 必须落盘成功后才发成功 ToolResult；落盘失败回结构化失败，不能让 UI／模型看到“已记住”。
 - [x] C2 将必要的 Artifact、Skill、Environment 结果提交纳入成功边界；核对 commit 后保存失败时的回滚与 Undo，避免重试重放已发生的外部写入。
 - [x] C3 发送前检查 Project 受保护上下文预算；拒绝发送时保留草稿和附件，不先提交消息再失败。
-- [ ] C4 网页抓取默认只保留聊天和 Run 证据；用户明确“保存到项目”后才成为长期 Resource，不再次抓取，保留 URL／时间／hash／截断来源。
-- [ ] C5 默认交付 Markdown/纯文本。DOCX/PDF/XLSX 等复杂生成和 Shell 需高级显式启用，真实 guest 验收前不作为默认完整能力。
+- [x] C4 网页抓取默认只保留聊天和 Run 证据；用户明确“保存到项目”后才成为长期 Resource，不再次抓取，保留 URL／时间／hash／截断来源。
+- [x] C5 默认交付 Markdown/纯文本。DOCX/PDF/XLSX 等复杂生成和 Shell 需高级显式启用，真实 guest 验收前不作为默认完整能力。
 - [x] C6 Artifact 修订生成独立版本，删除原位覆盖历史的 edit 路径；预览、分享、删除与 Undo 对齐真实文件和元数据。
 - [x] C7 Memory 使用时间只标记最终进入冻结上下文的条目；诚实说明关键词检索与 frozen selection 的边界。
-- [ ] C8 顶栏模型、Project override、Provider group 实际执行模型与用量展示一致。
-- [ ] C9 覆盖保存失败、取消、拒绝、权限缺失、附件清理和跨重启历史回放；当前测试与真机分别记录。
+- [x] C8 顶栏模型、Project override、Provider group 实际执行模型与用量展示一致。
+- [x] C9 覆盖保存失败、取消、拒绝、权限缺失、附件清理和跨重启历史回放；当前测试与真机分别记录。
 
 ## D. 全 App 信息架构与视觉统一
 
@@ -118,31 +118,31 @@ Harness 收敛为 **One Agent + One Loop + Lazy Tools + Progressive Escalation**
 
 ### D1 信息架构
 
-- [ ] D1.1 Chat 保留历史／Project 切换、有效模型、输入器、新对话和会话操作；移走 Diagnostics 等执行层快捷入口。
-- [ ] D1.2 Project 主页面保留指令、资料、输出和聊天；Environment、Skills、MCP、Capability、Run 审计进入 Project 的高级页。
-- [ ] D1.3 Settings 主层按模型与回复、外观、隐私与数据、支持组织；执行限制、工具目录、环境、软件源、MCP、技能和诊断集中高级页。
-- [ ] D1.4 语音配置只有一个管理入口；模型分组退出普通设置首屏。Memory 管理与授权撤销保持可发现。
-- [ ] D1.5 使用用户可理解的标题和错误文案；技术名、参数、hash 放入展开详情／审计，不作为普通界面的主信息。
+- [x] D1.1 Chat 保留历史／Project 切换、有效模型、输入器、新对话和会话操作；移走 Diagnostics 等执行层快捷入口。
+- [x] D1.2 Project 主页面保留指令、资料、输出和聊天；Environment、Skills、MCP、Capability、Run 审计进入 Project 的高级页。
+- [x] D1.3 Settings 主层按模型与回复、外观、隐私与数据、支持组织；执行限制、工具目录、环境、软件源、MCP、技能和诊断集中高级页。
+- [x] D1.4 语音配置只有一个管理入口；模型分组退出普通设置首屏。Memory 管理与授权撤销保持可发现。
+- [x] D1.5 使用用户可理解的标题和错误文案；技术名、参数、hash 放入展开详情／审计，不作为普通界面的主信息。
 
 ### D2 设计系统
 
-- [ ] D2.1 复用 FamiliarTheme/Typography/Spacing/Radius/Motion，统一规则，不创建另一套主题。
-- [ ] D2.2 标题、正文、辅助信息、元数据、按钮使用语义字体；Dynamic Type 同时影响文本和布局测量。
-- [ ] D2.3 内容间距采用现有 4/8/12/16/20/24；圆角采用现有 10/14/18/24；系统组件由系统管理，图标触摸区至少 44pt。
-- [ ] D2.4 主／次／破坏按钮明确一致；自定义图标按钮共享按压与可访问性规则；不再逐页面发明阴影、描边和动画。
-- [ ] D2.5 表单与列表优先原生 Form/List/LabeledContent/Menu/NavigationStack；sheet 由有身份的展示状态持有，明确关闭／保存动作。
-- [ ] D2.6 Liquid Glass 用于导航与浮动控件，正文／工具结果用清晰内容层；保留 iOS 18 和降低透明度回退。
-- [ ] D2.7 Markdown CSS 的颜色、代码、引用、来源和正文尺度与 SwiftUI 语义一致，清理旧的独立配色。
+- [x] D2.1 复用 FamiliarTheme/Typography/Spacing/Radius/Motion，统一规则，不创建另一套主题。
+- [x] D2.2 标题、正文、辅助信息、元数据、按钮使用语义字体；Dynamic Type 同时影响文本和布局测量。
+- [x] D2.3 内容间距采用现有 4/8/12/16/20/24；圆角采用现有 10/14/18/24；系统组件由系统管理，图标触摸区至少 44pt。
+- [x] D2.4 主／次／破坏按钮明确一致；自定义图标按钮共享按压与可访问性规则；不再逐页面发明阴影、描边和动画。
+- [x] D2.5 表单与列表优先原生 Form/List/LabeledContent/Menu/NavigationStack；sheet 由有身份的展示状态持有，明确关闭／保存动作。
+- [x] D2.6 Liquid Glass 用于导航与浮动控件，正文／工具结果用清晰内容层；保留 iOS 18 和降低透明度回退。
+- [x] D2.7 Markdown CSS 的颜色、代码、引用、来源和正文尺度与 SwiftUI 语义一致，清理旧的独立配色。
 
 ### D3 组件与页面验收
 
-- [ ] D3.1 Chat 顶栏、抽屉、空态、Composer、附件、相机、输入预览统一。
-- [ ] D3.2 Message、Thinking、Tool Result、Sources、Failure、Approval、Undo、Artifact/Share 回执统一；工具结果默认紧凑展开，审批默认仅这次。
-- [ ] D3.3 Project 列表、编辑、资源详情、输出版本、预览分享统一。
-- [ ] D3.4 Settings 所有主页面及高级子页统一，包括模型／语音／Memory／权限／存储／锁定／审计／About。
-- [ ] D3.5 HTML、Markdown、Code、Diff、Records、Mermaid 全屏详情遵循相同导航和关闭规则。
-- [ ] D3.6 删除只在 fixture 出现的旧 ToolChips 展示树；fixtures 复用生产组件，不为测试维持另一套 UI。
-- [ ] D3.7 更新中英文文案、错误与本地化 parity。构建通过后单独列出待真机检查的页面，不声称视觉验收完成。
+- [x] D3.1 Chat 顶栏、抽屉、空态、Composer、附件、相机、输入预览统一。
+- [x] D3.2 Message、Thinking、Tool Result、Sources、Failure、Approval、Undo、Artifact/Share 回执统一；工具结果默认紧凑展开，审批默认仅这次。
+- [x] D3.3 Project 列表、编辑、资源详情、输出版本、预览分享统一。
+- [x] D3.4 Settings 所有主页面及高级子页统一，包括模型／语音／Memory／权限／存储／锁定／审计／About。
+- [x] D3.5 HTML、Markdown、Code、Diff、Records、Mermaid 全屏详情遵循相同导航和关闭规则。
+- [x] D3.6 删除只在 fixture 出现的旧 ToolChips 展示树；fixtures 复用生产组件，不为测试维持另一套 UI。
+- [x] D3.7 更新中英文文案、错误与本地化 parity。构建通过后单独列出待真机检查的页面，不声称视觉验收完成。
 
 ## E. 性能与维护面
 
@@ -157,7 +157,7 @@ Harness 收敛为 **One Agent + One Loop + Lazy Tools + Progressive Escalation**
 
 ### 实现侧
 
-- [ ] F1 当前测试清单反查所有 suite；补齐 ImportContracts、GroupBoundary、ExecutionContract 等遗漏。真机 guest suite 单列，Simulator skip 不能算 guest 通过。
+- [x] F1 当前测试清单反查所有 suite；补齐 ImportContracts、GroupBoundary、ExecutionContract 等遗漏。真机 guest suite 单列，Simulator skip 不能算 guest 通过。
 - [ ] F2 新增决定行为的回归用例，避免只镜像实现的字符串断言。
 - [ ] F3 每个切片完成 git diff --check、相关 plist／strings 检查和单次 arm64 Simulator build-for-testing。
 - [ ] F4 编译、测试执行、真实服务、真机视觉、签名发布证据分列；禁止“全量通过”包含未运行或跳过项。
@@ -187,14 +187,14 @@ Harness 收敛为 **One Agent + One Loop + Lazy Tools + Progressive Escalation**
 - 验证：git diff --check 通过；独立 DerivedData 原工程 Debug arm64 generic iOS Simulator build-for-testing 返回 TEST BUILD SUCCEEDED。日志 `/tmp/familiar-harness-b1-20261001-build.log`。
 - 测试：新 Harness 回归和既有测试目标已编译；未执行测试、未启动 Simulator、未使用真实服务或设备。
 - 此切片收尾时 Lazy Tools 仍未接线；随后 B2 已完成它。Memory 成功边界已在 C1 修复。语音／OAuth 原有 warning 仍留 E5。
-- 下一项：B2 从 Registry/ContextSnapshot/Loop 的一条生产链路实现工具组懒加载，不另加 Router。
+- 后续状态：B2 已从 Registry/ContextSnapshot/Loop 的单一生产链路完成工具组懒加载，未增加 Router。
 
 ### C1：Memory 成功边界
 
 - 实现：Memory 保存移入 Run 的 persistResult 成功边界；Controller 保存失败回滚并抛回 Loop，成功事件与模型结果在实际保存之后产生。取消／拒绝不会走保存。工具审计与 model-facing 结构化失败复用同一错误内容。
 - 验证：新增保存失败无成功回执、数据可见先于成功事件两个回归用例；全部测试目标编译。最终增量 build-for-testing 返回 TEST BUILD SUCCEEDED，日志 `/tmp/familiar-harness-c1-final-20261001-build.log`。
 - 静态：git diff --check、中英文 strings plist 检查通过；未修改本地化键集合。
-- 边界：测试未执行、无真实 Provider／真机结论；Environment 等其他提交的可靠性仍留 C2。所有真实验收项保持未勾选。
+- 边界：测试未执行、无真实 Provider／真机结论；Environment 等其他提交的保存边界已在 C2 修复，真实可靠性仍待验收。所有真实验收项保持未勾选。
 
 ### B2：Lazy Tools
 
@@ -205,7 +205,7 @@ Harness 收敛为 **One Agent + One Loop + Lazy Tools + Progressive Escalation**
 - iSH：启动只检查 bundled assets；真实操作共享一个准备任务。取消单个 Run 的等待不会启动它的命令，也不拆掉共享安装／启动；后台私有准备可能继续完成。真实 guest 的系统边界仍待设备验收。
 - 验证：最终原工程 Debug arm64 generic iOS Simulator build-for-testing 返回 TEST BUILD SUCCEEDED；日志 `/tmp/familiar-harness-b2-verified-20261001-build.log`。App／扩展／所有测试目标编译完成，14 项 LazyTool 用例已编译；测试未执行、Simulator 未启动、未调用真实服务或 guest。
 - 静态：git diff --check、release-test script 语法、两份 strings plist 与 973/973 key parity 通过。目录实际 55 无条件 + 2 bundled-asset 条件定义，最多 57；这不等于模型收到 57 个 Schema。
-- 后续状态：C2 的提交边界、C3 草稿安全已由下方切片完成实现／编译；B3 的无生产调用路径审计、D 的全 App UI 统一未完成。真实模型的组选择效果、延迟、MCP 服务和 guest 取消仍未验收。
+- 后续状态：C2 的提交边界、C3 草稿安全与 B3 的无生产调用路径清理已由下方切片完成实现／编译；D 的全 App UI 统一未完成。真实模型的组选择效果、延迟、MCP 服务和 guest 取消仍未验收。
 
 ### C2 / C6：提交成功边界与独立 Artifact 修订
 
@@ -217,7 +217,7 @@ Harness 收敛为 **One Agent + One Loop + Lazy Tools + Progressive Escalation**
 - 历史：包含已提交或不确定操作的消息编辑／重新生成／失败 Run 重试被拦截，保留原记录，要求先检查结果并发送新的后续消息。纯读取仍可重新生成。
 - 验证：原工程 Debug arm64 generic iOS Simulator build-for-testing 返回 TEST BUILD SUCCEEDED；日志 `/tmp/familiar-commit-c2-verified-20261001-build.log`。12 项 CommitBoundary 新用例及既有目标仅编译，未执行测试、未启动 Simulator、未进行真实系统／guest 验收。
 - 仍有边界：系统动作成功后立即杀进程，可能只有提交 journal 而没有完整结果／Undo；它阻止盲目重放，不能证明动作的最终状态。中断的 Environment 本地 swap 可能保留备份；自动跨重启补偿／续跑不在本切片。真机磁盘不足、强杀窗口、权限变化和 Undo 视觉仍需所有者验证。
-- 后续状态：C3 已完成下方发送前检查切片，拒绝发送保留草稿；当前下一项为 C4 网页保存显式化。
+- 后续状态：C3 已完成下方发送前检查切片，拒绝发送保留草稿；C4 也已完成下方显式保存切片。
 
 ### C3 / C7：发送前预算与草稿安全
 
@@ -228,6 +228,74 @@ Harness 收敛为 **One Agent + One Loop + Lazy Tools + Progressive Escalation**
 - Memory：移除无生产调用、会提前保存 usage 的旧 search 入口；候选为只读关键词匹配。Compiler 的 1200 字符预算决定最终 ID，lastUsedAt 与已接受消息同一次保存；超预算候选、被拒绝的准备和回滚不会提前更新使用时间。memory_search 仍只搜索本 Run 的冻结选择，并非语义检索全库。
 - 验证：原工程 Debug arm64 generic iOS Simulator build-for-testing 返回 TEST BUILD SUCCEEDED；日志 `/tmp/familiar-send-c3-verified-20261001-build.log`。9 项 SendPreflight 用例与改后的 Memory scope/usage 用例已编译，未执行测试、未启动 Simulator。覆盖合计预算、历史压缩保留、Schema、Vision 证据、暂存图片读取、最终文件路径、缺失图片以及实际 Memory usage/rollback。
 - 静态：git diff --check、release script 语法、两份 strings plist 和 980/980 key parity 通过。拒绝提交保留草稿的 Controller 路径有源码／编译证据，未取得签名真机运行证据；磁盘不足、取消、图片识别及真实模型仍待验收。
-- 下一项：C4 Web 抓取默认只进入聊天／Run 证据；用户明确保存后复用已抓取内容成为 Project Resource。
+- 后续状态：C4 已完成下方显式保存切片；网页默认只进入聊天／Run 证据。
 
-未勾选的 B3–F 项仍待实施。所有真机／真实服务验收仍未完成。
+### C4：网页证据与显式长期保存
+
+- 默认：Controller 不再自动导入网页。抓取时间和正文 hash 进入 FamiliarWebFetchOutput，随原有 envelope 持久化，删除重复的 webCaptures Result/Event 通道。
+- 交互：展开成功的网页工具结果后可点击“保存到项目”，复用现有按钮、字体和间距。截断页提示仅保存已读取的部分；完成后显示实际目标项目，失败在动作旁显示原因。
+- 保存：从真实 Run/Call 的成功 Result 解析原始捕获并确定所属 Project，验证 hash 后离线导入，不重新抓取。资源正文及原文件携带 URL、时间、Source ID、正文 hash 和截断标记；整个资源文件另有实际内容 hash。
+- 去重：同一捕获重复保存或重开历史后保存，检查现存文件完整性并复用 Resource，不增加长期上下文。损坏／缺失文件、错误工具、失败／取消结果、缺失归属或损坏捕获不产生成功回执。保存只影响下次上下文，不更改当前冻结 Run。
+- 范围：保留旧 Resource；旧 Result 缺少完整捕获元数据时不提供该保存动作，不推算时间、不重抓网页。Project 新增网页与 Share 导入仍是原有用户明确导入流程。本切片未增加模型可调用工具、持久实体或执行路径。
+- 验证：原工程 Debug arm64 generic iOS Simulator build-for-testing 返回 TEST BUILD SUCCEEDED；日志 `/tmp/familiar-web-c4-verified-20261003-build.log`。8 项 WebRetention 测试声明（含失败／取消参数用例）及既有目标已编译，未执行测试、未启动 Simulator、未调用真实网页。覆盖只存证据、离线保存、来源完整性、重开去重、错误结果／归属／hash、文件失败与已保存文件损坏。
+- 静态：git diff --check、release script 语法、两份 strings plist 与 984/984 key parity 通过。保存动作的真机可发现性、VoiceOver 和真实网页仍待 F8/F14；旧自动导入资料不做猜测清理。
+- 后续状态：B3 已完成下方清理切片，保留唯一真实权限、审批和预算路径。
+
+### B3：单一权限与 Provider 入口
+
+- 调用审查：Catalog/Resolver/Binding 仅有契约测试；Grant 签发／消费无生产调用。删除这些死路径和对应虚构行为测试；CanonicalJSON 提供参数 hash，实际 Project 能力收窄仍走 ProjectService，授权只走 AuthorizationRuntime/RuleRecord。
+- 数据边界：历史 GrantRecord 的 12 个已存储列、schema 的 37 个实体和 Project 删除清理保持原样；移除 Grant 值类型、state 解释与签发／消费 API。它仅是历史数据，不提供授权。不为这次清理引入迁移、重置或数据回填；后续移除持久列需单独验证存储影响。
+- 根因修复：实际授权不再忽略数据库读取／保存失败；签发与消费失败回滚并抛回 Loop，阻止对应敏感读取／外部动作。未知 duration 不再被当成 once 放行。精确参数、目标、能力版本、Project、session、expiry 与 revoked 条件保持。
+- Provider：直接把用户所选 Factory 结果交给同一个 Loop。删除未接通的本地／云 Router、升级 Coordinator、Controller observer/state、弹窗及旧 route-policy 设置。用户配置的模型组仍只在其成员之间按首字节前规则回退，未引入任务分类或流程调度。
+- 已保留：Context Compiler 的最低复杂度策略；首字节前有界 Provider 重试、独立读取最多两路／失败读取一次重试、写入不重放、预算耗尽收尾。启动恢复继续终结未完成 Run，保留 Result 与 committing 不确定记录。
+- 验证：原工程 Debug arm64 generic iOS Simulator build-for-testing 返回 TEST BUILD SUCCEEDED；日志 `/tmp/familiar-harness-b3-verified-20261003-build.log`。6 组 AuthorizationBoundary 声明及参数变体已编译，覆盖精确授权、过期／撤销／损坏规则、once 消费、历史 provenance 无权、授权服务失败阻止读／写、恢复保留证据和未知提交。既有重试／并发／预算／提交／模型组边界目标同样编译，测试未执行，Simulator 未启动。
+- 静态：git diff --check、脚本语法、strings plist、982/982 parity 通过；已比较历史 Grant 存储列不变。release script 补入授权与现有 ImportContracts/GroupBoundary suites，F1 全清单已在后续切片核对。真实签名存储失败、系统权限、Provider 回退和取消仍待所有者验收。
+- 后续状态：C5/C8 已完成下方交付范围和模型一致性切片；真实 Provider/guest 与真机验收仍未完成。
+
+### C5 / C8：默认文本与有效模型一致性
+
+- 交付范围：核对真实默认 scope，仅开放文本 Artifact write/edit/read，workspace_write、artifact_publish 与 Shell/Environment prepare 需显式启用。Context Compiler 提示普通回复不创建文件，需要文件时默认 Markdown/纯文本；复杂格式在文本工具边界、审批／磁盘写入前拒绝。高级工具有代码不等于 guest 已验收，F13 保持未完成。
+- 模型选择：发送与顶栏复用 effectiveSettings，显示 Project override 后的下一次请求模型。Project 覆盖下选模型修改该 Project，菜单可恢复默认；打开旧历史不再把上次请求元数据当成当前默认。修改默认设置不改变 Project 生效模型时，不插入错误的 ModelSwitch。
+- 实际来源：普通适配器也发模型选择事件，模型组消除成员重复事件。Run snapshot 保存用户请求的组／模型，有序 trace 保存真正选择过的成员尝试；回复使用最后实际成员 ID，重新生成从原 Snapshot 取请求选择，避免意外退出模型组。
+- 用量：Recorder 保存有序选择与仅已报告的 nullable 字段；损坏 trace 不静默重置。已核对协议适配器每次请求仅发一次最终用量，保留 cache-only 报告。自动历史压缩转发选择与用量到同一 Run；手动压缩／供应商配置请求不属于此统计，页面明确说明。跨 Run 部分缺失标为部分用量；失败尝试不被说成成功，不估算费用，也不把缺失填为零。
+- 验证：原工程 Debug arm64 generic iOS Simulator build-for-testing 返回 TEST BUILD SUCCEEDED；日志 `/tmp/familiar-model-c5-c8-final-20261003-build.log`。8 组 ModelSelection 声明（含复杂格式参数用例）与既有目标编译，覆盖 Project 选择／恢复默认、历史重开、请求与成员区分、未知用量、重复成员事件、自动压缩统计、默认 scope、格式拒绝与真实 Markdown 字节。测试未执行、Simulator 未启动、真实 Provider/group/guest 与 UI 未验收。
+- 静态：git diff --check、release script 语法、strings plist 与 984/984 parity 通过。没有新增工具、持久实体、模型路由或视觉体系。
+- 后续状态：C9 已修复模型组无凭据预检查和取消／附件清理，F1 已核对清单。之后推进 D1 高级入口收缩和设计系统统一。手动压缩独立用量追踪、逐成员费用分摊不在本次范围。
+
+### C9 / F1：提交与取消安全、完整测试入口
+
+- 凭据：ProviderFactory 统一普通 key、OAuth token 与组成员可用性；组上保存的 key 不能替代成员凭据。配置显示、发送／手动压缩预检查及实际成员构造一致，正式提交前再次检查。无成员凭据时不消耗文本、附件、图片或 Skill，不创建聊天消息。
+- 生命周期：Chat 重现时，活跃发送／压缩不会被恢复成中断失败，也不会扫描删除其准备文件。文档解析与交付后的取消都清理本次导入草稿，借用源文件不动。附件提交拒绝既有目标，复制碰撞失败不删已有正式字节。
+- 回归：新增 5 组 SubmissionBoundary 用例；保存失败／拒绝／权限／写入提交／冻结上下文／恢复保留 Result 与未知提交由现有 SendPreflight、CommitBoundary、Runtime、AuthorizationBoundary 等用例共同覆盖。当前仅编译，不把故障注入或源码审查当成磁盘不足／系统强杀的真机证明。
+- 清单：核对全部当前 Suite 与 XCTest：39 个 Simulator suite、2 个签名设备 suite、完整 UI target，无遗漏／重复／失效名称；已删除的 ExecutionContract 不再列入。`--check-list` 可重复核对，不执行测试。
+- 证据门槛：脚本执行后读取实际 xcresult summary 的 total/passed/failed/skipped/expectedFailures；零测试、跳过、预期失败、缺失统计均拒绝通过。默认 Simulator 与 `--device` 签名设备套件分开选取，要求对应的预构建 host。
+- 签名边界：图片 benchmark 从普通参数集移到 FamiliarSignedSubmissionTests。签名条件不满足直接失败，不再返回 assertions 未运行但 failures 为空的“unverified”绿项；仅检查排队图片准备的取消／草稿安全，不声称 OCR 或模型请求执行。真实 guest 仍在 FamiliarDeviceRuntimeTests；F13 保持未完成。
+- 验证：原工程 Debug arm64 generic iOS Simulator build-for-testing 返回 TEST BUILD SUCCEEDED；日志 `/tmp/familiar-submit-c9-f1-final-20261003-build.log`。新增边界／签名用例与既有目标已编译。git diff --check、脚本语法、完整清单通过；按本机 Xcode 输出 schema 核对报告字段，并用合成报告验证全通过接受、零测试／跳过／预期失败／缺失统计拒绝。合成报告检查不是测试执行。
+- 仍待验收：测试未执行，Simulator／设备／真实 Provider／guest 未启动。签名存储损坏、磁盘不足、权限变化、取消时机、强杀后的外部动作确认及真实 OCR 留所有者验收；编译不能勾选 F6–F14。
+- 后续状态：D1.1–D1.4 已完成下方入口收拢；继续沿现有组件整理，不新增视觉体系或功能数量。
+
+### D1.1–D1.4：主入口与高级配置分层
+
+- Chat：保留历史、Project／有效模型选择、输入器、新对话与会话操作，删除 Diagnostics 快捷项及其回调，诊断只由设置高级页进入。
+- Project：主页提供可见的新聊天主动作、指令、聊天、资料和输出，以及一个高级入口；新聊天不再重复放在更多菜单，归档项目先解除归档。Environment、Skills、MCP、Capability 和运行审计进入同一导航 Stack 的高级 List，原 Project ID／查询／操作保持。
+- Settings：主层为模型与回复、外观、隐私与数据、支持；模型分组、搜索服务配置、工具目录、执行限制、环境、软件源、MCP、技能、运行记录和诊断集中高级页。Memory 与允许操作的撤销仍在普通设置中可见；原 leaf route 和编辑 binding 保留，没有新增 Router 或状态容器。
+- 去重：模型服务页与新增供应商 chooser 删除语音管理／添加／编辑分支；语音设置页成为唯一管理入口，已有配置、选择和凭据保留。普通标题先统一为回复偏好、已允许的操作、输出；不再把技能描述为只有指令，也不暗示未准备环境已有验证锁。
+- 设计与验证：复用已有 Theme/Typography/Spacing、ContextRow/settingsLink 和原生 List/NavigationLink/Menu。原工程 Debug arm64 generic iOS Simulator build-for-testing 返回 TEST BUILD SUCCEEDED；日志 `/tmp/familiar-navigation-d1-verified-20261003-build.log`。App／扩展／测试目标已编译，未执行测试／启动 Simulator／采集真机截图。未为可逆 UI 分组新增镜像实现测试；旧 key-guard 源码契约改为检查 C9 的统一凭据路径。
+- 静态：git diff --check、当前 suite 清单、两份 strings plist、988/988 key parity 通过；核对原设置目的地完整保留、执行层 leaf 不在首屏、语音管理只有一个生产入口。移除旧 Agent/App section 的未使用本地化键；未删除用户数据、能力或配置。
+- 后续状态：D1.5、D2、D3 实现已由下方连续切片完成；F14 真机回退导航、归档项目、大字体、VoiceOver 和深浅色仍未验收。
+
+### D1.5 / D2 / D3：连续完成设计系统与全页面实现
+
+- 范围：沿 Chat／抽屉／Composer／附件／相机、Message／Thinking／Tool Result／Approval／Failure／Undo／Share、Project／版本／预览、Settings 所有主页与高级子页、Voice／锁定、HTML／Markdown／Code／Diff／Records／Mermaid 详情逐族审查并整理。原生 Form/List/Menu/NavigationStack 保留，没有新增执行路径或第二套主题。
+- 共用规则：正文／辅助信息／按钮统一引用 FamiliarTypography，内容间距与圆角归入既有 scale；相机快门、品牌图标、状态微型 glyph 与图表几何保留其装饰尺度，不用它们承载固定字号正文。Composer 的字体与测量继续同用 ScaledMetric。FamiliarIconButtonStyle 共享 44pt 触摸区、按压反馈与降低动态效果规则；Done 弹层控件复用 FamiliarDismissButton，原生表单按钮／破坏角色保持系统样式。
+- 弹层与无障碍：文件回执预览、共享收件目标由有身份的数据驱动，移除与 optional 数据重复的 Boolean 呈现状态。文件／Markdown／Mermaid／Code／Diff／Records 详情统一原生标题与完成动作；图标行为保留可读标签，Sources、图片删除与文件回执的可访问激活路径核对。实际 VoiceOver／焦点／回退行为仍待真机，不称为已通过。
+- 普通文案：文件操作统一保存／修订／读取输出与保存生成文件，审批显示文件名、格式、可读大小；不显示无意义的 Artifact ID、hash 与验证器。targetKey、参数精确授权、真实验证和持久记录仍保持原身份，技术字段保留在审计／文件详情。文件错误、保存／撤销回执及 Web 复制反馈中英文一致。
+- Renderer：FamiliarMarkdownStyle 从原生语义色、外观、动态字号与高对比度生成有序 CSS variables；render state 包含样式输入，外观／字号变化会重新测量。正文、引用、代码、表格、来源、Mermaid 采用这些值，移除独立绿色／蓝色／紫色等硬编码配色和重复 dark palette。复制／图表预览有 44px 触摸区、键盘 focus-visible、原生本地化；非持久 WKWebView、安全 CSP、选择限制与既有流式合并保持。
+- Glass：导航／输入与浮动控件继续使用已有 availability-gated 原生效果，TopBar 保留 GlassEffectContainer；普通回复／工具结果／审批使用清晰内容层。iOS 18 与降低透明度的原生回退保留，没有新增模糊／阴影／动画体系。
+- Fixture：删除无生产调用的 FamiliarToolChips 整棵旧展示树及对应独立测试；同一 fixture 现在使用 FamiliarExecutionBlock 与其余生产卡片、审批、Thinking、Sources 等组件。示例仍只是可视检查入口，不代替真实流程。
+- 回归与构建：新增 3 组 DesignSystem 用例，覆盖原生外观／辅助字号传播、相同输入稳定性、可读审批与原精确身份；仅编译，未执行。最终原工程 Debug arm64 generic iOS Simulator build-for-testing 返回 TEST BUILD SUCCEEDED，日志 `/tmp/familiar-design-d-verified-20261003-build.log`，本切片无编译 error／新增 deprecated warning。
+- 静态：git diff --check、Renderer JavaScript 语法、suite 清单、strings plist、1005/1005 key parity 和零缺失字面量键通过；40 个 Simulator suite、2 个签名设备 suite 与完整 UI target 已列入。构建途中仅清理本任务旧 DerivedData 的可重建缓存，保留日志、源码、依赖 checkout 和用户数据。
+- 完成定义：D1–D3 所有实现／静态／编译项已完成并勾选，不表示真机视觉／系统交互已验收。`docs/14-design-system-device-acceptance.md` 单列全部页面、大小字号／外观／VoiceOver／降低动态效果与透明度／小屏键盘条件，保持未勾选；Simulator、实际测试、截图、真实 Provider 和真机 guest 均未在本切片运行。
+- 下一阶段：E 先依据实际源码／测量审查流式失效范围、长会话渲染、WebKit／解析 I/O 与现存 warning，不继续扩大功能数量。所有者按 F6–F14 与设计验收表验证真实任务及视觉行为。
+
+其余未勾选项仍待实施。所有真机／真实服务验收仍未完成。

@@ -22,7 +22,8 @@
 - 不开放 `.always`：健康与照片元数据长期免确认对这类数据过宽。
 - read 的 `targetKey` 用常量（`argumentsHash` 已覆盖全部参数，targetKey 对 read 不增加区分度）。换参数仍需重新授权。
 - 新增 `readConfirmation` 变量：只有本次真的打断了用户才记为 `.confirmed`，复用既有授权时记为自动授权，审计不会把复用伪装成新确认。
-- 顺带删除 `FamiliarExecutionPolicy` 的两个死重载（`FamiliarOneShotAuthorization` 无生产调用者；`grant:` 版本生产恒传 `nil`）。注意 `FamiliarAuthorizationGrant.isValid` **不是**死代码，`FamiliarRunRecoveryService.consumeGrant` 仍在用它做外部入口的 grant 契约，必须保留。
+- `FamiliarExecutionPolicy` 不再有 OneShot/Grant 重载。判断死代码必须沿到真实生产调用者：仅发现 `consumeGrant` 引用 `isValid` 不能证明外部入口已接线；两者均无生产调用，已移除。真实免重复确认只走 `FamiliarAuthorizationRuntime` 与 `AuthorizationRuleRecord`。参数 hash 由 CanonicalJSON 提供；历史 Grant 存储列仅作审计数据，不参与授权。
+- 真实授权匹配须检查参数、目标、Project、能力版本、session、有效期与撤销状态，并拒绝损坏的 duration。读取／消费／签发失败必须抛回 Loop；保存失败回滚，不得用 `try?` 后继续把未成功保存的授权当成可用。
 
 ## Verification
 
