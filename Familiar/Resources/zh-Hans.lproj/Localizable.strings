@@ -52,7 +52,7 @@
 "settings.error.title" = "设置失败";
 
 "common.done" = "完成";
-"settings.hub.models" = "模型";
+"settings.hub.models" = "模型与回复";
 "settings.hub.model_service" = "模型服务";
 "settings.search.title" = "网页搜索";
 "settings.search.provider" = "搜索服务";
@@ -65,12 +65,10 @@
 "settings.search.cost.duckduckgo" = "Familiar 使用 DuckDuckGo 时无需 API 密钥，其服务条款仍然适用。";
 "settings.search.cost.no_key" = "Familiar 使用 %@ 时无需 API 密钥，其服务条款仍然适用。";
 "settings.search.provider_website" = "查看服务网站与条款";
-"settings.hub.agent" = "智能体";
 "settings.hub.tools" = "工具";
 "settings.hub.tools.detail" = "Agent 运行环境 当前注册的能力";
-"settings.hub.soul" = "灵魂";
-"settings.hub.soul.detail" = "人格与回答风格";
-"settings.hub.app" = "App";
+"settings.hub.soul" = "回复偏好";
+"settings.hub.soul.detail" = "语气、语言与回复风格";
 "settings.hub.appearance" = "外观";
 "settings.hub.storage" = "本地存储";
 "settings.hub.storage.detail" = "此 iPhone 上的会话与附件";
@@ -82,8 +80,8 @@
 "settings.hub.privacy.detail" = "了解 Familiar 如何处理数据";
 "settings.hub.about" = "关于 Familiar";
 "error.web.search_api_key_missing" = "请先在网页搜索设置中添加 %@ API 密钥。";
-"settings.soul.editor" = "人格提示词";
-"settings.soul.personality" = "人格";
+"settings.soul.editor" = "回复要求";
+"settings.soul.personality" = "回复风格";
 "settings.soul.footer" = "这里会改变 Familiar 的语气和回答风格。工具权限与安全规则始终由 App 强制执行。";
 "settings.soul.characters" = "字符数";
 "settings.soul.restore" = "恢复 Familiar 默认设置";
@@ -277,8 +275,8 @@
 "resource.error.empty_text" = "请输入要导入的文本。";
 "resource.error.text_too_large" = "粘贴文本过大，无法导入。";
 "resource.pasted_text" = "粘贴文本";
-"artifact.section" = "生成结果";
-"artifact.empty" = "还没有生成结果";
+"artifact.section" = "输出";
+"artifact.empty" = "暂无输出";
 "artifact.delete.title" = "要删除这个生成结果吗？";
 "project.error.empty_name" = "请输入项目名称。";
 "project.error.duplicate_name" = "已存在同名项目。";
@@ -350,7 +348,6 @@
 "visual.fixture.reasoning" = "推理";
 "visual.fixture.reasoning.detail" = "已对照可用上下文检查请求，并核对重要约束。";
 "visual.fixture.search" = "搜索";
-"visual.fixture.tool_chips" = "工具调用";
 "visual.fixture.search.summary" = "3 个结果";
 "visual.fixture.search.query" = "原生 AI 界面模式";
 "visual.fixture.search.read_result" = "已读取结果";
@@ -623,8 +620,8 @@
 "tool.undone" = "已撤销";
 "vision.error.unavailable" = "无法读取图片 %@。";
 "vision.error.too_large" = "本地视觉证据超过本次请求的大小限制。";
-"settings.hub.authorizations" = "Agent 授权";
-"settings.hub.authorizations.detail" = "查看已记住的 Agent 动作授权";
+"settings.hub.authorizations" = "已允许的操作";
+"settings.hub.authorizations.detail" = "查看或撤销已保存的权限";
 "settings.authorizations.empty" = "没有已记住的授权";
 "settings.authorizations.revoke" = "撤销";
 "settings.authorizations.revoke_all" = "撤销全部";
@@ -794,16 +791,16 @@
 "shell.network.enabled" = "公共互联网已开启";
 "shell.output.truncated" = "输出已在安全上限处截断。";
 "shell.diff.summary" = "新增 %lld · 修改 %lld · 删除 %lld";
-"tool.artifact_write" = "写入 Artifact";
-"tool.artifact_edit" = "编辑 Artifact";
+"tool.artifact_write" = "保存输出";
+"tool.artifact_edit" = "修订输出";
 "search.more" = "还有 %lld 条";
 "run.context.reply_time" = "回复时长";
 "run.context.first_token" = "首 token";
 "project.environment" = "运行环境";
-"project.environment.detail" = "项目独立的 Linux 依赖与已验证锁定清单";
-"project.skills.context_detail" = "供 Agent 按需加载的纯指令技能";
+"project.environment.detail" = "高级文件处理的依赖配置";
+"project.skills.context_detail" = "可供此项目使用的技能指引";
 "project.capabilities" = "可用能力";
-"project.capabilities.detail" = "这个 项目 可以向 Agent 暴露的工具";
+"project.capabilities.detail" = "选择此项目可使用的工具";
 "environment.state" = "状态";
 "environment.python" = "Python";
 "environment.revision" = "修订版本";
@@ -823,7 +820,7 @@
 "tool.environment_prepare" = "准备 项目 Environment";
 "tool.skill_list" = "列出 项目 技能";
 "tool.skill_read" = "加载 项目 技能";
-"tool.artifact_publish" = "发布 Artifact";
+"tool.artifact_publish" = "保存生成文件";
 "settings.shell.retry" = "重试 运行环境 准备";
 "settings.python_source.title" = "Python 软件源";
 "settings.python_source.picker" = "软件源";
@@ -891,7 +888,7 @@
 "usage.input" = "输入词元";
 "usage.output" = "输出词元";
 "usage.cached" = "缓存命中词元";
-"usage.footer" = "仅汇总服务商实际报告的本次对话用量。历史运行或部分服务商可能没有报告用量；不估算费用。";
+"usage.footer" = "仅统计服务商报告的聊天运行用量，包含自动压缩，数据可能不完整。手动压缩和供应商配置请求不计入；模型列表包含尝试过的请求，不表示成功，也不估算费用。";
 "usage.unreported" = "未报告";
 "attachment.error.image_encoding_failed" = "无法编码图片。";
 "common.preview" = "预览";
@@ -920,8 +917,6 @@
 "workspace.task_view" = "任务工作区无效。";
 "skills.import" = "导入技能包";
 "skills.create" = "创建技能";
-"chat.cloud.title" = "切换到云端模型？";
-"chat.cloud.continue" = "继续使用云端模型";
 
 // Voice, privacy and model routing
 "voice.title" = "语音";
@@ -982,7 +977,7 @@
 
 "tool.memory_remember" = "记住偏好或事实";
 
-"tool.artifact_read" = "读取产物";
+"tool.artifact_read" = "读取输出";
 
 "capability.read" = "读取已授权范围内的数据";
 
@@ -1036,3 +1031,33 @@
 "artifact.revision.consequence" = "保存一个新版本，并保留之前的文件。";
 "tool.undo.unconfirmed" = "撤销已开始，但结果尚未确认。请先检查系统中的实际状态，避免重复撤销。";
 "error.draft.changed_during_preparation" = "准备发送时草稿发生了变化，请检查后重新发送。";
+"resource.error.invalid_web_capture" = "这份网页内容不可用或无法通过校验。";
+"resource.web.partial" = "此网页只读取了部分内容，保存的资料也只包含这部分。";
+"resource.web.save_to_project" = "保存到项目";
+"resource.web.saved_to_project" = "已保存到%@";
+"chat.model.project" = "项目模型";
+"usage.partial" = "%@（部分用量）";
+"settings.advanced.title" = "高级";
+"settings.advanced.detail" = "更多配置与问题排查";
+"settings.advanced.configuration" = "可选配置";
+"settings.advanced.activity" = "操作记录与问题排查";
+"settings.hub.privacy_data" = "隐私与数据";
+"project.advanced.detail" = "可选工具、连接与操作记录";
+"file.field.title" = "标题";
+"file.field.size" = "大小";
+"file.field.format" = "格式";
+"file.save.consequence" = "将此文件保存到当前项目，以便预览和分享。";
+"visual.fixture.tool_results" = "工具结果";
+"common.copied" = "已复制";
+"file.error.project_required" = "请选择要保存此文件的项目。";
+"file.error.invalid_path" = "此文件引用无效，请重新选择文件。";
+"file.error.missing" = "此文件已不可用。";
+"file.error.failed" = "文件操作未完成，请重试。";
+"file.error.empty" = "文件没有可保存的内容。";
+"file.error.unsupported" = "此操作不支持这种文件格式。";
+"file.error.mismatch" = "文件扩展名与实际内容不匹配。";
+"file.error.validation" = "无法校验此文件：%@";
+"file.error.too_large" = "此文件超过允许的大小。";
+"file.saved" = "已保存%@";
+"file.revised" = "已保存%@的新版本";
+"file.removed" = "已移除%@";

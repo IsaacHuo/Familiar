@@ -52,7 +52,7 @@
 "settings.error.title" = "Couldn't Save Settings";
 
 "common.done" = "Done";
-"settings.hub.models" = "Models";
+"settings.hub.models" = "Models & Responses";
 "settings.hub.model_service" = "Model Service";
 "settings.search.title" = "Web Search";
 "settings.search.provider" = "Search Provider";
@@ -65,12 +65,10 @@
 "settings.search.cost.duckduckgo" = "DuckDuckGo does not require an API key in Familiar. Its service terms still apply.";
 "settings.search.cost.no_key" = "%@ does not require an API key in Familiar. Its service terms still apply.";
 "settings.search.provider_website" = "Provider website and terms";
-"settings.hub.agent" = "Agent";
 "settings.hub.tools" = "Tools";
 "settings.hub.tools.detail" = "Capabilities registered with the Agent Runtime";
-"settings.hub.soul" = "Soul";
-"settings.hub.soul.detail" = "Personality and response style";
-"settings.hub.app" = "App";
+"settings.hub.soul" = "Response Preferences";
+"settings.hub.soul.detail" = "Tone, language and response style";
 "settings.hub.appearance" = "Appearance";
 "settings.hub.storage" = "Local Storage";
 "settings.hub.storage.detail" = "Conversations and attachments on this iPhone";
@@ -82,8 +80,8 @@
 "settings.hub.privacy.detail" = "How Familiar handles your data";
 "settings.hub.about" = "About Familiar";
 "error.web.search_api_key_missing" = "Add a %@ API key in Web Search settings first.";
-"settings.soul.editor" = "Personality prompt";
-"settings.soul.personality" = "Personality";
+"settings.soul.editor" = "Response instructions";
+"settings.soul.personality" = "Response style";
 "settings.soul.footer" = "This changes Familiar's tone and response style. Tool permissions and safety rules remain enforced by the app.";
 "settings.soul.characters" = "Characters";
 "settings.soul.restore" = "Restore Familiar Default";
@@ -277,8 +275,8 @@
 "resource.error.empty_text" = "Enter some text to import.";
 "resource.error.text_too_large" = "The pasted text is too large to import.";
 "resource.pasted_text" = "Pasted Text";
-"artifact.section" = "Artifacts";
-"artifact.empty" = "No artifacts yet";
+"artifact.section" = "Outputs";
+"artifact.empty" = "No outputs yet";
 "artifact.delete.title" = "Delete this artifact?";
 "project.error.empty_name" = "Enter a project name.";
 "project.error.duplicate_name" = "A project with this name already exists.";
@@ -350,7 +348,6 @@
 "visual.fixture.reasoning" = "Reasoning";
 "visual.fixture.reasoning.detail" = "Compared the request with the available context and checked the important constraints.";
 "visual.fixture.search" = "Search";
-"visual.fixture.tool_chips" = "Tool Chips";
 "visual.fixture.search.summary" = "3 results";
 "visual.fixture.search.query" = "native AI interface patterns";
 "visual.fixture.search.read_result" = "Read result";
@@ -623,8 +620,8 @@
 "tool.undone" = "Undone";
 "vision.error.unavailable" = "Could not read image %@.";
 "vision.error.too_large" = "The local visual evidence is too large for this request.";
-"settings.hub.authorizations" = "Authorizations";
-"settings.hub.authorizations.detail" = "Review remembered Agent actions";
+"settings.hub.authorizations" = "Approved Actions";
+"settings.hub.authorizations.detail" = "Review or revoke remembered permissions";
 "settings.authorizations.empty" = "No remembered authorizations";
 "settings.authorizations.revoke" = "Revoke";
 "settings.authorizations.revoke_all" = "Revoke All";
@@ -794,16 +791,16 @@
 "shell.network.enabled" = "Public Internet On";
 "shell.output.truncated" = "Output was truncated at the safety limit.";
 "shell.diff.summary" = "%lld added · %lld modified · %lld removed";
-"tool.artifact_write" = "Write artifact";
-"tool.artifact_edit" = "Edit artifact";
+"tool.artifact_write" = "Save output";
+"tool.artifact_edit" = "Revise output";
 "search.more" = "+%lld more";
 "run.context.reply_time" = "Reply time";
 "run.context.first_token" = "First token";
 "project.environment" = "Environment";
-"project.environment.detail" = "Isolated Linux dependencies and verified lock";
-"project.skills.context_detail" = "Instruction-only Skills available for on-demand loading";
+"project.environment.detail" = "Dependencies for advanced file tasks";
+"project.skills.context_detail" = "Guidance available for this Project";
 "project.capabilities" = "Capabilities";
-"project.capabilities.detail" = "Tools this Project may expose to the Agent";
+"project.capabilities.detail" = "Choose the tools this Project can use";
 "environment.state" = "State";
 "environment.python" = "Python";
 "environment.revision" = "Revision";
@@ -823,7 +820,7 @@
 "tool.environment_prepare" = "Prepare Project Environment";
 "tool.skill_list" = "List Project Skills";
 "tool.skill_read" = "Load Project Skill";
-"tool.artifact_publish" = "Publish Artifact";
+"tool.artifact_publish" = "Save generated file";
 "settings.shell.retry" = "Retry Runtime Preparation";
 "settings.python_source.title" = "Python Package Source";
 "settings.python_source.picker" = "Package Source";
@@ -891,7 +888,7 @@
 "usage.input" = "Input Tokens";
 "usage.output" = "Output Tokens";
 "usage.cached" = "Cached Input Tokens";
-"usage.footer" = "Totals include only usage reported by the provider for this chat. Historical runs and some providers may not report usage. Costs are not estimated.";
+"usage.footer" = "Totals cover provider-reported usage in chat runs, including automatic compaction, and may be incomplete. Manual compaction and provider setup requests are excluded. Model entries include attempted requests; costs are not estimated.";
 "usage.unreported" = "Not Reported";
 "attachment.error.image_encoding_failed" = "Could not encode the image.";
 "common.preview" = "Preview";
@@ -920,8 +917,6 @@
 "workspace.task_view" = "Invalid task workspace.";
 "skills.import" = "Import Skill Package";
 "skills.create" = "Create Skill";
-"chat.cloud.title" = "Switch to the Cloud Model?";
-"chat.cloud.continue" = "Continue with Cloud Model";
 
 // Voice, privacy and model routing
 "voice.title" = "Voice";
@@ -982,7 +977,7 @@
 
 "tool.memory_remember" = "Remember a Preference or Fact";
 
-"tool.artifact_read" = "Read Artifact";
+"tool.artifact_read" = "Read output";
 
 "capability.read" = "Reads data within the authorized scope";
 
@@ -1036,3 +1031,33 @@
 "artifact.revision.consequence" = "Save a new version and keep the previous file.";
 "tool.undo.unconfirmed" = "Undo has started but its result is not confirmed. Inspect the system state before repeating it.";
 "error.draft.changed_during_preparation" = "The draft changed while preparing. Review it and send again.";
+"resource.error.invalid_web_capture" = "This captured page is unavailable or could not be verified.";
+"resource.web.partial" = "Only the captured portion of this page will be saved.";
+"resource.web.save_to_project" = "Save to Project";
+"resource.web.saved_to_project" = "Saved to %@";
+"chat.model.project" = "Project model";
+"usage.partial" = "%@ (partial)";
+"settings.advanced.title" = "Advanced";
+"settings.advanced.detail" = "Additional configuration and troubleshooting";
+"settings.advanced.configuration" = "Optional setup";
+"settings.advanced.activity" = "Activity & troubleshooting";
+"settings.hub.privacy_data" = "Privacy & Data";
+"project.advanced.detail" = "Optional tools, connections and activity history";
+"file.field.title" = "Title";
+"file.field.size" = "Size";
+"file.field.format" = "Format";
+"file.save.consequence" = "Save this file in the current project for preview and sharing.";
+"visual.fixture.tool_results" = "Tool results";
+"common.copied" = "Copied";
+"file.error.project_required" = "Choose a project to save this file.";
+"file.error.invalid_path" = "This file reference is invalid. Choose the file again.";
+"file.error.missing" = "This file is no longer available.";
+"file.error.failed" = "The file operation could not be completed. Try again.";
+"file.error.empty" = "The file has no content to save.";
+"file.error.unsupported" = "This file format is not supported for this action.";
+"file.error.mismatch" = "The file extension does not match its contents.";
+"file.error.validation" = "The file could not be verified: %@";
+"file.error.too_large" = "This file exceeds the allowed size.";
+"file.saved" = "Saved %@";
+"file.revised" = "Saved a new version of %@";
+"file.removed" = "Removed %@";
