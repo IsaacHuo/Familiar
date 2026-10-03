@@ -509,7 +509,7 @@ private struct FamiliarBenchmarkResult {
 @Suite("Familiar MVP benchmarks", .serialized)
 struct FamiliarBenchmarkTests {
     @MainActor
-    @Test("Deterministic product scenario", arguments: FamiliarBenchmarkScenario.allCases)
+    @Test("Deterministic product scenario", arguments: FamiliarBenchmarkScenario.allCases.filter { $0 != .posterImagePreflight })
     func productScenario(_ scenario: FamiliarBenchmarkScenario) async throws {
         let result = try await run(scenario)
         print("BENCHMARK \(result.diagnostic)")
@@ -521,7 +521,7 @@ struct FamiliarBenchmarkTests {
     @MainActor
     private func run(_ scenario: FamiliarBenchmarkScenario) async throws -> FamiliarBenchmarkResult {
         if scenario == .posterImagePreflight {
-            return try imagePreflightResult()
+            return try await imagePreflightResult()
         }
 
         let startedAt = Date()
@@ -688,65 +688,47 @@ struct FamiliarBenchmarkTests {
     }
 
     @MainActor
-    private func imagePreflightResult() throws -> FamiliarBenchmarkResult {
+    fileprivate func imagePreflightResult() async throws -> FamiliarBenchmarkResult {
         let startedAt = Date()
-        // startSending checks the Keychain before any image import or Vision work, so
-        // without a key this scenario returns at the guard and never reaches the preflight
-        // it exists to measure. The guard itself is covered by FamiliarUIFeedbackTests.
-        let providerID = FamiliarProviderCatalog.deepSeek.id
-        let hadExistingKey = FamiliarKeychainStore.isConfigured(for: providerID)
-        if !hadExistingKey {
-            do {
-                try FamiliarKeychainStore.save("benchmark-fixture-key", for: providerID)
-            } catch FamiliarKeychainError.unexpectedStatus(errSecMissingEntitlement) {
-                // The verification build uses CODE_SIGNING_ALLOWED=NO, so the test host has
-                // no application-identifier entitlement and the Keychain is unusable.
-                // Reported as unverified rather than passed: faking a key here, or dropping
-                // the assertions, would claim coverage this environment cannot provide.
-                return unverifiedPreflightResult(startedAt: startedAt)
-            }
+        let fixture = FamiliarProviderCatalog.deepSeek.instance(id: "signed-fixture-" + UUID().uuidString)
+        let profileKey = "familiar.provider.instances.v1"
+        let originalProfiles = UserDefaults.standard.object(forKey: profileKey)
+        defer {
+            if let originalProfiles { UserDefaults.standard.set(originalProfiles, forKey: profileKey) }
+            else { UserDefaults.standard.removeObject(forKey: profileKey) }
+            try? FamiliarKeychainStore.delete(for: fixture.id)
         }
-        defer { if !hadExistingKey { try? FamiliarKeychainStore.delete(for: providerID) } }
+        try FamiliarProviderInstanceStore.save(fixture)
+        // A missing signing entitlement is a failing prerequisite in this opt-in
+        // signed suite, never an assertion-free green benchmark result.
+        try FamiliarKeychainStore.save("signed-fixture-key", for: fixture.id)
         let container = try FamiliarTestStore.make()
         let controller = FamiliarChatController(dependencies: FamiliarAppDependencies())
-        controller.draft = "把海报加到日历"
+        controller.settings = .defaultValue
+        controller.settings.providerID = fixture.id
+        controller.settings.modelID = fixture.defaultModel.id
+        controller.draft = "Inspect this image"
         controller.draftImages = [FamiliarDraftImage(image: Self.testImage())]
         controller.startSending(in: container.mainContext)
-
         var failures: [String] = []
-        if controller.errorMessage != nil { failures.append("image preflight reported an immediate error") }
-        if !controller.isSending { failures.append("image preflight did not start") }
-        if !controller.messages.isEmpty { failures.append("image preflight created a message before evidence was ready") }
-        if controller.draftImages.isEmpty { failures.append("image preflight discarded the draft image") }
-        let conversations = try container.mainContext.fetch(FetchDescriptor<FamiliarConversation>())
-        if !conversations.isEmpty { failures.append("image preflight created a conversation before evidence was ready") }
+        if controller.errorMessage != nil { failures.append("image preparation reported an immediate error") }
+        if !controller.isSending { failures.append("image preparation did not start") }
+        // Cancel synchronously before yielding MainActor: no provider request or
+        // OCR is claimed by this queued-submission boundary test.
         controller.cancelSending(in: container.mainContext)
-
-        return FamiliarBenchmarkResult(
-            scenario: .posterImagePreflight,
-            modelRounds: 0,
-            toolSequence: [],
-            approvalSequence: [],
-            terminalStatuses: ["vision-preflight"],
-            durationMilliseconds: Int(Date().timeIntervalSince(startedAt) * 1_000),
-            failures: failures
-        )
-    }
-
-    /// Recorded as an explicit unverified outcome rather than a pass with no checks: the
-    /// scenario's assertions never ran, so the printed diagnostic has to say so instead of
-    /// leaving a green line that looks like coverage.
-    @MainActor
-    private func unverifiedPreflightResult(startedAt: Date) -> FamiliarBenchmarkResult {
-        FamiliarBenchmarkResult(
-            scenario: .posterImagePreflight,
-            modelRounds: 0,
-            toolSequence: [],
-            approvalSequence: [],
-            terminalStatuses: ["unverified:keychain-unavailable-without-code-signing"],
-            durationMilliseconds: Int(Date().timeIntervalSince(startedAt) * 1_000),
-            failures: []
-        )
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(2))
+        while controller.isSending, clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        if controller.isSending { failures.append("cancelled preparation did not finish") }
+        if controller.errorMessage != nil { failures.append("cancellation reported an error") }
+        if controller.draft != "Inspect this image" || controller.draftImages.count != 1 { failures.append("cancellation discarded the draft") }
+        if try container.mainContext.fetchCount(FetchDescriptor<FamiliarConversation>()) != 0 { failures.append("cancellation created a conversation") }
+        if try container.mainContext.fetchCount(FetchDescriptor<FamiliarMessage>()) != 0 { failures.append("cancellation created a message") }
+        if try container.mainContext.fetchCount(FetchDescriptor<FamiliarAttachment>()) != 0 { failures.append("cancellation created an attachment") }
+        return FamiliarBenchmarkResult(scenario: .posterImagePreflight, modelRounds: 0, toolSequence: [], approvalSequence: [],
+            terminalStatuses: ["cancelled-before-submission"], durationMilliseconds: Int(Date().timeIntervalSince(startedAt) * 1_000), failures: failures)
     }
 
     private static func testImage() -> UIImage {
@@ -828,5 +810,17 @@ struct FamiliarBenchmarkTests {
             }
             await Task.yield()
         }
+    }
+}
+
+
+@Suite("Signed image submission boundaries", .serialized)
+struct FamiliarSignedSubmissionTests {
+    @Test("Signed Keychain supports cancelling queued image preparation without submitting")
+    @MainActor
+    func queuedImageCancellation() async throws {
+        let result = try await FamiliarBenchmarkTests().imagePreflightResult()
+        print("SIGNED BENCHMARK \(result.diagnostic)")
+        #expect(result.failures.isEmpty)
     }
 }

@@ -63,7 +63,14 @@ nonisolated enum FamiliarAttachmentStore {
             try await importDocumentOffMain(from: sourceURL)
         }
         return try await withTaskCancellationHandler {
-            try await task.value
+            let draft = try await task.value
+            do {
+                try Task.checkCancellation()
+                return draft
+            } catch {
+                remove(relativePath: draft.relativePath)
+                throw error
+            }
         } onCancel: {
             task.cancel()
         }
@@ -103,6 +110,7 @@ nonisolated enum FamiliarAttachmentStore {
         do {
             try Task.checkCancellation()
             let conversion = try await extractDocument(from: draftURL, filename: filename)
+            try Task.checkCancellation()
             return try makeDraft(
                 filename: filename,
                 relativePath: relativePath(for: draftURL),
@@ -188,6 +196,7 @@ nonisolated enum FamiliarAttachmentStore {
         let directory = messagesURL(for: messageID)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
         let destinationURL = try validatedStoreURL(for: committedRelativePath(of: draft, messageID: messageID))
+        guard !fileManager.fileExists(atPath: destinationURL.path) else { throw FamiliarAttachmentStoreError.copyFailed }
         do {
             try fileManager.copyItem(at: sourceURL, to: destinationURL)
             try verifyCopiedFile(destinationURL, expectedSize: size)
@@ -195,7 +204,9 @@ nonisolated enum FamiliarAttachmentStore {
             try? fileManager.removeItem(at: destinationURL)
             throw error
         } catch {
-            try? fileManager.removeItem(at: destinationURL)
+            if (error as? CocoaError)?.code != .fileWriteFileExists {
+                try? fileManager.removeItem(at: destinationURL)
+            }
             throw FamiliarAttachmentStoreError.copyFailed
         }
         return relativePath(for: destinationURL)

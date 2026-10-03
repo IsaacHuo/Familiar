@@ -55,6 +55,7 @@ nonisolated struct FamiliarOpenAICompatibleModelProvider: FamiliarModelProvider,
                         )
                     )
 
+                    continuation.yield(.providerSelection(providerID: descriptor.id, modelID: modelRequest.model))
                     let (bytes, response) = try await FamiliarProviderHTTP.session.bytes(for: request)
                     guard let http = response as? HTTPURLResponse else {
                         throw FamiliarProviderRequestError.invalidResponse(provider: descriptor.displayName)
@@ -402,6 +403,23 @@ nonisolated enum FamiliarProviderHTTP {
 }
 
 nonisolated enum FamiliarProviderFactory {
+    static func storedCredential(for providerID: String) -> String? {
+        let value = FamiliarKeychainStore.load(for: providerID)
+            ?? FamiliarOAuthCredentialStore.load(instanceID: providerID)?.accessToken
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    /// Groups have no shared key. Their sentinel is valid only when a real member
+    /// can be constructed; the same lookup drives configuration and submission.
+    static func credential(for descriptor: FamiliarProviderDescriptor, lookup: (String) -> String? = storedCredential) -> String? {
+        if let routes = descriptor.routes {
+            return routes.contains { credential(for: $0.provider, lookup: lookup) != nil } ? "" : nil
+        }
+        let value = lookup(descriptor.id)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
     static func makeProvider(
         for descriptor: FamiliarProviderDescriptor,
         apiKey: String,
@@ -409,7 +427,7 @@ nonisolated enum FamiliarProviderFactory {
     ) -> any FamiliarModelProvider {
         if let routes = descriptor.routes {
             let members = routes.compactMap { route -> FamiliarGroupModelProvider.Member? in
-                guard let key = FamiliarKeychainStore.load(for: route.provider.id) ?? FamiliarOAuthCredentialStore.load(instanceID: route.provider.id)?.accessToken else { return nil }
+                guard let key = credential(for: route.provider) else { return nil }
                 return .init(provider: makeProvider(for: route.provider, apiKey: key, sessionID: sessionID), modelID: route.modelID)
             }
             return FamiliarGroupModelProvider(providerID: descriptor.id, members: members, strategy: descriptor.routeStrategy ?? "fallback", fallbackOnAnyError: descriptor.fallbackOnAnyError == true, sessionID: sessionID)
