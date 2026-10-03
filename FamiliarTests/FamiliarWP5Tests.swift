@@ -84,8 +84,9 @@ struct FamiliarWP5Tests {
         let version = try #require(resource.versions.first)
         #expect(version.source == .fetchedWeb)
         #expect(version.sourceURLString == capture.urlString)
-        #expect(version.extractedText == text)
-        #expect(version.extractedTextHash == capture.contentHash)
+        #expect(version.extractedText == capture.resourceText)
+        #expect(version.extractedTextHash == FamiliarProjectResourceService.sha256(capture.resourceText))
+        #expect(version.extractedText.contains(capture.contentHash))
     }
 
 }

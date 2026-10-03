@@ -4,6 +4,7 @@ import SwiftData
 enum FamiliarProjectResourceServiceError: LocalizedError {
     case emptyText
     case textTooLarge
+    case invalidWebCapture
 
     var errorDescription: String? {
         switch self {
@@ -11,6 +12,8 @@ enum FamiliarProjectResourceServiceError: LocalizedError {
             String(localized: "resource.error.empty_text", defaultValue: "Enter some text to import.")
         case .textTooLarge:
             String(localized: "resource.error.text_too_large", defaultValue: "The pasted text is too large to import.")
+        case .invalidWebCapture:
+            String(localized: "resource.error.invalid_web_capture", defaultValue: "This captured page is unavailable or could not be verified.")
         }
     }
 }
@@ -159,22 +162,31 @@ struct FamiliarProjectResourceService {
     ) async throws -> FamiliarResource {
         // Fetching finishes before any file or model is created. The web service applies
         // Familiar's HTTPS-only, public-address, redirect, type and response-size policy.
-        let (output, source) = try await webContentService.fetch(url: urlString)
-        let capture = FamiliarWebCapture(
-            captureID: UUID().uuidString,
-            urlString: output.finalURL,
-            accessedAt: source.retrievedAt,
-            contentHash: Self.sha256(output.text),
-            text: output.text,
-            truncated: output.truncated,
-            sourceID: output.sourceID
-        )
+        let (output, _) = try await webContentService.fetch(url: urlString)
         return try importFetchedWebText(
-            capture,
+            output.capture,
             displayName: output.title,
             into: project,
             in: context
         )
+    }
+
+    /// Invoked only by the user's Save button. Resolve ownership and bytes from the
+    /// persisted successful tool result, never from model-provided UI arguments.
+    @discardableResult
+    func saveFetchedWebResult(runtimeID: String, toolCallID: String, in context: ModelContext) throws -> FamiliarResource {
+        let activityID = FamiliarRunPersistenceRecorder.toolActivityID(runtimeID: runtimeID, toolCallID: toolCallID)
+        let activities = FetchDescriptor<FamiliarActivityRecord>(predicate: #Predicate { $0.activityID == activityID })
+        let results = FetchDescriptor<FamiliarToolResultRecord>(predicate: #Predicate { $0.activityID == activityID })
+        let runs = FetchDescriptor<FamiliarAgentRun>(predicate: #Predicate { $0.runtimeID == runtimeID })
+        guard let activity = try context.fetch(activities).first,
+              activity.toolName == "web_fetch", activity.phase == .succeeded,
+              let result = try context.fetch(results).first, activity.resultRecordID == result.id,
+              let project = try context.fetch(runs).first?.conversation?.project,
+              let envelope = try? JSONDecoder().decode(FamiliarToolResultEnvelope.self, from: Data(result.envelopeJSON.utf8)),
+              let output = try? JSONDecoder().decode(FamiliarWebFetchOutput.self, from: Data(envelope.modelContent.utf8))
+        else { throw FamiliarProjectResourceServiceError.invalidWebCapture }
+        return try importFetchedWebText(output.capture, displayName: output.title, into: project, in: context)
     }
 
     func importFetchedWebText(
@@ -183,10 +195,31 @@ struct FamiliarProjectResourceService {
         into project: FamiliarProject,
         in context: ModelContext
     ) throws -> FamiliarResource {
+        guard !capture.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              Int64(capture.text.utf8.count) <= FamiliarAttachmentStore.maximumSourceBytes,
+              capture.contentHash == Self.sha256(capture.text),
+              (try? FamiliarWebURLPolicy.normalize(capture.urlString)) != nil else {
+            throw FamiliarProjectResourceServiceError.invalidWebCapture
+        }
+        let text = capture.resourceText
+        let textHash = Self.sha256(text)
+        // Saving the same immutable capture twice must not grow Project context.
+        let url = capture.urlString
+        let versions = FetchDescriptor<FamiliarResourceVersion>(predicate: #Predicate {
+            $0.sourceURLString == url && $0.extractedTextHash == textHash
+        })
+        if let version = try context.fetch(versions).first(where: { $0.source == .fetchedWeb && $0.resource?.project?.id == project.id }),
+           let resource = version.resource {
+            guard let file = store.url(for: version.originalRelativePath),
+                  FamiliarHash.sha256(try Data(contentsOf: file)) == version.contentHash else {
+                throw FamiliarProjectResourceStoreError.sourceUnavailable
+            }
+            return resource
+        }
         let resourceID = UUID()
         let versionID = UUID()
         let filename = "Web-\(capture.captureID).txt"
-        let copied = try store.copyText(capture.text, projectID: project.id, resourceID: resourceID, version: 1, versionID: versionID, filename: filename)
+        let copied = try store.copyText(text, projectID: project.id, resourceID: resourceID, version: 1, versionID: versionID, filename: filename)
         let now = capture.accessedAt
         let normalizedDisplayName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
         let resource = FamiliarResource(
@@ -198,11 +231,11 @@ struct FamiliarProjectResourceService {
         )
         let version = FamiliarResourceVersion(id: versionID, version: 1, source: .fetchedWeb, sourceURLString: capture.urlString,
             filename: filename, mimeType: "text/plain", originalRelativePath: copied.relativePath, byteSize: copied.byteSize,
-            contentHash: copied.contentHash, extractedText: capture.text, extractedTextHash: capture.contentHash,
+            contentHash: copied.contentHash, extractedText: text, extractedTextHash: textHash,
             extractionEngine: "web_fetch", extractionVersion: "1", detectedFormat: "txt", usedOCR: false, createdAt: now, resource: resource)
         context.insert(resource)
         context.insert(version)
-        do { project.updatedAt = now; try context.save(); return resource }
+        do { project.updatedAt = max(project.updatedAt, now); try context.save(); return resource }
         catch { context.rollback(); try? store.removeVersion(relativePath: copied.relativePath); throw error }
     }
 

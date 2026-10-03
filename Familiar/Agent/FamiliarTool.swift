@@ -752,7 +752,6 @@ nonisolated struct FamiliarToolExecutionResult: Sendable {
     let envelope: FamiliarToolResultEnvelope
     let artifactIdentifier: String?
     let sources: [FamiliarSource]
-    let webCaptures: [FamiliarWebCapture]
     let artifact: FamiliarArtifactDescriptor?
     let environmentReceipt: FamiliarEnvironmentReceipt?
     let loadedSkill: FamiliarSkillSnapshot?
@@ -763,11 +762,10 @@ nonisolated struct FamiliarToolExecutionResult: Sendable {
     let loadedTools: [FamiliarToolManifest]?
     let durableUndo: FamiliarDurableUndoDescriptor?
 
-    init(envelope: FamiliarToolResultEnvelope, artifactIdentifier: String? = nil, sources: [FamiliarSource] = [], webCaptures: [FamiliarWebCapture] = [], artifact: FamiliarArtifactDescriptor? = nil, environmentReceipt: FamiliarEnvironmentReceipt? = nil, loadedSkill: FamiliarSkillSnapshot? = nil, installedSkill: FamiliarSkillSnapshot? = nil, memoryWrite: FamiliarMemoryWriteRequest? = nil, loadedTools: [FamiliarToolManifest]? = nil, durableUndo: FamiliarDurableUndoDescriptor? = nil) {
+    init(envelope: FamiliarToolResultEnvelope, artifactIdentifier: String? = nil, sources: [FamiliarSource] = [], artifact: FamiliarArtifactDescriptor? = nil, environmentReceipt: FamiliarEnvironmentReceipt? = nil, loadedSkill: FamiliarSkillSnapshot? = nil, installedSkill: FamiliarSkillSnapshot? = nil, memoryWrite: FamiliarMemoryWriteRequest? = nil, loadedTools: [FamiliarToolManifest]? = nil, durableUndo: FamiliarDurableUndoDescriptor? = nil) {
         self.envelope = envelope
         self.artifactIdentifier = artifactIdentifier
         self.sources = sources
-        self.webCaptures = webCaptures
         self.artifact = artifact
         self.environmentReceipt = environmentReceipt
         self.loadedSkill = loadedSkill

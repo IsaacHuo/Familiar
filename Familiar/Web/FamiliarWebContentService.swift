@@ -42,7 +42,9 @@ nonisolated struct FamiliarWebContentService: Sendable {
                 mimeType: mimeType,
                 contentTrust: "untrusted_external_content",
                 text: text,
-                truncated: truncated
+                truncated: truncated,
+                accessedAt: source.retrievedAt,
+                contentHash: FamiliarHash.sha256(text)
             ),
             source
         )

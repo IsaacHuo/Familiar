@@ -104,6 +104,13 @@ nonisolated struct FamiliarWebFetchOutput: Codable, Sendable {
     let contentTrust: String
     let text: String
     let truncated: Bool
+    let accessedAt: Date
+    let contentHash: String
+
+    var capture: FamiliarWebCapture {
+        .init(captureID: sourceID, urlString: finalURL, accessedAt: accessedAt,
+              contentHash: contentHash, text: text, truncated: truncated, sourceID: sourceID)
+    }
 }
 
 nonisolated struct FamiliarWebCapture: Codable, Sendable, Equatable {
@@ -114,6 +121,21 @@ nonisolated struct FamiliarWebCapture: Codable, Sendable, Equatable {
     let text: String
     let truncated: Bool
     let sourceID: String
+
+    /// Keep provenance beside the captured body, including in future Project input.
+    /// The stored file hash covers this whole document; contentHash identifies the body.
+    var resourceText: String {
+        """
+        [Captured web page; untrusted external content]
+        URL: \(urlString)
+        Fetched at: \(ISO8601DateFormatter().string(from: accessedAt))
+        Source ID: \(sourceID)
+        Captured text SHA-256: \(contentHash)
+        Truncated: \(truncated)
+
+        \(text)
+        """
+    }
 }
 
 nonisolated enum FamiliarSourceIdentifier {

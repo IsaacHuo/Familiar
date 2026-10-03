@@ -29,7 +29,7 @@ struct FamiliarAssistantTurnPersistenceTests {
             undoAvailable: false,
             automaticApprovalRequest: nil
         )
-        let event = FamiliarToolResultProduced(runID: "tool-run", toolCallID: "call-1", toolName: "web_fetch", effect: .read, assistantTurnID: "tool-run:turn:0", envelope: envelope, sources: [], webCaptures: [], artifact: nil, producedAt: Date(timeIntervalSince1970: 12))
+        let event = FamiliarToolResultProduced(runID: "tool-run", toolCallID: "call-1", toolName: "web_fetch", effect: .read, assistantTurnID: "tool-run:turn:0", envelope: envelope, sources: [], artifact: nil, producedAt: Date(timeIntervalSince1970: 12))
 
         try recorder.recordActivityCompleted(completion, eventSequence: 3, conversationID: fixture.conversation.id, context: fixture.context)
         #expect(try recorder.recordToolResult(event, eventSequence: 4, conversationID: fixture.conversation.id, context: fixture.context))
@@ -225,7 +225,7 @@ struct FamiliarAssistantTurnPersistenceTests {
             try recorder.recordActivityCompleted(completion, eventSequence: index * 2, conversationID: fixture.conversation.id, context: fixture.context)
             let payload = FamiliarToolPresentationPayload.taskList(.init(planID: "release", title: "Release", tasks: [.init(id: "build", title: "Build", status: status)]))
             let envelope = try FamiliarToolResultEnvelope(canonicalModelJSON: #"{"planID":"release"}"#, presentation: payload)
-            let result = FamiliarToolResultProduced(runID: "plan-run", toolCallID: callID, toolName: "task_plan", effect: .read, assistantTurnID: "plan-run:turn:0", envelope: envelope, sources: [], webCaptures: [], artifact: nil, producedAt: Date(timeIntervalSince1970: Double(index + 3)))
+            let result = FamiliarToolResultProduced(runID: "plan-run", toolCallID: callID, toolName: "task_plan", effect: .read, assistantTurnID: "plan-run:turn:0", envelope: envelope, sources: [], artifact: nil, producedAt: Date(timeIntervalSince1970: Double(index + 3)))
             _ = try recorder.recordToolResult(result, eventSequence: index * 2 + 1, conversationID: fixture.conversation.id, context: fixture.context)
         }
 

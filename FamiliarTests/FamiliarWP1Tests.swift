@@ -128,7 +128,7 @@ struct FamiliarWP1Tests {
             undoAvailable: false,
             automaticApprovalRequest: nil
         )
-        let toolEvent = FamiliarToolResultProduced(runID: "run", toolCallID: "call", toolName: "future_tool", effect: .read, assistantTurnID: "run:turn:0", envelope: envelope, sources: [], webCaptures: [], artifact: nil, producedAt: finishedAt)
+        let toolEvent = FamiliarToolResultProduced(runID: "run", toolCallID: "call", toolName: "future_tool", effect: .read, assistantTurnID: "run:turn:0", envelope: envelope, sources: [], artifact: nil, producedAt: finishedAt)
         try recorder.recordActivityCompleted(completion, eventSequence: 1, conversationID: conversation.id, context: context)
         #expect(try recorder.recordToolResult(toolEvent, eventSequence: 2, conversationID: conversation.id, context: context))
         #expect(try !recorder.recordToolResult(toolEvent, eventSequence: 2, conversationID: conversation.id, context: context))

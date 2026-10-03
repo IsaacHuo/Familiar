@@ -37,7 +37,7 @@ struct FamiliarSurfaceTests {
     }
 
     private func result(toolName: String, effect: FamiliarToolEffect, envelope: FamiliarToolResultEnvelope, callID: String = "call-1") -> FamiliarToolResultProduced {
-        .init(runID: "run-1", toolCallID: callID, toolName: toolName, effect: effect, assistantTurnID: "run-1:turn:0", envelope: envelope, sources: [], webCaptures: [], artifact: nil, producedAt: Date(timeIntervalSince1970: 2))
+        .init(runID: "run-1", toolCallID: callID, toolName: toolName, effect: effect, assistantTurnID: "run-1:turn:0", envelope: envelope, sources: [], artifact: nil, producedAt: Date(timeIntervalSince1970: 2))
     }
 
     @Test("Write lifecycle projects one compact top-level surface")
