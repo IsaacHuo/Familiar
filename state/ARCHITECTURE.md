@@ -50,6 +50,15 @@ This import is partial. See [coverage and remaining work](../docs/13-openminis-i
 - The obsolete FamiliarToolChips fixture-only renderer is deleted. Fixtures instantiate the production FamiliarExecutionBlock and other real content/approval/Thinking/Sources components. They are preview data, not verification of real service execution.
 - D implementation, JavaScript/localization/static checks and arm64 test-target compilation are complete. The entirely pending owner checklist is `docs/14-design-system-device-acceptance.md`; no Simulator, UI screenshot, VoiceOver or physical-device visual pass is claimed.
 
+## Streaming and renderer boundaries (2026-10-04, E source work)
+
+- Chat does not subscribe to streaming strings in sending-state empty-view checks. FamiliarMessageTimeline receives the Controller identity; only its FamiliarLiveAssistantTurn subtree reads token blocks, reasoning and ordered live surfaces. Historical ordering/projection and Chat controls are not token inputs. Scroll-follow behavior and eager VStack remain; no measured lazy-layout decision or persistent cache exists.
+- Historical Run association builds one local UUID index from the current input, preserving the first matching responseMessageID. It replaces per-message linear scans and is rebuilt with history inputs.
+- FamiliarSurfaceStore.affectsPresentation excludes token/reasoning completion, usage/model identity and assistant-turn completion events. The Controller checks this before mutating observable surfaces; the store also guards direct event application. Persistence and actual activity/approval/terminal events retain their original paths.
+- FamiliarAttachmentStore.importImage is @concurrent async: JPEG encoding/owned draft write occur off MainActor; cancellation is checked before/after encoding and after writing, cleaning only its own file. Controller awaits preparation and preserves the draft/version/submission guards. Document parsing already uses detached work; SwiftData mutation remains on MainActor.
+- renderer.js increments renderVersion for each render. Mermaid async success/failure, subsequent diagrams and content decoration use that version to discard stale work; old previews cannot attach their source to new content. Native coordinator still coalesces streaming for 80ms and renders terminal input immediately. Node scheduling tests have a limited DOM double; actual WebKit layout/memory/rendering remain owner acceptance.
+- Remaining source-audited MainActor I/O includes ContextAssembler image reads, recorder attachment hashing, Project resource copies/hash, bundled Skill installation and install manifest reads. Source presence is not a measured stall; further changes depend on device evidence. No schema, tool group or orchestration phase is added by this slice.
+
 ## 1. 技术基线
 
 | 领域 | 技术 |
@@ -130,7 +139,7 @@ This import is partial. See [coverage and remaining work](../docs/13-openminis-i
 - `FamiliarAnyDocService.swift` — Swift 到 Rust C ABI 的转换封装，返回 Markdown/格式/引擎版本/错误码，声明支持扩展名列表。
 
 ### `Familiar/Attachments/`
-- `FamiliarAttachmentStore.swift` — 附件磁盘存储（`Drafts/`、`Messages/<messageID>/`）：25 MiB 上限、security-scoped 导入、路径穿越防护、草稿/提交副本、孤儿清理、OCR fallback 协调。解析与交付返回后都检查取消，仅清理本次拥有的草稿；正式复制遇到已存在目标直接拒绝，file-exists 失败不删既有文件。
+- `FamiliarAttachmentStore.swift` — 文档解析 detached、图片 JPEG／草稿写入 @concurrent async；附件磁盘存储（`Drafts/`、`Messages/<messageID>/`）：25 MiB 上限、security-scoped 导入、路径穿越防护、草稿/提交副本、孤儿清理、OCR fallback 协调。解析与交付返回后都检查取消，仅清理本次拥有的草稿；正式复制遇到已存在目标直接拒绝，file-exists 失败不删既有文件。
 - `FamiliarSharedDraftImportService.swift` — 从共享收件箱取下一项导入为附件草稿。
 
 ### `Familiar/Data/` — Provider 与密钥
@@ -184,7 +193,7 @@ This import is partial. See [coverage and remaining work](../docs/13-openminis-i
 - `effectiveSettings(for:)` 统一下次发送与顶栏的 Project override；选中历史不从 Conversation 的上次请求元数据改默认模型。顶栏在 Project 有 override 时修改 Project，可恢复跟随默认；设置页仍编辑默认选择，未改变生效模型时不写假的 ModelSwitch。回复保存实际成员 ID，重试读取原 Run ContextSnapshot 的请求 ID，保留模型组选项。
 - `FamiliarUsageView.swift` — 汇总该聊天 Run 的服务商报告字段，包括自动压缩；全缺失显示未报告，部分 Run 缺失时标明部分用量。模型条目是请求尝试，不声明成功，不估算费用；手动压缩及供应商配置请求明确不计入。它不承担按请求／成员分摊费用或 tokenizer 估算。
 - `FamiliarWebCaptureSaveButton.swift` — 展开的成功网页结果中的用户保存动作，复用 PillButtonStyle/Typography/Spacing。按真实 Run/Call 找已保存证据与所属 Project，保存完成后显示目标项目；截断页明确提示部分内容。当前保存回执只用于本地呈现，跨重开防重复由 Service 的文件／版本校验负责。
-- `FamiliarChatMessageViews.swift` — 唯一 Assistant Turn 内容流：按 Runtime sequence 交错渲染每轮 Markdown ResponseBlock 与稳定工具执行块。工具调用在原位置从运行中 morph 为单页 Approval、typed result、receipt、failure 或 undone；只读结果默认一行折叠并从顶部锚点向下展开。Activity 只保留工具数与耗时摘要，完整审计进入 Project Runs。Context 超过 2 条进入 sheet，Records 超过 3 条进入可搜索全屏，Diff 与长 Code 进入全屏。
+- `FamiliarChatMessageViews.swift` — live token 由独立 FamiliarLiveAssistantTurn 观察，历史 Run 关联采用当次输入索引；唯一 Assistant Turn 内容流：按 Runtime sequence 交错渲染每轮 Markdown ResponseBlock 与稳定工具执行块。工具调用在原位置从运行中 morph 为单页 Approval、typed result、receipt、failure 或 undone；只读结果默认一行折叠并从顶部锚点向下展开。Activity 只保留工具数与耗时摘要，完整审计进入 Project Runs。Context 超过 2 条进入 sheet，Records 超过 3 条进入可搜索全屏，Diff 与长 Code 进入全屏。
 - `FamiliarSurfaceDescriptor.swift` — 实时/历史共用的语义投影，descriptor 保存 Runtime sequence、稳定 tool identity 和授权决定。scalar、searchResults、document、contextMatches、recordCollection 等不再按固定区域堆叠，而是在所属 Assistant Turn 的调用位置渲染。`FamiliarToolPresentationName` 同时持有 name→title 与 name→SF Symbol 两张显式表；图标不放进 manifest，因为所有调用点只拿到持久化的 `activity.toolName`，历史 Run 必须在对应工具已不再注册时渲染出同一图标。
 - `FamiliarComposerView.swift` — compact/expanded/fullscreen 输入器、附件/相机/相册、一次性 Slash Skill 选择与语音。
 - `FamiliarSettingsHubView.swift` / `FamiliarSettingsView.swift` / `FamiliarSearchSettingsView.swift` — 设置 hub、模型服务、执行限制、Memory、Diagnostics、独立网页搜索设置和 Python 软件源设置。Diagnostics 页复用 `registry.availabilityReport()`，展示已注册工具的状态；按需加载使用相同 registry availability 检查成员并告知模型原因。它显示 Shell Runtime phase 和当前可用的已注册工具数，不声称这些 Schema 全部进入模型请求。执行限制页用 stepper 暴露步数/工具调用/时长三个预算，范围与 `FamiliarExecutionBudget.normalized` 的钳制一致，因此控件无法表达一个 Runtime 会静默拒绝的值；Memory 页提供自动记忆开关、按 scope 与来源列出每条记忆、编辑、滑动删除与二次确认的全部删除，编辑会重写派生的去重键并复用同一套敏感内容拒绝规则。模型服务页此前有 4 个 `body` 从不渲染的 section（含重复的通知开关与重复的 system prompt 编辑器），且其 `.task` 会在未授权时静默关闭通知，已一并删除；Shell 限制展示改为从 `FamiliarShellLimits.iOS` 派生而非硬编码字符串。权限页覆盖日历、提醒、联系人、位置、照片添加、照片读取、健康活动、Apple Music、蓝牙、相机、麦克风、语音识别与通知，其中健康只显示“已请求/尚未请求”并在 footer 说明 HealthKit 从不揭示读取拒绝；软件源只允许选择内置校验的官方 PyPI 或清华 TUNA HTTPS 索引，不接受任意 URL。搜索页提供 Provider 选择、独立 Key 保存/删除、最小连接验证以及隐私/费用说明。Skills 页只以右上角加号打开带默认 instructions 模板的创建表单，没有导入行，新建 Skill 的 allowedTools 为空——按现在的语义这表示「未声明限制」，不会收窄工具；页面仍没有主动收窄的编辑控件。
@@ -291,7 +300,7 @@ Composer
   → FamiliarChatView.onSend
   → FamiliarChatController.startSending        // Project override 后的模型／凭据／文档能力检查
       → 捕获草稿、历史、Skill；冻结 permitted native catalog + enabled MCP discovery closures（无提前网络发现）
-      → 只读 Project／Memory 候选；预定消息 ID 与附件最终路径，用草稿路径读取图片
+      → 只读 Project／Memory 候选；await 后台图片编码／草稿写入，预定消息 ID 与附件最终路径，用草稿路径读取图片
       → FamiliarProjectContextAssembler.assemble + validateSubmission
           → protected Project + 本轮用户消息／附件 + 基础 Schema 必须合计可容纳；旧历史可在 Loop 压缩
           → 文本模型图片识别后再次组装／验证；取消、草稿变化或失败均保留当前草稿

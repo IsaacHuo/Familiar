@@ -1,6 +1,6 @@
 # Familiar 产品收敛与 Agent Harness 长期计划
 
-最后更新：2026-10-03。此清单跨对话持续维护。
+最后更新：2026-10-04。此清单跨对话持续维护。
 
 ## 目标与工作规则
 
@@ -31,7 +31,7 @@ Harness 收敛为 **One Agent + One Loop + Lazy Tools + Progressive Escalation**
 
 ## 当前切片
 
-**B1–B3、C1–C9、F1 与 D 阶段全部实现项／静态／编译验证已完成。D 的真机验收独立留 F14 与 docs/14-design-system-device-acceptance.md，未标为完成；后续进入 E 的性能／维护审查。** 运行测试与真机验收仍独立待办。写入 journal、失败补偿和不可重复撤销的机制已接线；仍不能将外部系统写入与本地保存称为跨进程原子事务。
+**B1–B3、C1–C9、D、E1/E4/E5/E6 与 F1–F5 的实现／源码审查／静态／编译工作已完成。E2/E3 的源码审查、Run 查找整理与 Mermaid 竞态修复已完成；懒布局决策和真实渲染／内存仍缺设备采样，保持未勾选。所有者统一从 docs/15-owner-device-acceptance.md 验收，F6–F14 全部待确认。** 运行测试与真机验收仍独立待办。写入 journal、失败补偿和不可重复撤销的机制已接线；仍不能将外部系统写入与本地保存称为跨进程原子事务。
 
 ## 审查基线
 
@@ -146,24 +146,33 @@ Harness 收敛为 **One Agent + One Loop + Lazy Tools + Progressive Escalation**
 
 ## E. 性能与维护面
 
-- [ ] E1 流式 delta 只影响当前回复，避免反复构建全量 timeline、历史 projection 和无关设置。
+- [x] E1 流式 delta 只影响当前回复，避免反复构建全量 timeline、历史 projection 和无关设置。
 - [ ] E2 评估长会话的 eager VStack／WKWebView 数量和排序成本；按实际测量选择懒布局，不盲目添加缓存。
 - [ ] E3 保留 Markdown 现有流式合并／节流；核对大表格、代码和图表的渲染、布局与内存。
-- [ ] E4 核对文件解析、图片缩放、Skill archive、hash 与磁盘 I/O 的 MainActor 开销；仅在证据支持时移动工作。
-- [ ] E5 排查现有语音未使用变量与 OAuth 并发 warning；不把源码疑点写成已经发生的性能故障。
-- [ ] E6 清理确认无生产引用的类型、入口和本地化；保留研究／Mac 目录，禁止为了 iOS 收敛扩展 macOS 产品。
+- [x] E4 核对文件解析、图片缩放、Skill archive、hash 与磁盘 I/O 的 MainActor 开销；仅在证据支持时移动工作。
+- [x] E5 排查现有语音未使用变量与 OAuth 并发 warning；不把源码疑点写成已经发生的性能故障。
+- [x] E6 清理确认无生产引用的类型、入口和本地化；保留研究／Mac 目录，禁止为了 iOS 收敛扩展 macOS 产品。
+
+E2/E3 当前进度与剩余门槛：
+
+- [x] 源码核对：历史仍是 eager VStack；timeline 合并排序与每条历史的 Surface projection 不再因正文 token 重做。Run 关联改为每次历史输入更新时一次索引，保持首个匹配语义，无跨更新缓存。
+- [ ] E2 对 100／300 条历史的 WKWebView 数量、主线程更新、滚动和内存进行设备采样，再决定是否改为懒布局；没有测量时不宣称需要或已经完成布局优化。
+- [x] E3 保留 80ms 流式合并／终态立即渲染；修复 Mermaid 旧异步结果装饰新正文的竞态，旧版本停止继续调度图表。
+- [ ] E3 大表格、长代码、多图表、Dynamic Type／外观变化下的 WebKit 真实布局、渲染与内存验收；Node 调度回归不代替这一项。
 
 ## F. 验证与完成门槛
 
 ### 实现侧
 
 - [x] F1 当前测试清单反查所有 suite；补齐 ImportContracts、GroupBoundary、ExecutionContract 等遗漏。真机 guest suite 单列，Simulator skip 不能算 guest 通过。
-- [ ] F2 新增决定行为的回归用例，避免只镜像实现的字符串断言。
-- [ ] F3 每个切片完成 git diff --check、相关 plist／strings 检查和单次 arm64 Simulator build-for-testing。
-- [ ] F4 编译、测试执行、真实服务、真机视觉、签名发布证据分列；禁止“全量通过”包含未运行或跳过项。
-- [ ] F5 CURRENT 描述实际实现、问题与下一阶段；ARCHITECTURE 描述真实模块边界；OpenMinis 对照表仅作历史迁入记录。
+- [x] F2 新增决定行为的回归用例，避免只镜像实现的字符串断言。
+- [x] F3 每个切片完成 git diff --check、相关 plist／strings 检查和单次 arm64 Simulator build-for-testing。
+- [x] F4 编译、测试执行、真实服务、真机视觉、签名发布证据分列；禁止“全量通过”包含未运行或跳过项。
+- [x] F5 CURRENT 描述实际实现、问题与下一阶段；ARCHITECTURE 描述真实模块边界；OpenMinis 对照表仅作历史迁入记录。
 
 ### 所有者真实验收（分别勾选）
+
+具体步骤、通过条件和采样记录集中在 [统一真机验收清单](docs/15-owner-device-acceptance.md)，页面细表继续引用 D 清单。
 
 - [ ] F6 普通聊天：问候／解释一次请求、流式、取消、错误恢复、退出重开。
 - [ ] F7 Project：文件导入、引用、模型覆盖、上下文超限保留草稿、历史回放。
@@ -299,3 +308,17 @@ Harness 收敛为 **One Agent + One Loop + Lazy Tools + Progressive Escalation**
 - 下一阶段：E 先依据实际源码／测量审查流式失效范围、长会话渲染、WebKit／解析 I/O 与现存 warning，不继续扩大功能数量。所有者按 F6–F14 与设计验收表验证真实任务及视觉行为。
 
 其余未勾选项仍待实施。所有真机／真实服务验收仍未完成。
+
+
+### E：流式边界、异步渲染与维护审查（2026-10-04）
+
+- E1：Chat 父层在发送中不订阅 live 字符串，FamiliarLiveAssistantTurn 独立观察正文／推理／工具呈现；SurfaceStore 和 Controller 不为 token／usage／model 等无呈现事件作无效 mutation。历史顺序与跟随底部行为保留，没有引入缓存或另一套状态。
+- E2：历史关联 Run 使用当次输入索引替代逐条扫描；eager VStack 和可变 WebKit 高度保留。源码成本已定位，懒布局、实际内存和滚动表现等待真机数据。
+- E3：renderer 使用本次 renderVersion 约束 Mermaid 异步成功／失败／后续装饰，过期任务不能给新正文附上旧源码的预览；原 80ms 合并策略、原生样式、隔离 WebKit 和安全过滤不变。`node --test Scripts/test-markdown-renderer.mjs` 三项执行通过，旧 renderer 对照三项失败；这是带有限 DOM double 的调度行为验证，不是浏览器、Markdown parser、SVG 安全或真实 Mermaid／WebKit 测试。日志 `/tmp/familiar-renderer-e3-20261004-test.log`。
+- E4：图片 JPEG 编码／写盘改为 @concurrent async，编码前后与写盘后检查取消，已写入草稿遇取消只清理自身；Controller 等待后仍检查草稿身份／提交边界。文档解析已有 detached 路径，Skill archive 位于非 UI tool 执行路径，资源 hash 已有流式工具。ContextAssembler 图片读取、Run recorder 附件 hash、Project 资源复制／hash、内置 Skill 首次安装及安装元数据前 manifest I/O 仍有 MainActor 工作，记录为采样点；没有推测具体耗时或跨 Actor 传递 ModelContext。
+- E5：核对旧日志中的准确 warning，删除语音 rawPreview 未用变量；OAuth 回调启动闭包显式捕获 self，网络回执 completion 明确 @Sendable。编译已检查这些源文件，无相关 Swift warning；不是实际 OAuth／语音行为验收。
+- E6：删除旧 ToolChips 页头／Diff／规划与完成文案、已移除固定 Runtime 阶段和旧审批翻页的 13 个无生产引用键，两语言同步。仍用的 queued/running 与动态分类／空态／分享扩展键保留；没有清理研究／Mac 或历史持久字段，没有凭候选扫描做全仓删除。
+- F2–F5：补两项 StreamingObservation 回归和图片预取消用例、适配图片 preflight 用例，测试目标仅编译；41 个 Simulator suite、两个 signed-device suite 和完整 UI target 清单检查通过。实现／静态／编译与 Node 执行／iOS 未执行／真实服务／真机／签名发布证据分列，state 已同步；不表示所有运行测试完成。
+- 构建：`/tmp/familiar-maintenance-e-20261004-build.log` 与资源更新后的 `/tmp/familiar-maintenance-e-verified-20261004-build.log` 均 `TEST BUILD SUCCEEDED`，原工程 Debug arm64 generic Simulator build-for-testing。前者完整重编译了相关 Swift 源，仅有 AppIntents metadata 工具提示；后者为最终增量，未启动 Simulator、未运行 iOS suites、未进行真实服务／设备／签名发布验收。
+- 静态：git diff --check、shell 语法、suite 清单、JavaScript 语法、strings plist、中英 992/992 parity、零缺失生产字面量键通过。开发缓存清理仅涉及本任务旧 DerivedData 的可重建缓存，保留源码、日志与 dependency checkout。
+- 下一步：所有者按 docs/15-owner-device-acceptance.md 先完成 F6–F12，再按实际启用配置检查 F10/F13 和 F14；用设备证据完成 E2/E3，并优先修正实际失败。未授权执行的 iOS 自动测试仍待独立安排，不继续新增功能。
