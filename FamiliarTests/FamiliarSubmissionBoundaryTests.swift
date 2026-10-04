@@ -86,6 +86,20 @@ struct FamiliarSubmissionBoundaryTests {
         #expect(try Data(contentsOf: source) == bytes)
     }
 
+    @Test("Cancelled image preparation rejects before creating a usable draft")
+    @MainActor
+    func cancelledImageImport() async throws {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).image { renderer in
+            UIColor.white.setFill()
+            renderer.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        }
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await FamiliarAttachmentStore.importImage(image)
+        }
+        await #expect(throws: CancellationError.self) { _ = try await task.value }
+    }
+
     @Test("Recovery invoked by a reappearing view cannot terminate active send or compaction")
     @MainActor
     func activeRecoveryIsBlocked() throws {

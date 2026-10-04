@@ -97,12 +97,12 @@ struct FamiliarSendPreflightTests {
 
     @Test("Image bytes are read from the draft while its frozen path already points to the committed identity")
     @MainActor
-    func stagedImageReadPath() throws {
+    func stagedImageReadPath() async throws {
         let image = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).image { renderer in
             UIColor.white.setFill()
             renderer.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
         }
-        let draft = try FamiliarAttachmentStore.importImage(image)
+        let draft = try await FamiliarAttachmentStore.importImage(image)
         defer { FamiliarAttachmentStore.remove(relativePath: draft.relativePath) }
         let path = FamiliarAttachmentStore.committedRelativePath(of: draft, messageID: UUID())
         let input = FamiliarAttachmentSnapshot(id: draft.id, kind: draft.kind, filename: draft.filename, mimeType: draft.mimeType,

@@ -123,10 +123,13 @@ nonisolated enum FamiliarAttachmentStore {
         }
     }
 
-    static func importImage(_ image: UIImage, filename: String = "photo.jpg") throws -> FamiliarAttachmentDraft {
+    @concurrent
+    static func importImage(_ image: UIImage, filename: String = "photo.jpg") async throws -> FamiliarAttachmentDraft {
+        try Task.checkCancellation()
         guard let data = image.jpegData(compressionQuality: 0.85) else {
             throw FamiliarAttachmentStoreError.imageEncodingFailed
         }
+        try Task.checkCancellation()
         guard Int64(data.count) <= maximumSourceBytes else {
             throw FamiliarAttachmentStoreError.fileTooLarge
         }
@@ -134,6 +137,10 @@ nonisolated enum FamiliarAttachmentStore {
         let draftURL = try makeDraftURL(filename: safeName)
         do {
             try data.write(to: draftURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            try Task.checkCancellation()
+        } catch is CancellationError {
+            try? fileManager.removeItem(at: draftURL)
+            throw CancellationError()
         } catch {
             try? fileManager.removeItem(at: draftURL)
             throw FamiliarAttachmentStoreError.copyFailed
