@@ -372,17 +372,17 @@ final class FamiliarRunPersistenceRecorder {
         guard let run = fetchRun(runtimeID: runtimeID, in: context) else { return }
         run.assistantTurnID = assistantTurnID
         let parentID = ensureTurnActivity(run: run, assistantTurnID: assistantTurnID, sequence: eventSequence, at: date, context: context).activityID
-        let activityID = "notice:\(runtimeID):\(notice.kind.rawValue):\(notice.attempt)"
+        let activityID = "notice:\(runtimeID):\(notice.kind.rawValue):\(eventSequence)"
         guard fetchActivity(activityID: activityID, in: context) == nil else { return }
         context.insert(FamiliarActivityRecord(
             activityID: activityID,
             runtimeID: runtimeID,
-            parentID: parentID,
+            parentID: notice.toolCallID.map { Self.toolActivityID(runtimeID: runtimeID, toolCallID: $0) } ?? parentID,
             assistantTurnID: assistantTurnID,
             kind: .runtimeNotice,
             phase: .succeeded,
             summary: notice.kind.rawValue,
-            detail: "attempt=\(notice.attempt);delay=\(notice.delay);failure=\(notice.failureKind.rawValue)",
+            detail: "attempt=\(notice.attempt);delay=\(notice.delay);failure=\(notice.failureKind.code)",
             progress: 1,
             sequence: eventSequence,
             startedAt: date,
@@ -418,6 +418,17 @@ final class FamiliarRunPersistenceRecorder {
         } catch {
             context.rollback()
             throw error
+        }
+    }
+
+    func recordInterruptedText(_ blocks: [FamiliarLiveResponseBlock], runtimeID: String,
+                               outcome: FamiliarRunOutcome, at date: Date, context: ModelContext) throws {
+        guard outcome.status != .succeeded else { return }
+        for block in blocks where block.isStreaming && !block.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            _ = try recordResponseBlock(id: block.id, runtimeID: runtimeID, assistantTurnID: block.assistantTurnID,
+                messageID: nil, kind: .markdown, state: outcome.status == .cancelled ? .cancelled : .failed,
+                content: block.content, payloadJSON: #"{"format":"markdown"}"#, order: block.order,
+                startedAt: block.startedAt, endedAt: date, context: context)
         }
     }
 

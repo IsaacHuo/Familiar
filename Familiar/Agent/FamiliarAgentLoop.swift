@@ -140,6 +140,7 @@ nonisolated struct FamiliarRuntimeNotice: Equatable, Sendable {
     let attempt: Int
     let delay: TimeInterval
     let failureKind: FamiliarRuntimeFailureKind
+    let toolCallID: String?
 
     /// `attempt` and `delay` describe a retry schedule and carry no meaning for a
     /// budget notice, so they default to zero.
@@ -147,12 +148,14 @@ nonisolated struct FamiliarRuntimeNotice: Equatable, Sendable {
         kind: FamiliarRuntimeNoticeKind,
         attempt: Int = 0,
         delay: TimeInterval = 0,
-        failureKind: FamiliarRuntimeFailureKind
+        failureKind: FamiliarRuntimeFailureKind,
+        toolCallID: String? = nil
     ) {
         self.kind = kind
         self.attempt = attempt
         self.delay = delay
         self.failureKind = failureKind
+        self.toolCallID = toolCallID
     }
 }
 
@@ -419,9 +422,9 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                 tools: manifests
             )
             let round = try await streamRound(request: request, emitter: emitter, deadline: deadline)
+            if round.finishReason == .length || round.finishReason == .unknown { throw FamiliarAgentError.incompleteResponse }
             await emitter.emit(.assistantTurnCompleted(id: assistantTurnID, index: iteration, text: round.text))
             visibleResponse += round.text
-            if round.finishReason == .length || round.finishReason == .unknown { throw FamiliarAgentError.incompleteResponse }
             let calls = try round.pendingCalls.sorted { $0.key < $1.key }.map { try $0.value.completed() }
             guard !calls.isEmpty else {
                 let answer = visibleResponse.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -964,7 +967,8 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                 kind: .retrying,
                 attempt: 2,
                 delay: delay,
-                failureKind: failureKind
+                failureKind: failureKind,
+                toolCallID: context.toolCallID
             )))
             try await Self.sleep(for: delay, deadline: deadline)
             return try await perform()
