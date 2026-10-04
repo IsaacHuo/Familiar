@@ -141,8 +141,8 @@ struct FamiliarSurfaceTests {
 
         #expect(presentation.contains("private var contentBlocks: [FamiliarAssistantContentBlock]"))
         #expect(presentation.contains("ForEach(contentBlocks)"))
-        #expect(presentation.contains("FamiliarExecutionBlock("))
-        #expect(presentation.contains("withAnimation(reduceMotion ? nil : FamiliarMotion.expansion)"))
+        #expect(presentation.contains("FamiliarRuntimeCard("))
+        #expect(presentation.contains("disclosure.binding(for: activity.id)"))
         #expect(presentation.contains(".transition(.opacity)"))
         #expect(presentation.contains("surface.context.details"))
         #expect(presentation.contains("surface.records.details"))

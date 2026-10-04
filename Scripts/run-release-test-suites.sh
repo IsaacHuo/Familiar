@@ -33,6 +33,7 @@ simulator_suites=(
     FamiliarReleaseComplianceTests
     FamiliarReleaseToolTests
     FamiliarRuntimeTests
+    FamiliarRuntimePresentationTests
     FamiliarSearchProviderTests
     FamiliarSelectionPresentationTests
     FamiliarSkillsTests

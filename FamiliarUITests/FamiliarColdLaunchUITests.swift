@@ -22,7 +22,7 @@ final class FamiliarColdLaunchUITests: XCTestCase {
         app.launch()
 
         let fixtureIDs = [
-            "loading", "reasoning", "search", "approval", "clarification", "task",
+            "loading", "tool-results", "search", "approval", "clarification", "task",
             "recommendation", "insight", "receipt", "failure", "sources"
         ]
         for id in fixtureIDs {

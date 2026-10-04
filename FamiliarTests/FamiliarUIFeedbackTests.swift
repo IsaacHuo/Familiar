@@ -36,17 +36,15 @@ struct FamiliarUIFeedbackTests {
         #expect(preview.contains("Button(String(localized: \"common.done\""))
     }
 
-    @Test("Thinking, Activity, drawer, and Skills retain the requested native contracts")
+    @Test("Runtime Activity, drawer, and Skills retain the requested native contracts")
     func activityDrawerAndSkills() throws {
         let messages = try source("Familiar/Presentation/FamiliarChatMessageViews.swift")
         let chat = try source("Familiar/Presentation/FamiliarChatView.swift")
         let settings = try source("Familiar/Presentation/FamiliarSettingsHubView.swift")
-        let thinking = try section(named: "private struct FamiliarThinkingState", endingAt: "private struct FamiliarThinkingRowView", in: messages)
-        let activity = try section(named: "private struct FamiliarActivityTrace", endingAt: "private struct FamiliarContextTrace", in: messages)
-
-        #expect(!thinking.contains("Image(systemName: \"chevron.down\")"))
-        #expect(!activity.contains("traceIndent"))
-        #expect(activity.contains(".frame(maxWidth: .infinity, alignment: .leading)"))
+        let activity = try section(named: "private struct FamiliarRuntimeCard", endingAt: "private struct FamiliarRuntimeStageView", in: messages)
+        #expect(!messages.contains("FamiliarThinkingState"))
+        #expect(activity.contains("DisclosureGroup(isExpanded: disclosure.binding(for: activity.id))"))
+        #expect(activity.contains("runtime.ui.technical_details"))
         #expect(chat.contains(".sensoryFeedback(.selection, trigger: isDrawerOpen)"))
         #expect(settings.contains("NavigationLink {"))
         #expect(settings.contains("FamiliarSkillEditorView(skill: skill)"))
@@ -57,8 +55,8 @@ struct FamiliarUIFeedbackTests {
     func toolBlockPresentation() throws {
         let messages = try source("Familiar/Presentation/FamiliarChatMessageViews.swift")
         #expect(messages.contains("private var contentBlocks: [FamiliarAssistantContentBlock]"))
-        #expect(messages.contains("private struct FamiliarExecutionBlock"))
-        #expect(messages.contains("ForEach(Self.executionSurfaces)"))
+        #expect(messages.contains("private struct FamiliarRuntimeCard"))
+        #expect(messages.contains("FamiliarAssistantResponseProjection.blocks(text: [], surfaces: Self.executionSurfaces)"))
         #expect(!messages.contains("FamiliarToolChips("))
     }
 

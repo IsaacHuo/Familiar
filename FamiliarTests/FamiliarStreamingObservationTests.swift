@@ -17,6 +17,7 @@ struct FamiliarStreamingObservationTests {
             _ = controller.agentRuns
             _ = controller.isSending
             _ = controller.settings
+            _ = controller.runtimeContentBlocks
         } onChange: { history.mark() }
         let live = FamiliarObservationFlag()
         withObservationTracking {

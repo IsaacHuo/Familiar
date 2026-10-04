@@ -28,6 +28,7 @@ final class FamiliarChatController {
             .filter { !$0.isEmpty }
             .joined(separator: "\n\n")
     }
+    var runtimeContentBlocks: [FamiliarAssistantContentBlock] = []
     var streamingReasoningSummary = ""
     private var replyFirstTokenAt: Date?
     var streamingMessageID: UUID?
@@ -716,8 +717,13 @@ final class FamiliarChatController {
             .filter { conversationRuntimeIDs.contains($0.runtimeID) }
         let clarificationRecords = ((try? context.fetch(FetchDescriptor<FamiliarClarificationRecord>())) ?? [])
             .filter { conversationRuntimeIDs.contains($0.runtimeID) }
+        let invocationRecords = ((try? context.fetch(FetchDescriptor<FamiliarToolInvocationRecord>())) ?? [])
+            .filter { conversationRuntimeIDs.contains($0.runtimeID) }
         let blockRecords = ((try? context.fetch(FetchDescriptor<FamiliarResponseBlockRecord>())) ?? [])
             .filter { conversationRuntimeIDs.contains($0.runtimeID) }
+        let projectIDs = Set(conversation.agentRuns.compactMap { $0.project?.id })
+        let artifacts = ((try? context.fetch(FetchDescriptor<FamiliarArtifact>())) ?? [])
+            .filter { projectIDs.contains($0.projectID) }
         let blockSnapshots = blockRecords.map(responseBlockSnapshot)
         let blocksByMessageID = Dictionary(grouping: blockSnapshots.compactMap { block in
             block.messageID.map { ($0, block) }
@@ -771,7 +777,8 @@ final class FamiliarChatController {
                         },
                     responseBlocks: (blocksByMessageID[$0.id] ?? [])
                         .map(\.1)
-                        .sorted { $0.order < $1.order }
+                        .sorted { $0.order < $1.order },
+                    finalResponseBlockID: $0.responseBlockID
                 )
             }
         modelSwitches = conversation.modelSwitchRecords
@@ -926,12 +933,15 @@ final class FamiliarChatController {
                                 semanticID: record.semanticID,
                                 revision: record.revision,
                                 trust: record.trust,
-                                truncated: record.truncated
+                                truncated: record.truncated,
+                                artifact: artifactDescriptor(for: record, artifacts: artifacts)
                             )
                         },
                     responseBlocks: blockSnapshots
                         .filter { block in blockRecords.contains { $0.id == block.id && $0.runtimeID == run.runtimeID } }
-                        .sorted { $0.order < $1.order }
+                        .sorted { $0.order < $1.order },
+                    regenerationRequiresInspection: (try? runRecovery.requiresInspection(run, in: context)) ?? true,
+                    uncertainToolCallIDs: Set(invocationRecords.filter { $0.runtimeID == run.runtimeID && $0.state == .committing }.map(\.toolCallID))
                 )
             }
     }
@@ -990,6 +1000,7 @@ final class FamiliarChatController {
         var completedAssistantTurnID: String?
         var retrievalActivityIDsBySourceID: [String: String] = [:]
         var runOutcome: FamiliarRunOutcome?
+        var lastEventSequence = -1
         var separatesNextReasoningSummary = false
         var responseModel = FamiliarModelReference(providerID: settings.providerID, modelID: settings.modelID)
         do {
@@ -1030,6 +1041,7 @@ final class FamiliarChatController {
             for try await event in agentLoop.stream(
                 contextSnapshot: contextSnapshot
             ) {
+                lastEventSequence = event.sequence
                 if activeRuntimeID == nil {
                     activeRuntimeID = event.runID
                     activeRunID = UUID(uuidString: event.runID)
@@ -1069,6 +1081,7 @@ final class FamiliarChatController {
                     if let index = streamingResponseBlocks.firstIndex(where: { $0.assistantTurnID == assistantTurnID }) {
                         if streamingResponseBlocks[index].content.isEmpty {
                             streamingResponseBlocks[index].content = text
+                            refreshRuntimeContentBlocks()
                         }
                         streamingResponseBlocks[index].isStreaming = false
                         let block = streamingResponseBlocks[index]
@@ -1098,7 +1111,11 @@ final class FamiliarChatController {
                     noteFirstToken(runtimeID: event.runID, timestamp: event.timestamp, context: context)
                     guard let assistantTurnID = event.assistantTurnID else { throw FamiliarAgentError.incompleteResponse }
                     if let index = streamingResponseBlocks.firstIndex(where: { $0.assistantTurnID == assistantTurnID }) {
+                        let blockID = "text:\(streamingResponseBlocks[index].id.uuidString)"
+                        let opensTextInterval = !delta.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            && !runtimeContentBlocks.contains { $0.id == blockID }
                         streamingResponseBlocks[index].content += delta
+                        if opensTextInterval { refreshRuntimeContentBlocks() }
                     } else {
                         streamingResponseBlocks.append(.init(
                             assistantTurnID: assistantTurnID,
@@ -1106,6 +1123,7 @@ final class FamiliarChatController {
                             startedAt: event.timestamp,
                             content: delta
                         ))
+                        refreshRuntimeContentBlocks()
                     }
                 case .reasoningSummaryDelta(let delta):
                     noteFirstToken(runtimeID: event.runID, timestamp: event.timestamp, context: context)
@@ -1220,10 +1238,23 @@ final class FamiliarChatController {
                     updateRunCursor(runtimeID: event.runID, phase: .model, eventSequence: event.sequence, context: context)
                 case .runFinished(let outcome):
                     runOutcome = outcome
+                    do {
+                        try runRecorder.recordInterruptedText(streamingResponseBlocks, runtimeID: event.runID,
+                            outcome: outcome, at: event.timestamp, context: context)
+                    } catch {
+                        errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
+                    }
                     updateRunCursor(runtimeID: event.runID, phase: .terminal, eventSequence: event.sequence, context: context)
                     runRecorder.finishRun(runtimeID: event.runID, outcome: outcome, eventSequence: event.sequence, at: event.timestamp, context: context)
-                    if outcome.status == .failed { errorMessage = outcome.message }
                 }
+                if FamiliarSurfaceStore.affectsPresentation(event.payload) { refreshRuntimeContentBlocks() }
+            }
+            if runOutcome == nil, let runtimeID = activeRuntimeID {
+                // Cancelling the consumer can end AsyncStream before its producer's
+                // terminal event arrives. Preserve text and finish this local record.
+                let outcome: FamiliarRunOutcome = Task.isCancelled ? .cancelled() : .failed(FamiliarAgentError.incompleteResponse)
+                recordInterruptedStream(runtimeID: runtimeID, outcome: outcome, sequence: lastEventSequence + 1, context: context)
+                runOutcome = outcome
             }
             guard runOutcome?.status == .succeeded else {
                 resetTransientRunState()
@@ -1336,10 +1367,16 @@ final class FamiliarChatController {
                 runID: activeRunID
             )
         } catch is CancellationError {
+            if runOutcome == nil, let runtimeID = activeRuntimeID {
+                recordInterruptedStream(runtimeID: runtimeID, outcome: .cancelled(), sequence: lastEventSequence + 1, context: context)
+            }
             resetTransientRunState()
             reloadMessages(in: context)
         } catch {
             context.rollback()
+            if runOutcome == nil, let runtimeID = activeRuntimeID {
+                recordInterruptedStream(runtimeID: runtimeID, outcome: .failed(error), sequence: lastEventSequence + 1, context: context)
+            }
             resetTransientRunState()
             errorMessage = error.localizedDescription
             reloadMessages(in: context)
@@ -1463,6 +1500,7 @@ final class FamiliarChatController {
     }
 
     private func resetTransientRunState() {
+        runtimeContentBlocks = []
         streamingResponseBlocks = []
         streamingReasoningSummary = ""
         replyFirstTokenAt = nil
@@ -1470,6 +1508,19 @@ final class FamiliarChatController {
         surfaces = FamiliarSurfaceStore()
         pendingConfirmations = []
         pendingClarifications = []
+    }
+
+    private func recordInterruptedStream(runtimeID: String, outcome: FamiliarRunOutcome, sequence: Int, context: ModelContext) {
+        let date = Date()
+        do { try runRecorder.recordInterruptedText(streamingResponseBlocks, runtimeID: runtimeID, outcome: outcome, at: date, context: context) }
+        catch { errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription) }
+        updateRunCursor(runtimeID: runtimeID, phase: .terminal, eventSequence: sequence, context: context)
+        runRecorder.finishRun(runtimeID: runtimeID, outcome: outcome, eventSequence: sequence, at: date, context: context)
+    }
+
+    private func refreshRuntimeContentBlocks() {
+        runtimeContentBlocks = FamiliarAssistantResponseProjection.blocks(
+            text: streamingResponseBlocks.map(FamiliarAssistantTextBlock.init), surfaces: surfaces.orderedSurfaces)
     }
 
     private func noteFirstToken(runtimeID: String, timestamp: Date, context: ModelContext) {
@@ -1754,6 +1805,20 @@ final class FamiliarChatController {
             conversationSummary: conversation?.contextSummary,
             summaryThroughSequence: conversation?.summaryThroughSequence
         )
+    }
+
+    private func artifactDescriptor(for result: FamiliarToolResultRecord, artifacts: [FamiliarArtifact]) -> FamiliarArtifactDescriptor? {
+        guard let envelope = try? JSONDecoder().decode(FamiliarToolResultEnvelope.self, from: Data(result.envelopeJSON.utf8)),
+              case .artifactMutation(let mutation) = envelope.presentation.content,
+              let artifact = artifacts.first(where: { $0.identifier == mutation.identifier && $0.createdByRunID == result.runtimeID })
+        else { return nil }
+        return FamiliarArtifactDescriptor(id: artifact.id, identifier: artifact.identifier, projectID: artifact.projectID,
+            title: artifact.title, format: artifact.format, relativePath: artifact.relativePath, byteSize: artifact.byteSize,
+            contentHash: artifact.contentHash, source: artifact.source, sourceURLString: artifact.sourceURLString,
+            sourceResourceID: artifact.sourceResourceID, sourceResourceVersionID: artifact.sourceResourceVersionID,
+            sourceCaptureID: artifact.sourceCaptureID, createdByRunID: artifact.createdByRunID,
+            utiIdentifier: artifact.utiIdentifier, mimeType: artifact.mimeType,
+            validationReceipt: artifact.validationReceiptJSON.flatMap { try? JSONDecoder().decode(FamiliarValidationReceipt.self, from: Data($0.utf8)) })
     }
 
     private func responseBlockSnapshot(_ record: FamiliarResponseBlockRecord) -> FamiliarResponseBlockSnapshot {

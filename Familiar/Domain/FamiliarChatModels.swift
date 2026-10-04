@@ -49,6 +49,14 @@ nonisolated struct FamiliarMessageSnapshot: Identifiable, Equatable, Sendable {
     let attachments: [FamiliarAttachmentSnapshot]
     let sources: [FamiliarSource]
     let responseBlocks: [FamiliarResponseBlockSnapshot]
+    let finalResponseBlockID: UUID?
+
+    var finalAnswerText: String {
+        if let finalResponseBlockID {
+            return responseBlocks.first { $0.id == finalResponseBlockID && $0.kind == .markdown && $0.state == .completed }?.content ?? ""
+        }
+        return responseBlocks.isEmpty ? content : ""
+    }
 
     init(
         id: UUID,
@@ -60,7 +68,8 @@ nonisolated struct FamiliarMessageSnapshot: Identifiable, Equatable, Sendable {
         modelID: String?,
         attachments: [FamiliarAttachmentSnapshot],
         sources: [FamiliarSource] = [],
-        responseBlocks: [FamiliarResponseBlockSnapshot] = []
+        responseBlocks: [FamiliarResponseBlockSnapshot] = [],
+        finalResponseBlockID: UUID? = nil
     ) {
         self.id = id
         self.role = role
@@ -72,6 +81,7 @@ nonisolated struct FamiliarMessageSnapshot: Identifiable, Equatable, Sendable {
         self.attachments = attachments
         self.sources = sources
         self.responseBlocks = responseBlocks
+        self.finalResponseBlockID = finalResponseBlockID
     }
 }
 
@@ -152,6 +162,8 @@ nonisolated struct FamiliarAgentRunSnapshot: Identifiable, Equatable, Sendable {
     let clarifications: [FamiliarClarificationSnapshot]
     let toolResults: [FamiliarToolResultSnapshot]
     let responseBlocks: [FamiliarResponseBlockSnapshot]
+    let regenerationRequiresInspection: Bool
+    let uncertainToolCallIDs: Set<String>
 
     init(
         id: String,
@@ -165,7 +177,9 @@ nonisolated struct FamiliarAgentRunSnapshot: Identifiable, Equatable, Sendable {
         approvals: [FamiliarApprovalSnapshot] = [],
         clarifications: [FamiliarClarificationSnapshot] = [],
         toolResults: [FamiliarToolResultSnapshot] = [],
-        responseBlocks: [FamiliarResponseBlockSnapshot] = []
+        responseBlocks: [FamiliarResponseBlockSnapshot] = [],
+        regenerationRequiresInspection: Bool = false,
+        uncertainToolCallIDs: Set<String> = []
     ) {
         self.id = id
         self.responseMessageID = responseMessageID
@@ -179,6 +193,8 @@ nonisolated struct FamiliarAgentRunSnapshot: Identifiable, Equatable, Sendable {
         self.clarifications = clarifications
         self.toolResults = toolResults
         self.responseBlocks = responseBlocks
+        self.regenerationRequiresInspection = regenerationRequiresInspection
+        self.uncertainToolCallIDs = uncertainToolCallIDs
     }
 }
 
@@ -211,6 +227,7 @@ nonisolated struct FamiliarToolResultSnapshot: Identifiable, Equatable, Sendable
     let toolCallID: String
     let envelope: FamiliarToolResultEnvelope?
     let envelopeJSON: String
+    let artifact: FamiliarArtifactDescriptor?
     let schemaVersion: Int
     let payloadName: String
     let payloadHash: String
@@ -219,12 +236,13 @@ nonisolated struct FamiliarToolResultSnapshot: Identifiable, Equatable, Sendable
     let trust: FamiliarContentTrust
     let truncated: Bool
 
-    init(id: UUID, activityID: String, toolCallID: String, envelope: FamiliarToolResultEnvelope?, envelopeJSON: String, schemaVersion: Int, payloadName: String, payloadHash: String, semanticID: String? = nil, revision: Int = 1, trust: FamiliarContentTrust, truncated: Bool) {
+    init(id: UUID, activityID: String, toolCallID: String, envelope: FamiliarToolResultEnvelope?, envelopeJSON: String, schemaVersion: Int, payloadName: String, payloadHash: String, semanticID: String? = nil, revision: Int = 1, trust: FamiliarContentTrust, truncated: Bool, artifact: FamiliarArtifactDescriptor? = nil) {
         self.id = id
         self.activityID = activityID
         self.toolCallID = toolCallID
         self.envelope = envelope
         self.envelopeJSON = envelopeJSON
+        self.artifact = artifact
         self.schemaVersion = schemaVersion
         self.payloadName = payloadName
         self.payloadHash = payloadHash

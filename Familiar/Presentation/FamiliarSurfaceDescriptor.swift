@@ -55,6 +55,10 @@ nonisolated struct FamiliarSurfaceDescriptor: Identifiable, Sendable, Equatable 
     var phase: FamiliarSurfacePhase
     var title: String
     var detail: String?
+    var argumentsJSON: String?
+    var failureCode: String?
+    var failureRetryable: Bool?
+    var progress: Double?
     var toolCallID: String?
     var toolName: String?
     var effect: FamiliarToolEffect?
@@ -88,6 +92,10 @@ nonisolated struct FamiliarSurfaceDescriptor: Identifiable, Sendable, Equatable 
         phase: FamiliarSurfacePhase,
         title: String,
         detail: String? = nil,
+        argumentsJSON: String? = nil,
+        failureCode: String? = nil,
+        failureRetryable: Bool? = nil,
+        progress: Double? = nil,
         toolCallID: String? = nil,
         toolName: String? = nil,
         effect: FamiliarToolEffect? = nil,
@@ -120,6 +128,10 @@ nonisolated struct FamiliarSurfaceDescriptor: Identifiable, Sendable, Equatable 
         self.phase = phase
         self.title = title
         self.detail = detail
+        self.argumentsJSON = argumentsJSON
+        self.failureCode = failureCode
+        self.failureRetryable = failureRetryable
+        self.progress = progress
         self.toolCallID = toolCallID
         self.toolName = toolName
         self.effect = effect
@@ -152,6 +164,8 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
     private var order: [String] = []
     private var approvalToolIDs: [UUID: String] = [:]
     private var eventSequence = 0
+    private var lastSequences: [String: Int] = [:]
+    private var argumentsByTool: [String: String] = [:]
 
     var orderedSurfaces: [FamiliarSurfaceDescriptor] {
         order.compactMap { descriptors[$0] }
@@ -187,6 +201,9 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         descriptors.removeAll()
         order.removeAll()
         approvalToolIDs.removeAll()
+        lastSequences.removeAll()
+        argumentsByTool.removeAll()
+        eventSequence = 0
     }
 
     static func affectsPresentation(_ payload: FamiliarRuntimeEventPayload) -> Bool {
@@ -199,7 +216,9 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
     }
 
     mutating func apply(_ event: FamiliarRuntimeEvent) {
-        guard Self.affectsPresentation(event.payload) else { return }
+        guard Self.affectsPresentation(event.payload), event.sequence > (lastSequences[event.runID] ?? -1) else { return }
+        if descriptors[runStatusID(event.runID)]?.phase.isTerminal == true { return }
+        lastSequences[event.runID] = event.sequence
         eventSequence = event.sequence
         switch event.payload {
         case .runPhaseChanged(let phase):
@@ -218,8 +237,8 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             finishActivity(completion)
         case .toolResultProduced(let result):
             showResult(result)
-        case .toolInvocationRequested:
-            break
+        case .toolInvocationRequested(let id, _, let arguments, _):
+            argumentsByTool[toolID(event.runID, id)] = arguments
         case .approvalRequested(let request):
             showApproval(request, assistantTurnID: event.assistantTurnID, at: event.timestamp)
         case .approvalResolved(let requestID, let decision):
@@ -256,6 +275,14 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         let clarificationsByActivity = Dictionary(uniqueKeysWithValues: run.clarifications.map { ($0.activityID, $0) })
         let resultsByActivity = Dictionary(uniqueKeysWithValues: run.toolResults.map { ($0.activityID, $0) })
         for activity in run.activities where activity.kind == .tool {
+            if let call = activity.toolCallID, activity.effect != .read, run.uncertainToolCallIDs.contains(call) {
+                var descriptor = failureDescriptor(activity: activity, phase: .failed)
+                descriptor.failureCode = "tool_commit_unconfirmed"
+                descriptor.failureRetryable = false
+                descriptor.detail = String(localized: "runtime.ui.unconfirmed_write")
+                upsert(applyingApproval(approvalsByActivity[activity.activityID], to: descriptor))
+                continue
+            }
             if let approval = approvalsByActivity[activity.activityID], approval.decision == nil {
                 if activity.phase.isTerminal {
                     upsert(approvalDescriptor(approval, runID: run.id, phase: surfacePhase(activity.phase), sequence: activity.sequence, isInterrupted: true))
@@ -273,14 +300,14 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             if activity.effect == .read {
                 if let result, let envelope = result.envelope {
                     let placement: FamiliarSurfacePlacement = isTopLevelPresentation(envelope.presentation.name) ? .topLevel : .trace
-                    upsert(applyingApproval(approvalsByActivity[activity.activityID], to: resultDescriptor(activity: activity, envelope: envelope, placement: placement, artifact: nil)))
+                    upsert(applyingApproval(approvalsByActivity[activity.activityID], to: resultDescriptor(activity: activity, envelope: envelope, placement: placement, artifact: result.artifact)))
                 } else {
                     upsert(applyingApproval(approvalsByActivity[activity.activityID], to: toolDescriptor(activity: activity)))
                 }
             } else if phase == .failed || phase == .cancelled {
                 upsert(applyingApproval(approvalsByActivity[activity.activityID], to: failureDescriptor(activity: activity, phase: phase)))
             } else if let result, let envelope = result.envelope {
-                upsert(applyingApproval(approvalsByActivity[activity.activityID], to: resultDescriptor(activity: activity, envelope: envelope, placement: .topLevel, artifact: nil)))
+                upsert(applyingApproval(approvalsByActivity[activity.activityID], to: resultDescriptor(activity: activity, envelope: envelope, placement: .topLevel, artifact: result.artifact)))
             } else {
                 upsert(applyingApproval(approvalsByActivity[activity.activityID], to: toolDescriptor(activity: activity)))
             }
@@ -293,6 +320,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             upsert(.init(
                 id: activity.activityID,
                 runID: run.id,
+                sequence: activity.sequence,
                 assistantTurnID: activity.assistantTurnID,
                 kind: .activityTrace,
                 placement: .trace,
@@ -303,6 +331,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
                 detail: isBudget
                     ? String(localized: "runtime.notice.budget_exhausted.detail", defaultValue: "Answering from the information already gathered.")
                     : runtimeNoticeDetail(activity.detail),
+                toolCallID: activity.parentID?.hasPrefix("tool:") == true ? run.activities.first { $0.activityID == activity.parentID }?.toolCallID : nil,
                 startedAt: activity.startedAt,
                 finishedAt: activity.endedAt
             ))
@@ -313,12 +342,13 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             upsert(.init(
                 id: failureID(run.id),
                 runID: run.id,
+                sequence: run.activities.first { $0.activityID == "notice:\(run.id):terminal" }?.sequence ?? (run.activities.map(\.sequence).max() ?? 0) + 1,
                 assistantTurnID: notice?.assistantTurnID,
                 kind: .failure,
                 placement: .topLevel,
                 phase: run.status == .cancelled ? .cancelled : .failed,
-                title: run.status == .cancelled ? String(localized: "settings.runs.cancelled", defaultValue: "Cancelled") : String(localized: "settings.runs.failed", defaultValue: "Failed"),
-                detail: notice?.content,
+                title: run.status == .cancelled ? String(localized: "runtime.ui.stopped") : String(localized: "settings.runs.failed", defaultValue: "Failed"),
+                detail: run.status == .cancelled && notice?.content == "cancelled" ? nil : notice?.content,
                 startedAt: run.startedAt,
                 finishedAt: run.finishedAt
             ))
@@ -336,6 +366,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             placement: effect == .read ? .trace : .topLevel,
             phase: .queued,
             title: FamiliarToolPresentationName.title(for: toolName),
+            argumentsJSON: argumentsByTool[toolID(runID, toolCallID)],
             toolCallID: toolCallID,
             toolName: toolName,
             effect: effect,
@@ -346,8 +377,9 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
     private mutating func updateTool(runID: String, progress: FamiliarRuntimeActivityProgress, at date: Date) {
         ensureTrace(runID: runID, assistantTurnID: nil, context: nil, startedAt: date)
         let id = toolID(runID, progress.id)
-        guard var descriptor = descriptors[id] else { return }
+        guard var descriptor = descriptors[id], !descriptor.phase.isTerminal else { return }
         descriptor.phase = .running
+        descriptor.progress = progress.fractionCompleted
         descriptor.detail = progress.detail
         upsert(descriptor)
     }
@@ -427,8 +459,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
     private mutating func finishActivity(_ event: FamiliarRuntimeActivityCompletion) {
         ensureTrace(runID: event.runID, assistantTurnID: event.assistantTurnID, context: nil, startedAt: event.startedAt)
         let phase = surfacePhase(event.status)
-        guard event.effect != .read else { return }
-        if phase == .failed || phase == .cancelled {
+        if event.effect != .read && (phase == .failed || phase == .cancelled) {
             upsert(applyingApprovalRequest(event.automaticApprovalRequest, to: failureDescriptor(activity: transientActivity(event, phase: phase), phase: phase)))
         } else {
             upsert(applyingApprovalRequest(event.automaticApprovalRequest, to: toolDescriptor(activity: transientActivity(event, phase: phase))))
@@ -460,7 +491,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             title = String(localized: "runtime.notice.budget_exhausted", defaultValue: "Tool budget reached")
             detail = String(localized: "runtime.notice.budget_exhausted.detail", defaultValue: "Answering from the information already gathered.")
         }
-        upsert(.init(id: "notice:\(runID):\(notice.kind.rawValue):\(notice.attempt)", runID: runID, assistantTurnID: assistantTurnID, kind: .activityTrace, placement: .trace, phase: .running, title: title, detail: detail, startedAt: date))
+        upsert(.init(id: "notice:\(runID):\(notice.kind.rawValue):\(eventSequence)", runID: runID, sequence: eventSequence, assistantTurnID: assistantTurnID, kind: .activityTrace, placement: .trace, phase: .running, title: title, detail: detail, toolCallID: notice.toolCallID, startedAt: date))
     }
 
     private mutating func updateRunStatus(runID: String, phase: FamiliarRunPhase, at date: Date) {
@@ -471,7 +502,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         default: .running
         }
         descriptor.title = switch phase {
-        case .starting, .requestingModel: String(localized: "agent.status.thinking")
+        case .starting, .requestingModel: String(localized: "runtime.ui.preparing_reply")
         case .compactingContext: String(localized: "runtime.phase.compacting_context", defaultValue: "Compacting context")
         case .responding: String(localized: "agent.status.responding")
         case .awaitingApproval: String(localized: "agent.status.awaiting_confirmation")
@@ -491,14 +522,24 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             status.finishedAt = date
             upsert(status)
         }
+        for key in order {
+            guard var item = descriptors[key], item.runID == runID, !item.phase.isTerminal else { continue }
+            item.phase = phase
+            item.finishedAt = date
+            item.progress = nil
+            item.approvalRequestID = nil
+            item.clarificationRequestID = nil
+            descriptors[key] = item
+        }
         guard phase == .failed || phase == .cancelled else { return }
         upsert(.init(
             id: failureID(runID),
             runID: runID,
+            sequence: eventSequence,
             kind: .failure,
             placement: .topLevel,
             phase: phase,
-            title: phase == .cancelled ? String(localized: "settings.runs.cancelled", defaultValue: "Cancelled") : String(localized: "settings.runs.failed", defaultValue: "Failed"),
+            title: phase == .cancelled ? String(localized: "runtime.ui.stopped") : String(localized: "settings.runs.failed", defaultValue: "Failed"),
             detail: detail,
             finishedAt: date
         ))
@@ -528,6 +569,9 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
     private mutating func upsert(_ descriptor: FamiliarSurfaceDescriptor) {
         var descriptor = descriptor
         if let existing = descriptors[descriptor.id] {
+            descriptor.argumentsJSON = descriptor.argumentsJSON ?? existing.argumentsJSON
+            descriptor.failureCode = descriptor.failureCode ?? existing.failureCode
+            descriptor.failureRetryable = descriptor.failureRetryable ?? existing.failureRetryable
             descriptor.sequence = existing.sequence
             if descriptor.approvalFields.isEmpty, !existing.approvalFields.isEmpty {
                 descriptor.approvalFields = existing.approvalFields
@@ -614,6 +658,9 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             phase: surfacePhase(activity.phase),
             title: activity.toolName.map { FamiliarToolPresentationName.title(for: $0) } ?? activity.summary,
             detail: activity.detail,
+            failureCode: activity.failureCode,
+            failureRetryable: activity.failureRetryable,
+            progress: activity.phase.isTerminal ? nil : activity.progress,
             toolCallID: activity.toolCallID,
             toolName: activity.toolName,
             effect: activity.effect,
@@ -633,6 +680,9 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             phase: phase,
             title: activity.toolName.map { FamiliarToolPresentationName.title(for: $0) } ?? activity.summary,
             detail: activity.detail,
+            failureCode: activity.failureCode,
+            failureRetryable: activity.failureRetryable,
+            progress: activity.phase.isTerminal ? nil : activity.progress,
             toolCallID: activity.toolCallID,
             toolName: activity.toolName,
             effect: activity.effect,
@@ -653,6 +703,9 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             phase: surfacePhase(activity.phase),
             title: FamiliarToolPresentationName.summary(for: activity.toolName, envelope: envelope),
             detail: activity.detail,
+            failureCode: activity.failureCode,
+            failureRetryable: activity.failureRetryable,
+            progress: activity.phase.isTerminal ? nil : activity.progress,
             toolCallID: activity.toolCallID,
             toolName: activity.toolName,
             effect: activity.effect,
