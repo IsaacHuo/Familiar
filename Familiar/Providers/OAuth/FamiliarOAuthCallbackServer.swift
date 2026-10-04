@@ -17,7 +17,7 @@ nonisolated final class FamiliarOAuthCallbackServer: @unchecked Sendable {
 
     func start() async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            queue.async {
+            queue.async { [self] in
                 do {
                     let parameters = NWParameters.tcp
                     parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: NWEndpoint.Port(rawValue: self.port)!)
@@ -93,7 +93,7 @@ nonisolated final class FamiliarOAuthCallbackServer: @unchecked Sendable {
             self.reply(connection, status: "200 OK", body: String(localized: "oauth.return")) { self.complete(.success(callback)) }
         }
     }
-    private func reply(_ connection: NWConnection, status: String, body: String, completion: (() -> Void)?) {
+    private func reply(_ connection: NWConnection, status: String, body: String, completion: (@Sendable () -> Void)?) {
         let message = "HTTP/1.1 \(status)\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
         connection.send(content: Data(message.utf8), completion: .contentProcessed { _ in
             connection.cancel(); self.connections.removeAll { $0 === connection }; completion?()

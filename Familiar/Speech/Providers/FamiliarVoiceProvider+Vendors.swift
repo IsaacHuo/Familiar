@@ -274,8 +274,6 @@ import CryptoKit
     // v3 ASR response: { "result": { "text": "..." }, "audio_info": { ... } }
     override func parseVoiceInputResponse(_ data: Data,
                                           request: FamiliarVoiceInputRequest) throws -> FamiliarVoiceInputResponse {
-        let rawPreview = String(data: data.prefix(500), encoding: .utf8) ?? "(binary)"
-
         guard
             let json   = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
             let result = json["result"] as? [String: Any],
