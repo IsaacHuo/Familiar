@@ -609,10 +609,7 @@
 "authorization.session" = "Allow This Session";
 "authorization.always" = "Always Allow";
 "authorization.more_options" = "More approval options";
-"approval.open" = "Open approval";
 "approval.scope.question" = "How long should Familiar allow this action?";
-"approval.previous" = "Previous step";
-"approval.next" = "Next step";
 "approval.skip" = "Skip";
 "approval.approve" = "Approve";
 "approval.sent" = "Approval sent";
@@ -629,13 +626,8 @@
 
 "agent.status.thought_for" = "Thought for %.1f s";
 "agent.status.searched_web" = "Searched the web";
-"tool_chips.header" = "%1$lld tool calls, %2$lld messages";
-"tool_chips.more_diffs" = "+%lld more";
-"tool_chips.diff.accessibility" = "%1$@, %2$lld additions, %3$lld deletions";
 "tool_chips.phase.queued" = "Queued";
-"tool_chips.phase.planning" = "Planning";
 "tool_chips.phase.running" = "Running";
-"tool_chips.phase.succeeded" = "Completed";
 "tool.contacts_search" = "Search contacts";
 "tool.current_location" = "Current location";
 "tool.clipboard_read" = "Read clipboard";
@@ -809,13 +801,8 @@
 "environment.packages" = "Resolved Packages";
 "environment.not_prepared" = "Environment not prepared";
 "environment.not_prepared.detail" = "The Agent can propose dependencies with environment_prepare from a Project Chat.";
-"runtime.phase.preparing_environment" = "Preparing environment";
 "runtime.phase.compacting_context" = "Compacting context";
 "error.agent.context_compaction_failed" = "Context compaction failed. Try again or continue in a new conversation.";
-"runtime.phase.executing" = "Executing";
-"runtime.phase.validating" = "Validating deliverables";
-"runtime.phase.repairing" = "Repairing · %lld/2";
-"runtime.phase.delivering" = "Delivering";
 "tool.environment_status" = "Inspect Project Environment";
 "tool.environment_prepare" = "Prepare Project Environment";
 "tool.skill_list" = "List Project Skills";

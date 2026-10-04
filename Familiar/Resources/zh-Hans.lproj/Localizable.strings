@@ -609,10 +609,7 @@
 "authorization.session" = "本次会话允许";
 "authorization.always" = "始终允许";
 "authorization.more_options" = "更多批准选项";
-"approval.open" = "打开审批";
 "approval.scope.question" = "这次授权应当持续多久？";
-"approval.previous" = "上一步";
-"approval.next" = "下一步";
 "approval.skip" = "跳过";
 "approval.approve" = "批准";
 "approval.sent" = "审批已发送";
@@ -629,13 +626,8 @@
 
 "agent.status.thought_for" = "思考 %.1f 秒";
 "agent.status.searched_web" = "已搜索网页";
-"tool_chips.header" = "%1$lld 次工具调用，%2$lld 条消息";
-"tool_chips.more_diffs" = "还有 %lld 项";
-"tool_chips.diff.accessibility" = "%1$@，新增 %2$lld 行，删除 %3$lld 行";
 "tool_chips.phase.queued" = "等待中";
-"tool_chips.phase.planning" = "规划中";
 "tool_chips.phase.running" = "运行中";
-"tool_chips.phase.succeeded" = "已完成";
 "tool.contacts_search" = "搜索联系人";
 "tool.current_location" = "获取当前位置";
 "tool.clipboard_read" = "读取剪贴板";
@@ -809,13 +801,8 @@
 "environment.packages" = "已解析依赖";
 "environment.not_prepared" = "Environment 尚未准备";
 "environment.not_prepared.detail" = "Agent 可以在 项目 Chat 中通过 environment_prepare 提交依赖方案。";
-"runtime.phase.preparing_environment" = "正在准备环境";
 "runtime.phase.compacting_context" = "正在压缩上下文";
 "error.agent.context_compaction_failed" = "上下文压缩失败。请重试，或新建会话后继续。";
-"runtime.phase.executing" = "正在执行";
-"runtime.phase.validating" = "正在验证交付文件";
-"runtime.phase.repairing" = "正在修复 · %lld/2";
-"runtime.phase.delivering" = "正在交付";
 "tool.environment_status" = "检查 项目 Environment";
 "tool.environment_prepare" = "准备 项目 Environment";
 "tool.skill_list" = "列出 项目 技能";
