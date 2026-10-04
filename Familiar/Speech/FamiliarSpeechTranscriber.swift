@@ -13,6 +13,7 @@ public final class FamiliarSpeechTranscriber: ObservableObject {
 
     private let audioEngine = AVAudioEngine()
     private let audioSession = AVAudioSession.sharedInstance()
+    private var audioSessionTransition: Task<Void, Error>?
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
     private var onTranscription: ((String) -> Void)?
@@ -24,7 +25,7 @@ public final class FamiliarSpeechTranscriber: ObservableObject {
 
     public func toggle(onTranscription: @escaping (String) -> Void) async {
         if remoteRecorder != nil {
-            finishRemoteRecording()
+            await finishRemoteRecording()
         } else if isListening {
             await stop()
         } else {
@@ -37,12 +38,14 @@ public final class FamiliarSpeechTranscriber: ObservableObject {
     }
 
     private func start(onTranscription: @escaping (String) -> Void) async {
-        await stopListening(resetState: false)
+        guard activeSessionID == nil else { return }
+        let sessionID = UUID()
+        isListening = true
+        await stopListening(resetState: false, nextSessionID: sessionID)
+        guard activeSessionID == sessionID else { return }
         self.onTranscription = onTranscription
         latestTranscript = ""
         errorMessage = nil
-        let sessionID = UUID()
-        activeSessionID = sessionID
 
         if let configuration = FamiliarVoiceStore.selected(input: true) {
             await startRemote(configuration, sessionID: sessionID)
@@ -53,19 +56,23 @@ public final class FamiliarSpeechTranscriber: ObservableObject {
             return
         }
 
-        guard await requestSpeechAuthorization() == .authorized else {
+        let authorization = await requestSpeechAuthorization()
+        guard activeSessionID == sessionID else { return }
+        guard authorization == .authorized else {
             await fail(with: .permission)
             return
         }
-        guard await requestMicrophonePermission() else {
+        let permissionGranted = await requestMicrophonePermission()
+        guard activeSessionID == sessionID else { return }
+        guard permissionGranted else {
             await fail(with: .microphone)
             return
         }
 
         do {
             guard activeSessionID == sessionID else { return }
-            try audioSession.setCategory(.record, mode: .measurement, options: [.duckOthers])
-            try audioSession.setActive(true)
+            try await changeAudioSession(active: true, duckOthers: true)
+            guard activeSessionID == sessionID else { return }
 
             let request = SFSpeechAudioBufferRecognitionRequest()
             request.shouldReportPartialResults = true
@@ -81,11 +88,6 @@ public final class FamiliarSpeechTranscriber: ObservableObject {
 
             audioEngine.prepare()
             try audioEngine.start()
-
-            guard activeSessionID == sessionID else {
-                await stopListening(resetState: false)
-                return
-            }
 
             task = recognizer.recognitionTask(with: request) { [weak self] result, error in
                 Task { @MainActor in
@@ -107,12 +109,13 @@ public final class FamiliarSpeechTranscriber: ObservableObject {
             }
             isListening = true
         } catch {
+            guard activeSessionID == sessionID else { return }
             await fail(with: .start)
         }
     }
 
-    private func stopListening(resetState: Bool) async {
-        activeSessionID = nil
+    private func stopListening(resetState: Bool, nextSessionID: UUID? = nil) async {
+        activeSessionID = nextSessionID
         remoteTask?.cancel(); remoteTask = nil
         remoteRecorder?.stop(); remoteRecorder = nil
         if let remoteURL { try? FileManager.default.removeItem(at: remoteURL) }
@@ -127,7 +130,38 @@ public final class FamiliarSpeechTranscriber: ObservableObject {
             isListening = false
             onTranscription = nil
         }
-        try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+        try? await changeAudioSession(active: false)
+    }
+
+    private func changeAudioSession(active: Bool, duckOthers: Bool = false) async throws {
+        let previous = audioSessionTransition
+        let session = audioSession
+        // Finish each hardware transition before the next one. Cancelling a UI
+        // request must not let its late activation overtake the queued stop.
+        let transition = Task {
+            _ = await previous?.result
+            try await Self.changeAudioSession(session, active: active, duckOthers: duckOthers)
+        }
+        audioSessionTransition = transition
+        try await transition.value
+    }
+
+    @concurrent
+    private static func changeAudioSession(_ session: AVAudioSession, active: Bool, duckOthers: Bool) async throws {
+        if active {
+            try session.setCategory(.record, mode: .measurement, options: duckOthers ? [.duckOthers] : [])
+        }
+        if #available(iOS 27.0, *) {
+            let succeeded: Bool
+            if active {
+                succeeded = try await session.activate(options: [])
+            } else {
+                succeeded = try await session.deactivate(options: [.notifyOthersOnDeactivation])
+            }
+            guard succeeded else { throw FamiliarSpeechError.start }
+        } else {
+            try session.setActive(active, options: active ? [] : [.notifyOthersOnDeactivation])
+        }
     }
 
     private func startRemote(_ configuration: FamiliarVoiceConfiguration, sessionID: UUID) async {
@@ -138,8 +172,8 @@ public final class FamiliarSpeechTranscriber: ObservableObject {
             let provider = try FamiliarVoiceFactory.make(configuration)
             guard provider.supportsVoiceInput else { throw FamiliarVoiceProviderError.unsupported(configuration.name) }
             let url = FileManager.default.temporaryDirectory.appendingPathComponent("speech-" + UUID().uuidString + ".wav")
-            try audioSession.setCategory(.record, mode: .measurement)
-            try audioSession.setActive(true)
+            try await changeAudioSession(active: true)
+            guard activeSessionID == sessionID else { return }
             let recorder = try AVAudioRecorder(url: url, settings: [
                 AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 16_000,
                 AVNumberOfChannelsKey: 1, AVLinearPCMBitDepthKey: 16,
@@ -148,18 +182,25 @@ public final class FamiliarSpeechTranscriber: ObservableObject {
             guard recorder.record() else { throw FamiliarSpeechError.start }
             remoteURL = url; remoteRecorder = recorder; remoteConfiguration = configuration
             isListening = true
-        } catch { errorMessage = error.localizedDescription; await stopListening(resetState: true) }
+        } catch {
+            guard activeSessionID == sessionID else { return }
+            errorMessage = error.localizedDescription
+            await stopListening(resetState: true)
+        }
     }
 
-    private func finishRemoteRecording() {
+    private func finishRemoteRecording() async {
         guard let url = remoteURL, let config = remoteConfiguration, let sessionID = activeSessionID else { return }
         remoteRecorder?.stop(); remoteRecorder = nil
-        try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+        try? await changeAudioSession(active: false)
+        guard activeSessionID == sessionID else { return }
         remoteTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
                 try? FileManager.default.removeItem(at: url)
                 if self.activeSessionID == sessionID {
+                    self.activeSessionID = nil
+                    self.onTranscription = nil
                     self.remoteURL = nil; self.remoteConfiguration = nil; self.isListening = false; self.remoteTask = nil
                 }
             }
