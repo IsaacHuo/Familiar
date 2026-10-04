@@ -19,6 +19,7 @@ simulator_suites=(
     FamiliarModelSelectionTests
     FamiliarSubmissionBoundaryTests
     FamiliarDesignSystemTests
+    FamiliarStreamingObservationTests
     FamiliarImportContractsTests
     FamiliarGroupBoundaryTests
     FamiliarMemoryTests

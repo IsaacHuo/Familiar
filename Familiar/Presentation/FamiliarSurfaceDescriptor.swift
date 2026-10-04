@@ -189,7 +189,17 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         approvalToolIDs.removeAll()
     }
 
+    static func affectsPresentation(_ payload: FamiliarRuntimeEventPayload) -> Bool {
+        switch payload {
+        case .responseTextDelta, .reasoningSummaryDelta, .reasoningSummaryCompleted,
+             .responseCompleted, .modelSelected, .usage, .assistantTurnCompleted:
+            false
+        default: true
+        }
+    }
+
     mutating func apply(_ event: FamiliarRuntimeEvent) {
+        guard Self.affectsPresentation(event.payload) else { return }
         eventSequence = event.sequence
         switch event.payload {
         case .runPhaseChanged(let phase):

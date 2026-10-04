@@ -345,7 +345,7 @@ final class FamiliarChatController {
                 let deferredGroups = requestSettings.selectedModel.capabilities.supportsTools ? FamiliarMCPService.deferredGroups(configurations) : []
                 for (index, image) in capturedImages.enumerated() {
                     try Task.checkCancellation()
-                    imageDrafts.append(try FamiliarAttachmentStore.importImage(image.image, filename: "photo-\(index + 1).jpg"))
+                    imageDrafts.append(try await FamiliarAttachmentStore.importImage(image.image, filename: "photo-\(index + 1).jpg"))
                 }
                 let attachments = capturedAttachments + imageDrafts
                 let finalPaths = Dictionary(uniqueKeysWithValues: attachments.map { ($0.id, FamiliarAttachmentStore.committedRelativePath(of: $0, messageID: messageID)) })
@@ -1042,7 +1042,7 @@ final class FamiliarChatController {
                         errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
                     }
                 }
-                surfaces.apply(event)
+                if FamiliarSurfaceStore.affectsPresentation(event.payload) { surfaces.apply(event) }
                 switch event.payload {
                 case .modelSelected(let reference):
                     responseModel = reference

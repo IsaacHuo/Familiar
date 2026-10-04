@@ -388,7 +388,8 @@ struct FamiliarChatView: View {
     }
 
     private var isInNewConversation: Bool {
-        controller.messages.isEmpty
+        !controller.isSending && !controller.isCompacting
+            && controller.messages.isEmpty
             && controller.agentRuns.isEmpty
             && controller.pendingConfirmations.isEmpty
             && controller.pendingClarifications.isEmpty
@@ -594,7 +595,8 @@ struct FamiliarChatView: View {
 
     @ViewBuilder
     private var chatBody: some View {
-        if controller.messages.isEmpty,
+        if !controller.isSending, !controller.isCompacting,
+           controller.messages.isEmpty,
            controller.agentRuns.isEmpty,
            controller.pendingConfirmations.isEmpty,
            controller.pendingClarifications.isEmpty,
@@ -615,10 +617,7 @@ struct FamiliarChatView: View {
                 messages: controller.messages,
                 modelSwitches: controller.modelSwitches,
                 agentRuns: controller.agentRuns,
-                surfaces: controller.surfaces.orderedSurfaces,
-                streamingMessageID: controller.streamingMessageID,
-                streamingResponseBlocks: controller.streamingResponseBlocks,
-                streamingReasoningSummary: controller.streamingReasoningSummary,
+                liveController: controller,
                 availableUndoKeys: controller.availableUndoKeys,
                 completedUndoKeys: controller.completedUndoKeys,
                 onResolveConfirmation: { requestID, decision in

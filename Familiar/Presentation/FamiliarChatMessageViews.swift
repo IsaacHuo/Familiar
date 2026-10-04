@@ -22,10 +22,7 @@ struct FamiliarMessageTimeline: View {
     let messages: [FamiliarMessageSnapshot]
     let modelSwitches: [FamiliarModelSwitchSnapshot]
     let agentRuns: [FamiliarAgentRunSnapshot]
-    let surfaces: [FamiliarSurfaceDescriptor]
-    let streamingMessageID: UUID?
-    let streamingResponseBlocks: [FamiliarLiveResponseBlock]
-    let streamingReasoningSummary: String
+    let liveController: FamiliarChatController
     let availableUndoKeys: Set<String>
     let completedUndoKeys: Set<String>
     let onResolveConfirmation: (UUID, FamiliarToolConfirmationDecision) -> Void
@@ -51,6 +48,10 @@ struct FamiliarMessageTimeline: View {
     }
 
     var body: some View {
+        // Rebuild only with history inputs; preserve the first matching Run.
+        let runsByMessage = agentRuns.reduce(into: [UUID: FamiliarAgentRunSnapshot]()) { index, run in
+            if let id = run.responseMessageID, index[id] == nil { index[id] = run }
+        }
         GeometryReader { viewport in
             ScrollViewReader { proxy in
                 ScrollView {
@@ -60,7 +61,7 @@ struct FamiliarMessageTimeline: View {
                             case .message(let message):
                                 FamiliarMessageRow(
                                     message: message,
-                                    run: agentRuns.first { $0.responseMessageID == message.id },
+                                    run: runsByMessage[message.id],
                                     availableUndoKeys: availableUndoKeys,
                                     completedUndoKeys: completedUndoKeys,
                                     onResolveApproval: onResolveConfirmation,
@@ -94,23 +95,10 @@ struct FamiliarMessageTimeline: View {
                             }
                         }
 
-                        if !surfaces.isEmpty || !streamingResponseBlocks.isEmpty || !streamingReasoningSummary.isEmpty {
-                            FamiliarAssistantTurn(
-                                message: nil,
-                                run: nil,
-                                surfaces: surfaces,
-                                streamingResponseBlocks: streamingResponseBlocks,
-                                streamingReasoningSummary: streamingReasoningSummary,
-                                availableUndoKeys: availableUndoKeys,
-                                completedUndoKeys: completedUndoKeys,
-                                onResolveApproval: onResolveConfirmation,
-                                onResolveClarification: onResolveClarification,
-                                onInsertPrompt: onInsertPrompt,
-                                onUndo: onUndo,
-                                onRetryRecovery: onRetryRecovery
-                            )
-                            .id(streamingMessageID?.uuidString ?? "active-assistant-turn")
-                        }
+                        FamiliarLiveAssistantTurn(controller: liveController,
+                            onResolveConfirmation: onResolveConfirmation, onResolveClarification: onResolveClarification,
+                            onInsertPrompt: onInsertPrompt, onUndo: onUndo, onRetryRecovery: onRetryRecovery,
+                            onContentChange: { animated in scrollToLatest(proxy, animated: animated) })
 
                         GeometryReader { geometry in
                             Color.clear.preference(
@@ -133,9 +121,6 @@ struct FamiliarMessageTimeline: View {
                     isFollowingLatest = bottomY <= viewport.size.height + 120
                 }
                 .onChange(of: messages.count) { _, _ in scrollToLatest(proxy) }
-                .onChange(of: streamingResponseBlocks) { _, _ in scrollToLatest(proxy, animated: false) }
-                .onChange(of: streamingReasoningSummary) { _, _ in scrollToLatest(proxy, animated: false) }
-                .onChange(of: surfaces) { _, _ in scrollToLatest(proxy) }
                 .overlay(alignment: .bottomTrailing) {
                     if !isFollowingLatest {
                         Button {
@@ -164,6 +149,37 @@ struct FamiliarMessageTimeline: View {
         } else {
             proxy.scrollTo("conversation-bottom", anchor: .bottom)
         }
+    }
+}
+
+/// Only this subtree observes token deltas. History/order and Chat controls
+/// receive no streaming strings and retain their existing input lifetimes.
+private struct FamiliarLiveAssistantTurn: View {
+    let controller: FamiliarChatController
+    let onResolveConfirmation: (UUID, FamiliarToolConfirmationDecision) -> Void
+    let onResolveClarification: (UUID, FamiliarClarificationResolution) -> Void
+    let onInsertPrompt: (String) -> Void
+    let onUndo: (String, String) -> Void
+    let onRetryRecovery: (String) -> Void
+    let onContentChange: (Bool) -> Void
+
+    var body: some View {
+        let surfaces = controller.surfaces.orderedSurfaces
+        let blocks = controller.streamingResponseBlocks
+        let reasoning = controller.streamingReasoningSummary
+        Group {
+            if !surfaces.isEmpty || !blocks.isEmpty || !reasoning.isEmpty {
+                FamiliarAssistantTurn(message: nil, run: nil, surfaces: surfaces,
+                    streamingResponseBlocks: blocks, streamingReasoningSummary: reasoning,
+                    availableUndoKeys: controller.availableUndoKeys, completedUndoKeys: controller.completedUndoKeys,
+                    onResolveApproval: onResolveConfirmation, onResolveClarification: onResolveClarification,
+                    onInsertPrompt: onInsertPrompt, onUndo: onUndo, onRetryRecovery: onRetryRecovery)
+                    .id(controller.streamingMessageID?.uuidString ?? "active-assistant-turn")
+            }
+        }
+        .onChange(of: blocks) { _, _ in onContentChange(false) }
+        .onChange(of: reasoning) { _, _ in onContentChange(false) }
+        .onChange(of: surfaces) { _, _ in onContentChange(true) }
     }
 }
 
