@@ -1,6 +1,6 @@
 # Familiar 产品收敛与 Agent Harness 长期计划
 
-最后更新：2026-10-04。此清单跨对话持续维护。
+最后更新：2026-10-05。此清单跨对话持续维护。
 
 ## 目标与工作规则
 
@@ -30,6 +30,8 @@ Harness 收敛为 **One Agent + One Loop + Lazy Tools + Progressive Escalation**
 `[x]` 表示这一项规定的工作及验证已完成。`[ ]` 表示仍有工作或必要证据缺失。测试只编译时明确标为“未执行”。
 
 ## 当前切片
+
+**新增 G：连续回复与 Runtime UI 的实现／静态／arm64 测试目标编译已完成。** Single Agent Loop 与执行权限边界保留；本切片只增加呈现投影、区段聚合、终态正文保存和文件／journal 历史关联。真机与真实服务仍由所有者验收，不自动执行 Simulator 测试。
 
 **B1–B3、C1–C9、D、E1/E4/E5/E6 与 F1–F5 的实现／源码审查／静态／编译工作已完成。E2/E3 的源码审查、Run 查找整理与 Mermaid 竞态修复已完成；懒布局决策和真实渲染／内存仍缺设备采样，保持未勾选。所有者统一从 docs/15-owner-device-acceptance.md 验收，F6–F14 全部待确认。** 运行测试与真机验收仍独立待办。写入 journal、失败补偿和不可重复撤销的机制已接线；仍不能将外部系统写入与本地保存称为跨进程原子事务。
 
@@ -322,3 +324,25 @@ E2/E3 当前进度与剩余门槛：
 - 构建：`/tmp/familiar-maintenance-e-20261004-build.log` 与资源更新后的 `/tmp/familiar-maintenance-e-verified-20261004-build.log` 均 `TEST BUILD SUCCEEDED`，原工程 Debug arm64 generic Simulator build-for-testing。前者完整重编译了相关 Swift 源，仅有 AppIntents metadata 工具提示；后者为最终增量，未启动 Simulator、未运行 iOS suites、未进行真实服务／设备／签名发布验收。
 - 静态：git diff --check、shell 语法、suite 清单、JavaScript 语法、strings plist、中英 992/992 parity、零缺失生产字面量键通过。开发缓存清理仅涉及本任务旧 DerivedData 的可重建缓存，保留源码、日志与 dependency checkout。
 - 下一步：所有者按 docs/15-owner-device-acceptance.md 先完成 F6–F12，再按实际启用配置检查 F10/F13 和 F14；用设备证据完成 E2/E3，并优先修正实际失败。未授权执行的 iOS 自动测试仍待独立安排，不继续新增功能。
+
+
+### 真机反馈修复：语音音频会话（2026-10-04）
+
+- 根据 FamiliarSpeechTranscriber 停止路径的主线程 setActive 运行告警，统一本地／远程录音的四个激活／停用调用。iOS 27 使用系统异步 API；部署范围内的 iOS 18–26 通过 @concurrent helper 在后台调用，category 配置也在后台。
+- 会话硬件转换依次等待前一项完成，停止先清理录音 I/O 并使身份失效；权限／激活等待返回后验证 sessionID，旧流程不启动录音。准备态使用现有录音控件停止，远程转写终态清除身份，允许再次录音。无新 Agent 状态或服务。
+- 验证：git diff --check 与最终 arm64 generic Simulator build-for-testing 通过，日志 `/tmp/familiar-speech-session-verified-20261004-build.log`（TEST BUILD SUCCEEDED，无新增 Swift warning）。iOS 测试未执行、Simulator 未启动，未验证实际麦克风／系统告警消失；统一真机清单增加本地／远程连续启停、准备中取消及不同 iOS API 路径的检查。
+
+
+## G. 连续回复与 Runtime UI（2026-10-05）
+
+- [x] G1 复用既有 Runtime Event／Activity／ToolResult／Approval／ResponseBlock；修复实时只读完成、重复与过期事件、重试身份、历史 Artifact 与不确定写入 journal 投影，无数据库结构变更。
+- [x] G2 实时／历史共用纯值类型聚合；以非空正文、审批、提问和交付内容分段，连续搜索／读取／文件／执行／分析归类，按现有 URL 身份统计独立来源。
+- [x] G3 原生折叠 Runtime Card 与二级技术详情；隐藏推理摘要、保留过程正文，基础成功信息不单独占行，局部失败低权重提示，交互／写入回执／输出保持可见。
+- [x] G4 token 仅更新 live Markdown／轻量状态；活动投影仅在呈现事件或首个可见正文边界更新，完成转历史保持手动展开。首个换行不阻塞后续流式正文。
+- [x] G5 取消／失败保存未完成正文；消费流提前结束时终结本地 Run／cursor。长度受限的轮次不再发出已完成正文事件；不确定写入依据现有 journal 明确提示并隐藏重试。
+- [x] G6 历史文件结果重新关联真实元数据，预览／分享依赖文件存在，撤销／缺失诚实呈现；复制通过最终 block 身份取正文，过程文字仍可选择复制。
+- [x] G7 更新生产 fixture、中英文文案和相关源码契约；新增 RuntimePresentation 行为回归并扩充现有 observation 边界，42 个 Simulator suites、2 个 signed-device suites 与完整 UI target 清单核对。
+- [x] G8 最终静态检查与 arm64 generic Simulator build-for-testing 通过，证据单列；不启动 Simulator，不把编译称为测试执行。
+- [ ] G9 所有者按 docs/15 验收普通／复杂连续会话、聚合、失败／取消／审批、文件、复制、折叠和可访问性。真实服务／真机验收仍未完成。
+
+验证证据：数据层与区段 UI 两个切片均 TEST BUILD SUCCEEDED；最终 `/tmp/familiar-runtime-ui-final-20261005-build.log` 再次 TEST BUILD SUCCEEDED，原工程 Debug arm64 generic iOS Simulator build-for-testing，App／扩展／所有测试目标编译。15 项 RuntimePresentation 回归及调整的 StreamingObservation／UI source contracts 编译，未执行。git diff --check、strings plist、1030/1030 中英 parity、零缺失生产字面量键、42+2 suites 和完整 UI target 清单通过。最后一轮无编译 error／warning；前一轮只有 AppIntents metadata 工具提示。iOS tests、真实 Provider／Web／guest、Simulator UI 均未运行；未验证真实权限、外部写入取消窗口或物理设备视觉。保留原有语音音频会话修复；不提交或推送。下一步为 G9 与现有 F6–F14 所有者验收。

@@ -189,12 +189,13 @@ This import is partial. See [coverage and remaining work](../docs/13-openminis-i
 ### `Familiar/Presentation/` — SwiftUI
 - `FamiliarRootView.swift` — 直接进入 Chat，并承接 Deep Link/Spotlight/App Intent handoff 路由。
 - `FamiliarChatView.swift` — 统一 Chat Surface：顶栏依次提供设置、普通/活跃项目工作区、模型和新对话；切换工作区恢复该作用域最近更新的会话，无历史时建立未持久化空白会话。左缘手势打开的抽屉只保留搜索、置顶、可折叠项目、全部项目和普通最近会话；项目与普通最近会话按 20 条逐批展开。
-- `FamiliarChatController.swift` — `@MainActor @Observable` 中央状态容器：`startSending`/`performSend` 编排整条 Agent Run。
+- `FamiliarChatController.swift` — `@MainActor @Observable` 中央状态容器：`startSending`/`performSend` 编排整条 Agent Run。Runtime 内容投影只在活动事件和首个非空正文边界更新；中断正文在终态通过现有 ResponseBlock 保存，消费流丢失终态时终结本地 Run／cursor。历史用已保存 Artifact 关联输出，并从既有 journal／requiresInspection 读取不确定写入与重试边界。
 - `effectiveSettings(for:)` 统一下次发送与顶栏的 Project override；选中历史不从 Conversation 的上次请求元数据改默认模型。顶栏在 Project 有 override 时修改 Project，可恢复跟随默认；设置页仍编辑默认选择，未改变生效模型时不写假的 ModelSwitch。回复保存实际成员 ID，重试读取原 Run ContextSnapshot 的请求 ID，保留模型组选项。
 - `FamiliarUsageView.swift` — 汇总该聊天 Run 的服务商报告字段，包括自动压缩；全缺失显示未报告，部分 Run 缺失时标明部分用量。模型条目是请求尝试，不声明成功，不估算费用；手动压缩及供应商配置请求明确不计入。它不承担按请求／成员分摊费用或 tokenizer 估算。
 - `FamiliarWebCaptureSaveButton.swift` — 展开的成功网页结果中的用户保存动作，复用 PillButtonStyle/Typography/Spacing。按真实 Run/Call 找已保存证据与所属 Project，保存完成后显示目标项目；截断页明确提示部分内容。当前保存回执只用于本地呈现，跨重开防重复由 Service 的文件／版本校验负责。
-- `FamiliarChatMessageViews.swift` — live token 由独立 FamiliarLiveAssistantTurn 观察，历史 Run 关联采用当次输入索引；唯一 Assistant Turn 内容流：按 Runtime sequence 交错渲染每轮 Markdown ResponseBlock 与稳定工具执行块。工具调用在原位置从运行中 morph 为单页 Approval、typed result、receipt、failure 或 undone；只读结果默认一行折叠并从顶部锚点向下展开。Activity 只保留工具数与耗时摘要，完整审计进入 Project Runs。Context 超过 2 条进入 sheet，Records 超过 3 条进入可搜索全屏，Diff 与长 Code 进入全屏。
-- `FamiliarSurfaceDescriptor.swift` — 实时/历史共用的语义投影，descriptor 保存 Runtime sequence、稳定 tool identity 和授权决定。scalar、searchResults、document、contextMatches、recordCollection 等不再按固定区域堆叠，而是在所属 Assistant Turn 的调用位置渲染。`FamiliarToolPresentationName` 同时持有 name→title 与 name→SF Symbol 两张显式表；图标不放进 manifest，因为所有调用点只拿到持久化的 `activity.toolName`，历史 Run 必须在对应工具已不再注册时渲染出同一图标。
+- `FamiliarChatMessageViews.swift` — 唯一 Assistant Turn 内容流按 Runtime sequence 保留每轮正文、区段 Runtime Card、Approval／Clarification、交付内容与回执。推理摘要不进入聊天呈现。FamiliarLiveMarkdownBlock 独立观察 token，FamiliarLiveReplyStatus 只显示真实等待；父回复消费 Controller 的活动投影。默认折叠的卡片在结束后显示低权重摘要，Timeline 持有独立的展开状态以跨 live／history 转换保留手动选择。文件卡片用真实路径决定是否可预览／分享，撤销／缺失显示不可用；复制使用 Message 的最终 block ID。Context／Records／Code／Diff 的原有详情组件继续复用。
+- `FamiliarRuntimeActivityProjection.swift` — 展示专用纯值类型：非空正文、交互和交付内容形成区段，按首个调用保持卡片身份；连续检索／阅读／文件／执行／分析归类，不生成固定未来流程。来源按 Foundation URL 身份去重，notice 不增加调用数。读取失败通常为 warning，凭据／权限和不确定写入保持强提示；Shell typed result 失败不会被 envelope 的成功投递掩盖。基础成功调用只进入技术详情。它不执行工具、不决定权限、不修改持久数据。
+- `FamiliarSurfaceDescriptor.swift` — 实时/历史共用的语义投影，descriptor 保存 Runtime sequence、稳定 tool identity、进度／失败信息和授权决定；实时参数只存在内存，历史不从 hash 还原。重试用事件 sequence 区分，并用可选 Call ID／既有 parentID 关联。终态／重复／过期事件不能重新打开已完成的调用。scalar、searchResults、document、contextMatches、recordCollection 等不再按固定区域堆叠，而是在所属 Assistant Turn 的调用位置渲染。`FamiliarToolPresentationName` 同时持有 name→title 与 name→SF Symbol 两张显式表；图标不放进 manifest，因为所有调用点只拿到持久化的 `activity.toolName`，历史 Run 必须在对应工具已不再注册时渲染出同一图标。
 - `FamiliarComposerView.swift` — compact/expanded/fullscreen 输入器、附件/相机/相册、一次性 Slash Skill 选择与语音。
 - `FamiliarSettingsHubView.swift` / `FamiliarSettingsView.swift` / `FamiliarSearchSettingsView.swift` — 设置 hub、模型服务、执行限制、Memory、Diagnostics、独立网页搜索设置和 Python 软件源设置。Diagnostics 页复用 `registry.availabilityReport()`，展示已注册工具的状态；按需加载使用相同 registry availability 检查成员并告知模型原因。它显示 Shell Runtime phase 和当前可用的已注册工具数，不声称这些 Schema 全部进入模型请求。执行限制页用 stepper 暴露步数/工具调用/时长三个预算，范围与 `FamiliarExecutionBudget.normalized` 的钳制一致，因此控件无法表达一个 Runtime 会静默拒绝的值；Memory 页提供自动记忆开关、按 scope 与来源列出每条记忆、编辑、滑动删除与二次确认的全部删除，编辑会重写派生的去重键并复用同一套敏感内容拒绝规则。模型服务页此前有 4 个 `body` 从不渲染的 section（含重复的通知开关与重复的 system prompt 编辑器），且其 `.task` 会在未授权时静默关闭通知，已一并删除；Shell 限制展示改为从 `FamiliarShellLimits.iOS` 派生而非硬编码字符串。权限页覆盖日历、提醒、联系人、位置、照片添加、照片读取、健康活动、Apple Music、蓝牙、相机、麦克风、语音识别与通知，其中健康只显示“已请求/尚未请求”并在 footer 说明 HealthKit 从不揭示读取拒绝；软件源只允许选择内置校验的官方 PyPI 或清华 TUNA HTTPS 索引，不接受任意 URL。搜索页提供 Provider 选择、独立 Key 保存/删除、最小连接验证以及隐私/费用说明。Skills 页只以右上角加号打开带默认 instructions 模板的创建表单，没有导入行，新建 Skill 的 allowedTools 为空——按现在的语义这表示「未声明限制」，不会收窄工具；页面仍没有主动收窄的编辑控件。
 - `FamiliarProjectsView.swift` — Project Context Workspace：项目列表/主页/编辑（含可选的项目级模型选择）。主页展示新聊天主动作、指令、聊天、文件/网页/文本资料和输出；Environment、按需 Skills、MCP、Capability 与 Runs 集中在同一 Stack 的高级 List，保留原查询与操作。Artifact 列表与首页摘要都按 `lineageID` 折叠为「一个交付物一行」，只展示最新版本，旧版本进入版本历史页并保持可预览、可分享；版本号只在该谱系确实有历史时显示，否则「v1」会暗示不存在的修订。
@@ -218,7 +219,7 @@ This import is partial. See [coverage and remaining work](../docs/13-openminis-i
 - `FamiliarResourceTools.swift` — `resource_list/read/search`，只读取 Run 启动时冻结的 Resource 快照。
 
 ### `Familiar/Speech/`
-- `FamiliarSpeechTranscriber.swift` — `@MainActor`，`SFSpeechRecognizer` + `AVAudioEngine` 流式转写（工作树已改 async/await + sessionID 失效保护）。
+- `FamiliarSpeechTranscriber.swift` — `@MainActor` 持有 UI／录音状态，`SFSpeechRecognizer` + `AVAudioEngine` 与远程转写共用 sessionID 失效保护。音频会话变更按 Task 顺序串行，配置／硬件调用在 @concurrent helper 中执行；iOS 27 使用异步 activate/deactivate，iOS 18–26 的 setActive 只在后台执行。准备中的停止和权限／激活返回后的旧流程不能启动录音，远程转写终态释放身份以允许再次录音。
 
 ### `Familiar/Support/`
 - `FamiliarTheme.swift` — 语义 spacing / typography / radius / icon / control tokens、基础 ButtonStyle，以及 iOS 26 `glassEffect`/material 回退 modifier。`FamiliarTypography` 全部使用可缩放的语义 Font 角色。固定点数只保留给装饰容器与点击目标内的 SF Symbol；正文类固定字号已改为 `@ScaledMetric`（Composer 编辑器），且其高度计算必须从同一个缩放值派生，否则渲染缩放字体而按固定 20pt 测量会裁掉用户自己的文本。
@@ -338,7 +339,7 @@ MainActor 容器：`FamiliarChatController`、`FamiliarRunPersistenceRecorder`�
 
 ### 验证入口
 
-- `Scripts/run-release-test-suites.sh --check-list` 只核对当前 Suite/XCTest 清单，不启动 Simulator 或测试：39 个 Simulator suite、2 个签名设备 suite，以及完整 FamiliarUITests target。
+- `Scripts/run-release-test-suites.sh --check-list` 只核对当前 Suite/XCTest 清单，不启动 Simulator 或测试：42 个 Simulator suite、2 个签名设备 suite，以及完整 FamiliarUITests target。
 - 默认模式接受已构建的 Simulator UDID/DerivedData，运行确定性套件与 UI target；`--device` 只运行单列的真机 guest 与签名图片取消套件，需要预构建的签名设备 host。未在本轮调用这些执行模式。
 - 每个结果由本机 Xcode xcresulttool summary 反查 total/passed/failed/skipped/expectedFailures；零测试、跳过、预期失败或缺失统计不会被报告为通过。清单、编译和合成报告校验都不代替实际运行。
 - `FamiliarSignedSubmissionTests` 检查签名 Keychain 与已排队图片发送的取消／草稿安全，不声称 OCR 已开始或完成，也不发 Provider 请求；缺失 entitlement 直接失败。`FamiliarDeviceRuntimeTests` 才是实际 guest 验证，Simulator skip 不算验收。
