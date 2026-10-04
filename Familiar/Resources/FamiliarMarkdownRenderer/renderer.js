@@ -7,6 +7,7 @@
   let lastReportedHeight = 0;
   let lastReportedSelection = "";
   let selectionEnabled = false;
+  let renderVersion = 0;
 
   function post(name, payload) {
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers[name]) {
@@ -364,7 +365,7 @@
     node.replaceChildren(pre);
   }
 
-  async function renderMermaid(root, diagrams) {
+  async function renderMermaid(root, diagrams, version) {
     if (!diagrams.length) {
       return;
     }
@@ -395,6 +396,7 @@
 
     const nodes = Array.from(root.querySelectorAll("[data-mermaid-id]"));
     for (let index = 0; index < nodes.length; index += 1) {
+      if (version !== renderVersion) return;
       const node = nodes[index];
       const source = diagrams[Number(node.getAttribute("data-mermaid-id"))] || "";
       if (!source.trim()) {
@@ -404,9 +406,11 @@
       try {
         const id = "familiar-mermaid-" + Date.now() + "-" + index;
         const result = await window.mermaid.render(id, source);
+        if (version !== renderVersion) return;
         node.innerHTML = sanitizeMermaidSVG(result.svg || "");
         node.classList.add("rendered");
       } catch (_) {
+        if (version !== renderVersion) return;
         fallbackMermaid(node, source);
       }
     }
@@ -481,6 +485,7 @@
   }
 
   function render(markdown, options) {
+    const version = ++renderVersion;
     try {
       const style = options && options.style;
       if (style) Object.keys(style).forEach(function (key) {
@@ -505,13 +510,15 @@
       hardenLinksAndImages(template.content);
       content.replaceChildren(template.content);
       renderMath(content, mathResult.math);
-      renderMermaid(content, mermaidResult.diagrams)
+      renderMermaid(content, mermaidResult.diagrams, version)
         .catch(function () {
+          if (version !== renderVersion) return;
           content.querySelectorAll("[data-mermaid-id]").forEach(function (node) {
             fallbackMermaid(node, mermaidResult.diagrams[Number(node.getAttribute("data-mermaid-id"))] || "");
           });
         })
         .then(function () {
+          if (version !== renderVersion) return;
           decorateMermaidPreviews(content, mermaidResult.diagrams, options);
           decorateCodeBlocks(content, options);
           decorateTables(content);
