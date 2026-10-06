@@ -13,7 +13,7 @@ Familiar 统一为一个原生 iPhone AI Workspace：
 | 层级 | 用户理解 | 产品职责 |
 | --- | --- | --- |
 | Chat | 在这里提问和完成事情 | 输入、回答、执行状态、授权与结果 |
-| Project | Familiar 持续了解这件事的地方 | 指令、资料、对话、Artifacts、Runs 与后续 Memory 的共同边界 |
+| Project | Familiar 持续了解这件事的地方 | 指令、Chat、Files 与系统 Memory 的范围边界 |
 | Agent Runtime | 不暴露为用户导航 | 组装上下文、调用模型与工具、执行 Policy、产生 Runtime Events |
 | Native Capabilities | 在需要时出现的能力 | 以类型化工具连接 Web、文件和 Apple Frameworks |
 
@@ -35,8 +35,7 @@ Familiar
 ├── Projects
 │   ├── Project Home
 │   │   ├── Continue / New Chat
-│   │   ├── Resources
-│   │   ├── Artifacts
+│   │   ├── Files
 │   │   └── Project Context
 │   │       ├── Conversations
 │   │       ├── Skills
@@ -52,7 +51,7 @@ Project Home 不承担执行器职责。它帮助用户确认 Familiar 当前掌
 1. 主动作是继续最近一条 Project Conversation；没有历史时为新建 Project Chat。
 2. 次动作是新建 Project Chat，仅在已有历史时出现。
 3. 删除独立 `Ask Familiar` 输入框。提问、发送、附件和语音统一由 Composer 承担。
-4. Resources 与 Artifacts 是用户可直接识别的上下文输入和输出，在主页展示最近内容并提供完整列表。
+4. Files 统一承载用户上传、Project 资料、网页保存、AI 生成与 Shell 输出；Project 与 Chat 复用列表、版本、详情、预览和分享入口。
 5. Conversations、Skills 与 Runs 合并为紧凑的 Project Context 导航组。它们可检查，但不与继续工作争夺视觉焦点。
 6. 归档、删除与 Project 编辑留在导航栏菜单和编辑流程，不占用主内容区。
 

@@ -5,7 +5,7 @@
 ## 1. 产品标识
 
 - 产品名称：Familiar
-- 产品形态：iPhone 原生个人 AI 工作台
+- 产品形态：iPhone 原生个人 AI Agent
 - 最低系统：iOS 18
 - 支持设备：iPhone
 - 分发目标：个人、非商业实验产品；当前不进入 App Store 或其他公开市场
@@ -16,7 +16,7 @@
 
 ## 2. 产品定位
 
-> **Familiar 是一个原生、安全、可检查的个人 AI 工作台。Chat 是主要交互和执行界面，Project 是长期 Context Workspace，单 Agent Runtime 是执行内核，原生工具与只读 Web 是执行能力。**
+> **用户通过 Chat 在 Project 中工作，Files 承载长期内容。Context Compiler 决定模型看到什么，Single Agent Runtime 推进行动，Tools 提供能力，Policy 决定是否允许执行，Persistence 保证长期数据与执行安全。**
 
 Familiar 把 iPhone 的原生能力转成一个可组合、可治理的执行面：
 
@@ -45,7 +45,7 @@ Capability Registry
 + Native Workspace
 ```
 
-Project、ContextSnapshot 与这四块共同构成目标架构。Project 不是装聊天的文件夹，也不是功能 Dashboard；它统一承载 Project Instructions、Resources、Conversations、Skills、Artifacts、Runs / Trace、后续 Memory 与可用 Capability Scope，但完成任务的核心 Surface 始终是 Chat。
+产品只呈现 Chat / Project / Files 三个一级对象。上传文件、Project 资料、保存的网页、AI 生成结果和 Shell 输出都通过 Files 呈现。Memory 作为系统行为，Run 作为执行过程；Skill、工具配置与执行详情进入相应高级入口。
 
 ## 3. 产品目标
 
@@ -82,7 +82,7 @@ Familiar 为普通 iPhone 用户提供统一的移动问答与 Agent 执行入�
 
 ### 4.5 使用本机文档与项目资料
 
-用户从系统文件选择器添加文档。App 将文件复制到私有目录，通过 AnyDoc 转换为 Markdown；PDF 页面缺少文本层时使用 Vision OCR。发送给 Provider 的内容为抽取文本和文件名上下文。在 Project 中导入的文档保存为带版本和 lineage 的 Project Resource，支撑跨对话的长期上下文；Project 名称全局唯一，比较时不区分大小写。
+用户从系统文件选择器添加文档。App 将文件复制到私有目录，通过 AnyDoc 转换为 Markdown；PDF 页面缺少文本层时使用 Vision OCR。Files 使用稳定 identity 与不可变版本。Project 导入默认用于长期上下文，普通上传与生成结果默认随当前消息或工具结果进入上下文。删除 Chat 保留已提交 Files；移动 Chat 时复制关联文件到目标 Project 并分配新 identity。Project 名称全局唯一，比较时不区分大小写。
 
 ### 4.6 使用图片
 
@@ -172,7 +172,7 @@ Provider 原生能力、设备端预处理和可选本地模型是不同的数�
 - PDF、Office、OpenDocument、RTF、EPUB、CSV、TXT、Markdown 等文档导入；AnyDoc 本地转换、PDFKit 文本层检查与 Vision OCR。
 - 图片选择、拍照和预览；DeepSeek 实验视觉模型发送，以及文本模型的 Apple Vision 基础证据 fallback。
 - Apple Speech 转写。
-- Project / Resource / Artifact / ContextSnapshot 主链路。
+- Chat / Project / Files、Context Compiler 与 Single Agent Runtime 主链路。
 - Composer 显式选择、仅作用于下一次 Run 的 instruction-only Skill。
 - 简体中文和英文界面。
 

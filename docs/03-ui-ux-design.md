@@ -28,14 +28,14 @@ flowchart TD
     Drawer --> Search[统一搜索]
     Projects --> ProjectHome[项目主页]
     ProjectHome --> ProjectChat[继续或新建项目对话]
-    ProjectHome --> Resources[资料]
-    ProjectHome --> Artifacts[生成结果]
+    ProjectHome --> ProjectFiles[Files]
+    Chat --> ChatFiles[当前 Chat 的 Files]
     ProjectHome --> Context[次级项目上下文]
     Context --> Conversations[对话]
     Context --> Runs[运行记录]
     Chat --> TopBar[顶栏]
     TopBar --> Settings[设置]
-    TopBar --> Workspace[聊天范围]
+    TopBar --> ProjectScope[Project 选择]
     TopBar --> Model[模型菜单]
     TopBar --> NewConversation[新对话]
     Chat --> Timeline[消息时间线]
@@ -191,7 +191,7 @@ Project v1 上线后的侧栏内容：
 - “全部项目”列表中的项目行打开对应项目主页；导航栏右上角加号创建项目，项目主页菜单负责新建项目对话、编辑、归档或恢复归档，以及删除。
 - 项目名保存前去除首尾空白，最长 80 个字符，并在全部项目中进行不区分大小写的唯一性校验；创建和重命名使用同一规则。
 - 项目主页展示说明与指令；有历史时在内容区提供 Continue Chat，新建项目对话始终可从项目主页导航栏菜单进入。独立 Ask 输入框不再与 Chat Composer 重复。
-- Resources 与 Artifacts 展示最近内容并提供完整列表；Conversations 与 Runs 合并为紧凑的 Project Context 导航。
+- Project 与 Chat 复用 Files 列表、版本、详情、预览与分享。Project 展示其长期文件，Chat 展示关联文件；运行记录与工具配置属于高级详情。
 - 支持项目内添加文件和新聊天；普通聊天可以不属于项目。Project Conversation 与普通 Chat 共用同一个 Chat Surface、Composer、Runtime、授权和执行 Surface。
 - Project Conversation 的归属由顶栏工作区文件夹菜单表达；菜单可切换普通聊天或项目，并可打开当前项目详情，不叠加常驻 Banner 或第二个 Context Pill。
 - 项目编辑、归档和删除位于导航栏菜单，不与继续工作争夺主内容区。

@@ -8,165 +8,40 @@ Familiar 是一个 iPhone 原生、安全、可检查的个人 AI 工作台。�
 
 它不以 Linux 为执行环境，不依赖 Apple Intelligence，不把用户需求硬编码成 workflow，也不从复杂多 Agent 开始。
 
-## 2. 目标六层架构
+## 2. Architecture boundaries
+
+The product has three first-level objects: Chat, Project and Files. Memory is system behavior; Run is execution history. Resource, Artifact, Workspace and Capability are infrastructure or historical names, not additional product objects.
 
 ```text
-┌─────────────────────────────────────────┐
-│             System Entry Layer          │
-│ Chat / Share / Notifications / Widgets  │
-│ Spotlight / App Intents / Shortcuts     │
-└────────────────────┬────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────┐
-│               Agent Runtime             │
-│                                         │
-│ Agent Loop / Context Assembly           │
-│ Model Router / Tool Router              │
-│ Run / Step State                        │
-└────────────────────┬────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────┐
-│            Capability Registry          │
-│                                         │
-│ System Tools          Workspace Tools   │
-│ Calendar              File              │
-│ Reminder              PDF               │
-│ Contacts              Text              │
-│ Photos                Image             │
-│ Maps                  Audio             │
-│ Weather               Web               │
-│ Location              Structured Data   │
-└────────────────────┬────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────┐
-│           Execution Policy Layer        │
-│ Availability / Permission / Approval    │
-│ Validation / Timeout / Cancellation     │
-└────────────────────┬────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────┐
-│              Native Layer               │
-│ EventKit / Vision / MapKit / WebKit     │
-│ Photos / PDFKit / Core ML / Foundation  │
-└─────────────────────────────────────────┘
-            + State Layer
-  Session / Workspace / Memory
-  Artifacts / Trace / History
+Product UI -> Domain -> Context / Runtime -> Tools / Policy -> Services -> Persistence
 ```
 
-### 2.1 System Entry Layer
+- Product UI invokes use cases and renders status. Domain uses value types and minimal interfaces.
+- Context Compiler freezes scoped long-term inputs at submission, then compiles an immutable snapshot before every model request. Conversation, Project Instructions, FileVersion references, selected Memory, Skill, current input, Evidence, Run facts and actual tool schemas share this entry point. No module independently adds product instructions to the Provider request.
+- Single Agent Runtime performs model calls, tool calls, state transitions and results. One Agent + One Loop + Lazy Tools remains the execution model. There is no Router, Planner or multi-Agent orchestration.
+- Run State records discovered and exposed tools, reads and observations, loaded Skills, write status and produced versions. It records facts rather than scheduling a plan. Known immutable FileVersions may reuse bounded read results; Web, Native and MCP observations remain refreshable.
+- Tools are the only external capability boundary. Web, Files, Memory, Apple adapters, MCP and Shell share typed inputs, manifest declarations, output envelopes, structured errors, preflight, policy, approval, execution and persistence.
+- Policy returns allow / requireApproval / deny. It owns scope and availability checks, exact authorization lookup/issuance and execution-time revalidation. System entries, Skills and model output never create authorization. Controlled offline Shell remains the only explicit automatic write exception; MCP remains approved on every call.
+- Services implement Provider, Apple, MCP, iSH and storage adapters, injected at composition. Core Runtime does not consume SwiftData entities or concrete Views.
+- Persistence keeps long-term Domain data separate in responsibility from Audit/Recovery and rebuildable caches, within one store. Project/Chat/Files/Memory are user data; Run/Invocation/Approval/Undo/Recovery are execution records.
 
-系统入口按优先级划分：
+### Files and scope
 
-| 优先级 | 入口 |
-|---|---|
-| **第一优先级** | ① Familiar App 本身 · ② Share Extension · ③ 系统通知 / Deep Link |
-| **第二优先级** | ④ Widgets / Controls · ⑤ Spotlight 等轻量系统入口 |
-| **兼容能力** | ⑥ App Intents · ⑦ Shortcuts |
+File identity is independent of name, path and hash. Each immutable FileVersion records its content hash, format/extraction, storage reference and provenance. Explicit relationships may share identity within a Project. Same names or bytes never merge Files across Projects.
 
-设计约束：
+Project owns committed Files. Deleting Chat removes associations and temporary data; deleting Project removes its long-term files. Moving Chat copies linked Files into the destination Project with new identities, clears the old conversation summary and preserves the original Run evidence. Global Memory is explicit; another Project's files, Memory or bound Skill cannot enter a new Run.
 
-- System Entry 只恢复本地界面上下文或承接用户明确提供的输入，**不直接调用 Provider、不执行 Tool，也不授予写权限**。
-- Share Extension 与主 App 通过 App Group 一次性收件箱交换 payload；扩展 target 不链接 Agent Runtime、Provider adapter、Keychain 或 EventKit。
-- App Intents 位于 Agent Core 之外，只暴露 `Ask Familiar`、`Process with Familiar`、`Open Familiar`；不把整个 Capability Registry 复制到 App Intents。
-- 本地通知只携带通用终态文案与本地类型化路由，不承载会话正文或授权信息；不注册远程推送。
-- Spotlight 只索引受保护的本地会话标题与 UUID，不索引聊天正文或运行详情。
-- 所有入口最终汇入同一个 Agent Runtime，不各自造一套执行逻辑。
+Uploads, Project imports, saved web captures, generated results and Shell Outputs use the same Files experience. Fetching is Evidence until a user explicitly saves its captured bytes. Work/Environment/checkpoints remain internal. Shell output capture, metadata, result receipt and compensating Undo share a success boundary.
 
-### 2.2 Agent Runtime
+### Context budget and audit
 
-Agent Runtime 是最关键的一层。它尽量不触碰 Apple Framework，完全不知道 EventKit / Vision / HealthKit / MapKit；它只知道 `ToolDefinition / ToolCall / ToolResult`。
+The budget is a character estimate, including actual tool schemas and results. Required instructions, current input and write state have priority; Project bodies, selected Memory and older history use budgets. Submitted input is never silently truncated. Omitted Project bodies leave references and reasons for lazy reads. Compaction preserves the current turn and assistant-call/result pairs; Run facts preserve write states and result references independently of transcript summarization.
 
-核心数据流：
+Each request saves its compilation identity, references, hashes, source scope/trust, observation times and a bounded summary. It does not store repeated copies of every file body. Provider adapters translate transport format only.
 
-```text
-User
-  → AgentRun
-  → Context Assembly（ProjectContextAssembler → 不可变 ContextSnapshot）
-  → Model
-  → Tool Call?
-       ├── No ──→ Final Answer
-       └── Yes
-           → Tool Registry
-           → Policy Engine
-           → Execute Tool
-           → ToolResult
-           → Context
-           → Model
-           → continue
-直到：final answer / cancelled / failed / max steps
-```
+### Migration and recovery
 
-目标内部组件：
-
-- Agent Loop：有限轮次循环，支持可恢复、可取消、有预算约束。
-- Context Assembly：每次 Run 生成不可变 `ContextSnapshot`（Project/Conversation、Resource 版本、ProjectInstruction、本次显式选择的 Skill、Provider/Model、暴露工具、输入预算）。
-- Model Router / Tool Router：模型决策与工具分发。
-- Run / Step State：一次 Run 的执行状态与恢复游标。
-
-目标 Run 契约：
-
-```text
-RunRequest
-  -> ContextSnapshot
-  -> CapabilitySnapshot
-  -> AuthorizationSnapshot
-  -> ordered RuntimeEvents
-  -> Artifact/Result references
-  -> ResumeCursor
-```
-
-### 2.3 Capability Registry
-
-目标 Registry 组织成两大能力体系：
-
-| Native System | Native Workspace |
-|---|---|
-| Calendar | File |
-| Reminders | PDF |
-| Contacts | Text |
-| Photos | Image |
-| Maps | Audio |
-| Location | Video |
-| Weather | CSV / JSON |
-| Health | Archive |
-| Notifications | Document |
-| Clipboard | Web |
-
-设计约束：
-
-- Native System 工具操作 iPhone 与用户数字环境；Native Workspace 通过 Project、Resource 和 Artifact 提供不依赖 Linux 的通用工作空间。
-- 当前设备、地区、系统版本、用户授权不可用的 Tool 不暴露给模型。
-- 目标实现拆分为 `CapabilityCatalog + CapabilityResolver + CapabilityBindingStore`，支持稳定 ID/版本/来源、隐私与网络域、安装状态和项目绑定。
-- 工具 Manifest（v2）至少包含：稳定 ID、版本、来源（native/web/MCP/skill）、输入/输出 Schema 与最大载荷、effect/risk、数据与网络域、隐私标签、幂等/取消/恢复/并行属性、所需系统权限与项目作用域、展示元数据与审计字段。
-
-### 2.4 Execution Policy Layer
-
-位于 Registry 与 Native Layer 之间，承担：
-
-- 能力可用性检查。
-- 权限与授权决策。首次授权由结构化动作卡产生；用户可选择仅这次、本次会话或始终允许，默认本次会话。grant 记录 user action、source、capability、规范化 arguments hash、project scope、target scope、expiry、lifetime 和 confirmation evidence。
-- 长期授权按 Project、工具和目标隔离；普通聊天使用独立作用域。有效 grant 范围内可免重复确认，但每次写入仍产生动作卡和审计记录。
-- 修改、删除、目标变化或参数越界重新进入审批；破坏性和财务敏感操作始终强确认。模型不能授权自己的动作。
-- 参数校验、超时与取消。
-- 破坏性与财务敏感操作的强确认。
-
-系统入口（Share Extension、App Intent、Deep Link）只提供输入来源，**永远不自行产生写授权**。
-
-### 2.5 Native Layer
-
-Apple Framework 只通过适配层进入相应功能，不被 Agent Runtime 直接感知。目标执行后端包括 EventKit、Vision、MapKit、WebKit、PDFKit、Core ML、Photos 等；新 Apple Framework、远程 MCP Server 和模型主要通过 Adapter 接入。
-
-### 2.6 State Layer
-
-- Session：Conversation、Message、Attachment、Source、Run/Step 摘要。
-- Trace：运行事件、审批和工具终态的可检查轨迹。
-- Project Workspace：Project、Resource、Artifact、Instruction、Binding、MemoryItem、Schedule。
-- Run Workspace：不可变 Context/Capability/Authorization snapshot、工具输入输出引用、ResumeCursor、持久化幂等状态。
+Freeze the actual 37-entity 1.0.0 definitions. Add canonical Files before removing old generated-file metadata; archive historical Grant provenance before removing its unused entity. Keep the store address and byte directories. Migration failure preserves user data and enters recovery; never automatically rebuild the store. Historical Resource/Attachment storage fields remain only where relationships/history need them; new imports write canonical Files directly. Cursor/journal records detect interruption and uncertain external writes; this phase does not resume across restarts or execute in the background.
 
 ## 3. 目标能力设计与当前边界
 
@@ -241,13 +116,13 @@ Skill
 
 ### 3.6 本地模型管理目标
 
-- 本地模型目录独立于附件、Resource 和 Artifact，具备固定 manifest、版本、大小、SHA-256、许可证和安装状态。
+- 本地模型目录独立于附件、Files，具备固定 manifest、版本、大小、SHA-256、许可证和安装状态。
 - 当前不提供 FastVLM。该层面向 iOS 27 正式可用后的 Core AI/Qwen 文本模型，真实 API 与模型资产可用前保持不可执行。
 - 未来下载由用户主动发起，支持进度、暂停/恢复、失败重试和删除；推理前检查内存、存储和热状态。
 
 ### 3.7 远程 Web 内容
 
-只读 Web 先于交互：`web_search` / `web_fetch` 与公开 HTTPS 页面导入 Project Resource 已实现；`web.read`（selector/readerMode）、浏览器登录、表单提交、Cookie 会话与自动点击延后。Web/MCP 内容一律按不可信输入处理，不授予工具权限。
+只读 Web 先于交互：`web_search` / `web_fetch` 与公开 HTTPS 页面导入 Project File 已实现；`web.read`（selector/readerMode）、浏览器登录、表单提交、Cookie 会话与自动点击延后。Web/MCP 内容一律按不可信输入处理，不授予工具权限。
 
 ## 4. 架构约束
 

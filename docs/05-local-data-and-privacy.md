@@ -64,14 +64,14 @@
 
 ## 3. SwiftData 与 store 策略
 
-当前使用单一 `FamiliarReleaseSchema` 的 36 个 SwiftData 实体，不配置 migration plan。项目仍在无人使用的测试阶段，旧测试 store 不受支持，schema 不兼容时直接重建。Debug 使用 `FamiliarDevelopment.store`，Release 使用 `Familiar.store`；完整实体模型与 store 地址见 `state/ARCHITECTURE.md` 第 5 节。数据模型设计约束：
+一个 SwiftData store 分别承载长期 Domain Data 与执行 Audit/Recovery。正式 SchemaMigrationPlan 冻结实际使用的 37 实体 1.0.0 基线，采用增加模型、转换/校验、移除旧模型的迁移链，保留原 store 地址和文件目录；更早开发 store 不兼容。Debug 使用 `FamiliarDevelopment.store`，Release 使用 `Familiar.store`。磁盘升级测试执行、覆盖安装与真实用户数据验收单独记录，编译不构成升级通过。数据模型设计约束：
 
 - 关系删除规则使用 cascade；附件 / 项目资源 / Artifact 文件由控制器显式清理。
 - Project 名称在本地 store 中全局唯一，比较时不区分大小写。
-- Project Resource 必须独立于 Message 文件目录，具备稳定 ID、版本、来源和 lineage；删除或编辑消息不能误删项目共享资料。
+- File identity 独立于名称、路径和 hash，FileVersion 保存不可变版本、来源、格式/抽取信息与 storage reference。已提交 Files 属于 Project；删除 Chat 只移除关联与临时数据。
 - 每次 Run 保存不可变 ContextSnapshot 及其资源引用，不保存完整资源抽取文本进快照记录。
-- 当前开发策略：Schema 变化可轮换到全新开发 store，不迁移测试数据；首次创建当前 store 时清理旧开发 store 及失去元数据的附件、项目资源和 Artifact 目录。
-- 正式发布后的目标策略：冻结公开 Schema 后再建立版本化 migration plan、migration stage 与磁盘迁移测试，不把当前开发期的破坏性轮换当作用户数据升级方案。
+- 历史 schema 的存储定义不得修改。迁移首先转换元数据和引用，不搬迁全部文件字节；删除来源实体前保留必要证据与 Undo/Recovery 身份。
+- 迁移失败保留 store 与字节并进入恢复界面，不自动重建、轮换或清空用户数据。
 - 容器打开失败不自动重置数据；只有用户在恢复界面确认后才删除当前 store、附件、项目资源和 Artifact，Keychain API Key 保留。（历史启动崩溃及当时迁移链方案见 `logs/swiftdata-store-migration-134110.md`。）
 
 ## 4. 持久化时点
@@ -129,7 +129,7 @@ Project 资源、Artifact 使用独立的受保护目录（具体路径见 `stat
 
 ### 5.3 清理
 
-设计要求：导入失败、转换失败、导入取消、多附件提交中途失败、删除会话、编辑或重试删除后续消息、丢弃草稿时均清理对应文件；页面出现时清理未被引用的 Drafts 与 Messages 孤儿文件；删除项目时清理对应 Project Resource 与 Artifact；开发 store 轮换或用户确认恢复时清理附件、项目资源和 Artifact。附件目录创建时设置 `.completeUntilFirstUserAuthentication` 文件保护。
+设计要求：导入/转换/提交失败或取消时，仅清理本次拥有的草稿和新字节。删除 Chat、编辑消息或重试不清理已提交 Files；孤儿清理必须计入 File ownership。删除 Project 才清理长期文件。用户明确确认重建可清理相应 store 和文件；普通启动与迁移失败不能清空。附件目录设置 `.completeUntilFirstUserAuthentication` 文件保护。
 
 ## 6. Keychain
 
