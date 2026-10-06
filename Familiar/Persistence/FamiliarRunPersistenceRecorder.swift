@@ -108,6 +108,19 @@ final class FamiliarRunPersistenceRecorder {
         }
     }
 
+    /// Uses the existing execution-audit row; no file body or new Domain entity.
+    func recordCompilation(_ compilation: FamiliarContextCompilation, runtimeID: String, context: ModelContext) throws {
+        guard fetchRun(runtimeID: runtimeID, in: context) != nil else { throw FamiliarAgentError.incompleteResponse }
+        let activityID = "context:" + compilation.id.uuidString
+        guard fetchActivity(activityID: activityID, in: context) == nil else { return }
+        let detail = String(decoding: try JSONEncoder().encode(compilation), as: UTF8.self)
+        context.insert(FamiliarActivityRecord(activityID: activityID, runtimeID: runtimeID,
+            assistantTurnID: runtimeID + ":context", kind: .runtimeNotice, phase: .succeeded,
+            summary: "context_compiled", detail: detail, sequence: -1,
+            startedAt: compilation.compiledAt, endedAt: compilation.compiledAt))
+        do { try context.save() } catch { context.rollback(); throw error }
+    }
+
     func recordLoadedSkill(
         runtimeID: String,
         skill: FamiliarSkillSnapshot,

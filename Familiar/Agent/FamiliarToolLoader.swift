@@ -77,7 +77,7 @@ actor FamiliarToolLoader {
         let report = FamiliarToolLoadResult.Report(groups: groups, activeTools: active.map(\.name), availableTools: page,
             nextOffset: offset + page.count < available.count ? offset + page.count : nil, unavailable: unavailable)
         let reportCharacters = String(decoding: try JSONEncoder().encode(report), as: UTF8.self).count
-        guard FamiliarProjectContextAssembler.inputCharacterCount(messages: [], manifests: active) + reportCharacters + 128 <= schemaBudget else {
+        guard FamiliarContextCompiler.inputCharacterCount(messages: [], manifests: active) + reportCharacters + 128 <= schemaBudget else {
             throw FamiliarToolLoadError("The selected schemas exceed this run's remaining input budget. Select fewer tools.")
         }
         return .init(manifests: active, report: report)
