@@ -141,10 +141,10 @@ final class FamiliarAlarmUndoRecord {
 }
 
 nonisolated enum FamiliarModelSchema {
-    static let models: [any PersistentModel.Type] = FamiliarSchemaV3.models + [
-        FamiliarArtifact.self,
+    static let legacyModels: [any PersistentModel.Type] = FamiliarSchemaV3.models + [
+        FamiliarSchemaV4.FamiliarArtifact.self,
         FamiliarCapabilitySnapshotRecord.self,
-        FamiliarAuthorizationGrantRecord.self,
+        FamiliarSchemaV5.FamiliarAuthorizationGrantRecord.self,
         FamiliarRunResumeCursorRecord.self,
         FamiliarToolInvocationRecord.self,
         FamiliarAuthorizationRuleRecord.self,
@@ -169,13 +169,22 @@ nonisolated enum FamiliarModelSchema {
         FamiliarAlarmUndoRecord.self
     ]
 
+    static let filesV3Models: [any PersistentModel.Type] = legacyModels.filter {
+        ObjectIdentifier($0) != ObjectIdentifier(FamiliarSchemaV4.FamiliarArtifact.self)
+    } + [
+        FamiliarFileRecord.self, FamiliarFileVersionRecord.self
+    ]
+
+    static let models: [any PersistentModel.Type] = filesV3Models.filter {
+        ObjectIdentifier($0) != ObjectIdentifier(FamiliarSchemaV5.FamiliarAuthorizationGrantRecord.self)
+    }
+
     static var schema: Schema { Schema(models) }
 }
 
-/// The only persisted schema in the current test-stage product. Earlier
-/// FamiliarSchemaV3...V11 types organize model declarations; they are not a
-/// supported migration chain.
+/// Additive Files bridge. The 1.0.0 storage definitions are frozen separately in
+/// FamiliarStoreSchemaV1; V3...V11 remain source organization, not a migration chain.
 enum FamiliarReleaseSchema: VersionedSchema {
-    static let versionIdentifier = Schema.Version(1, 0, 0)
+    static let versionIdentifier = Schema.Version(4, 0, 0)
     static var models: [any PersistentModel.Type] { FamiliarModelSchema.models }
 }

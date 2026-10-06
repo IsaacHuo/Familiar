@@ -25,16 +25,16 @@ struct FamiliarProjectService {
     static let maximumSummaryLength = 500
     nonisolated static let maximumInstructionLength = 8_000
     let resourceStore: FamiliarProjectResourceStore
-    let artifactStore: FamiliarArtifactStore
+    let fileStore: FamiliarFileStore
     let workspaceStore: FamiliarWorkspaceStore
 
     init(
         resourceStore: FamiliarProjectResourceStore = FamiliarProjectResourceStore(),
-        artifactStore: FamiliarArtifactStore = FamiliarArtifactStore(),
+        fileStore: FamiliarFileStore = FamiliarFileStore(),
         workspaceStore: FamiliarWorkspaceStore = FamiliarWorkspaceStore()
     ) {
         self.resourceStore = resourceStore
-        self.artifactStore = artifactStore
+        self.fileStore = fileStore
         self.workspaceStore = workspaceStore
     }
 
@@ -236,17 +236,28 @@ struct FamiliarProjectService {
             throw FamiliarProjectServiceError.projectHasRunningRun
         }
         var staged: FamiliarStagedResourceDirectory?
-        var stagedArtifacts: FamiliarStagedArtifactDirectory?
+        var stagedFiles: FamiliarStagedFileDirectory?
         var stagedWorkspace: FamiliarStagedWorkspaceDirectory?
+        var stagedManagedFiles: FamiliarStagedFileDirectory?
+        let managedFiles = FamiliarManagedFileStore()
         let projectID = project.id
         let defaultProject = try ensureDefaultProject(in: context)
+        var copiedPaths: [String] = []
+        var removedAttachmentPaths: [String] = []
         do {
+            for chat in Array(project.conversations) {
+                try FamiliarFileCatalogService().stageMove(chat, to: defaultProject, copiedPaths: &copiedPaths, in: context)
+            }
+            let ownedFiles = try context.fetch(FetchDescriptor<FamiliarFileRecord>(predicate: #Predicate { $0.projectID == projectID }))
+            removedAttachmentPaths = ownedFiles.flatMap(\.versions)
+                .filter { $0.storageKindRawValue == FamiliarFileStorageKind.attachment.rawValue }.map(\.storageRelativePath)
             staged = try resourceStore.stageProjectDirectory(projectID: projectID)
-            stagedArtifacts = try artifactStore.stageProjectDirectory(projectID: projectID)
+            stagedFiles = try fileStore.stageProjectDirectory(projectID: projectID)
+            stagedManagedFiles = try managedFiles.stageProjectDirectory(projectID: projectID)
             stagedWorkspace = try workspaceStore.stageWorkspace(.project(projectID))
             Array(project.conversations).forEach { $0.project = defaultProject }
             project.agentRuns.forEach { $0.project = nil }
-            let artifacts = try context.fetch(FetchDescriptor<FamiliarArtifact>(
+            let files = try context.fetch(FetchDescriptor<FamiliarStoredFileVersion>(
                 predicate: #Predicate { $0.projectID == projectID }
             ))
             let mcpBindings = try context.fetch(FetchDescriptor<FamiliarMCPBindingRecord>(
@@ -255,8 +266,9 @@ struct FamiliarProjectService {
             let memoryItems = try context.fetch(FetchDescriptor<FamiliarMemoryItem>(
                 predicate: #Predicate { $0.projectID == projectID }
             ))
-            let authorizationGrants = try context.fetch(FetchDescriptor<FamiliarAuthorizationGrantRecord>(
-                predicate: #Predicate { $0.projectID == projectID }
+            let archivedGrantRuntimeID = FamiliarGrantArchiveMigration.runtimeID(projectID: projectID)
+            let archivedGrants = try context.fetch(FetchDescriptor<FamiliarActivityRecord>(
+                predicate: #Predicate { $0.runtimeID == archivedGrantRuntimeID }
             ))
             let authorizationRules = try context.fetch(FetchDescriptor<FamiliarAuthorizationRuleRecord>(
                 predicate: #Predicate { $0.projectID == projectID }
@@ -270,10 +282,11 @@ struct FamiliarProjectService {
             let capabilityBindings = try context.fetch(FetchDescriptor<FamiliarProjectCapabilityBindingRecord>(
                 predicate: #Predicate { $0.projectID == projectID }
             ))
-            artifacts.forEach { context.delete($0) }
+            files.forEach { context.delete($0) }
+            ownedFiles.forEach { context.delete($0) }
             mcpBindings.forEach { context.delete($0) }
             memoryItems.forEach { context.delete($0) }
-            authorizationGrants.forEach { context.delete($0) }
+            archivedGrants.forEach { context.delete($0) }
             authorizationRules.forEach { context.delete($0) }
             environments.forEach { context.delete($0) }
             skillBindings.forEach { context.delete($0) }
@@ -281,13 +294,17 @@ struct FamiliarProjectService {
             _ = try FamiliarPinService().stageRemoval(.project, targetIDs: [projectID], in: context)
             context.delete(project)
             try context.save()
+            FamiliarAttachmentStore.remove(relativePaths: removedAttachmentPaths)
             if let staged { try? resourceStore.discard(staged) }
-            if let stagedArtifacts { try? artifactStore.discard(stagedArtifacts) }
+            if let stagedFiles { try? fileStore.discard(stagedFiles) }
+            if let stagedManagedFiles { try? managedFiles.discard(stagedManagedFiles) }
             if let stagedWorkspace { try? workspaceStore.discard(stagedWorkspace) }
         } catch {
             context.rollback()
+            FamiliarAttachmentStore.remove(relativePaths: copiedPaths)
             if let staged { try? resourceStore.restore(staged) }
-            if let stagedArtifacts { try? artifactStore.restore(stagedArtifacts) }
+            if let stagedFiles { try? fileStore.restore(stagedFiles) }
+            if let stagedManagedFiles { try? managedFiles.restore(stagedManagedFiles) }
             if let stagedWorkspace { try? workspaceStore.restore(stagedWorkspace) }
             throw error
         }

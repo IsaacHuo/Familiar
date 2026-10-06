@@ -17,9 +17,8 @@ typealias FamiliarResource = FamiliarSchemaV3.FamiliarResource
 typealias FamiliarResourceVersion = FamiliarSchemaV3.FamiliarResourceVersion
 typealias FamiliarContextSnapshotRecord = FamiliarSchemaV3.FamiliarContextSnapshotRecord
 typealias FamiliarContextResourceReference = FamiliarSchemaV3.FamiliarContextResourceReference
-typealias FamiliarArtifact = FamiliarSchemaV4.FamiliarArtifact
+typealias FamiliarStoredFileVersion = FamiliarFileVersionRecord
 typealias FamiliarCapabilitySnapshotRecord = FamiliarSchemaV5.FamiliarCapabilitySnapshotRecord
-typealias FamiliarAuthorizationGrantRecord = FamiliarSchemaV5.FamiliarAuthorizationGrantRecord
 typealias FamiliarRunResumeCursorRecord = FamiliarSchemaV6.FamiliarRunResumeCursorRecord
 typealias FamiliarToolInvocationRecord = FamiliarSchemaV6.FamiliarToolInvocationRecord
 typealias FamiliarAuthorizationRuleRecord = FamiliarSchemaV7.FamiliarAuthorizationRuleRecord
@@ -72,12 +71,12 @@ enum FamiliarModelContainer {
             url: storeURL,
             cloudKitDatabase: .none
         )
-        return try ModelContainer(for: schema, configurations: [configuration])
+        return try ModelContainer(for: schema, migrationPlan: FamiliarSchemaMigrationPlan.self, configurations: [configuration])
     }
 
     static func makeInMemory(name: String = "FamiliarTests") throws -> ModelContainer {
         let schema = currentSchema
         let configuration = ModelConfiguration(name, schema: schema, isStoredInMemoryOnly: true)
-        return try ModelContainer(for: schema, configurations: [configuration])
+        return try ModelContainer(for: schema, migrationPlan: FamiliarSchemaMigrationPlan.self, configurations: [configuration])
     }
 }

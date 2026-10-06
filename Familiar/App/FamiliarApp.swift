@@ -55,8 +55,10 @@ struct FamiliarApp: App {
         if fileManager.fileExists(atPath: attachments.path) { try fileManager.removeItem(at: attachments) }
         let projectResources = support.appendingPathComponent("Familiar/ProjectResources", isDirectory: true)
         if fileManager.fileExists(atPath: projectResources.path) { try fileManager.removeItem(at: projectResources) }
-        let artifacts = support.appendingPathComponent("Familiar/Artifacts", isDirectory: true)
-        if fileManager.fileExists(atPath: artifacts.path) { try fileManager.removeItem(at: artifacts) }
+        let files = support.appendingPathComponent("Familiar/Artifacts", isDirectory: true)
+        if fileManager.fileExists(atPath: files.path) { try fileManager.removeItem(at: files) }
+        let managedFiles = support.appendingPathComponent("Familiar/Files", isDirectory: true)
+        if fileManager.fileExists(atPath: managedFiles.path) { try fileManager.removeItem(at: managedFiles) }
     }
 
     private static func removeStore(named name: String, in directory: URL, fileManager: FileManager) {
@@ -81,7 +83,7 @@ private struct FamiliarStoreRecoveryView: View {
             Button("重建本地数据", role: .destructive) { asksToRebuild = true }
                 .disabled(resultMessage != nil)
         }
-        .confirmationDialog("重建会删除本地会话、附件、项目资料和产物，但会保留钥匙串中的 API Key。", isPresented: $asksToRebuild, titleVisibility: .visible) {
+        .confirmationDialog("重建会删除本地 Project、Chat、Files 和执行记录，但会保留钥匙串中的 API Key。", isPresented: $asksToRebuild, titleVisibility: .visible) {
             Button("确认重建", role: .destructive) {
                 do {
                     try FamiliarApp.resetStore()
