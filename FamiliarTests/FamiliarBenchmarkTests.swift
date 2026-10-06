@@ -248,6 +248,7 @@ private actor FamiliarBenchmarkEventKitService: FamiliarEventKitServicing {
 
     func request(_ requirement: FamiliarCapabilityRequirement) {}
 
+    func targetRevision(for request: FamiliarPendingWriteRequest) -> String { "fixture-revision" }
     func targetDescription(for request: FamiliarPendingWriteRequest) -> String {
         switch request {
         case .event, .eventUpdate, .eventDelete: "Benchmark Calendar"

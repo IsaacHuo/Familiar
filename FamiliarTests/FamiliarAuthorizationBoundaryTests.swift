@@ -5,6 +5,32 @@ import Testing
 
 @Suite("Current authorization boundary")
 struct FamiliarAuthorizationBoundaryTests {
+    @Test("Policy rejects changed preflight and permission before action")
+    func policyRecheck() throws {
+        let policy = FamiliarExecutionPolicy()
+        let original = FamiliarToolAuthorizationAssessment(disposition: .requiresApproval, effect: .reversibleWrite,
+            risk: .low, reason: "Save", targetKey: "version-a")
+        let changed = FamiliarToolAuthorizationAssessment(disposition: .requiresApproval, effect: .reversibleWrite,
+            risk: .low, reason: "Save", targetKey: "version-b")
+        #expect(throws: FamiliarPolicyError.self) { try policy.revalidate(approved: original, current: changed, availability: .available) }
+        #expect(throws: FamiliarPolicyError.self) { try policy.revalidate(approved: original, current: original, availability: .requestable) }
+        try policy.revalidate(approved: original, current: original, availability: .available)
+    }
+
+    @Test("Dynamic read risk and interactivity prevent concurrent execution")
+    func dynamicReadPolicy() async throws {
+        let manifest = FamiliarToolManifest(name: "fixture_read", title: "Read", description: "Read",
+            parameters: .object([:]), effect: .read, risk: .low, supportsParallelism: true)
+        let assessment = FamiliarToolAuthorizationAssessment(disposition: .requiresApproval, effect: .read, risk: .high, reason: "Private data")
+        let policy = FamiliarExecutionPolicy()
+        #expect(!policy.allowsParallelRead(manifest: manifest, assessment: assessment, availability: .available))
+        let decision = try await policy.evaluate(manifest: manifest, call: .init(id: "read", name: manifest.name, arguments: "{}"),
+            context: .init(runID: "run", toolCallID: "read"), availability: .available, assessment: assessment, authorization: nil)
+        #expect(decision.decision == .requireApproval)
+        #expect(decision.approval?.risk == .high)
+        #expect(decision.approval?.allowedAuthorizationDurations == [.once, .session])
+    }
+
     @Test("Authorization requires exact Project, version, target, arguments and session")
     @MainActor
     func exactPersistedAuthorization() throws {
@@ -65,9 +91,9 @@ struct FamiliarAuthorizationBoundaryTests {
     func historicalRowsAreInert(source: String) throws {
         let container = try FamiliarTestStore.make(name: "HistoricalAuthorization")
         let context = container.mainContext
-        context.insert(FamiliarAuthorizationGrantRecord(id: UUID(), userAction: "confirm", sourceRawValue: source,
-            capabilityID: manifest().id, capabilityVersion: "1", argumentsHash: FamiliarCanonicalJSON.argumentsHash("{}"),
-            projectID: nil, expiresAt: .distantFuture, singleUse: false, evidence: "Historical provenance", consumedAt: nil, stateRawValue: "issued"))
+        context.insert(FamiliarActivityRecord(activityID: "legacy-grant:fixture", runtimeID: "legacy-grants:global",
+            assistantTurnID: "legacy-grant", kind: .runtimeNotice, phase: .succeeded, summary: "archived_authorization_provenance",
+            detail: source, sequence: -1, startedAt: Date()))
         try context.save()
         let runtime = FamiliarAuthorizationRuntime(context: context, sessionID: "session")
         #expect(try runtime.matchingAuthorizationScope(manifest: manifest(), arguments: "{}", projectID: nil, targetKey: "target") == nil)
@@ -106,18 +132,18 @@ struct FamiliarAuthorizationBoundaryTests {
         let conversation = FamiliarConversation()
         context.insert(conversation)
         try context.save()
-        let snapshot = try FamiliarProjectContextAssembler.assemble(seed: .init(projectID: nil, projectName: nil,
+        let snapshot = try FamiliarContextCompiler.assemble(seed: .init(projectID: nil, projectName: nil,
             conversationID: conversation.id, projectInstruction: nil, resources: []), settings: .defaultValue, messages: [], toolManifests: [])
         let recorder = FamiliarRunPersistenceRecorder()
         recorder.ensureRun(runtimeID: "interrupted", snapshot: snapshot, startedAt: Date(), context: context)
         let activity = FamiliarRuntimeActivityCompletion(runID: "interrupted", toolCallID: "read", toolName: "web_fetch", effect: .read,
             assistantTurnID: "interrupted:turn:0", detail: "Read", confirmation: .notRequired, status: .succeeded,
-            startedAt: Date(), finishedAt: Date(), artifactIdentifier: nil, undoAvailable: false, automaticApprovalRequest: nil)
+            startedAt: Date(), finishedAt: Date(), fileIdentifier: nil, undoAvailable: false, automaticApprovalRequest: nil)
         try recorder.recordActivityCompleted(activity, eventSequence: 1, conversationID: conversation.id, context: context)
         let envelope = try FamiliarToolResultEnvelope(canonicalModelJSON: #"{"text":"Retain this evidence"}"#,
             presentation: .document(.init(summary: "Read", title: "Evidence", text: "Retain this evidence")))
         let result = FamiliarToolResultProduced(runID: "interrupted", toolCallID: "read", toolName: "web_fetch", effect: .read,
-            assistantTurnID: "interrupted:turn:0", envelope: envelope, sources: [], artifact: nil, producedAt: Date())
+            assistantTurnID: "interrupted:turn:0", envelope: envelope, sources: [], file: nil, producedAt: Date())
         #expect(try recorder.recordToolResult(result, eventSequence: 2, conversationID: conversation.id, context: context))
         let recovery = FamiliarRunRecoveryService()
         let pending = try recovery.beginInvocation(idempotencyKey: "interrupted:pending", runtimeID: "interrupted", toolCallID: "pending",

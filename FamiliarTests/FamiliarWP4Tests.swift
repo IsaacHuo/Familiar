@@ -5,6 +5,7 @@ import Testing
 
 @Suite("Familiar WP4")
 struct FamiliarWP4Tests {
+    private let fixtureProjectID = UUID()
     @Test("Resource store validates paths, hashes copies, resolves versions, and rejects symlinks")
     func resourceStoreSafety() throws {
         let fileManager = FileManager.default
@@ -75,9 +76,9 @@ struct FamiliarWP4Tests {
     @Test("All registered tool names match the provider function name pattern")
     func toolNamesMatchProviderPattern() async throws {
         let registry = try FamiliarToolRegistry(tools: [
-            AnyFamiliarTool(FamiliarResourceListTool()),
-            AnyFamiliarTool(FamiliarResourceReadTool()),
-            AnyFamiliarTool(FamiliarResourceSearchTool())
+            AnyFamiliarTool(FamiliarFileListTool()),
+            AnyFamiliarTool(FamiliarFileReadTool()),
+            AnyFamiliarTool(FamiliarFileSearchTool())
         ])
         let pattern = /^[a-zA-Z0-9_-]+$/
         for manifest in await registry.snapshot() {
@@ -92,7 +93,7 @@ struct FamiliarWP4Tests {
         let first = resource(id: firstID, name: "B.txt", text: "second")
         let second = resource(id: secondID, name: "A.txt", text: "first")
         let conversationID = UUID()
-        let ordinary = try FamiliarProjectContextAssembler.assemble(
+        let ordinary = try FamiliarContextCompiler.assemble(
             seed: .init(projectID: nil, projectName: nil, conversationID: conversationID, projectInstruction: nil, resources: [first]),
             settings: .defaultValue,
             messages: [],
@@ -102,8 +103,8 @@ struct FamiliarWP4Tests {
         #expect(ordinary.providerMessages.count == 1)
 
         let manifest = FamiliarToolManifest(name: "z_tool", title: "Z", description: "fixture", parameters: .init(type: .object), effect: .read, risk: .low, requirements: [])
-        let project = try FamiliarProjectContextAssembler.assemble(
-            seed: .init(projectID: UUID(), projectName: "P", conversationID: conversationID, projectInstruction: "Frozen instruction", resources: [first, second]),
+        let project = try FamiliarContextCompiler.assemble(
+            seed: .init(projectID: fixtureProjectID, projectName: "P", conversationID: conversationID, projectInstruction: "Frozen instruction", resources: [first, second]),
             settings: .defaultValue,
             messages: [],
             toolManifests: [manifest]
@@ -112,23 +113,21 @@ struct FamiliarWP4Tests {
         #expect(project.providerMessages.compactMap(\.networkText).joined(separator: "\n").contains("Frozen instruction"))
         #expect(project.providerMessages.compactMap(\.networkText).joined(separator: "\n").contains("first"))
         #expect(project.allowedToolNames == ["z_tool"])
-        #expect(project.initialInputCharacters == FamiliarProjectContextAssembler.inputCharacterCount(messages: project.providerMessages, manifests: project.toolManifests))
+        #expect(project.initialInputCharacters == FamiliarContextCompiler.inputCharacterCount(messages: project.providerMessages, manifests: project.toolManifests))
         #expect(!project.providerMessages.compactMap(\.networkText).joined().contains("changed later"))
     }
 
-    @Test("Assembler rejects the complete initial project context when oversized")
+    @Test("Compiler retains a read reference when a Project file body exceeds the budget")
     func oversizedProjectContext() throws {
         var settings = FamiliarSettings.defaultValue
         settings.modelID = settings.selectedProvider.curatedModels.first(where: { $0.capabilities.maximumInputCharacters <= 60_000 })?.id ?? settings.modelID
         let huge = resource(id: UUID(), name: "huge.txt", text: String(repeating: "x", count: 400_000))
-        #expect(throws: FamiliarAgentError.self) {
-            _ = try FamiliarProjectContextAssembler.assemble(
-                seed: .init(projectID: UUID(), projectName: "P", conversationID: UUID(), projectInstruction: nil, resources: [huge]),
-                settings: settings,
-                messages: [],
-                toolManifests: []
-            )
-        }
+        let snapshot = try FamiliarContextCompiler.assemble(
+            seed: .init(projectID: fixtureProjectID, projectName: "P", conversationID: UUID(), projectInstruction: nil, resources: [huge]),
+            settings: settings, messages: [], toolManifests: [])
+        #expect(!snapshot.providerMessages.compactMap(\.networkText).joined().contains(huge.extractedText))
+        #expect(snapshot.providerMessages.compactMap(\.networkText).joined().contains("omitted:"))
+
     }
 
     @Test("One resource belongs to a project and survives message deletion across two chats")
@@ -200,8 +199,8 @@ struct FamiliarWP4Tests {
         context.insert(conversation)
         try context.save()
         let contextResource = resource(id: UUID(), name: "ref.txt", text: "private full text")
-        let snapshot = try FamiliarProjectContextAssembler.assemble(
-            seed: .init(projectID: UUID(), projectName: "P", conversationID: conversation.id, projectInstruction: "Instruction", resources: [contextResource]),
+        let snapshot = try FamiliarContextCompiler.assemble(
+            seed: .init(projectID: fixtureProjectID, projectName: "P", conversationID: conversation.id, projectInstruction: "Instruction", resources: [contextResource]),
             settings: .defaultValue,
             messages: [],
             toolManifests: []
@@ -209,8 +208,8 @@ struct FamiliarWP4Tests {
         let recorder = FamiliarRunPersistenceRecorder()
         recorder.ensureRun(runtimeID: "failed-run", snapshot: snapshot, startedAt: Date(), context: context)
         recorder.finishRun(runtimeID: "failed-run", outcome: .init(status: .failed, failureKind: .unknown, message: "fixture"), eventSequence: 1, at: Date(), context: context)
-        let cancelledSnapshot = try FamiliarProjectContextAssembler.assemble(
-            seed: .init(projectID: UUID(), projectName: "P", conversationID: conversation.id, projectInstruction: "Instruction", resources: [contextResource]),
+        let cancelledSnapshot = try FamiliarContextCompiler.assemble(
+            seed: .init(projectID: fixtureProjectID, projectName: "P", conversationID: conversation.id, projectInstruction: "Instruction", resources: [contextResource]),
             settings: .defaultValue,
             messages: [],
             toolManifests: []
@@ -226,6 +225,103 @@ struct FamiliarWP4Tests {
         #expect(Set(try context.fetch(FetchDescriptor<FamiliarAgentRun>()).map(\.status)) == [.failed, .cancelled])
     }
 
+    @Test("Compiler excludes foreign Project files and Memory before prompt admission")
+    func compilerScopeIsolation() throws {
+        let foreign = UUID(), chatID = UUID()
+        let resource = FamiliarContextResource(resourceID: UUID(), resourceVersionID: UUID(), version: 1,
+            displayName: "foreign.txt", filename: "foreign.txt", mimeType: "text/plain", contentHash: "foreign",
+            extractedText: "FOREIGN FILE", extractedTextHash: "foreign", projectID: foreign)
+        let snapshot = try FamiliarContextCompiler.assemble(seed: .init(projectID: fixtureProjectID, projectName: "P",
+            conversationID: chatID, projectInstruction: nil, resources: [resource], memories: [
+                .init(id: UUID(), scope: .project, content: "FOREIGN MEMORY", provenance: "user", confidence: 1, projectID: foreign),
+                .init(id: UUID(), scope: .global, content: "GLOBAL FACT", provenance: "user", confidence: 1)
+            ]), settings: .defaultValue, messages: [], toolManifests: [])
+        let prompt = snapshot.providerMessages.compactMap(\.networkText).joined()
+        #expect(!prompt.contains("FOREIGN"))
+        #expect(prompt.contains("GLOBAL FACT"))
+        #expect(snapshot.resources.isEmpty)
+    }
+
+    @Test("Compaction preserves the submitted turn and complete assistant/result pairs")
+    func compactionKeepsCurrentInput() throws {
+        let call = FamiliarToolCall(id: "read", name: "file_read", arguments: "{}")
+        let messages: [FamiliarProviderMessage] = [.system("rules"), .user(String(repeating: "old", count: 12_000)),
+            .user("CURRENT INPUT MUST SURVIVE"), .assistant(nil, toolCalls: [call]),
+            .tool(String(repeating: "result", count: 4_000), toolCallID: call.id, name: call.name)]
+        let selection = try #require(FamiliarContextCompiler.compaction(messages: messages,
+            protectedPrefixMessageCount: 1, maximumInputCharacters: 40_000, protectedTurnIndex: 2))
+        #expect(!selection.entries.contains { $0.networkText == "CURRENT INPUT MUST SURVIVE" })
+        let compacted = selection.replacing(with: "Earlier work summary")
+        #expect(compacted[try #require(selection.currentTurnIndex)].networkText == "CURRENT INPUT MUST SURVIVE")
+        let resultIndex = try #require(compacted.firstIndex { $0.role == .tool })
+        #expect(compacted[resultIndex - 1].toolCalls.first?.id == call.id)
+    }
+
+    @Test("Write facts survive transcript replacement and loaded tools do not remain exposed")
+    func runFactsSurviveCompaction() async throws {
+        let state = FamiliarRunState()
+        let manifest = FamiliarFileReadTool().manifest
+        await state.expose([manifest])
+        await state.expose([])
+        let call = FamiliarToolCall(id: "write", name: "file_write", arguments: "{}")
+        await state.record(call: call, status: .attempted)
+        await state.record(call: call, status: .uncertain, detail: "tool_commit_unconfirmed")
+        let facts = await state.snapshot()
+        #expect(facts.discoveredTools == ["file_read"])
+        #expect(facts.exposedTools.isEmpty)
+        let input = try familiarTestContextSnapshot(projectID: fixtureProjectID)
+        let compiled = try FamiliarContextCompiler.compileRequest(input: input, transcript: [.system("rules"), .user("Continue")],
+            facts: facts, manifests: [], toolsWithheld: true)
+        #expect(compiled.manifest.stateSummary.contains("uncertain"))
+        #expect(compiled.manifest.stateSummary.contains("tool_commit_unconfirmed"))
+        #expect(compiled.request.tools.isEmpty)
+        #expect(input.providerMessages.count == 1)
+        #expect(compiled.manifest.inputSnapshotID == input.id)
+    }
+
+    @Test("Only exact immutable FileVersions reuse bounded reads with original observation time")
+    func fileReadReuse() async throws {
+        let state = FamiliarRunState(), versionID = UUID()
+        let file = FamiliarFileSnapshot(reference: .init(fileID: UUID(), versionID: versionID, projectID: fixtureProjectID),
+            name: "same.txt", origin: .upload, version: 1, filename: "same.txt", mimeType: "text/plain", byteSize: 4,
+            contentHash: "hash", storage: .init(kind: .attachment, relativePath: "frozen"), isProjectContext: false, updatedAt: Date())
+        let call = FamiliarToolCall(id: "read", name: "file_read", arguments: "{\"identifier\":\"file_\(versionID)\"}")
+        let key = try #require(await state.fileReadKey(call: call, available: [file]))
+        let result = FamiliarToolExecutionResult(envelope: try .init(model: ["text": "body"],
+            presentation: .document(.init(summary: "Read", title: "same.txt", text: "body"))))
+        let observed = Date(timeIntervalSince1970: 100)
+        await state.cacheRead(result, key: key, observedAt: observed)
+        #expect(await state.cachedRead(key)?.observedAt == observed)
+        #expect(await state.fileReadKey(call: call, available: []) == nil)
+        #expect(await state.fileReadKey(call: .init(id: "web", name: "web_fetch", arguments: call.arguments), available: [file]) == nil)
+    }
+
+    @Test("Per-request audit stores references and facts without Project file bodies")
+    @MainActor
+    func compilationAudit() async throws {
+        let container = try FamiliarTestStore.make(name: "CompilationAudit")
+        let context = container.mainContext
+        let conversation = FamiliarConversation()
+        context.insert(conversation); try context.save()
+        let input = try FamiliarContextCompiler.assemble(seed: .init(projectID: fixtureProjectID, projectName: "P",
+            conversationID: conversation.id, projectInstruction: nil, resources: [resource(id: UUID(), name: "ref.txt", text: "PRIVATE FILE BODY")]),
+            settings: .defaultValue, messages: [], toolManifests: [])
+        let recorder = FamiliarRunPersistenceRecorder(), state = FamiliarRunState()
+        recorder.ensureRun(runtimeID: "audit", snapshot: input, startedAt: Date(), context: context)
+        let compiled = try FamiliarContextCompiler.compileRequest(input: input, transcript: input.providerMessages,
+            facts: await state.snapshot(), manifests: [], toolsWithheld: false)
+        try recorder.recordCompilation(compiled.manifest, runtimeID: "audit", context: context)
+        try recorder.recordCompilation(compiled.manifest, runtimeID: "audit", context: context)
+        let records = try context.fetch(FetchDescriptor<FamiliarActivityRecord>())
+        #expect(records.count == 1)
+        let json = try #require(records.first?.detail)
+        #expect(!json.contains("PRIVATE FILE BODY"))
+        let audit = try JSONDecoder().decode(FamiliarContextCompilation.self, from: Data(json.utf8))
+        #expect(audit.inputSnapshotID == input.id)
+        #expect(audit.characterCount == FamiliarContextCompiler.inputCharacterCount(messages: compiled.request.messages, manifests: []))
+        #expect(audit.references.first?.hash == input.resources.first?.contentHash)
+    }
+
     private func resource(id: UUID, name: String, text: String) -> FamiliarContextResource {
         FamiliarContextResource(
             resourceID: id,
@@ -236,7 +332,7 @@ struct FamiliarWP4Tests {
             mimeType: "text/plain",
             contentHash: "file-\(id.uuidString)",
             extractedText: text,
-            extractedTextHash: FamiliarProjectResourceService.sha256(text)
+            extractedTextHash: FamiliarHash.sha256(text), projectID: fixtureProjectID
         )
     }
 }

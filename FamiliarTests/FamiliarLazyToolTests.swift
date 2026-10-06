@@ -58,7 +58,7 @@ struct FamiliarLazyToolTests {
     @Test("Explicit Skill scope blocks group loading and has no shell or delivery bypass")
     func skillScopeCannotEscalate() async throws {
         let probe = FamiliarLazyProbe()
-        let registry = try registry(probe: probe, names: ["web_fetch", "calendar_events", "shell_execute", "artifact_publish"])
+        let registry = try registry(probe: probe, names: ["web_fetch", "calendar_events", "shell_execute", "file_publish"])
         let skill = FamiliarSkillSnapshot(stableID: "calendar-only", version: "1", name: "Calendar",
             contentHash: String(repeating: "a", count: 64), instructions: "Only query calendars.", allowedTools: ["calendar_events"])
         let events = try await run(registry: registry, probe: probe, steps: [
@@ -69,7 +69,7 @@ struct FamiliarLazyToolTests {
         #expect(requests.count == 2)
         #expect(Set(requests[1].tools.map(\.name)) == FamiliarToolGroup.baseToolNames)
         #expect(events.contains { if case .activityCompleted(let value) = $0.payload { value.failureCode == "tool_load_failed" } else { false } })
-        #expect(!FamiliarToolGroup.allows("artifact_publish", skill: skill))
+        #expect(!FamiliarToolGroup.allows("file_publish", skill: skill))
     }
 
     @Test("Remote discovery is cached and schemas need exact selection; actions still need approval")
@@ -181,7 +181,7 @@ struct FamiliarLazyToolTests {
         let huge = FamiliarLazyTool(name: "web_fetch", probe: probe, description: String(repeating: "x", count: 5_000))
         let registry = try FamiliarToolRegistry(tools: baseTools() + [AnyFamiliarTool(huge)])
         let loader = FamiliarToolLoader(registry: registry, catalog: await registry.snapshot(), deferred: [])
-        let count = FamiliarProjectContextAssembler.inputCharacterCount(messages: [], manifests: [huge.manifest])
+        let count = FamiliarContextCompiler.inputCharacterCount(messages: [], manifests: [huge.manifest])
         #expect(count > huge.manifest.name.count + huge.manifest.description.count + 5_000)
         await #expect(throws: FamiliarToolLoadError.self) {
             _ = try await loader.load(groups: ["web"], toolNames: nil, offset: 0, skill: nil, schemaBudget: 1_000)
@@ -224,7 +224,7 @@ struct FamiliarLazyToolTests {
         let service = FamiliarProjectService()
         let project = try service.create(name: "Scope", in: container.mainContext)
         let probe = FamiliarLazyProbe()
-        let registry = try registry(probe: probe, names: ["web_fetch", "shell_execute", "artifact_publish", "health_activity_summary"])
+        let registry = try registry(probe: probe, names: ["web_fetch", "shell_execute", "file_publish", "health_activity_summary"])
         let all = await registry.snapshot()
         let initial = try service.filterCapabilities(all, projectID: project.id, in: container.mainContext)
         #expect(initial.map(\.name).contains("web_fetch"))
@@ -232,7 +232,7 @@ struct FamiliarLazyToolTests {
         try service.setCapability("shell_execute", enabled: true, allCapabilities: all, projectID: project.id, in: container.mainContext)
         let enabled = try service.filterCapabilities(all, projectID: project.id, in: container.mainContext)
         #expect(enabled.map(\.name).contains("shell_execute"))
-        #expect(!enabled.map(\.name).contains("artifact_publish"))
+        #expect(!enabled.map(\.name).contains("file_publish"))
         #expect(!enabled.map(\.name).contains("health_activity_summary"))
         try service.setCapability("web_fetch", enabled: false, allCapabilities: all, projectID: project.id, in: container.mainContext)
         let disabled = try service.filterCapabilities(all, projectID: project.id, in: container.mainContext)
@@ -266,7 +266,7 @@ struct FamiliarLazyToolTests {
             confirmationCoordinator: coordinator, undoStore: .init(), deferredToolGroups: sources, maximumToolCalls: toolBudget, maximumDuration: duration)
         let seed = FamiliarProjectContextSeed(projectID: FamiliarProject.dailyProjectID, projectName: "Daily Chat", conversationID: UUID(),
             projectInstruction: nil, resources: [], skills: skill.map { [$0] } ?? [])
-        let snapshot = try FamiliarProjectContextAssembler.assemble(seed: seed, settings: .defaultValue,
+        let snapshot = try FamiliarContextCompiler.assemble(seed: seed, settings: .defaultValue,
             messages: [], toolManifests: await registry.snapshot(), additionalToolGroups: sources.map(\.summary))
         var events: [FamiliarRuntimeEvent] = []
         for try await event in loop.stream(contextSnapshot: snapshot) {

@@ -170,7 +170,7 @@ private struct FamiliarCompactingProvider: FamiliarModelProvider {
         AsyncThrowingStream { continuation in
             Task {
                 let system = request.messages.first?.networkText ?? ""
-                if system.contains("Summarize the supplied earlier conversation") {
+                if system.contains("Summarize this earlier conversation") {
                     await probe.recordSummaryRequest()
                     continuation.yield(.textDelta("## Goal\nContinue the current task.\n\n## Progress\nEarlier history was compacted."))
                 } else {

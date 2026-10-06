@@ -7,6 +7,8 @@ private actor FamiliarFakeEventKitService: FamiliarEventKitServicing {
     var commits: [String: FamiliarWriteCommitResult] = [:]
     var undone: Set<String> = []
     var failsCommit = false
+    var revision = "fixture-revision"
+    func changeRevision() { revision = "changed-revision" }
 
     init(availability: FamiliarCapabilityAvailability = .available) {
         availabilityValue = availability
@@ -17,6 +19,7 @@ private actor FamiliarFakeEventKitService: FamiliarEventKitServicing {
         if case .unavailable(let reason) = availabilityValue { throw FamiliarToolRegistryError.capabilityUnavailable(reason) }
         availabilityValue = .available
     }
+    func targetRevision(for request: FamiliarPendingWriteRequest) -> String { revision }
     func targetDescription(for request: FamiliarPendingWriteRequest) -> String { "Test Calendar" }
     func events(from startISO8601: String, to endISO8601: String, limit: Int) -> [FamiliarCalendarEvent] { [] }
     func reminders(from startISO8601: String?, to endISO8601: String?, text: String?, limit: Int) -> [FamiliarReminder] { [] }
@@ -47,6 +50,22 @@ private actor FamiliarFakeEventKitService: FamiliarEventKitServicing {
 struct FamiliarEventKitPolicyTests {
     private let event = FamiliarEventWriteRequest(title: "Meeting", startISO8601: "2026-08-13T10:00:00Z", endISO8601: "2026-08-13T11:00:00Z", isAllDay: false, location: nil, notes: nil, urlString: nil, calendarIdentifier: nil)
 
+    @Test("A native target revision changed during approval cannot reach commit")
+    func targetRevisionChange() async throws {
+        let service = FamiliarFakeEventKitService()
+        let tool = FamiliarCreateCalendarEventTool(service: service)
+        let input = FamiliarEventWriteRequest(title: "Appointment", startISO8601: "2026-10-06T09:00:00Z",
+            endISO8601: "2026-10-06T10:00:00Z", isAllDay: false, location: nil, notes: nil, urlString: nil, calendarIdentifier: nil)
+        guard case .action(let proposal) = try await tool.execute(input, context: .init(runID: "run", toolCallID: "write"))
+        else { Issue.record("Expected an action proposal"); return }
+        await service.changeRevision()
+        do {
+            try await FamiliarExecutionPolicy().validateTarget(proposal)
+            Issue.record("Changed target must invalidate approval")
+        } catch let error as FamiliarPolicyError { #expect(error == .changedDuringApproval) }
+        #expect(await service.commits.isEmpty)
+    }
+
     @Test("A write returns a proposal and commit is idempotent with one-shot undo")
     func proposalCommitAndUndo() async throws {
         let service = FamiliarFakeEventKitService(availability: .requestable)
@@ -56,8 +75,8 @@ struct FamiliarEventKitPolicyTests {
         #expect(proposal.target == "Test Calendar")
         let first = try await proposal.commit()
         let second = try await proposal.commit()
-        #expect(first.result.artifactIdentifier == "created-1")
-        #expect(second.result.artifactIdentifier == first.result.artifactIdentifier)
+        #expect(first.result.fileIdentifier == "created-1")
+        #expect(second.result.fileIdentifier == first.result.fileIdentifier)
         let undo = try #require(first.undo)
         _ = try await undo()
         await #expect(throws: FamiliarEventKitError.self) { _ = try await undo() }

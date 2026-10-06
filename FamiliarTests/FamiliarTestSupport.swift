@@ -27,7 +27,7 @@ func familiarTestContextSnapshot(
     projectInstruction: String? = nil,
     resources: [FamiliarContextResource] = []
 ) throws -> FamiliarContextSnapshot {
-    let snapshot = try FamiliarProjectContextAssembler.assemble(
+    let snapshot = try FamiliarContextCompiler.assemble(
         seed: FamiliarProjectContextSeed(
             projectID: projectID,
             projectName: projectName,
@@ -46,10 +46,10 @@ func familiarTestContextSnapshot(
         providerID: snapshot.providerID, modelID: snapshot.modelID, providerMessages: snapshot.providerMessages,
         toolManifests: manifests, availableToolManifests: snapshot.availableToolManifests,
         protectedPrefixMessageCount: snapshot.protectedPrefixMessageCount, maximumInputCharacters: snapshot.maximumInputCharacters,
-        initialInputCharacters: FamiliarProjectContextAssembler.inputCharacterCount(messages: snapshot.providerMessages, manifests: manifests),
+        initialInputCharacters: FamiliarContextCompiler.inputCharacterCount(messages: snapshot.providerMessages, manifests: manifests),
         resources: snapshot.resources, attachments: snapshot.attachments, skills: snapshot.skills,
         availableSkills: snapshot.availableSkills, memories: snapshot.memories, visualEvidence: snapshot.visualEvidence,
-        visualEvidenceMessageID: snapshot.visualEvidenceMessageID)
+        visualEvidenceMessageID: snapshot.visualEvidenceMessageID, files: snapshot.files, fileSelections: snapshot.fileSelections)
 }
 
 actor FamiliarFakeCapabilities: FamiliarCapabilityProviding {

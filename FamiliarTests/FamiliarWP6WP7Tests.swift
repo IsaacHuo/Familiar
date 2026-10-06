@@ -41,7 +41,7 @@ struct FamiliarWP6WP7Tests {
             name: "Word Report",
             description: "Generate reports",
             instructions: "Generate a validated Word report.",
-            allowedTools: ["web_fetch", "artifact_publish"],
+            allowedTools: ["web_fetch", "file_publish"],
             examples: []
         ), in: context)
         let service = FamiliarProjectService()

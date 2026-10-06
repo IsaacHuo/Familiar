@@ -29,9 +29,9 @@ struct FamiliarBaselineTests {
         "alarm_list",
         "web_search",
         "web_fetch",
-        "resource_list",
-        "resource_read",
-        "resource_search",
+        "file_list",
+        "file_read",
+        "file_search",
         "workspace_list",
         "workspace_read",
         "workspace_search",
@@ -55,10 +55,9 @@ struct FamiliarBaselineTests {
         "skill_list",
         "skill_read",
         "skill_install",
-        "artifact_write",
-        "artifact_edit",
-        "artifact_read",
-        "artifact_publish",
+        "file_write",
+        "file_edit",
+        "file_publish",
         // Reads only the on-disk Environment receipt, so it must never be gated on
         // the iSH guest booting: a missing rootfs previously meant it was never
         // registered at all.
@@ -429,27 +428,29 @@ struct FamiliarBaselineTests {
         #expect(!FamiliarAttachmentStore.isSafeRelativePath("Messages//file.pdf"))
     }
 
-    /// The policy is a pure gate: a write always reaches approval, and no policy
-    /// argument can pre-authorize it. Persisted authorization is matched later by
-    /// `FamiliarAuthorizationRuntime`, never here.
-    @Test("Execution policy always confirms writes and never self-authorizes")
-    func executionPolicy() {
+    @Test("Unified Policy requires approval without exact authorization")
+    func executionPolicy() async throws {
         let policy = FamiliarExecutionPolicy()
+        func decision(_ manifest: FamiliarToolManifest, availability: FamiliarCapabilityAvailability) async throws -> FamiliarExecutionPolicyDecision {
+            try await policy.evaluate(manifest: manifest, call: .init(id: "call", name: manifest.name, arguments: "{}"),
+                context: .init(runID: "run", toolCallID: "call"), availability: availability,
+                assessment: .manifestDefault(manifest), authorization: nil).decision
+        }
         let write = FamiliarToolManifest(name: "write", title: "Write", description: "", parameters: .object([:]), effect: .reversibleWrite, risk: .low, requirements: [])
-        #expect(policy.decide(manifest: write, availability: .available) == .requestApproval)
+        #expect(try await decision( write, availability: .available) == .requireApproval)
 
         let destructive = FamiliarToolManifest(name: "destroy", title: "Destroy", description: "", parameters: .object([:]), effect: .destructiveWrite, risk: .low)
-        #expect(policy.decide(manifest: destructive, availability: .available) == .requestApproval)
+        #expect(try await decision( destructive, availability: .available) == .requireApproval)
 
         let read = FamiliarToolManifest(name: "read", title: "Read", description: "", parameters: .object([:]), effect: .read, risk: .low)
-        #expect(policy.decide(manifest: read, availability: .available) == .execute)
-        #expect(policy.decide(manifest: read, availability: .requestable) == .requestApproval)
+        #expect(try await decision( read, availability: .available) == .allow)
+        #expect(try await decision( read, availability: .requestable) == .requireApproval)
 
         // A sensitive read must still be confirmed even once the capability is granted.
         let sensitiveRead = FamiliarToolManifest(name: "read_health", title: "Read health", description: "", parameters: .object([:]), effect: .read, risk: .high)
-        #expect(policy.decide(manifest: sensitiveRead, availability: .available) == .requestApproval)
+        #expect(try await decision( sensitiveRead, availability: .available) == .requireApproval)
 
-        #expect(policy.decide(manifest: read, availability: .unavailable(reason: "denied")) == .deny("denied"))
+        #expect(try await decision( read, availability: .unavailable(reason: "denied")) == .deny("denied"))
     }
 
     @Test("Run and activity projection persist in the in-memory store") @MainActor
@@ -500,17 +501,17 @@ struct FamiliarBaselineTests {
         let persistence = root.appendingPathComponent("Familiar/Persistence", isDirectory: true)
         let attachments = root.appendingPathComponent("Familiar/Attachments", isDirectory: true)
         let projectResources = root.appendingPathComponent("Familiar/ProjectResources", isDirectory: true)
-        let artifacts = root.appendingPathComponent("Familiar/Artifacts", isDirectory: true)
+        let files = root.appendingPathComponent("Familiar/Files", isDirectory: true)
         try fileManager.createDirectory(at: persistence, withIntermediateDirectories: true)
         try fileManager.createDirectory(at: attachments, withIntermediateDirectories: true)
         try fileManager.createDirectory(at: projectResources, withIntermediateDirectories: true)
-        try fileManager.createDirectory(at: artifacts, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: files, withIntermediateDirectories: true)
         try Data("store".utf8).write(to: persistence.appendingPathComponent(FamiliarModelContainer.storeFilename))
         try Data("wal".utf8).write(to: persistence.appendingPathComponent(FamiliarModelContainer.storeFilename + "-wal"))
         try Data("old".utf8).write(to: persistence.appendingPathComponent("FamiliarAgentV1.store"))
         try Data("attachment".utf8).write(to: attachments.appendingPathComponent("message.txt"))
         try Data("resource".utf8).write(to: projectResources.appendingPathComponent("resource.txt"))
-        try Data("artifact".utf8).write(to: artifacts.appendingPathComponent("artifact.txt"))
+        try Data("artifact".utf8).write(to: files.appendingPathComponent("artifact.txt"))
 
         try FamiliarApp.resetStore(in: root, fileManager: fileManager)
 
@@ -519,6 +520,6 @@ struct FamiliarBaselineTests {
         #expect(fileManager.fileExists(atPath: persistence.appendingPathComponent("FamiliarAgentV1.store").path))
         #expect(!fileManager.fileExists(atPath: attachments.path))
         #expect(!fileManager.fileExists(atPath: projectResources.path))
-        #expect(!fileManager.fileExists(atPath: artifacts.path))
+        #expect(!fileManager.fileExists(atPath: files.path))
     }
 }

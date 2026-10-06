@@ -22,7 +22,7 @@ struct FamiliarModelSelectionTests {
         try FamiliarProjectService().updateModelOverride(project, modelID: second.id, providerID: provider.id, in: container.mainContext)
         let effective = controller.effectiveSettings(for: project)
         #expect(effective.selectedModel.id == second.id)
-        let snapshot = try FamiliarProjectContextAssembler.assemble(seed: .init(projectID: project.id, projectName: project.name,
+        let snapshot = try FamiliarContextCompiler.assemble(seed: .init(projectID: project.id, projectName: project.name,
             conversationID: UUID(), projectInstruction: nil, resources: []), settings: effective, messages: [], toolManifests: [])
         #expect(snapshot.modelID == effective.selectedModel.id)
         #expect(snapshot.providerID == effective.selectedProvider.id)
@@ -69,7 +69,7 @@ struct FamiliarModelSelectionTests {
         try context.save()
         var settings = FamiliarSettings.defaultValue
         settings.modelID = "requested-group-model"
-        let snapshot = try FamiliarProjectContextAssembler.assemble(seed: .init(projectID: nil, projectName: nil,
+        let snapshot = try FamiliarContextCompiler.assemble(seed: .init(projectID: nil, projectName: nil,
             conversationID: chat.id, projectInstruction: nil, resources: []), settings: settings, messages: [], toolManifests: [])
         let recorder = FamiliarRunPersistenceRecorder()
         recorder.ensureRun(runtimeID: "models", snapshot: snapshot, startedAt: Date(), context: context)
@@ -137,22 +137,22 @@ struct FamiliarModelSelectionTests {
         let container = try FamiliarTestStore.make(name: "DefaultOutputScope")
         let service = FamiliarProjectService()
         let project = try service.create(name: "Text outputs", in: container.mainContext)
-        let names = ["artifact_write", "artifact_edit", "artifact_read", "artifact_publish", "workspace_write", "shell_execute", "environment_prepare"]
+        let names = ["file_write", "file_edit", "file_read", "file_publish", "workspace_write", "shell_execute", "environment_prepare"]
         let manifests = names.map { FamiliarToolManifest(name: $0, title: $0, description: "Fixture", parameters: .object([:]), effect: .read, risk: .low) }
         let defaults = try service.filterCapabilities(manifests, projectID: project.id, in: container.mainContext)
-        #expect(Set(defaults.map(\.name)) == ["artifact_write", "artifact_edit", "artifact_read"])
+        #expect(Set(defaults.map(\.name)) == ["file_write", "file_edit", "file_read"])
         try service.setCapability("shell_execute", enabled: true, allCapabilities: manifests, projectID: project.id, in: container.mainContext)
         let enabled = try service.filterCapabilities(manifests, projectID: project.id, in: container.mainContext)
         #expect(enabled.map(\.name).contains("shell_execute"))
-        #expect(!enabled.map(\.name).contains("artifact_publish"))
+        #expect(!enabled.map(\.name).contains("file_publish"))
     }
 
-    @Test("Text output cannot accept a complex format before approval or file writes", arguments: [FamiliarArtifactFormat.docx, .pdf, .xlsx])
-    func unsupportedTextFormats(format: FamiliarArtifactFormat) async throws {
+    @Test("Text output cannot accept a complex format before approval or file writes", arguments: [FamiliarFileFormat.docx, .pdf, .xlsx])
+    func unsupportedTextFormats(format: FamiliarFileFormat) async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("TextFormat-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
-        let tool = FamiliarArtifactWriteTool(store: .init(rootURL: root))
-        await #expect(throws: FamiliarArtifactError.self) {
+        let tool = FamiliarFileWriteTool(store: .init(rootURL: root))
+        await #expect(throws: FamiliarFileError.self) {
             _ = try await tool.execute(.init(title: "Output", content: "Body", format: format), context: .init(runID: "run", toolCallID: "call", projectID: UUID()))
         }
         #expect(!FileManager.default.fileExists(atPath: root.path))
@@ -162,13 +162,13 @@ struct FamiliarModelSelectionTests {
     func defaultMarkdownBytes() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("DefaultMarkdown-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
-        let store = FamiliarArtifactStore(rootURL: root)
-        let result = try await FamiliarArtifactWriteTool(store: store).execute(.init(title: "Report", content: "# Body", format: nil),
+        let store = FamiliarFileStore(rootURL: root)
+        let result = try await FamiliarFileWriteTool(store: store).execute(.init(title: "Report", content: "# Body", format: nil),
             context: .init(runID: "run", toolCallID: "call", projectID: UUID()))
         guard case .action(let proposal) = result else { Issue.record("Expected approval proposal"); return }
         #expect(!FileManager.default.fileExists(atPath: root.path))
         let committed = try await proposal.commit()
-        let descriptor = try #require(committed.result.artifact)
+        let descriptor = try #require(committed.result.file)
         #expect(descriptor.format == .markdown)
         #expect(try store.read(relativePath: descriptor.relativePath) == Data("# Body".utf8))
     }

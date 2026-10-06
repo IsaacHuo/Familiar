@@ -4,6 +4,41 @@ import Testing
 
 @Suite("Structured tool contracts")
 struct FamiliarToolContractTests {
+    @Test("Registry rejects invalid declarations and write parallelism")
+    func invalidDeclarations() throws {
+        let invalid = FamiliarToolManifest(name: "bad name", title: "Bad", description: "Bad",
+            parameters: .object([:]), effect: .read, risk: .low)
+        #expect(throws: FamiliarToolDeclarationError.self) { try invalid.validateDeclaration() }
+        let write = FamiliarToolManifest(name: "write", title: "Write", description: "Write",
+            parameters: .object([:]), effect: .reversibleWrite, risk: .low, supportsParallelism: true)
+        #expect(throws: FamiliarToolDeclarationError.self) { try write.validateDeclaration() }
+        let required = FamiliarToolManifest(name: "read", title: "Read", description: "Read",
+            parameters: .object([:], required: ["missing"]), effect: .read, risk: .low)
+        #expect(throws: FamiliarToolDeclarationError.self) { try required.validateDeclaration() }
+    }
+
+    @Test("Output contract enforces its declared limit without discarding envelope identity")
+    func outputContractLimit() throws {
+        let result = FamiliarToolExecutionResult(envelope: try .init(model: ["value": "text"],
+            presentation: .scalar(.init(summary: "Value", value: "text"))))
+        try FamiliarToolOutputContract().validate(result)
+        #expect(throws: FamiliarAgentError.self) { try FamiliarToolOutputContract(maximumCharacters: 4).validate(result) }
+        let data = try JSONEncoder().encode(FamiliarFileReadTool().manifest)
+        let decoded = try JSONDecoder().decode(FamiliarToolManifest.self, from: data)
+        #expect(decoded.resultContract == .init())
+    }
+
+    @Test("Historical Artifact payloads decode while new payloads encode only File names")
+    func historicalFilePayload() throws {
+        let payload = FamiliarToolPresentationPayload.fileMutation(.init(summary: "Saved", operation: "write",
+            identifier: "file_1", title: "File", byteSize: 1, contentHash: "hash"))
+        let current = String(decoding: try JSONEncoder().encode(payload), as: UTF8.self)
+        let historical = current.replacingOccurrences(of: "fileMutation", with: "artifactMutation")
+        let decoded = try JSONDecoder().decode(FamiliarToolPresentationPayload.self, from: Data(historical.utf8))
+        #expect(decoded == payload)
+        #expect(!String(decoding: try JSONEncoder().encode(decoded), as: UTF8.self).contains("artifactMutation"))
+    }
+
     @Test("Every presentation payload round-trips with a stable schema tag", arguments: payloads)
     func presentationRoundTrip(payload: FamiliarToolPresentationPayload) throws {
         let data = try JSONEncoder().encode(payload)
@@ -85,7 +120,7 @@ struct FamiliarToolContractTests {
         .contextMatches(.init(summary: "One match", query: "body", matches: [.init(resourceID: UUID(), versionID: UUID(), version: 3, title: "Doc", excerpt: "Body")])),
         .recordCollection(.init(summary: "One record", recordType: "fixture", records: [.init(id: "1", fields: [.init(name: "title", value: "Record")])])),
         .mutationReceipt(.init(summary: "Created", operation: "create", targetIdentifier: "1", succeeded: true, undoAvailable: true)),
-        .artifactMutation(.init(summary: "Written", operation: "write", identifier: "artifact_1", title: "Draft", byteSize: 4, contentHash: "hash")),
+        .fileMutation(.init(summary: "Written", operation: "write", identifier: "file_1", title: "Draft", byteSize: 4, contentHash: "hash")),
         .diff(.init(summary: "Changed", before: "old", after: "new")),
         .taskList(.init(planID: "release", title: "Release", tasks: [.init(id: "verify", title: "Verify", status: .running, detail: "Build", progress: 0.5)])),
         .recommendation(.init(title: "Next step", explanation: "Verify first.", nextPrompt: "Verify the build", alternatives: [.init(id: "review", title: "Review", prompt: "Review the diff")], confidenceLevel: .needsReview)),

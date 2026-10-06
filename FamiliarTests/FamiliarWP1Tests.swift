@@ -65,7 +65,7 @@ struct FamiliarWP1Tests {
 
     @Test("Unavailable capabilities reach the system prompt with their real reason")
     func unavailableCapabilitiesAreReported() throws {
-        let snapshot = try FamiliarProjectContextAssembler.assemble(
+        let snapshot = try FamiliarContextCompiler.assemble(
             seed: .init(projectID: nil, projectName: nil, conversationID: UUID(), projectInstruction: nil, resources: []),
             settings: .defaultValue,
             messages: [],
@@ -104,7 +104,7 @@ struct FamiliarWP1Tests {
         let recorder = FamiliarRunPersistenceRecorder()
         let startedAt = Date(timeIntervalSince1970: 10)
         let finishedAt = Date(timeIntervalSince1970: 20)
-        let snapshot = try FamiliarProjectContextAssembler.assemble(
+        let snapshot = try FamiliarContextCompiler.assemble(
             seed: .init(projectID: nil, projectName: nil, conversationID: conversation.id, projectInstruction: nil, resources: []),
             settings: .defaultValue,
             messages: [],
@@ -124,11 +124,11 @@ struct FamiliarWP1Tests {
             status: .succeeded,
             startedAt: startedAt,
             finishedAt: finishedAt,
-            artifactIdentifier: nil,
+            fileIdentifier: nil,
             undoAvailable: false,
             automaticApprovalRequest: nil
         )
-        let toolEvent = FamiliarToolResultProduced(runID: "run", toolCallID: "call", toolName: "future_tool", effect: .read, assistantTurnID: "run:turn:0", envelope: envelope, sources: [], artifact: nil, producedAt: finishedAt)
+        let toolEvent = FamiliarToolResultProduced(runID: "run", toolCallID: "call", toolName: "future_tool", effect: .read, assistantTurnID: "run:turn:0", envelope: envelope, sources: [], file: nil, producedAt: finishedAt)
         try recorder.recordActivityCompleted(completion, eventSequence: 1, conversationID: conversation.id, context: context)
         #expect(try recorder.recordToolResult(toolEvent, eventSequence: 2, conversationID: conversation.id, context: context))
         #expect(try !recorder.recordToolResult(toolEvent, eventSequence: 2, conversationID: conversation.id, context: context))

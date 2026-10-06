@@ -6,31 +6,29 @@ import UIKit
 
 @Suite("Send context preflight")
 struct FamiliarSendPreflightTests {
+    private let fixtureProjectID = UUID()
     private let settings = FamiliarSettings.defaultValue
     private var maximum: Int { settings.selectedModel.capabilities.maximumInputCharacters }
 
-    @Test("Protected Project resources cannot be truncated to submit a message")
-    func protectedOverflow() {
+    @Test("Oversized Project files retain a directory and never truncate the pending document")
+    func projectFilesCanBeReadOnDemand() throws {
+        let large = resource(count: maximum + 1)
+        let snapshot = try assemble(resources: [large], messages: [message("Hello")])
+        try FamiliarContextCompiler.validateSubmission(snapshot)
+        #expect(snapshot.providerMessages.compactMap(\.networkText).joined().contains("omitted:"))
+        #expect(snapshot.fileSelections.first?.bodyIncluded == false)
+        #expect(snapshot.fileSelections.first?.versionID == large.resourceVersionID)
+        let pending = message("Review", attachments: [attachment(text: String(repeating: "d", count: maximum + 1))])
         #expect(throws: FamiliarAgentError.self) {
-            _ = try assemble(resources: [resource(count: maximum + 1)], messages: [message("Hello")])
+            try FamiliarContextCompiler.validateSubmission(assemble(resources: [large], messages: [pending]))
         }
-    }
-
-    @Test("Project and pending document must fit together, even when each fits alone")
-    func combinedDocumentOverflow() throws {
-        let resources = [resource(count: maximum * 3 / 5)]
-        let pending = message("Review this", attachments: [attachment(text: String(repeating: "d", count: maximum * 3 / 5))])
-        try FamiliarProjectContextAssembler.validateSubmission(assemble(resources: resources, messages: [message("Hello")]))
-        try FamiliarProjectContextAssembler.validateSubmission(assemble(messages: [pending]))
-        let combined = try assemble(resources: resources, messages: [pending])
-        #expect(throws: FamiliarAgentError.self) { try FamiliarProjectContextAssembler.validateSubmission(combined) }
     }
 
     @Test("Old history stays eligible for compaction instead of rejecting the pending turn")
     func historyCanCompact() throws {
         let snapshot = try assemble(messages: [message(String(repeating: "h", count: maximum * 2)), message("Continue", sequence: 1)])
         #expect(snapshot.initialInputCharacters > maximum)
-        try FamiliarProjectContextAssembler.validateSubmission(snapshot)
+        try FamiliarContextCompiler.validateSubmission(snapshot)
     }
 
     @Test("Base tool parameters are part of the minimum submission budget")
@@ -39,11 +37,11 @@ struct FamiliarSendPreflightTests {
             parameters: .init(type: .object, properties: ["groups": .init(type: .string, description: String(repeating: "s", count: maximum * 3 / 5))]),
             effect: .read, risk: .low)
         let pending = message(String(repeating: "p", count: maximum * 3 / 5))
-        try FamiliarProjectContextAssembler.validateSubmission(assemble(messages: [message("Hello")], tools: [manifest]))
-        try FamiliarProjectContextAssembler.validateSubmission(assemble(messages: [pending]))
+        try FamiliarContextCompiler.validateSubmission(assemble(messages: [message("Hello")], tools: [manifest]))
+        try FamiliarContextCompiler.validateSubmission(assemble(messages: [pending]))
         let combined = try assemble(messages: [pending], tools: [manifest])
         #expect(combined.toolManifests.map(\.name) == ["tools_load"])
-        #expect(throws: FamiliarAgentError.self) { try FamiliarProjectContextAssembler.validateSubmission(combined) }
+        #expect(throws: FamiliarAgentError.self) { try FamiliarContextCompiler.validateSubmission(combined) }
     }
 
     @Test("Vision evidence is checked again after recognition and retains the final attachment identity")
@@ -52,14 +50,14 @@ struct FamiliarSendPreflightTests {
         let image = attachment(kind: .image)
         let pending = message("Read this image", attachments: [image])
         let resources = [resource(count: maximum - 12_000)]
-        try FamiliarProjectContextAssembler.validateSubmission(assemble(resources: resources, messages: [pending]))
+        try FamiliarContextCompiler.validateSubmission(assemble(resources: resources, messages: [pending]))
         let evidence = FamiliarVisualEvidence(id: UUID(), attachmentID: image.id, filename: image.filename,
-            sourceRelativePath: image.relativePath, renderedText: String(repeating: "v", count: 20_000),
+            sourceRelativePath: image.relativePath, renderedText: String(repeating: "v", count: maximum + 1),
             processingMethod: "fixture", engineVersion: "1", createdAt: Date())
         let final = try assemble(resources: resources, messages: [pending], evidence: [evidence])
         #expect(final.visualEvidenceMessageID == pending.id)
         #expect(final.visualEvidence.first?.sourceRelativePath == final.attachments.first?.relativePath)
-        #expect(throws: FamiliarAgentError.self) { try FamiliarProjectContextAssembler.validateSubmission(final) }
+        #expect(throws: FamiliarAgentError.self) { try FamiliarContextCompiler.validateSubmission(final) }
     }
 
     @Test("A document path can be frozen before copying and equals the later committed path")
@@ -76,7 +74,7 @@ struct FamiliarSendPreflightTests {
             relativePath: path, extractedText: draft.extractedText, byteSize: draft.byteSize, extractionEngine: draft.extractionEngine,
             extractionVersion: draft.extractionVersion, detectedFormat: draft.detectedFormat, usedOCR: draft.usedOCR)
         let snapshot = try assemble(messages: [message("Read", attachments: [input])])
-        try FamiliarProjectContextAssembler.validateSubmission(snapshot)
+        try FamiliarContextCompiler.validateSubmission(snapshot)
         #expect(snapshot.attachments.first?.relativePath == path)
         #expect(try FamiliarAttachmentStore.committedCopy(of: draft, messageID: messageID) == path)
         let committedURL = try #require(FamiliarAttachmentStore.url(for: path))
@@ -90,7 +88,7 @@ struct FamiliarSendPreflightTests {
         visionSettings.modelID = FamiliarProviderCatalog.descriptor(for: "codex")!.defaultModel.id
         #expect(visionSettings.selectedModel.capabilities.supportsImages)
         #expect(throws: FamiliarVisionProcessorError.self) {
-            _ = try FamiliarProjectContextAssembler.assemble(seed: seed(), settings: visionSettings,
+            _ = try FamiliarContextCompiler.assemble(seed: seed(), settings: visionSettings,
                 messages: [message("Read", attachments: [attachment(kind: .image)])], toolManifests: [])
         }
     }
@@ -111,9 +109,9 @@ struct FamiliarSendPreflightTests {
         var visionSettings = settings
         visionSettings.providerID = "codex"
         visionSettings.modelID = FamiliarProviderCatalog.descriptor(for: "codex")!.defaultModel.id
-        let snapshot = try FamiliarProjectContextAssembler.assemble(seed: seed(), settings: visionSettings,
+        let snapshot = try FamiliarContextCompiler.assemble(seed: seed(), settings: visionSettings,
             messages: [message("Read", attachments: [input])], toolManifests: [], attachmentReadPaths: [draft.id: draft.relativePath])
-        try FamiliarProjectContextAssembler.validateSubmission(snapshot)
+        try FamiliarContextCompiler.validateSubmission(snapshot)
         #expect(snapshot.attachments.first?.relativePath == path)
         let draftURL = try #require(FamiliarAttachmentStore.url(for: draft.relativePath))
         let expectedBytes = try Data(contentsOf: draftURL)
@@ -135,9 +133,9 @@ struct FamiliarSendPreflightTests {
             projectID: nil, conversationID: nil, provenance: "fixture", creator: .user, confidence: 0.8, in: context)
         let candidates = try service.candidates(query: "fact", projectID: nil, conversationID: nil, in: context)
         #expect(candidates.allSatisfy { $0.lastUsedAt == nil })
-        let memories = candidates.map { FamiliarContextMemory(id: $0.id, scope: $0.scope, content: $0.content, provenance: $0.provenance, confidence: $0.confidence) }
+        let memories = candidates.map { FamiliarContextMemory(id: $0.id, scope: $0.scope, content: $0.content, provenance: $0.provenance, confidence: $0.confidence, projectID: $0.projectID, conversationID: $0.conversationID) }
         let snapshot = try assemble(messages: [message("fact")], memories: memories)
-        try FamiliarProjectContextAssembler.validateSubmission(snapshot)
+        try FamiliarContextCompiler.validateSubmission(snapshot)
         #expect(snapshot.memories.map(\.id) == [first.id, short.id])
         let acceptedIDs = Set(snapshot.memories.map(\.id))
         let used = Date(timeIntervalSince1970: 5_000)
@@ -159,17 +157,17 @@ struct FamiliarSendPreflightTests {
     private func assemble(resources: [FamiliarContextResource] = [], messages: [FamiliarMessageSnapshot],
                           tools: [FamiliarToolManifest] = [], evidence: [FamiliarVisualEvidence] = [],
                           memories: [FamiliarContextMemory] = []) throws -> FamiliarContextSnapshot {
-        try FamiliarProjectContextAssembler.assemble(seed: seed(resources: resources, memories: memories), settings: settings,
+        try FamiliarContextCompiler.assemble(seed: seed(resources: resources, memories: memories), settings: settings,
             messages: messages, toolManifests: tools, visualEvidence: evidence)
     }
 
     private func seed(resources: [FamiliarContextResource] = [], memories: [FamiliarContextMemory] = []) -> FamiliarProjectContextSeed {
-        .init(projectID: UUID(), projectName: "Preflight", conversationID: UUID(), projectInstruction: nil, resources: resources, memories: memories)
+        .init(projectID: fixtureProjectID, projectName: "Preflight", conversationID: UUID(), projectInstruction: nil, resources: resources, memories: memories)
     }
 
     private func resource(count: Int) -> FamiliarContextResource {
         .init(resourceID: UUID(), resourceVersionID: UUID(), version: 1, displayName: "Project.txt", filename: "Project.txt",
-            mimeType: "text/plain", contentHash: "fixture", extractedText: String(repeating: "r", count: count), extractedTextHash: "fixture")
+            mimeType: "text/plain", contentHash: "fixture", extractedText: String(repeating: "r", count: count), extractedTextHash: "fixture", projectID: fixtureProjectID)
     }
 
     private func message(_ text: String, sequence: Int = 0, attachments: [FamiliarAttachmentSnapshot] = []) -> FamiliarMessageSnapshot {

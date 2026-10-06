@@ -6,6 +6,19 @@ import Testing
 @Suite("Familiar Memory")
 @MainActor
 struct FamiliarMemoryTests {
+    @Test("A moved Chat cannot carry Conversation memory from its original Project")
+    func movedChatMemoryScope() throws {
+        let container = try FamiliarTestStore.make(name: "MovedChatMemory")
+        let context = container.mainContext
+        let projectA = UUID(), projectB = UUID(), chatID = UUID()
+        let item = try FamiliarMemoryService().insert(content: "Private Project A fact", scope: .conversation,
+            projectID: projectA, conversationID: chatID, provenance: "user", creator: .user, in: context)
+        #expect(item.isInScope(projectID: projectA, conversationID: chatID))
+        #expect(!item.isInScope(projectID: projectB, conversationID: chatID))
+        item.scopeRawValue = "invalid"
+        #expect(!item.isInScope(projectID: projectB, conversationID: chatID))
+    }
+
     @Test("Dedup is scoped so one Project cannot overwrite another's memory")
     func dedupIsScoped() throws {
         let container = try FamiliarTestStore.make()
@@ -84,7 +97,7 @@ struct FamiliarMemoryTests {
             try service.insert(content: "   ", scope: .global, projectID: nil, conversationID: nil, provenance: "t", creator: .user, in: context)
         }
         #expect(throws: FamiliarMemoryError.self) {
-            try service.insert(content: String(repeating: "a", count: FamiliarMemoryService.maximumContentLength + 1), scope: .global, projectID: nil, conversationID: nil, provenance: "t", creator: .user, in: context)
+            try service.insert(content: String(repeating: "a", count: FamiliarMemoryPolicy.maximumContentLength + 1), scope: .global, projectID: nil, conversationID: nil, provenance: "t", creator: .user, in: context)
         }
         // A project- or conversation-scoped memory with no owner could never be matched
         // back to a scope, so it must be refused rather than stored unreachable.
@@ -100,7 +113,7 @@ struct FamiliarMemoryTests {
 
     @Test("Selected memory reaches the prompt and stays inside its character budget")
     func memoryReachesPromptUnderBudget() throws {
-        let snapshot = try FamiliarProjectContextAssembler.assemble(
+        let snapshot = try FamiliarContextCompiler.assemble(
             seed: .init(
                 projectID: nil,
                 projectName: nil,
@@ -130,12 +143,12 @@ struct FamiliarMemoryTests {
         let alsoLong = FamiliarContextMemory(id: UUID(), scope: .global, content: String(repeating: "b", count: 900), provenance: "p", confidence: 1)
         let short = FamiliarContextMemory(id: UUID(), scope: .global, content: "short", provenance: "p", confidence: 1)
 
-        let selected = FamiliarProjectContextAssembler.memoriesWithinBudget([long, alsoLong, short])
+        let selected = FamiliarContextCompiler.memoriesWithinBudget([long, alsoLong, short])
 
         // Ordering is relevance-first, so the budget skips what does not fit rather than
         // truncating a memory into something the model would read as a different fact.
         #expect(selected.map(\.id) == [long.id, short.id])
-        #expect(selected.reduce(0) { $0 + $1.content.count } <= FamiliarProjectContextAssembler.maximumMemoryCharacters)
+        #expect(selected.reduce(0) { $0 + $1.content.count } <= FamiliarContextCompiler.maximumMemoryCharacters)
     }
 
     @Test("memory_remember proposes rather than writes, and only persists after approval")

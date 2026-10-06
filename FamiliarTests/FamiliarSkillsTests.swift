@@ -17,15 +17,15 @@ struct FamiliarSkillsTests {
           "name": "Writing",
           "description": "Fixture",
           "instructions": "Write clearly.",
-          "allowedTools": ["resource_read", "resource_read"],
+          "allowedTools": ["file_read", "file_read"],
           "examples": []
         }
         """
         let parsed = try FamiliarSkillDocumentParser.parse(
             data: Data(valid.utf8),
-            toolIDs: ["resource_read"]
+            toolIDs: ["file_read"]
         )
-        #expect(parsed.allowedTools == ["resource_read"])
+        #expect(parsed.allowedTools == ["file_read"])
 
         let executable = valid.replacingOccurrences(
             of: "\"examples\": []",
@@ -34,14 +34,14 @@ struct FamiliarSkillsTests {
         #expect(throws: FamiliarSkillParserError.self) {
             try FamiliarSkillDocumentParser.parse(
                 data: Data(executable.utf8),
-                toolIDs: ["resource_read"]
+                toolIDs: ["file_read"]
             )
         }
     }
 
     @Test("A Skill that lists no tools narrows nothing instead of stripping every tool")
     func emptyAllowedToolsDoesNotNarrow() {
-        let available = [manifest("artifact_publish"), manifest("resource_read"), manifest("web_search")]
+        let available = [manifest("file_publish"), manifest("file_read"), manifest("web_search")]
 
         // The bundled example Skill and every Skill created in the editor ship with an
         // empty list, so treating empty as "deny everything" left the model with no
@@ -50,25 +50,25 @@ struct FamiliarSkillsTests {
             available: available,
             skills: [skillSnapshot(id: "unrestricted", allowedTools: [])]
         )
-        #expect(unrestricted.map(\.name) == ["artifact_publish", "resource_read", "web_search"])
+        #expect(unrestricted.map(\.name) == ["file_publish", "file_read", "web_search"])
 
         // A declared list still narrows.
         let narrowed = FamiliarSkillToolScope.manifests(
             available: available,
-            skills: [skillSnapshot(id: "declared", allowedTools: ["resource_read"])]
+            skills: [skillSnapshot(id: "declared", allowedTools: ["file_read"])]
         )
-        #expect(narrowed.map(\.name) == ["resource_read"])
+        #expect(narrowed.map(\.name) == ["file_read"])
 
         // Narrowing can only remove tools, so an unspecified list alongside a declared one
         // must not widen the declared scope back open.
         let mixed = FamiliarSkillToolScope.manifests(
             available: available,
             skills: [
-                skillSnapshot(id: "declared", allowedTools: ["resource_read"]),
+                skillSnapshot(id: "declared", allowedTools: ["file_read"]),
                 skillSnapshot(id: "unrestricted", allowedTools: [])
             ]
         )
-        #expect(mixed.map(\.name) == ["resource_read"])
+        #expect(mixed.map(\.name) == ["file_read"])
     }
 
     @Test("Installed Skills resolve snapshots and updates keep identity")
@@ -87,7 +87,7 @@ struct FamiliarSkillsTests {
             id: "alpha",
             version: "1",
             instructions: "Alpha instructions",
-            allowedTools: ["resource_read", "web_fetch", "resource_read"]
+            allowedTools: ["file_read", "web_fetch", "file_read"]
         ), in: context)
         let originalID = earlier.id
         let originalHash = earlier.contentHash
@@ -96,7 +96,7 @@ struct FamiliarSkillsTests {
             id: "alpha",
             version: "1",
             instructions: "Alpha instructions",
-            allowedTools: ["web_fetch", "resource_read"]
+            allowedTools: ["web_fetch", "file_read"]
         ), in: context)
         #expect(updated.id == originalID)
         #expect(updated.contentHash == originalHash)
@@ -105,7 +105,7 @@ struct FamiliarSkillsTests {
             id: "alpha",
             version: "1",
             instructions: "Edited instructions",
-            allowedTools: ["web_fetch", "resource_read"]
+            allowedTools: ["web_fetch", "file_read"]
         ), in: context)
         #expect(edited.id == originalID)
         #expect(edited.instructions == "Edited instructions")
@@ -117,7 +117,7 @@ struct FamiliarSkillsTests {
 
     @Test("Assembler injects Skills after Project instruction and narrows the tool union")
     func assemblerPromptAndToolScope() throws {
-        let manifests = [manifest("calendar_read"), manifest("resource_read"), manifest("web_fetch")]
+        let manifests = [manifest("calendar_read"), manifest("file_read"), manifest("web_fetch")]
         let skills = [
             FamiliarSkillSnapshot(
                 stableID: "zeta", version: "2", name: "Zeta", contentHash: "hash-z",
@@ -125,10 +125,10 @@ struct FamiliarSkillsTests {
             ),
             FamiliarSkillSnapshot(
                 stableID: "alpha", version: "1", name: "Alpha", contentHash: "hash-a",
-                instructions: "Read project resources.", allowedTools: ["resource_read", "missing_tool"]
+                instructions: "Read project resources.", allowedTools: ["file_read", "missing_tool"]
             )
         ]
-        let project = try FamiliarProjectContextAssembler.assemble(
+        let project = try FamiliarContextCompiler.assemble(
             seed: .init(
                 projectID: UUID(),
                 projectName: "Project",
@@ -142,7 +142,7 @@ struct FamiliarSkillsTests {
             toolManifests: manifests
         )
         #expect(project.skills.map(\.stableID) == ["alpha", "zeta"])
-        #expect(project.allowedToolNames == ["resource_read", "web_fetch"])
+        #expect(project.allowedToolNames == ["file_read", "web_fetch"])
 
         let prompt = try #require(project.providerMessages.first?.networkText)
         let base = try #require(prompt.range(of: FamiliarSettings.defaultValue.normalizedSystemPrompt))
@@ -155,7 +155,7 @@ struct FamiliarSkillsTests {
         #expect(alpha.lowerBound < zeta.lowerBound)
         #expect(zeta.lowerBound < policy.lowerBound)
 
-        let noSkills = try FamiliarProjectContextAssembler.assemble(
+        let noSkills = try FamiliarContextCompiler.assemble(
             seed: .init(
                 projectID: UUID(), projectName: "Project", conversationID: UUID(),
                 projectInstruction: nil, resources: []
@@ -164,9 +164,9 @@ struct FamiliarSkillsTests {
             messages: [],
             toolManifests: manifests
         )
-        #expect(noSkills.allowedToolNames == ["calendar_read", "resource_read", "web_fetch"])
+        #expect(noSkills.allowedToolNames == ["calendar_read", "file_read", "web_fetch"])
 
-        let ordinary = try FamiliarProjectContextAssembler.assemble(
+        let ordinary = try FamiliarContextCompiler.assemble(
             seed: .init(
                 projectID: nil, projectName: nil, conversationID: UUID(),
                 projectInstruction: nil, resources: [], skills: skills
@@ -176,7 +176,7 @@ struct FamiliarSkillsTests {
             toolManifests: manifests
         )
         #expect(ordinary.skills.map(\.stableID) == ["alpha", "zeta"])
-        #expect(ordinary.allowedToolNames == ["resource_read", "web_fetch"])
+        #expect(ordinary.allowedToolNames == ["file_read", "web_fetch"])
     }
 
     @Test("V9 persists immutable Run Skill snapshots across uninstall")
@@ -195,7 +195,7 @@ struct FamiliarSkillsTests {
             allowedTools: ["web_fetch"]
         ), in: context)
         let invoked = [try service.snapshot(skillID: skill.id, in: context)]
-        let snapshot = try FamiliarProjectContextAssembler.assemble(
+        let snapshot = try FamiliarContextCompiler.assemble(
             seed: .init(
                 projectID: project.id,
                 projectName: project.name,
