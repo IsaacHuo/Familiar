@@ -1,6 +1,6 @@
 # Familiar 产品收敛与 Agent Harness 长期计划
 
-最后更新：2026-10-05。此清单跨对话持续维护。
+最后更新：2026-10-06。此清单跨对话持续维护。
 
 ## 目标与工作规则
 
@@ -31,9 +31,13 @@ Harness 收敛为 **One Agent + One Loop + Lazy Tools + Progressive Escalation**
 
 ## 当前切片
 
-**新增 G：连续回复与 Runtime UI 的实现／静态／arm64 测试目标编译已完成。** Single Agent Loop 与执行权限边界保留；本切片只增加呈现投影、区段聚合、终态正文保存和文件／journal 历史关联。真机与真实服务仍由所有者验收，不自动执行 Simulator 测试。
+**H1-H5 架构收敛实现与静态/arm64 测试目标编译已完成。** 产品为 Chat / Project / Files。正式迁移链冻结原 37 实体 1.0.0，经 Files 加法桥接与旧生成元数据移除，再归档/移除 Grant，当前为 4.0.0 / 37 实体。Artifact 与 Grant 不在当前 schema；Resource/Attachment 保留必要历史关系与存储字段，新导入不再写 Resource 元数据。
 
-**B1–B3、C1–C9、D、E1/E4/E5/E6 与 F1–F5 的实现／源码审查／静态／编译工作已完成。E2/E3 的源码审查、Run 查找整理与 Mermaid 竞态修复已完成；懒布局决策和真实渲染／内存仍缺设备采样，保持未勾选。所有者统一从 docs/15-owner-device-acceptance.md 验收，F6–F14 全部待确认。** 运行测试与真机验收仍独立待办。写入 journal、失败补偿和不可重复撤销的机制已接线；仍不能将外部系统写入与本地保存称为跨进程原子事务。
+Project/Chat 共用 Files；file_list/file_search/file_read/file_write/file_edit/file_publish 使用同一工具组。正式上传、资料/网页保存、生成文件、Shell Outputs 和旧工作区输出进入 Files；旧目录和旧回执仅作迁移/历史读取。删除 Chat 保留文件，移动 Chat 复制到目标 Project 并清除旧上下文摘要，Conversation Memory 同时检查 Project。Shell 成功输出先捕获不可变字节，再在 Run 保存边界登记并返回真实文件快照；失败补偿和 Undo 处理相应字节/版本。
+
+H3 统一 Compiler 请求/压缩、冻结输入、逐请求清单、字符预算与事实型 Run State。H4 统一 Policy、授权查询/保存、审批和执行前复核，以及声明/输出契约、非交互读取并发与 commit timeout。H5 清理旧生产路径、归档历史 Grant、隔离纯领域契约与 SwiftData 服务，并同步文档。
+
+**验收尚未完成。** 磁盘迁移执行、覆盖安装、iOS suites、真实服务与真机均未执行/验收。H7/H8 与既有 G9/F 验收独立保留，不能据编译宣称用户数据升级或端到端运行通过。
 
 ## 审查基线
 
@@ -346,3 +350,34 @@ E2/E3 当前进度与剩余门槛：
 - [ ] G9 所有者按 docs/15 验收普通／复杂连续会话、聚合、失败／取消／审批、文件、复制、折叠和可访问性。真实服务／真机验收仍未完成。
 
 验证证据：数据层与区段 UI 两个切片均 TEST BUILD SUCCEEDED；最终 `/tmp/familiar-runtime-ui-final-20261005-build.log` 再次 TEST BUILD SUCCEEDED，原工程 Debug arm64 generic iOS Simulator build-for-testing，App／扩展／所有测试目标编译。15 项 RuntimePresentation 回归及调整的 StreamingObservation／UI source contracts 编译，未执行。git diff --check、strings plist、1030/1030 中英 parity、零缺失生产字面量键、42+2 suites 和完整 UI target 清单通过。最后一轮无编译 error／warning；前一轮只有 AppIntents metadata 工具提示。iOS tests、真实 Provider／Web／guest、Simulator UI 均未运行；未验证真实权限、外部写入取消窗口或物理设备视觉。保留原有语音音频会话修复；不提交或推送。下一步为 G9 与现有 F6–F14 所有者验收。
+
+
+## H. 整体架构收敛（2026-10-06）
+
+产品与生命周期决定：已提交 Files 归属 Project，删除 Chat 保留；读取去重使用事实记录与有限冻结版本复用，Web/Native/MCP 可刷新。当前 37 实体 store 为无损迁移基线，不兼容更早开发 store。当前生产命名全部使用 File；Artifact 仅允许出现在冻结迁移定义、旧存储路径与历史回执读取。
+
+- [x] H1 冻结 37 实体基线；所有容器接入正式三阶段 schema 链；加法转换后移除旧 Artifact 实体。实现/静态/编译完成，磁盘执行独立 H7。
+- [x] H2 产品 File/FileVersion、共享 Project/Chat Files、提交/导入/生成事务登记、删除/移动/版本/分享、Shell Outputs 与旧输出导入接线；读取工具统一、版本号保留高水位。实现/静态/编译完成，实际验收独立 H7/H8；Resource/Attachment 存储桥接清理归 H5。
+- [x] H3 Context Compiler 统一 Agent/压缩请求、冻结长期输入/逐请求不可变编译清单、事实型 Run State、范围/字符预算/来源与观察时间；实现与 arm64 测试目标编译完成，执行验收仍为 H7/H8。
+- [x] H4 统一 Tool Contract/Policy 执行决策，保留 Lazy Tools、精确授权、journal、非重放、Undo 和取消边界；回归已编译、未执行。
+- [x] H5 明确 Domain/Audit/缓存职责，移除旧 Resource 生产写入，归档/移除 Grant；保留仍有历史关系与中断识别用途的记录，核对依赖并同步文档。磁盘升级执行仍为 H7。
+- [x] H6 本片静态与最终 arm64 generic Simulator build-for-testing；仅编译回归，不启动 Simulator。后续切片各自重新验证。
+- [ ] H7 实际执行磁盘升级/故障/重复打开回归及真实覆盖安装；用户数据升级不得仅依据编译宣称通过。
+- [ ] H8 所有者真机/真实服务验收 Files、上下文隔离、多轮事实、权限/撤销和 Shell 文件行为。
+
+每片记录实际证据；不自动提交/推送，不清空 store，不将迁移桥接阶段写成最终实体收敛。
+
+
+H1/H2 验证证据：原工程 Debug arm64 generic Simulator 最终 `/tmp/familiar-architecture-files-final-20261006-build.log` 为 TEST BUILD SUCCEEDED（exit 0）。App/扩展/测试目标均编译，最终无 error/warning。静态 diff、strings plutil、1034/1034 parity、零缺失生产字面量键、42 个 Simulator suites + 2 个 signed-device suites 清单通过。增加/调整冻结存储形状、实际旧模型 store 升级、重复转换、File identity/Chat 生命周期/跨 Project 拒绝、Memory 移动隔离、旧 payload 解码与版本高水位回归；仅编译，未执行。最初 Xcode 文件协调卡住，用户保存退出/重启后恢复；早期 APFS 克隆缓存产生旧路径提示，最终增量无该提示。无 Simulator 启动、真实 Provider/MCP/guest/系统写入、真机覆盖安装、提交或推送。
+
+H3：ContextCompiler 接管 Agent 请求、自动/手动压缩的序列化、分块、边界和摘要验收。Project 正文按预算选择，遗漏保留目录；当前消息/附件不截断，压缩显式保留当前 turn 和 assistant/tool 配对。RunState 保存工具发现/当前暴露、Skill、读取身份/结果 hash/截断/观察时间、网页证据、尝试/提交/失败/不确定/补偿撤销与生成文件引用；仅精确冻结 FileVersion 可复用读取（64k 字符缓存），保留原观察时间。逐请求清单和有限事实摘要写入现有 Activity Audit，保存失败阻止本次模型调用，不重复保存文件正文；不新增实体。增加跨 Project 候选拒绝、当前输入/工具配对、压缩后写状态、读取复用和审计回归，已编译、未执行。
+
+H3 编译：`/tmp/familiar-architecture-context-verified-20261006-build.log` 为 TEST BUILD SUCCEEDED（exit 0），无 warning/error。初次编译暴露 extension 默认 MainActor 隔离和 summary 路径错误，已修复。未启动 Simulator、执行测试或调用真实服务。
+
+H4/H5：Policy 返回 allow/requireApproval/deny，接管精确授权匹配/保存、审批字段和动态风险；确认后复核 preflight/权限/原生目标版本，失效决策在 journal/commit 前停止。仅无交互的独立读可并发。Registry 校验声明、effect/并发、参数载荷与输出 Envelope；commit 服从声明超时，不重放写操作。EventKit 的事件/提醒内容、目标日历和修改时间进入版本检查；首次权限准备改变目标条件时须重新确认。FileImport 直接写 File/FileVersion，stageUploads 使用当前 FileCatalog；历史 Grant 原身份/字段转成不可授权的 Activity audit 后移除实体。Runtime/Context/Domain 不导入具体 UI 或 SwiftData，授权 Persistence、Skill/Memory 纯契约分离。保留仍被恢复读取的 CapabilitySnapshot 和历史 Resource/Attachment 关系，未增加自动清理。
+
+最终 `/tmp/familiar-architecture-verified-20261006-build.log` 为 TEST BUILD SUCCEEDED（exit 0），App/扩展/全部测试目标 arm64 generic Simulator 编译，无 error/warning。Compiler 的选择/遗漏清单、Schema 4.0.0、Grant 无损归档/重复升级、原生审批后版本变化、动态读取并发、输出契约、同 URL 刷新捕获独立身份与直接 File 导入回归均已编译、未执行。H7/H8 与既有 G/F 所有者验收仍独立保留；无 Simulator 启动、真实服务、覆盖安装、用户数据清空、提交或推送。
+
+最终静态：git diff --check、strings plist、1034/1034 中英 key parity、零缺失生产字面量键、42 个 Simulator suites + 2 个 signed-device suites 清单通过；Core Runtime/Context/Domain 无 SwiftData/SwiftUI/EventKit import。旧的无生产调用纯 Policy gate 已删除，基线测试改用当前 evaluate 入口。
+
+下一步是独立执行 H7 磁盘迁移/故障回归与 H8 真实服务/真机验收，按实际失败修复；不把未执行测试写成通过。

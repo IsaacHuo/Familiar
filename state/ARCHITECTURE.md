@@ -17,10 +17,10 @@ This import is partial. See [coverage and remaining work](../docs/13-openminis-i
 
 - One FamiliarAgentLoop executes both direct answers and natural multi-turn tool work. Project/Daily Chat no longer requires task_plan or tool evidence before answering.
 - Runtime phases describe actual requestingModel/responding/executingActivities/awaitingApproval/awaitingClarification/compactingContext behavior. Fixed planning/environment/validation/repair/delivery phases and executionStateChanged snapshots are removed.
-- task_plan is optional presentation only. Artifact publication validates the actual file independently, with optional requiredText/minimumSources supplied directly on the call; there is no deliverableID or promised-deliverable scheduler.
-- FamiliarRunToolState owns only admitted Skill snapshots and attempted-write fingerprints shared across tool calls. It does not contain a plan, step evidence, a delivery ledger or repair counter.
+- task_plan is optional presentation only. File publication validates the actual file independently, with optional requiredText/minimumSources supplied directly on the call; there is no deliverableID or promised-deliverable scheduler.
+- FamiliarRunState owns only admitted Skill snapshots and attempted-write fingerprints shared across tool calls. It does not contain a plan, step evidence, a delivery ledger or repair counter.
 - willCommit journals each action invocation as committing before execution. Interrupted committing records are retained as uncertain. Exact attempted-write fingerprints prevent in-Run replay after failed/uncertain effects; destructive regeneration of affected history is blocked.
-- Local CommittedAction rollback/finalize hooks restore bytes on save failure and clean backups only after persistence; external/native actions are never silently compensated. Artifact edit creates independent successors.
+- Local CommittedAction rollback/finalize hooks restore bytes on save failure and clean backups only after persistence; external/native actions are never silently compensated. File edit creates independent successors.
 - Native durable Undo and Environment receipts now persist before success events. Undo results remain cached until metadata saves, avoiding repeated native operations; persistent native Undo is marked unavailable before executing.
 - Memory commit callback persists confirmed memory before successful runtime events. Save failures roll back pending SwiftData changes and return a tool failure; audit and model-facing failures use the same structured code/retryable/message.
 - startSending freezes input and validates protected Project context plus the pending turn and base schemas before committing messages or attachment files. Vision evidence is validated again, older history can still compact, and performSend consumes the exact validated snapshot. A failed preparation/save keeps the draft; accepted message persistence precedes draft consumption.
@@ -32,7 +32,7 @@ This import is partial. See [coverage and remaining work](../docs/13-openminis-i
 - Guest setup is lazy. FamiliarISHPreparation shares one preparation flight; each Run waiter can cancel independently without cancelling shared setup or starting its command. notPrepared is the actual cold-start status. Native guest setup/cancellation remains device-unverified.
 - B3 removes CapabilityCatalog/Resolver/Binding and runtime Grant issuance/consumption. Canonical argument hashing is independent of authorization. Historical GrantRecord's stored columns remain inert; only AuthorizationRuleRecord is consulted for exact active authorization. Lookup and save failures propagate before effects, invalid duration rows never grant access, and consumption/issuance save failures roll back.
 - The selected ProviderFactory result feeds the one Loop directly. User-selected model groups retain member fallback before output; unfinished local/cloud routing, escalation state/coordinator/dialog/observer and the route-policy setting are removed. Core AI research adapters have no production routing entry. Existing bounded provider/read retry, two-read concurrency, write non-replay, budget closing and interrupted-run evidence retention remain.
-- Default delivery is direct text, or Markdown/plain-text Artifact when a file is requested. Complex file generation needs explicit workspace_write/artifact_publish/Shell eligibility; text tools reject complex formats before approval. Guest registration/preparation does not imply physical-device acceptance.
+- Default delivery is direct text, or Markdown/plain-text File when a file is requested. Complex file generation needs explicit workspace_write/file_publish/Shell eligibility; text tools reject complex formats before approval. Guest registration/preparation does not imply physical-device acceptance.
 - Top-bar/configuration/send share effective Project model resolution. Project-pinned selection changes that Project, with a native menu action to follow the default. Historical conversation metadata does not overwrite the user's default. Run snapshot preserves requested selection; response provenance uses the last actual member and regeneration uses the original Run request.
 - Both production wire adapters emit request identity; Group emits member identity once and suppresses the adapter duplicate. Recorder stores ordered attempts and reported nullable totals. Automatic compaction forwards model/usage events within the same Run. Manual compaction and provider setup are excluded from this view's scope; partial totals/attempted models are described honestly.
 - ProviderFactory owns normalized credential availability for leaf providers and groups. Group credentials are valid only if a real member can be constructed; configuration/send/manual-compaction and construction share it. Send rechecks before formal submission. Existing token expiry/network failures remain runtime failures, not proof of local credential validity.
@@ -57,14 +57,14 @@ This import is partial. See [coverage and remaining work](../docs/13-openminis-i
 - FamiliarSurfaceStore.affectsPresentation excludes token/reasoning completion, usage/model identity and assistant-turn completion events. The Controller checks this before mutating observable surfaces; the store also guards direct event application. Persistence and actual activity/approval/terminal events retain their original paths.
 - FamiliarAttachmentStore.importImage is @concurrent async: JPEG encoding/owned draft write occur off MainActor; cancellation is checked before/after encoding and after writing, cleaning only its own file. Controller awaits preparation and preserves the draft/version/submission guards. Document parsing already uses detached work; SwiftData mutation remains on MainActor.
 - renderer.js increments renderVersion for each render. Mermaid async success/failure, subsequent diagrams and content decoration use that version to discard stale work; old previews cannot attach their source to new content. Native coordinator still coalesces streaming for 80ms and renders terminal input immediately. Node scheduling tests have a limited DOM double; actual WebKit layout/memory/rendering remain owner acceptance.
-- Remaining source-audited MainActor I/O includes ContextAssembler image reads, recorder attachment hashing, Project resource copies/hash, bundled Skill installation and install manifest reads. Source presence is not a measured stall; further changes depend on device evidence. No schema, tool group or orchestration phase is added by this slice.
+- Remaining source-audited MainActor I/O includes ContextCompiler image reads, recorder attachment hashing, Project resource copies/hash, bundled Skill installation and install manifest reads. Source presence is not a measured stall; further changes depend on device evidence. No schema, tool group or orchestration phase is added by this slice.
 
 ## 1. 技术基线
 
 | 领域 | 技术 |
 |---|---|
 | UI | SwiftUI |
-| 数据模型 | SwiftData（单一 `FamiliarReleaseSchema`，37 实体，无 migration plan） |
+| 数据模型 | SwiftData（`FamiliarReleaseSchema` 3.0.0，38 实体；1.0.0 冻结基线与加法 migration plan，执行验收待完成） |
 | 网络 | URLSession + SSE（模型请求）；Network.framework 自研 HTTP/1.1（Web fetch） |
 | 富文本 | WKWebView 非持久化 + 内置 Markdown-It、highlight.js、KaTeX、Mermaid、DOMPurify |
 | 密钥 | Security.framework Keychain，`kSecAttrAccessibleWhenUnlockedThisDeviceOnly` |
@@ -97,7 +97,7 @@ This import is partial. See [coverage and remaining work](../docs/13-openminis-i
   - store 目录 `<Application Support>/Familiar/Persistence/`（`.completeUntilFirstUserAuthentication`）。
   - Debug store 文件名 `FamiliarDevelopment.store`；Release store 文件名 `Familiar.store`。
   - 首次创建任何 store 都不自动清理旧 store 或文件目录。
-  - 容器创建失败显示 `FamiliarStoreRecoveryView`，用户确认后删除当前 store、附件、项目资源与 Artifact，保留 Keychain。
+  - 容器创建失败显示 `FamiliarStoreRecoveryView`，用户确认后删除当前 store、附件、项目资源与 File，保留 Keychain。
   - **`Familiar/App/FamiliarAppDependencies.swift`** — `@MainActor` DI 根。持有 ToolRegistry、执行/审批/clarification coordinator、Workspace、原生 capability services、Web 与 Apple Vision。`makeRuntime(for:)` 直接将所选 descriptor 的 ProviderFactory 结果注入单一 `FamiliarAgentLoop`，并把持久化的 `FamiliarExecutionBudget`（步数/工具调用/时长）经 `normalized` 钳制后传入。当前 descriptor catalog 包含独立供应商实例和冻结成员的模型分组；Runtime 不做供应商类型判断，也不组合未接通的本地模型。每次 Run 克隆 native 注册表；MCP 只在 tools_load 请求服务目录时发现，远程实现留在本 Run 注册表。App 初始化只检查 bundled asset 的存在，不启动 iSH。
 
 ## 3. 模块清单
@@ -106,19 +106,19 @@ This import is partial. See [coverage and remaining work](../docs/13-openminis-i
 | 文件 | 职责 |
 |---|---|
 | `FamiliarTool.swift` | `FamiliarTool` 协议（类型化 Input）、`FamiliarToolManifest`、effect/risk/requirement、`FamiliarToolResultEnvelope`（canonical model JSON + schema v3 typed scalar/search/document/context/records/mutation/artifact/diff/taskList/recommendation/insight/code/shareDraft payload）、有序 typed approval fields、纯预览 `FamiliarActionProposal` 与批准后 `FamiliarCommittedAction(result + undo)`、clarification proposal、`actor FamiliarToolRegistry`（`availabilityReport()` 保留 `.unavailable(reason:)` 的真实原因；`manifests()` 由它派生，因此不可用能力不再只是从工具列表中静默消失）、`FamiliarUnavailableTool`/`FamiliarToolAvailabilityReport`；`FamiliarStructuredToolError` 定义稳定 code/retryable 契约；`FamiliarToolAuthorizationAssessment` 可由 `preflight` 提供真实读取范围 fields/consequence/targetKey；`FamiliarCapabilityRequirement` 声明各能力所需的 plist key、entitlement 与 privacy 数据类型，供合规契约测试机械反查 |
-| `FamiliarAgentLoop.swift` | 唯一模型／工具循环及 typed Runtime events。允许首轮直接回答，不区分任务复杂度、不强制计划或工具证据。保留 ContinuousClock hard deadline、首字节前有界重试、最多两路独立 read、串行审批和 write、防重复写入、结构化失败、预算耗尽收尾及唯一 runFinished。task_plan 仅可选展示；文件校验留在 Artifact 工具边界。 |
+| `FamiliarAgentLoop.swift` | 唯一模型／工具循环及 typed Runtime events。允许首轮直接回答，不区分任务复杂度、不强制计划或工具证据。保留 ContinuousClock hard deadline、首字节前有界重试、最多两路独立 read、串行审批和 write、防重复写入、结构化失败、预算耗尽收尾及唯一 runFinished。task_plan 仅可选展示；文件校验留在 File 工具边界。 |
 | `FamiliarRuntimeError.swift` | `FamiliarRuntimeFailure.kind(for:)` 错误分类（auth/限流/5xx/网络/上下文/参数/结果/取消等）与 `isRetryable` 判定 |
 | `FamiliarModelProvider.swift` | 无 API Key 参数的 `FamiliarModelProvider.stream(request:)` 与默认 `generate(request:)`、统一 `FamiliarToolCall`、reasoning delta、消息/内容/Manifest、`localOnly/preferLocal/cloud` 值类型 |
-| `FamiliarExecutionPolicy.swift` | 纯 gate `decide(manifest:availability:)`：unavailable 拒绝、destructive 或 high risk 必须确认、能力就绪的 read 直接执行、其余走审批。策略本身不接受任何授权参数，无法自我授权；持久授权只由 `FamiliarAuthorizationRuntime` 按 Project/工具版本/targetKey/精确参数 hash/期限匹配 |
+| `FamiliarExecutionPolicy.swift` | 统一 allow/requireApproval/deny、Project/Skill/暴露范围、动态 preflight、可用性、精确授权匹配/保存与审批字段；确认后复核条件/权限/原生目标版本。Runtime 只传递确认并执行决策，不自行匹配或签发授权 |
 | `FamiliarCapabilityContract.swift` | 来源与不可变 CapabilitySnapshot、CanonicalJSON 及规范化参数 hash；无另一个 Catalog/Resolver 或 Grant 授权路径。实际授权仅由 `FamiliarAuthorizationRuntime` 匹配真实 RuleRecord，读取／消费／签发失败抛回 Loop，未保存改动回滚 |
 | `FamiliarToolConfirmationCoordinator.swift` | `public actor`，`runID + toolCallID` 幂等确认，checked continuation 暂停 Agent Loop |
 | `FamiliarClarificationCoordinator.swift` | `public actor`，独立于授权确认保存 pending clarification continuation；验证选项/自定义回答，支持按 Run 取消 |
 | `FamiliarPresentationTools.swift` | task_plan、present_recommendation、present_insight 的可选展示与 ask_user 澄清；task_plan 不再携带 expectedDeliverables 或触发执行状态机。 |
-| `FamiliarRunToolState.swift` | Run-local actor，只保存本次安装／可用 Skill 与已尝试写入指纹，供并行读取和串行执行共享事实；不编排任务。 |
+| `FamiliarRunState.swift` | Run-local actor，只保存本次安装／可用 Skill 与已尝试写入指纹，供并行读取和串行执行共享事实；不编排任务。 |
 | `FamiliarToolGroups.swift` | 唯一工具组／默认能力／base 规则及 tools_load 定义；组加载只返回下一轮工具集合，不执行设备动作或授予权限。 |
 | `FamiliarToolLoader.swift` | 每个 Run 的冻结 native catalog、deferred group 发现缓存、成员可用性、remote 精确选择与分页、schema/report 字符预算。 |
-| `FamiliarAuthorizationRuntime.swift` | `@MainActor` SwiftData 授权查询、单次消费、session/长期授权签发与撤销范围匹配 |
-| `FamiliarProjectContextAssembler.swift` | 从 Project seed + 消息快照 + 工具 manifest 组装不可变 `FamiliarContextSnapshot`；除 Provider 输入外冻结去重后的 Attachment snapshot，供 Workspace 虚拟 Files 投影；按 base／工具组摘要→Project→本次显式 Skill→`<remembered>`→安全策略组装；不可用原因主要在按需加载结果中报告（assembler 仍可接受显式 unavailableTools），并以该 Skill 的 allowedTools 收窄 frozen available catalog；base 三个工具保留，扩展集合由当前轮加载决定（未声明 allowedTools 即未声明限制、不收窄；把空列表当作「拒绝一切」会把整轮 Run 收窄到零个工具，而内置示例与设置中新建的 Skill 都是空列表）；Memory 只注入 Context Compiler 选中的条目并受 `maximumMemoryCharacters` 硬预算约束，超出的整条跳过而不截断（截断会让模型读到一个不同的事实），且明确声明记忆不是指令、不能创建授权、与当前消息冲突时以当前消息为准；不可用能力携带真实原因，要求模型报告缺失而不是静默改用其他手段猜测；执行输入字符预算 |
+| `Persistence/FamiliarAuthorizationRuntime.swift` | `@MainActor` SwiftData 授权查询、单次消费、session/长期授权签发与撤销范围匹配 |
+| `FamiliarContextCompiler.swift` | 从 Project seed + 消息快照 + 工具 manifest 组装不可变 `FamiliarContextSnapshot`；除 Provider 输入外冻结去重后的 Attachment snapshot，供 Workspace 虚拟 Files 投影；按 base／工具组摘要→Project→本次显式 Skill→`<remembered>`→安全策略组装；不可用原因主要在按需加载结果中报告（assembler 仍可接受显式 unavailableTools），并以该 Skill 的 allowedTools 收窄 frozen available catalog；base 三个工具保留，扩展集合由当前轮加载决定（未声明 allowedTools 即未声明限制、不收窄；把空列表当作「拒绝一切」会把整轮 Run 收窄到零个工具，而内置示例与设置中新建的 Skill 都是空列表）；Memory 只注入 Context Compiler 选中的条目并受 `maximumMemoryCharacters` 硬预算约束，超出的整条跳过而不截断（截断会让模型读到一个不同的事实），且明确声明记忆不是指令、不能创建授权、与当前消息冲突时以当前消息为准；不可用能力携带真实原因，要求模型报告缺失而不是静默改用其他手段猜测；执行输入字符预算 |
 | `FamiliarNativeTools.swift` | `current_date_time`、`app_information`（read/low） |
 | `FamiliarToolSchema.swift` | 共享 JSON Schema DSL（`object/string/boolean/integer/number/array/stringArray/objectArray`）与 `FamiliarToolDefaults`：范围和默认值只声明一次，同时供 manifest 与 `execute` 使用 |
 | `FamiliarISO8601.swift` | 唯一 ISO8601 边界：解析同时接受带/不带小数秒，格式化统一输出小数秒；`validateRange` 返回 typed `FamiliarISO8601Error` |
@@ -131,9 +131,9 @@ This import is partial. See [coverage and remaining work](../docs/13-openminis-i
 - `FamiliarModelManager.swift` — manifest、可恢复下载、大小/SHA-256 校验、runtime-specific prepare、原子版本目录、状态流与删除。
 - `FamiliarCoreAIModelProvider.swift` — Core AI runtime adapter；当前仅有显式 unavailable adapter，真实 Xcode 27 `CoreAILanguageModel`/`LanguageModelSession` 尚未接入。
 
-### `Familiar/Artifacts/`
-- `FamiliarArtifactService.swift` — `FamiliarArtifactStore`（`<Application Support>/Familiar/Artifacts`，流式原子导入 + SHA-256）与 `@MainActor FamiliarArtifactService`；`FamiliarArtifactValidator` 复用 AnyDoc/SwiftSoup 验证 Markdown/Text/DOCX/PDF/XLSX/HTML 并生成 versioned receipt。
-- `FamiliarArtifactTool.swift` — artifact_write/edit/read 与 artifact_publish。读取已发布 Artifact 时复用 AnyDoc 且明确截断。发布仅接受当前 Project Workspace 的真实 Outputs 文件，校验扩展名、签名、可解析正文、hash、可选 requiredText 和 minimumSources 引用要求，不要求预先计划。supersedes / artifact_edit 都登记为同一交付物的独立新版本，旧字节不被覆盖；保存失败补偿只删除新目录，删除／Undo 用目录暂存保护元数据失败恢复。
+### `Familiar/Files/`
+- `Familiar/Files/FamiliarFileService.swift` — `FamiliarFileStore` 保留 `<Application Support>/Familiar/Artifacts` 旧字节目录，流式原子导入与 SHA-256；`FamiliarFileService` 只写 File/FileVersion。`FamiliarFileValidator` 复用 AnyDoc/SwiftSoup 验证 Markdown/Text/DOCX/PDF/XLSX/HTML。
+- `FamiliarFileTool.swift` — file_write/edit/read 与 file_publish。读取已发布 File 时复用 AnyDoc 且明确截断。发布仅接受当前 Project Workspace 的真实 Outputs 文件，校验扩展名、签名、可解析正文、hash、可选 requiredText 和 minimumSources 引用要求，不要求预先计划。supersedes / file_edit 都登记为同一交付物的独立新版本，旧字节不被覆盖；保存失败补偿只删除新目录，删除／Undo 用目录暂存保护元数据失败恢复。
 
 ### `Familiar/AnyDoc/`
 - `FamiliarAnyDocService.swift` — Swift 到 Rust C ABI 的转换封装，返回 Markdown/格式/引擎版本/错误码，声明支持扩展名列表。
@@ -180,16 +180,16 @@ This import is partial. See [coverage and remaining work](../docs/13-openminis-i
 - `FamiliarEventKitTools.swift` — `calendar_events`、`create_calendar_event`、`update_calendar_event`、`delete_calendar_event`、`reminders`、`create_reminder`、`update_reminder`、`delete_reminder`（同一 Service 出 8 个 Tool）。
 
 ### `Familiar/Persistence/` — SwiftData
-- `FamiliarModels.swift` — 当前模型 typealias 与 `FamiliarModelContainer`；生产和测试容器直接打开单一当前 schema，不配置 migration plan。
-- `FamiliarSchema.swift` — 唯一当前 Release Schema，37 实体；V3–V11 文件仅组织模型声明，不是受支持的 migration chain。B1 未修改持久 schema 或清理现有数据。
-- `FamiliarProjectService.swift` — `@MainActor`，项目 CRUD（名称去除首尾空白并截断至 80 字符；创建/编辑时跨活跃与归档项目做不区分大小写的全局唯一检查）、指令（8k 上限）、可选模型覆盖（`updateModelOverride` 空值清除并回到全局选择，未知 ID 直接拒绝而不落盘，否则一个 Provider 已不提供的模型只会在发送时才暴露为失败）、归档、删除（运行中 Run 保护 + 资源/Artifact staged 删除/回滚；保留并解除 Conversation/Run，清理项目 Memory/授权）。
+- `FamiliarModels.swift` — 当前模型 typealias 与 `FamiliarModelContainer`；生产、磁盘测试与内存测试容器统一配置 `FamiliarSchemaMigrationPlan`。
+- `FamiliarSchema.swift` — 当前 Release Schema 4.0.0，37 实体；V3–V11 仍组织存储声明。独立冻结原 37 实体 1.0.0，经加法 Files 桥接、Artifact 移除和 Grant 审计迁移/移除；Resource/Attachment 历史存储关系仍保留，无新 Resource 生产写入。
+- `FamiliarProjectService.swift` — `@MainActor`，项目 CRUD（名称去除首尾空白并截断至 80 字符；创建/编辑时跨活跃与归档项目做不区分大小写的全局唯一检查）、指令（8k 上限）、可选模型覆盖（`updateModelOverride` 空值清除并回到全局选择，未知 ID 直接拒绝而不落盘，否则一个 Provider 已不提供的模型只会在发送时才暴露为失败）、归档、删除（运行中 Run 保护 + 资源/File staged 删除/回滚；保留并解除 Conversation/Run，清理项目 Memory/授权）。
 - `FamiliarRunPersistenceRecorder.swift` — `@MainActor`，**已接线**：ensureRun + ContextSnapshot/VisualEvidence、Activity/ToolResult/Approval/Clarification/ResponseBlock 持久化；recordModelSelection 保存有序的实际请求尝试，recordUsage 仅累计已报告字段，nil 不转换为零，损坏 trace 不静默清空。tool/approval/clarification/result 在 Runtime 边界 upsert，task plan 按稳定 identity 更新 latest revision，最终回复一次写 block，失败/取消且无助手消息时写可重放 runtime notice recovery，text delta 不写 SwiftData。没有 AgentStep/checkpoint 投影。
 - `FamiliarRunRecoveryService.swift` — `@MainActor`，capability snapshot/cursor/tool-invocation 持久化 + `recoverInterruptedRuns`（启动时终结遗留 running Run，取消未提交 invocation，保留已取得 Result 和 committing 不确定写入）。没有 Grant 签发／消费 API，不提供字节级中断续跑。
 
 ### `Familiar/Presentation/` — SwiftUI
 - `FamiliarRootView.swift` — 直接进入 Chat，并承接 Deep Link/Spotlight/App Intent handoff 路由。
 - `FamiliarChatView.swift` — 统一 Chat Surface：顶栏依次提供设置、普通/活跃项目工作区、模型和新对话；切换工作区恢复该作用域最近更新的会话，无历史时建立未持久化空白会话。左缘手势打开的抽屉只保留搜索、置顶、可折叠项目、全部项目和普通最近会话；项目与普通最近会话按 20 条逐批展开。
-- `FamiliarChatController.swift` — `@MainActor @Observable` 中央状态容器：`startSending`/`performSend` 编排整条 Agent Run。Runtime 内容投影只在活动事件和首个非空正文边界更新；中断正文在终态通过现有 ResponseBlock 保存，消费流丢失终态时终结本地 Run／cursor。历史用已保存 Artifact 关联输出，并从既有 journal／requiresInspection 读取不确定写入与重试边界。
+- `FamiliarChatController.swift` — `@MainActor @Observable` 中央状态容器：`startSending`/`performSend` 编排整条 Agent Run。Runtime 内容投影只在活动事件和首个非空正文边界更新；中断正文在终态通过现有 ResponseBlock 保存，消费流丢失终态时终结本地 Run／cursor。历史用已保存 File 关联输出，并从既有 journal／requiresInspection 读取不确定写入与重试边界。
 - `effectiveSettings(for:)` 统一下次发送与顶栏的 Project override；选中历史不从 Conversation 的上次请求元数据改默认模型。顶栏在 Project 有 override 时修改 Project，可恢复跟随默认；设置页仍编辑默认选择，未改变生效模型时不写假的 ModelSwitch。回复保存实际成员 ID，重试读取原 Run ContextSnapshot 的请求 ID，保留模型组选项。
 - `FamiliarUsageView.swift` — 汇总该聊天 Run 的服务商报告字段，包括自动压缩；全缺失显示未报告，部分 Run 缺失时标明部分用量。模型条目是请求尝试，不声明成功，不估算费用；手动压缩及供应商配置请求明确不计入。它不承担按请求／成员分摊费用或 tokenizer 估算。
 - `FamiliarWebCaptureSaveButton.swift` — 展开的成功网页结果中的用户保存动作，复用 PillButtonStyle/Typography/Spacing。按真实 Run/Call 找已保存证据与所属 Project，保存完成后显示目标项目；截断页明确提示部分内容。当前保存回执只用于本地呈现，跨重开防重复由 Service 的文件／版本校验负责。
@@ -198,7 +198,7 @@ This import is partial. See [coverage and remaining work](../docs/13-openminis-i
 - `FamiliarSurfaceDescriptor.swift` — 实时/历史共用的语义投影，descriptor 保存 Runtime sequence、稳定 tool identity、进度／失败信息和授权决定；实时参数只存在内存，历史不从 hash 还原。重试用事件 sequence 区分，并用可选 Call ID／既有 parentID 关联。终态／重复／过期事件不能重新打开已完成的调用。scalar、searchResults、document、contextMatches、recordCollection 等不再按固定区域堆叠，而是在所属 Assistant Turn 的调用位置渲染。`FamiliarToolPresentationName` 同时持有 name→title 与 name→SF Symbol 两张显式表；图标不放进 manifest，因为所有调用点只拿到持久化的 `activity.toolName`，历史 Run 必须在对应工具已不再注册时渲染出同一图标。
 - `FamiliarComposerView.swift` — compact/expanded/fullscreen 输入器、附件/相机/相册、一次性 Slash Skill 选择与语音。
 - `FamiliarSettingsHubView.swift` / `FamiliarSettingsView.swift` / `FamiliarSearchSettingsView.swift` — 设置 hub、模型服务、执行限制、Memory、Diagnostics、独立网页搜索设置和 Python 软件源设置。Diagnostics 页复用 `registry.availabilityReport()`，展示已注册工具的状态；按需加载使用相同 registry availability 检查成员并告知模型原因。它显示 Shell Runtime phase 和当前可用的已注册工具数，不声称这些 Schema 全部进入模型请求。执行限制页用 stepper 暴露步数/工具调用/时长三个预算，范围与 `FamiliarExecutionBudget.normalized` 的钳制一致，因此控件无法表达一个 Runtime 会静默拒绝的值；Memory 页提供自动记忆开关、按 scope 与来源列出每条记忆、编辑、滑动删除与二次确认的全部删除，编辑会重写派生的去重键并复用同一套敏感内容拒绝规则。模型服务页此前有 4 个 `body` 从不渲染的 section（含重复的通知开关与重复的 system prompt 编辑器），且其 `.task` 会在未授权时静默关闭通知，已一并删除；Shell 限制展示改为从 `FamiliarShellLimits.iOS` 派生而非硬编码字符串。权限页覆盖日历、提醒、联系人、位置、照片添加、照片读取、健康活动、Apple Music、蓝牙、相机、麦克风、语音识别与通知，其中健康只显示“已请求/尚未请求”并在 footer 说明 HealthKit 从不揭示读取拒绝；软件源只允许选择内置校验的官方 PyPI 或清华 TUNA HTTPS 索引，不接受任意 URL。搜索页提供 Provider 选择、独立 Key 保存/删除、最小连接验证以及隐私/费用说明。Skills 页只以右上角加号打开带默认 instructions 模板的创建表单，没有导入行，新建 Skill 的 allowedTools 为空——按现在的语义这表示「未声明限制」，不会收窄工具；页面仍没有主动收窄的编辑控件。
-- `FamiliarProjectsView.swift` — Project Context Workspace：项目列表/主页/编辑（含可选的项目级模型选择）。主页展示新聊天主动作、指令、聊天、文件/网页/文本资料和输出；Environment、按需 Skills、MCP、Capability 与 Runs 集中在同一 Stack 的高级 List，保留原查询与操作。Artifact 列表与首页摘要都按 `lineageID` 折叠为「一个交付物一行」，只展示最新版本，旧版本进入版本历史页并保持可预览、可分享；版本号只在该谱系确实有历史时显示，否则「v1」会暗示不存在的修订。
+- `FamiliarProjectsView.swift` — Project Context Workspace：项目列表/主页/编辑（含可选的项目级模型选择）。主页展示新聊天主动作、指令、聊天、文件/网页/文本资料和输出；Environment、按需 Skills、MCP、Capability 与 Runs 集中在同一 Stack 的高级 List，保留原查询与操作。File 列表与首页摘要都按 `lineageID` 折叠为「一个交付物一行」，只展示最新版本，旧版本进入版本历史页并保持可预览、可分享；版本号只在该谱系确实有历史时显示，否则「v1」会暗示不存在的修订。
 - `FamiliarSharedDestinationView.swift` — Share 收件箱目标选择（已有项目、新建项目、普通聊天草稿）。
 - `FamiliarMarkdownWebView.swift` — 非持久化 WKWebView 渲染 + 高度回传 + 首帧回退文本；终态通过 `selectionChanged` bridge 回传最多 4000 字符纯文本，流式状态禁用并清空选择；长 Mermaid 通过 `previewMermaid` bridge 打开全屏，并复用同一 bundled renderer、非持久化 data store 与禁止远程连接的 CSP。
 - Render state 附带原生 styleJSON（外观、对比度、动态字号与现有 token）；样式变化沿同一更新／节流／高度回传路径重新测量。代码复制、Mermaid 预览文字由原生本地化提供；对应详情复用完成按钮，结果和共享目标的 selected-model sheets 用 Identifiable 状态。
@@ -215,8 +215,7 @@ This import is partial. See [coverage and remaining work](../docs/13-openminis-i
 
 ### `Familiar/Resources/`
 - `FamiliarProjectResourceStore.swift` — 项目资源磁盘（`<Application Support>/Familiar/ProjectResources/Projects/<projectID>/Resources/<resourceID>/Versions/<version>-<versionID>/`，SHA-256 校验、symlink/回滚安全删除）。
-- `FamiliarProjectResourceService.swift` — 原子导入文档、公开 HTTPS 网页、粘贴文本与明确保留的 Web capture 为 Resource + ResourceVersion。Project 的新增网页／Share 导入是用户显式导入流程；Chat fetch 不自动导入。saveFetchedWebResult 只接受已持久化的成功 web_fetch，按原记录的正文／hash 校验后离线导入，重复保存检查现存文件 hash 后复用。资源原文件与 extractedText 同时包含来源、时间、正文 hash 和截断标记；资源文件自身使用独立的整体 hash。
-- `FamiliarResourceTools.swift` — `resource_list/read/search`，只读取 Run 启动时冻结的 Resource 快照。
+- `Familiar/Files/FamiliarFileImportService.swift` — 导入文档、粘贴文本和明确保存的 Web capture，直接写 File/FileVersion，旧 Resource 目录仅提供字节存储。Web save 只接受已持久化的成功 fetch，离线核对 hash；同一捕获重复保存复用，同 URL 的不同捕获保持独立身份。保存内容与 provenance 保留 URL/时间/正文 hash/截断信息。
 
 ### `Familiar/Speech/`
 - `FamiliarSpeechTranscriber.swift` — `@MainActor` 持有 UI／录音状态，`SFSpeechRecognizer` + `AVAudioEngine` 与远程转写共用 sessionID 失效保护。音频会话变更按 Task 顺序串行，配置／硬件调用在 @concurrent helper 中执行；iOS 27 使用异步 activate/deactivate，iOS 18–26 的 setActive 只在后台执行。准备中的停止和权限／激活返回后的旧流程不能启动录音，远程转写终态释放身份以允许再次录音。
@@ -259,7 +258,7 @@ This import is partial. See [coverage and remaining work](../docs/13-openminis-i
 | AlarmKit | `alarm_schedule`（durable undo）、`alarm_cancel`、`alarm_list`；iOS 26.1 以下 `availability` 返回 `.unavailable`，因此不进入模型工具列表 |
 | EventKit | `calendar_events`、`create_calendar_event`、`update_calendar_event`、`delete_calendar_event`、`reminders`、`create_reminder`、`update_reminder`、`delete_reminder` |
 | Workspace | `workspace_list`、`workspace_read`、`workspace_search`、`workspace_write`、`workspace_image_list`、`photos_save_output`、`prepare_file_export` |
-| Project/Artifact | `resource_list`、`resource_read`、`resource_search`、`artifact_write`、`artifact_edit`、`artifact_read`（已发布 Artifact 回读：Markdown/文本/HTML 原样返回，DOCX/PDF/XLSX 经 AnyDoc 解析，截断显式上报）、`artifact_publish` |
+| Files | `file_list`, `file_search`, `file_read`, `file_write`, `file_edit`, `file_publish`; frozen FileVersions, typed results and explicit truncation |
 | Web | `web_search`、`web_fetch` |
 | Presentation/interaction | `tools_load`、`task_plan`、`present_recommendation`、`present_insight`、`ask_user`、`skill_list`、`skill_read`、`skill_install` |
 | Memory | `memory_search`（只读本次运行冻结的记忆）、`memory_remember`（返回审批提案，仅 `.once` 授权，写入请求经 Controller persistResult 回调在成功事件前落盘） |
@@ -273,15 +272,16 @@ App Intents 是系统入口，不作为模型可调用 Tool 注册；iOS 没有�
 
 ## 5. SwiftData Schema
 
-schema：`FamiliarReleaseSchema`（version `1.0.0`），当前 37 个实体；测试阶段没有 migration plan，旧 store 不受支持：
+schema：`FamiliarReleaseSchema`（version `4.0.0`），当前 37 个实体。正式计划从冻结的当前旧 store 1.0.0 迁移；更早开发 store 不支持。历史 Artifact/Grant 实体已移出当前 schema；磁盘迁移执行尚未验收：
 
 | 实体 | 运行时是否写入 |
 |---|---|
 | Conversation, Message, SourceRecord, Attachment, ModelSwitchRecord, AgentRun | 是 |
 | Project, ProjectInstruction | 是 |
-| Resource, ResourceVersion, ContextSnapshotRecord, ContextResourceReference | 是（`FamiliarRunPersistenceRecorder` / `FamiliarProjectResourceService`） |
-| Artifact | 是（`FamiliarArtifactService`） |
-| CapabilitySnapshotRecord, AuthorizationGrantRecord | CapabilitySnapshot 是（Run 启动）；AuthorizationGrantRecord 仅保留历史存储列与 Project 删除清理，无生产签发／消费／授权判断 |
+| Resource, ResourceVersion | 无生产新增写入；仅历史存储关系、迁移读取与显式删除 |
+| FileRecord, FileVersionRecord | 是（上传、Project/Web 导入、生成结果、Shell 捕获、版本与关联） |
+| ContextSnapshotRecord, ContextResourceReference | 是（冻结初始输入引用，不重复存文件正文） |
+| CapabilitySnapshotRecord | 是（冻结/加载工具审计与中断识别，仍有历史生产读取用途） |
 | RunResumeCursorRecord, ToolInvocationRecord | 是（工具请求/审批/完成与终态 cursor；跨进程恢复未实现） |
 | AuthorizationRuleRecord, EventKitUndoRecord, VisualEvidenceRecord | 是（真实授权、跨重启 Undo、视觉证据） |
 | Skill, MemoryItem, MCPServerRecord, MCPBindingRecord | Skill 安装已写入；MemoryItem 由用户确认的 `memory_remember` 与设置页写入，并由 Context Compiler 读取；HTTP MCP 已接线；STDIO 与 MCP OAuth 未接线 |
@@ -292,7 +292,7 @@ schema：`FamiliarReleaseSchema`（version `1.0.0`），当前 37 个实体；�
 | ProjectEnvironmentRecord, ProjectSkillBindingRecord, ProjectCapabilityBindingRecord | 是（Environment receipt 与 Project-owned Skill/Capability scope） |
 | AlarmUndoRecord | 是（`alarm_schedule` 的跨重启 undo；闹钟必然在未来触发，session 级 undo 会给出无法兑现的承诺） |
 
-关系删除规则使用 cascade。附件文件由 Controller 显式清理；Resource 与 Artifact 文件经各自 Service 清理。单个 Artifact 删除同步删除元数据和文件；永久删除 Project 时先暂存 Resource 与 Artifact 项目目录，数据库提交后丢弃暂存目录，失败时恢复。新建开发 store 与用户确认的 store recovery 也会清理 Artifact 根目录。
+关系删除规则保留必要 cascade。已提交文件由 Project 所有，删除 Chat 不删除其字节。FileCatalog 统一文件删除；Project 删除暂存各后端目录，数据库提交后丢弃，失败时恢复。普通启动/迁移失败不自动清空；只有恢复界面的显式用户确认可重建 store。独立 Audit 包含逐请求编译清单、归档 Grant provenance 和运行记录；归档内容不能授权。
 
 ## 6. 数据流（消息 → Agent → 持久化）
 
@@ -302,7 +302,7 @@ Composer
   → FamiliarChatController.startSending        // Project override 后的模型／凭据／文档能力检查
       → 捕获草稿、历史、Skill；冻结 permitted native catalog + enabled MCP discovery closures（无提前网络发现）
       → 只读 Project／Memory 候选；await 后台图片编码／草稿写入，预定消息 ID 与附件最终路径，用草稿路径读取图片
-      → FamiliarProjectContextAssembler.assemble + validateSubmission
+      → FamiliarContextCompiler.assemble + validateSubmission
           → protected Project + 本轮用户消息／附件 + 基础 Schema 必须合计可容纳；旧历史可在 Loop 压缩
           → 文本模型图片识别后再次组装／验证；取消、草稿变化或失败均保留当前草稿
       → 复制附件、插入消息 + 最终选中 Memory usage，一次 context.save
@@ -311,7 +311,7 @@ Composer
       → FamiliarAgentLoop.stream（首轮三个基础 Schema；tools_load 的成功结果替换后续扩展 Schema）
           → provider.stream（正文/reasoning summary/工具调用增量；transient/限流首字节前发 typed retry notice 后有界重试）
           → 单一 ContinuousClock deadline 同时约束 provider stream、tool execute、approval wait、retry sleep
-      → registry.availability + authorizationRuntime + policy.decide
+      → registry.preflight -> policy.evaluate -> approval -> permission/target revalidation
           → 工具调用/总时长预算
           → toolInvocationRequested → ToolInvocationRecord requested
            → 写入工具：有序 typed fields + target/effect/risk/consequence/undo policy，经 confirmationCoordinator 等待确认
@@ -324,7 +324,7 @@ Composer
       → runRecorder.ensureRun/recordActivity/recordToolResult/finishRun（Run + ContextSnapshot 持久化）
           → activity/approval/result 边界写 Activity、ToolResult、Approval；正文与 reasoning delta 不逐项写 Store
       → runRecovery（CapabilitySnapshot/Cursor/ToolInvocation 阶段记录；activityCompleted → committed/cancelled/failed）
-          → persistResult 回调先保存 Artifact、安装的 Skill 和 Memory；失败回传工具失败，成功后才产生 activityCompleted/toolResultProduced
+          → persistResult 回调先保存 File、安装的 Skill 和 Memory；失败回传工具失败，成功后才产生 activityCompleted/toolResultProduced
           → toolResultProduced → typed result（网页捕获元数据包含在 envelope）、loaded Skill 审计；原生 durable Undo 已在 persistResult 成功边界保存；activityCompleted 只更新呈现
           → 用户在网页结果点击保存 → 从真实成功 Result 读取原捕获，校验并写 Project Resource；不重新请求网络、不更改当前冻结 Run input
       → assistantTurnCompleted 在每轮工具边界写独立 Markdown ResponseBlock；Controller 以 Runtime sequence 保持正文与工具顺序
@@ -335,7 +335,7 @@ Composer
 ```
 
 主要 actors：`FamiliarToolRegistry`、`FamiliarToolConfirmationCoordinator`、`FamiliarUndoStore`、`FamiliarRuntimeEventEmitter`（private）、`FamiliarEventKitService`、`FamiliarSpotlightIndexer`。
-MainActor 容器：`FamiliarChatController`、`FamiliarRunPersistenceRecorder`、`FamiliarProjectService`、`FamiliarArtifactService`、`FamiliarProjectResourceService`、`FamiliarAppIntentHandoff`、`FamiliarSpeechTranscriber`。
+MainActor 容器：`FamiliarChatController`、`FamiliarRunPersistenceRecorder`、`FamiliarProjectService`、`FamiliarFileService`、`FamiliarFileImportService`、`FamiliarAppIntentHandoff`、`FamiliarSpeechTranscriber`。
 
 ### 验证入口
 
@@ -351,7 +351,7 @@ MainActor 容器：`FamiliarChatController`、`FamiliarRunPersistenceRecorder`�
 | SwiftData store | Debug：`<Application Support>/Familiar/Persistence/FamiliarDevelopment.store`；Release：`.../Familiar.store` |
 | 附件 | `<Application Support>/Familiar/Attachments/{Drafts,Messages}/` |
 | 项目资源 | `<Application Support>/Familiar/ProjectResources/Projects/<projectID>/...` |
-| Artifact | `<Application Support>/Familiar/Artifacts` |
+| Generated File backend (legacy byte root) | `<Application Support>/Familiar/Artifacts` |
 | FastVLM 残留研究资产 | `<Application Support>/Familiar/LocalModels/FastVLM/installed/`；当前无 UI/DI/自动路由入口 |
 | Core AI 模型 | `<Application Support>/Familiar/Models/{Downloads,Installed,Staging}/`（当前无已配置 Qwen manifest asset） |
 | Workspace | `<Application Support>/Familiar/Workspaces/{project-,conversation-}<UUID>/` |
@@ -378,3 +378,32 @@ MainActor 容器：`FamiliarChatController`、`FamiliarRunPersistenceRecorder`�
 - AlarmKit 只使用 alert-only presentation，因此不提供 countdown/paused 状态，也不新增 widget extension；重复闹钟、贪睡与 Live Activity 不在当前范围。
 - 敏感 read（health/photos/bluetooth）的仅这次/本会话授权已接入 Agent Loop 并有确定性测试，但真机上多轮任务的实际打断次数未人工验收。
 - Skills 已支持一次性指令注入、工具收窄、Run 快照和 checked package resources；不能将安装包等同于赋予权限。Memory/HTTP MCP 已实现；工具组懒加载已接线；真实 Provider／服务器／guest 和设备验收仍待完成。
+
+
+## H Files convergence (2026-10-06, H1/H2 implemented)
+
+- Domain FileReference/StorageReference/FileSnapshot and persistent FileRecord/FileVersionRecord own product identity, Project scope, Chat associations, versions, provenance and explicit Project-context selection. Byte roots remain internal storage. Fresh uploads record actual hashes; old missing attachment hashes remain explicitly unknown. Version-number high-water marks survive revision Undo.
+- FamiliarStoreSchemaV1 freezes all 37 original entity definitions. SchemaMigrationPlan uses additive bridge 2.0.0 to convert resource/version, generated-file lineage/version, attachments and saved scopes, then removes the old generated-file entity in current 3.0.0 (38 entities). Only explicit existing same-Project relationships share identity; names/hashes never merge files. Historical Resource/Attachment fields retain necessary relationships; new Resource production writers are removed in H5.
+- Project and Chat use FamiliarFilesView; obsolete separate resource/output lists and the workspace-path Chat browser are removed. FileCatalogService provides scoped integrity reads, context selection, byte/metadata deletion compensation and cross-Project copies. Shared FileByteReader serves Tools and native preview. Deleting a Chat retains owned bytes and pruning includes File references. Moving a Chat clears its old summary and Conversation Memory now requires both Chat and Project identity.
+- file_list/file_search/file_read/file_write/file_edit/file_publish form one Files tool group. Search covers filenames and already-selected text, with no full-content index claim. The catalog and approved saved-file snapshots feed the existing Run-local state; the persistence callback returns domain-only receipts. This is not the full H3 Run State.
+- Shell success captures added/modified Outputs into immutable managed bytes, registers File versions before success and supports rollback/Undo of those captures; Work/Environment/checkpoints remain internal. Migration-only adoption preserves old output files with observation provenance rather than claiming an exact historical execution capture. A Files view never reimports deleted files. Project deletion and confirmed store recovery include managed byte roots.
+- Current production APIs/value types use File names. Old entity definitions, stored configuration identity conversion, old artifactMutation decoding and old directory paths remain only for data/history handling. No old callable tool aliases are registered and no historical authorization is translated into new authority.
+- `/tmp/familiar-architecture-files-final-20261006-build.log` confirms arm64 original-project test-target compilation. Static/localization/inventory checks pass. Disk upgrade/iOS tests and device/service acceptance are unexecuted; Compiler/Policy/persistence implementation is complete; migration execution and device/service acceptance remain H7/H8.
+
+### H3 Compiler / Run State (2026-10-06)
+
+Context/FamiliarContextCompiler freezes submission input and owns subsequent Agent request composition and automatic/manual compaction rules. FamiliarContextCompilation is immutable and contains input identity, schema/content hashes, scoped provenance, references, observed times and a bounded factual summary. Runtime records transcripts/results and performs compiled provider calls under its deadline; it adds no Skill/closing instructions itself. Long-term inputs are not reselected mid-Run. Project file bodies use a character budget and omitted entries remain discoverable; current submission contents are not truncated. Compaction retains the current turn and complete assistant/tool pairs.
+
+FamiliarRunState is a factual actor: discovered versus currently exposed tools, loaded/installed Skills, result identities/hash/truncation, Memory read IDs, Web observations, attempted/committed/failed/uncertain/compensated writes and committed FileVersions. Known frozen versions reuse at most 64k characters of file-read results after policy checks, keeping the original observation time. External tools remain refreshable. Request audit uses existing ActivityRecord rows (context: identity, context_compiled summary, Codable manifest in detail), excluded from response presentation. Saving the audit precedes a model call and can fail the request. Compiler audit adds no entity; after H5 the current schema is 4.0.0 / 37 models.
+
+Validation: static checks and arm64 generic Simulator build-for-testing; iOS regressions compiled, not executed. Disk/user-data upgrade and device/service acceptance remain separate.
+
+### H4 / H5 Policy and persistence boundaries (2026-10-06)
+
+Policy owns scope/availability/dynamic risk, exact authorization lookup and issuance, confirmation contents, permission/preflight rechecks and optional adapter target validation. Registry validates names, schema declarations, effect/parallelism, deadlines and output envelopes. Read concurrency requires noninteractive preflight. Commit uses the declared tool timeout, with journal, reserved write fingerprint, durable Undo, persistence-gated receipt and compensation preserved. EventKit validates content/calendar revision before committing; changed/default targets and newly prepared permissions invalidate stale previews. External APIs do not provide a distributed transaction or automatic replay.
+
+FileImportService writes canonical File/FileVersion without Resource rows. Submission indexing is FileCatalog.stageUploads, not the migration converter. The old byte roots remain adapters. Artifact and Grant entities are excluded from current schema; Grant fields move to nonexecutable Activity audit, retaining original identity in its payload. Capability snapshots remain because interruption inspection reads their effects. Resource/Attachment stored fields remain where historical relationships require them; there is no automatic history cleanup. Pure authorization/Skill/Memory contracts are separate from SwiftData services, and Runtime/Context/Domain import no concrete UI or SwiftData.
+
+Current schema: 4.0.0, 37 entities. Migration: frozen 1.0.0 (37) -> additive 2.0.0 (39) -> Files 3.0.0 (38) -> Grant archive/removal 4.0.0 (37). Containers keep their addresses. No disk migration, service or device acceptance is claimed from compiled regressions.
+
+Final compilation: /tmp/familiar-architecture-verified-20261006-build.log TEST BUILD SUCCEEDED (exit 0); no warning/error. Static diff/localization/inventory/core-import checks pass. Tests compiled only; H7/H8 remain unexecuted.
