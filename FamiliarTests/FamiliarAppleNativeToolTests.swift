@@ -473,7 +473,7 @@ struct FamiliarAppleNativeToolTests {
         let scheduledIDs = await service.scheduled
         #expect(scheduledIDs.count == 1)
         // The identity must reach the durable undo recorder.
-        #expect(committed.result.artifactIdentifier == scheduledIDs[0].uuidString)
+        #expect(committed.result.fileIdentifier == scheduledIDs[0].uuidString)
 
         let undo = try #require(committed.undo)
         _ = try await undo()

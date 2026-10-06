@@ -60,15 +60,15 @@ struct FamiliarUIFeedbackTests {
         #expect(!messages.contains("FamiliarToolChips("))
     }
 
-    @Test("Artifact lists group versions by lineage instead of listing each version flatly")
-    func artifactVersionGrouping() throws {
+    @Test("File lists group versions by lineage instead of listing each version flatly")
+    func fileVersionGrouping() throws {
         let projects = try source("Familiar/Presentation/FamiliarProjectsView.swift")
 
         // Both the full list and the project home summary must collapse a lineage, or
-        // successive revisions of one file appear as unrelated Artifacts.
+        // successive revisions of one file appear as unrelated Files.
         #expect(projects.contains("Dictionary(grouping: artifacts, by: \\.lineageID)"))
-        #expect(projects.contains("Dictionary(grouping: projectArtifacts, by: \\.lineageID)"))
-        #expect(projects.contains("FamiliarArtifactVersionHistoryView"))
+        #expect(projects.contains("Dictionary(grouping: projectFiles, by: \\.lineageID)"))
+        #expect(projects.contains("FamiliarFileVersionHistoryView"))
         // Superseded versions stay previewable and shareable rather than being hidden.
         #expect(projects.contains("artifact.versions.count"))
         // No force unwrap of a possibly-empty lineage group in a production list.
@@ -110,7 +110,7 @@ struct FamiliarUIFeedbackTests {
     }
 
     @Test("The whole artifact receipt card opens the deliverable")
-    func artifactReceiptCardIsTappable() throws {
+    func fileReceiptCardIsTappable() throws {
         let messages = try source("Familiar/Presentation/FamiliarChatMessageViews.swift")
         let receipt = try section(
             named: "private struct FamiliarWriteReceipt: View {",
@@ -127,9 +127,9 @@ struct FamiliarUIFeedbackTests {
         #expect(!receipt.contains("Button {"))
         // Announced as a button only when a file exists, so the card never claims to be
         // openable with nothing to open.
-        #expect(receipt.contains("accessibilityAddTraits(artifactURL == nil ? [] : .isButton)"))
+        #expect(receipt.contains("accessibilityAddTraits(fileURL == nil ? [] : .isButton)"))
         // Share stays a separate element rather than being swallowed by the card gesture.
-        #expect(receipt.contains("ShareLink(item: artifactURL)"))
+        #expect(receipt.contains("ShareLink(item: fileURL)"))
     }
 
     private func source(_ relativePath: String) throws -> String {

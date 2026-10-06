@@ -30,14 +30,14 @@ struct FamiliarSurfaceTests {
             status: status,
             startedAt: Date(timeIntervalSince1970: 1),
             finishedAt: Date(timeIntervalSince1970: 2),
-            artifactIdentifier: nil,
+            fileIdentifier: nil,
             undoAvailable: false,
             automaticApprovalRequest: nil
         )
     }
 
     private func result(toolName: String, effect: FamiliarToolEffect, envelope: FamiliarToolResultEnvelope, callID: String = "call-1") -> FamiliarToolResultProduced {
-        .init(runID: "run-1", toolCallID: callID, toolName: toolName, effect: effect, assistantTurnID: "run-1:turn:0", envelope: envelope, sources: [], artifact: nil, producedAt: Date(timeIntervalSince1970: 2))
+        .init(runID: "run-1", toolCallID: callID, toolName: toolName, effect: effect, assistantTurnID: "run-1:turn:0", envelope: envelope, sources: [], file: nil, producedAt: Date(timeIntervalSince1970: 2))
     }
 
     @Test("Write lifecycle projects one compact top-level surface")
@@ -113,9 +113,9 @@ struct FamiliarSurfaceTests {
             ("app_information", .scalar(.init(summary: "App", label: "Version", value: "1.0")), .context, .trace),
             ("web_search", .searchResults(.init(summary: "Search", query: "query", results: [])), .search, .trace),
             ("web_fetch", .document(.init(summary: "Page", title: "Page", text: "Body", url: "https://example.com")), .context, .trace),
-            ("resource_search", .contextMatches(.init(summary: "Match", query: "body", matches: [.init(resourceID: UUID(), versionID: UUID(), version: 2, title: "Source", excerpt: "Body")])), .context, .topLevel),
+            ("file_search", .contextMatches(.init(summary: "Match", query: "body", matches: [.init(resourceID: UUID(), versionID: UUID(), version: 2, title: "Source", excerpt: "Body")])), .context, .topLevel),
             ("calendar_events", .recordCollection(.init(summary: "Events", recordType: "calendarEvent", records: [.init(id: "1", fields: [.init(name: "title", value: "Review")])])), .records, .topLevel),
-            ("artifact_edit", .diff(.init(summary: "Changed", before: "old", after: "new")), .diff, .topLevel),
+            ("file_edit", .diff(.init(summary: "Changed", before: "old", after: "new")), .diff, .topLevel),
             ("typed_code", .code(.init(summary: "Example", language: "swift", filename: "Example.swift", code: "let value = 1")), .code, .topLevel),
             ("share_draft", .shareDraft(.init(summary: "Ready", title: "Draft", text: "Share this")), .share, .topLevel)
         ]

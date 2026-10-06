@@ -23,7 +23,7 @@ struct FamiliarRuntimePresentationTests {
     private func completion(_ id: String, status: FamiliarToolRunTerminalStatus = .succeeded) -> FamiliarRuntimeActivityCompletion {
         .init(runID: "run", toolCallID: id, toolName: "web_fetch", effect: .read, assistantTurnID: "run:turn:0",
             detail: status == .failed ? "Timeout" : "", confirmation: .notRequired, status: status,
-            startedAt: date, finishedAt: date.addingTimeInterval(1), artifactIdentifier: nil, undoAvailable: false,
+            startedAt: date, finishedAt: date.addingTimeInterval(1), fileIdentifier: nil, undoAvailable: false,
             automaticApprovalRequest: nil, failureCode: status == .failed ? "timeout" : nil)
     }
     private func groups(_ blocks: [FamiliarAssistantContentBlock]) -> [FamiliarRuntimeActivityGroup] {
@@ -173,38 +173,38 @@ struct FamiliarRuntimePresentationTests {
         }
     }
 
-    @Test("Historical Artifact results reconnect to stored file metadata, including missing bytes")
+    @Test("Historical File results reconnect to stored file metadata, including missing bytes")
     @MainActor
-    func artifactReload() throws {
+    func fileReload() throws {
         let fixture = try makeRun(project: true)
         defer { withExtendedLifetime(fixture.container) {} }
         let project = try #require(fixture.conversation.project)
-        let artifact = FamiliarArtifact(projectID: project.id, identifier: "output", title: "report.md", relativePath: "missing.md",
+        let file = FamiliarStoredFileVersion(projectID: project.id, identifier: "output", title: "report.md", relativePath: "missing.md",
             byteSize: 123, contentHash: "hash", createdByRunID: "run")
-        fixture.context.insert(artifact)
-        let envelope = try FamiliarToolResultEnvelope(canonicalModelJSON: "{}", presentation: .artifactMutation(.init(summary: "Saved",
+        fixture.context.insert(file)
+        let envelope = try FamiliarToolResultEnvelope(canonicalModelJSON: "{}", presentation: .fileMutation(.init(summary: "Saved",
             operation: "write", identifier: "output", title: "report.md", byteSize: 123, contentHash: "hash")))
         let recorder = FamiliarRunPersistenceRecorder()
-        let complete = FamiliarRuntimeActivityCompletion(runID: "run", toolCallID: "write", toolName: "artifact_write", effect: .reversibleWrite,
+        let complete = FamiliarRuntimeActivityCompletion(runID: "run", toolCallID: "write", toolName: "file_write", effect: .reversibleWrite,
             assistantTurnID: "run:turn:0", detail: "", confirmation: .confirmed, status: .succeeded, startedAt: date, finishedAt: date,
-            artifactIdentifier: "output", undoAvailable: false, automaticApprovalRequest: nil)
+            fileIdentifier: "output", undoAvailable: false, automaticApprovalRequest: nil)
         try recorder.recordActivityCompleted(complete, eventSequence: 1, conversationID: fixture.conversation.id, context: fixture.context)
-        _ = try recorder.recordToolResult(.init(runID: "run", toolCallID: "write", toolName: "artifact_write", effect: .reversibleWrite,
-            assistantTurnID: "run:turn:0", envelope: envelope, sources: [], artifact: nil, producedAt: date), eventSequence: 2,
+        _ = try recorder.recordToolResult(.init(runID: "run", toolCallID: "write", toolName: "file_write", effect: .reversibleWrite,
+            assistantTurnID: "run:turn:0", envelope: envelope, sources: [], file: nil, producedAt: date), eventSequence: 2,
             conversationID: fixture.conversation.id, context: fixture.context)
         recorder.finishRun(runtimeID: "run", outcome: .succeeded, eventSequence: 3, at: date, context: fixture.context)
         let controller = FamiliarChatController(dependencies: .init())
         controller.select(fixture.conversation.id, in: fixture.context)
         let run = try #require(controller.agentRuns.first)
-        let value = try #require(FamiliarSurfaceStore.projectedSurfaces(for: run).first { $0.kind == .artifact })
-        #expect(value.artifact?.title == "report.md")
-        #expect(value.artifact?.byteSize == 123)
-        #expect(value.artifact?.format == .markdown)
-        #expect(FamiliarArtifactStore().url(relativePath: "missing.md") == nil)
-        fixture.context.delete(artifact)
+        let value = try #require(FamiliarSurfaceStore.projectedSurfaces(for: run).first { $0.kind == .file })
+        #expect(value.file?.title == "report.md")
+        #expect(value.file?.byteSize == 123)
+        #expect(value.file?.format == .markdown)
+        #expect(FamiliarFileStore().url(relativePath: "missing.md") == nil)
+        fixture.context.delete(file)
         try fixture.context.save()
         controller.reloadMessages(in: fixture.context)
-        #expect(controller.agentRuns.first?.toolResults.first?.artifact == nil)
+        #expect(controller.agentRuns.first?.toolResults.first?.file == nil)
     }
 
     @Test("Technical parameters are redacted without changing the original tool contract")
@@ -244,8 +244,8 @@ struct FamiliarRuntimePresentationTests {
         let fixture = try makeRun()
         defer { withExtendedLifetime(fixture.container) {} }
         fixture.context.insert(FamiliarToolInvocationRecord(idempotencyKey: "run:write", runtimeID: "run", toolCallID: "write",
-            toolName: "artifact_write", argumentsHash: "hash", state: .committing))
-        try FamiliarRunPersistenceRecorder().recordActivityStarted(.init(id: "write", toolName: "artifact_write", effect: .reversibleWrite,
+            toolName: "file_write", argumentsHash: "hash", state: .committing))
+        try FamiliarRunPersistenceRecorder().recordActivityStarted(.init(id: "write", toolName: "file_write", effect: .reversibleWrite,
             startedAt: date), runtimeID: "run", assistantTurnID: "run:turn:0", eventSequence: 1, context: fixture.context)
         FamiliarRunPersistenceRecorder().finishRun(runtimeID: "run", outcome: .cancelled(), eventSequence: 2, at: date, context: fixture.context)
         let controller = FamiliarChatController(dependencies: .init())
@@ -273,7 +273,7 @@ struct FamiliarRuntimePresentationTests {
         let conversation = FamiliarConversation(project: owner)
         context.insert(conversation)
         try context.save()
-        let snapshot = try FamiliarProjectContextAssembler.assemble(seed: .init(projectID: owner?.id, projectName: owner?.name,
+        let snapshot = try FamiliarContextCompiler.assemble(seed: .init(projectID: owner?.id, projectName: owner?.name,
             conversationID: conversation.id, projectInstruction: nil, resources: []), settings: .defaultValue, messages: [], toolManifests: [])
         FamiliarRunPersistenceRecorder().ensureRun(runtimeID: "run", snapshot: snapshot, startedAt: date, context: context)
         return (container, context, conversation)
