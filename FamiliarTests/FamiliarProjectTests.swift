@@ -161,7 +161,7 @@ struct FamiliarProjectTests {
 
         FamiliarRunPersistenceRecorder().ensureRun(
             runtimeID: "captured-run",
-            snapshot: try FamiliarProjectContextAssembler.assemble(
+            snapshot: try FamiliarContextCompiler.assemble(
                 seed: .init(projectID: project.id, projectName: project.name, conversationID: conversation.id, projectInstruction: nil, resources: []),
                 settings: .defaultValue,
                 messages: [],
@@ -196,22 +196,22 @@ struct FamiliarProjectTests {
 
     @Test("Deleting a project removes its artifact metadata and file")
     @MainActor
-    func projectDeletionRemovesArtifacts() throws {
+    func projectDeletionRemovesFiles() throws {
         let fileManager = FileManager.default
-        let root = fileManager.temporaryDirectory.appendingPathComponent("FamiliarArtifactDelete-\(UUID().uuidString)", isDirectory: true)
+        let root = fileManager.temporaryDirectory.appendingPathComponent("FamiliarFileDelete-\(UUID().uuidString)", isDirectory: true)
         try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? fileManager.removeItem(at: root) }
 
         let container = try FamiliarTestStore.make()
         let context = container.mainContext
-        let project = try FamiliarProjectService().create(name: "Artifact owner", in: context)
-        let store = FamiliarArtifactStore(rootURL: root)
-        let artifactID = UUID()
-        let stored = try store.write(Data("result".utf8), projectID: project.id, artifactID: artifactID, filename: "result.md")
-        context.insert(FamiliarArtifact(
-            id: artifactID,
+        let project = try FamiliarProjectService().create(name: "File owner", in: context)
+        let store = FamiliarFileStore(rootURL: root)
+        let fileID = UUID()
+        let stored = try store.write(Data("result".utf8), projectID: project.id, fileID: fileID, filename: "result.md")
+        context.insert(FamiliarStoredFileVersion(
+            id: fileID,
             projectID: project.id,
-            identifier: "artifact_fixture",
+            identifier: "file_fixture",
             title: "Result",
             relativePath: stored.path,
             byteSize: 6,
@@ -221,9 +221,9 @@ struct FamiliarProjectTests {
         try context.save()
 
         let resourceStore = FamiliarProjectResourceStore(rootURL: root.appendingPathComponent("Resources", isDirectory: true))
-        try FamiliarProjectService(resourceStore: resourceStore, artifactStore: store).permanentlyDelete(project, in: context)
+        try FamiliarProjectService(resourceStore: resourceStore, fileStore: store).permanentlyDelete(project, in: context)
 
-        #expect(try context.fetch(FetchDescriptor<FamiliarArtifact>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<FamiliarStoredFileVersion>()).isEmpty)
         #expect(!fileManager.fileExists(atPath: root.appendingPathComponent(stored.path).path))
     }
 

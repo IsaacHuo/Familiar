@@ -44,7 +44,7 @@ struct FamiliarCommitBoundaryTests {
     @Test("Local housekeeping runs only after authoritative persistence")
     func finalizeAfterSave() async throws {
         let probe = FamiliarCommitProbe()
-        let events = try await run(probe: probe, mode: .local, persist: { _, _ in await probe.record("persist") })
+        let events = try await run(probe: probe, mode: .local, persist: { _, _ in await probe.record("persist"); return .init() })
         #expect(await probe.trace() == ["write", "persist", "finalize"])
         #expect(events.contains { if case .toolResultProduced = $0.payload { true } else { false } })
     }
@@ -131,15 +131,15 @@ struct FamiliarCommitBoundaryTests {
         #expect(try context.fetch(FetchDescriptor<FamiliarProjectSkillBindingRecord>()).isEmpty)
     }
 
-    @Test("Failed Artifact persistence removes only the newly created bytes")
-    func artifactSaveFailureCompensates() async throws {
+    @Test("Failed File persistence removes only the newly created bytes")
+    func fileSaveFailureCompensates() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let store = FamiliarArtifactStore(rootURL: root)
+        let store = FamiliarFileStore(rootURL: root)
         let projectID = UUID()
-        let registry = try FamiliarToolRegistry(tools: [AnyFamiliarTool(FamiliarArtifactWriteTool(store: store))])
+        let registry = try FamiliarToolRegistry(tools: [AnyFamiliarTool(FamiliarFileWriteTool(store: store))])
         let coordinator = FamiliarToolConfirmationCoordinator()
-        let loop = FamiliarAgentLoop(provider: FamiliarCommitProvider(repeatCall: false, name: "artifact_write",
+        let loop = FamiliarAgentLoop(provider: FamiliarCommitProvider(repeatCall: false, name: "file_write",
             arguments: #"{"title":"Note","content":"New text","format":"plainText"}"#), registry: registry, policy: .init(),
             confirmationCoordinator: coordinator, undoStore: .init(), persistResult: { _, _ in throw FamiliarCommitFixtureError() })
         let snapshot = try familiarTestContextSnapshot(manifests: await registry.snapshot(), projectID: projectID)
@@ -151,31 +151,31 @@ struct FamiliarCommitBoundaryTests {
             }
         }
         #expect(failures(events) == ["tool_commit_rolled_back"])
-        let folder = root.appendingPathComponent("Projects/\(projectID.uuidString)/Artifacts")
+        let folder = root.appendingPathComponent("Projects/\(projectID.uuidString)/Files")
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).isEmpty)
     }
 
-    @Test("Artifact revisions and Undo preserve independent predecessor bytes and metadata")
+    @Test("File revisions and Undo preserve independent predecessor bytes and metadata")
     @MainActor
-    func artifactRevisionAndUndo() async throws {
+    func fileRevisionAndUndo() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let container = try FamiliarTestStore.make(name: "ArtifactRevisions")
+        let container = try FamiliarTestStore.make(name: "FileRevisions")
         let context = container.mainContext
-        let store = FamiliarArtifactStore(rootURL: root)
-        let service = FamiliarArtifactService(store: store)
+        let store = FamiliarFileStore(rootURL: root)
+        let service = FamiliarFileService(store: store)
         let projectID = UUID()
-        let firstOutcome = try await FamiliarArtifactWriteTool(store: store).execute(.init(title: "Original", content: "Original text", format: .plainText), context: .init(projectID: projectID))
-        guard case .action(let firstProposal) = firstOutcome else { Issue.record("Expected Artifact write"); return }
-        let first = try #require(try await firstProposal.commit().result.artifact)
+        let firstOutcome = try await FamiliarFileWriteTool(store: store).execute(.init(title: "Original", content: "Original text", format: .plainText), context: .init(projectID: projectID))
+        guard case .action(let firstProposal) = firstOutcome else { Issue.record("Expected File write"); return }
+        let first = try #require(try await firstProposal.commit().result.file)
         try service.persist(first, in: context)
-        let editOutcome = try await FamiliarArtifactEditTool(store: store).execute(.init(identifier: first.identifier, content: "Revised text", title: nil), context: .init(projectID: projectID))
-        guard case .action(let editProposal) = editOutcome else { Issue.record("Expected Artifact revision"); return }
+        let editOutcome = try await FamiliarFileEditTool(store: store).execute(.init(identifier: first.identifier, content: "Revised text", title: nil), context: .init(projectID: projectID))
+        guard case .action(let editProposal) = editOutcome else { Issue.record("Expected File revision"); return }
         let committed = try await editProposal.commit()
-        let second = try #require(committed.result.artifact)
+        let second = try #require(committed.result.file)
         try service.persist(second, in: context)
         #expect(try store.read(relativePath: first.relativePath) == Data("Original text".utf8))
-        let row = try #require(service.storedArtifact(id: second.id, in: context))
+        let row = try #require(service.storedFile(id: second.id, in: context))
         #expect(row.lineageID == first.id)
         #expect(row.version == 2)
         let undo = try #require(committed.undo)

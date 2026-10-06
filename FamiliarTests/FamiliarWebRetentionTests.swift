@@ -6,10 +6,26 @@ import Testing
 @Suite("Explicit web retention")
 @MainActor
 struct FamiliarWebRetentionTests {
+    @Test("Saving refreshed evidence from the same URL creates a separate File identity")
+    func refreshedCaptureIdentity() throws {
+        let fixture = try makeFetch(), root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let service = FamiliarFileImportService(store: .init(rootURL: root)), first = fixture.output.capture
+        let refreshed = FamiliarWebCapture(captureID: first.captureID, urlString: first.urlString,
+            accessedAt: first.accessedAt.addingTimeInterval(1), contentHash: first.contentHash, text: first.text,
+            truncated: first.truncated, sourceID: first.sourceID)
+        let context = fixture.container.mainContext
+        let saved = try service.importFetchedWebText(first, into: fixture.project, in: context)
+        let other = try service.importFetchedWebText(refreshed, into: fixture.project, in: context)
+        #expect(saved.id != other.id)
+        #expect(try context.fetchCount(FetchDescriptor<FamiliarFileRecord>()) == 2)
+        #expect(try context.fetchCount(FetchDescriptor<FamiliarResource>()) == 0)
+    }
+
     @Test("A fetched page remains replayable Run evidence without creating Project resources")
     func evidenceOnly() throws {
         let fixture = try makeFetch()
-        #expect(try fixture.container.mainContext.fetchCount(FetchDescriptor<FamiliarResource>()) == 0)
+        #expect(try fixture.container.mainContext.fetchCount(FetchDescriptor<FamiliarFileRecord>()) == 0)
         #expect(fixture.project.resources.isEmpty)
         let reopened = ModelContext(fixture.container)
         let result = try #require(reopened.fetch(FetchDescriptor<FamiliarToolResultRecord>()).first)
@@ -30,19 +46,19 @@ struct FamiliarWebRetentionTests {
         let root = temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let store = FamiliarProjectResourceStore(rootURL: root)
-        let resource = try FamiliarProjectResourceService(store: store).saveFetchedWebResult(
+        let resource = try FamiliarFileImportService(store: store).saveFetchedWebResult(
             runtimeID: fixture.runtimeID, toolCallID: "fetch", in: context)
         let version = try #require(resource.versions.first)
-        #expect(resource.project?.id == fixture.project.id)
-        #expect(other.resources.isEmpty)
+        #expect(resource.projectID == fixture.project.id)
+        #expect(try FamiliarFileCatalogService().snapshots(projectID: other.id, in: context).isEmpty)
         #expect(resource.displayName == fixture.output.title)
-        #expect(version.source == .fetchedWeb)
+        #expect(resource.originRawValue == FamiliarFileOrigin.webCapture.rawValue)
         #expect(version.sourceURLString == fixture.output.finalURL)
         #expect(version.createdAt == fixture.output.accessedAt)
         #expect(version.extractedText == fixture.output.capture.resourceText)
         #expect(version.extractedText.contains("Truncated: true"))
         #expect(version.extractedText.contains(fixture.output.contentHash))
-        let file = try #require(store.url(for: version.originalRelativePath))
+        let file = try #require(store.url(for: version.storageRelativePath))
         let bytes = try Data(contentsOf: file)
         #expect(bytes == Data(version.extractedText.utf8))
         #expect(FamiliarHash.sha256(bytes) == version.contentHash)
@@ -57,52 +73,52 @@ struct FamiliarWebRetentionTests {
         let fixture = try makeFetch()
         let root = temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
-        let service = FamiliarProjectResourceService(store: .init(rootURL: root))
+        let service = FamiliarFileImportService(store: .init(rootURL: root))
         let first = try service.saveFetchedWebResult(runtimeID: fixture.runtimeID, toolCallID: "fetch", in: fixture.container.mainContext)
         let reopened = ModelContext(fixture.container)
         let second = try service.saveFetchedWebResult(runtimeID: fixture.runtimeID, toolCallID: "fetch", in: reopened)
         #expect(first.id == second.id)
-        #expect(try reopened.fetchCount(FetchDescriptor<FamiliarResource>()) == 1)
-        #expect(try reopened.fetchCount(FetchDescriptor<FamiliarResourceVersion>()) == 1)
+        #expect(try reopened.fetchCount(FetchDescriptor<FamiliarFileRecord>()) == 1)
+        #expect(try reopened.fetchCount(FetchDescriptor<FamiliarFileVersionRecord>()) == 1)
     }
 
     @Test("Failed or cancelled fetches cannot be promoted even if a record contains a body", arguments: [FamiliarToolRunTerminalStatus.failed, .cancelled])
     func unsuccessfulFetch(status: FamiliarToolRunTerminalStatus) throws {
         let fixture = try makeFetch(status: status)
         let context = fixture.container.mainContext
-        #expect(throws: FamiliarProjectResourceServiceError.self) {
-            try FamiliarProjectResourceService().saveFetchedWebResult(runtimeID: fixture.runtimeID, toolCallID: "fetch", in: context)
+        #expect(throws: FamiliarFileImportError.self) {
+            try FamiliarFileImportService().saveFetchedWebResult(runtimeID: fixture.runtimeID, toolCallID: "fetch", in: context)
         }
-        #expect(try context.fetchCount(FetchDescriptor<FamiliarResource>()) == 0)
+        #expect(try context.fetchCount(FetchDescriptor<FamiliarFileRecord>()) == 0)
     }
 
     @Test("A non-web tool or an absent call cannot supply a captured page")
     func wrongToolOrCall() throws {
-        let fixture = try makeFetch(toolName: "resource_read")
-        let service = FamiliarProjectResourceService()
+        let fixture = try makeFetch(toolName: "file_read")
+        let service = FamiliarFileImportService()
         let context = fixture.container.mainContext
         for call in ["fetch", "missing"] {
-            #expect(throws: FamiliarProjectResourceServiceError.self) {
+            #expect(throws: FamiliarFileImportError.self) {
                 try service.saveFetchedWebResult(runtimeID: fixture.runtimeID, toolCallID: call, in: context)
             }
         }
-        #expect(try context.fetchCount(FetchDescriptor<FamiliarResource>()) == 0)
+        #expect(try context.fetchCount(FetchDescriptor<FamiliarFileRecord>()) == 0)
     }
 
     @Test("Hash damage and missing Project ownership reject saving without creating resources")
     func invalidCaptureAndOwnership() throws {
         let fixture = try makeFetch(contentHash: "damaged")
         let context = fixture.container.mainContext
-        let service = FamiliarProjectResourceService()
-        #expect(throws: FamiliarProjectResourceServiceError.self) {
+        let service = FamiliarFileImportService()
+        #expect(throws: FamiliarFileImportError.self) {
             try service.saveFetchedWebResult(runtimeID: fixture.runtimeID, toolCallID: "fetch", in: context)
         }
         fixture.conversation.project = nil
         try context.save()
-        #expect(throws: FamiliarProjectResourceServiceError.self) {
+        #expect(throws: FamiliarFileImportError.self) {
             try service.saveFetchedWebResult(runtimeID: fixture.runtimeID, toolCallID: "fetch", in: context)
         }
-        #expect(try context.fetchCount(FetchDescriptor<FamiliarResource>()) == 0)
+        #expect(try context.fetchCount(FetchDescriptor<FamiliarFileRecord>()) == 0)
     }
 
     @Test("File creation failure leaves Project metadata and resources unchanged")
@@ -113,13 +129,13 @@ struct FamiliarWebRetentionTests {
         let root = temporaryRoot()
         try Data("Blocks the resource directory".utf8).write(to: root)
         defer { try? FileManager.default.removeItem(at: root) }
-        let service = FamiliarProjectResourceService(store: .init(rootURL: root))
+        let service = FamiliarFileImportService(store: .init(rootURL: root))
         #expect(throws: (any Error).self) {
             try service.saveFetchedWebResult(runtimeID: fixture.runtimeID, toolCallID: "fetch", in: context)
         }
         #expect(fixture.project.updatedAt == previousUpdate)
-        #expect(try context.fetchCount(FetchDescriptor<FamiliarResource>()) == 0)
-        #expect(try context.fetchCount(FetchDescriptor<FamiliarResourceVersion>()) == 0)
+        #expect(try context.fetchCount(FetchDescriptor<FamiliarFileRecord>()) == 0)
+        #expect(try context.fetchCount(FetchDescriptor<FamiliarFileVersionRecord>()) == 0)
     }
 
     @Test("A duplicate save never reports success for a missing or damaged saved file")
@@ -128,11 +144,11 @@ struct FamiliarWebRetentionTests {
         let root = temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let store = FamiliarProjectResourceStore(rootURL: root)
-        let service = FamiliarProjectResourceService(store: store)
+        let service = FamiliarFileImportService(store: store)
         let context = fixture.container.mainContext
         let resource = try service.saveFetchedWebResult(runtimeID: fixture.runtimeID, toolCallID: "fetch", in: context)
         let version = try #require(resource.versions.first)
-        let file = try #require(store.url(for: version.originalRelativePath))
+        let file = try #require(store.url(for: version.storageRelativePath))
         try Data("Changed bytes".utf8).write(to: file)
         #expect(throws: FamiliarProjectResourceStoreError.self) {
             try service.saveFetchedWebResult(runtimeID: fixture.runtimeID, toolCallID: "fetch", in: context)
@@ -141,7 +157,7 @@ struct FamiliarWebRetentionTests {
         #expect(throws: FamiliarProjectResourceStoreError.self) {
             try service.saveFetchedWebResult(runtimeID: fixture.runtimeID, toolCallID: "fetch", in: context)
         }
-        #expect(try context.fetchCount(FetchDescriptor<FamiliarResource>()) == 1)
+        #expect(try context.fetchCount(FetchDescriptor<FamiliarFileRecord>()) == 1)
     }
 
     private func temporaryRoot() -> URL {
@@ -159,7 +175,7 @@ struct FamiliarWebRetentionTests {
         context.insert(conversation)
         try context.save()
         let runtimeID = UUID().uuidString
-        let snapshot = try FamiliarProjectContextAssembler.assemble(seed: .init(projectID: project.id,
+        let snapshot = try FamiliarContextCompiler.assemble(seed: .init(projectID: project.id,
             projectName: project.name, conversationID: conversation.id, projectInstruction: nil, resources: []),
             settings: .defaultValue, messages: [], toolManifests: [])
         let recorder = FamiliarRunPersistenceRecorder()
@@ -171,13 +187,13 @@ struct FamiliarWebRetentionTests {
         let turnID = runtimeID + ":turn:0"
         let completion = FamiliarRuntimeActivityCompletion(runID: runtimeID, toolCallID: "fetch", toolName: toolName,
             effect: .read, assistantTurnID: turnID, detail: "Fetched", confirmation: .notRequired, status: status,
-            startedAt: Date(timeIntervalSince1970: 5), finishedAt: Date(timeIntervalSince1970: 11), artifactIdentifier: nil,
+            startedAt: Date(timeIntervalSince1970: 5), finishedAt: Date(timeIntervalSince1970: 11), fileIdentifier: nil,
             undoAvailable: false, automaticApprovalRequest: nil)
         try recorder.recordActivityCompleted(completion, eventSequence: 3, conversationID: conversation.id, context: context)
         let envelope = try FamiliarToolResultEnvelope(model: output, presentation: .document(.init(summary: "Fetched",
             title: output.title, text: output.text, mimeType: output.mimeType, url: output.finalURL, truncated: output.truncated)))
         let event = FamiliarToolResultProduced(runID: runtimeID, toolCallID: "fetch", toolName: toolName, effect: .read,
-            assistantTurnID: turnID, envelope: envelope, sources: [], artifact: nil, producedAt: Date(timeIntervalSince1970: 11))
+            assistantTurnID: turnID, envelope: envelope, sources: [], file: nil, producedAt: Date(timeIntervalSince1970: 11))
         #expect(try recorder.recordToolResult(event, eventSequence: 4, conversationID: conversation.id, context: context))
         return (container, project, conversation, runtimeID, output)
     }

@@ -28,12 +28,12 @@ struct FamiliarDesignSystemTests {
 
     @Test("File approval exposes a readable filename while exact authorization keeps its identity")
     func readableApprovalTarget() async throws {
-        let result = try await FamiliarArtifactWriteTool(store: .init()).execute(
+        let result = try await FamiliarFileWriteTool(store: .init()).execute(
             .init(title: "Research", content: "# Report", format: .markdown),
             context: .init(runID: "approval", toolCallID: "file", projectID: UUID()))
         guard case .action(let proposal) = result else { Issue.record("Expected file approval"); return }
         #expect(proposal.target == "Research.md")
-        #expect(proposal.targetKey.hasPrefix("artifact_"))
+        #expect(proposal.targetKey.hasPrefix("file_"))
         #expect(proposal.target != proposal.targetKey)
         #expect(proposal.fields.map(\.id) == ["title", "size"])
         #expect(proposal.allowedAuthorizationDurations.first == .once)

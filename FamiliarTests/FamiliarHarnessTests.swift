@@ -34,21 +34,21 @@ struct FamiliarHarnessTests {
         })
     }
 
-    @Test("Text Artifact write needs approval but no prior plan")
-    func artifactWriteWithoutPlan() async throws {
+    @Test("Text File write needs approval but no prior plan")
+    func fileWriteWithoutPlan() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let store = FamiliarArtifactStore(rootURL: root)
-        let registry = try FamiliarToolRegistry(tools: [AnyFamiliarTool(FamiliarArtifactWriteTool(store: store))])
+        let store = FamiliarFileStore(rootURL: root)
+        let registry = try FamiliarToolRegistry(tools: [AnyFamiliarTool(FamiliarFileWriteTool(store: store))])
         let probe = FamiliarHarnessProbe()
-        let events = try await run(provider: .init(probe: probe, mode: .artifact), registry: registry, projectID: UUID())
+        let events = try await run(provider: .init(probe: probe, mode: .file), registry: registry, projectID: UUID())
         #expect(await probe.count() == 2)
         #expect(outcomes(events) == [.succeeded])
-        let artifact = try #require(events.compactMap { event -> FamiliarArtifactDescriptor? in
-            if case .toolResultProduced(let result) = event.payload { return result.artifact }
+        let file = try #require(events.compactMap { event -> FamiliarFileDescriptor? in
+            if case .toolResultProduced(let result) = event.payload { return result.file }
             return nil
         }.first)
-        #expect(String(decoding: try store.read(relativePath: artifact.relativePath), as: UTF8.self) == "Verified text")
+        #expect(String(decoding: try store.read(relativePath: file.relativePath), as: UTF8.self) == "Verified text")
         #expect(events.contains { if case .approvalRequested = $0.payload { true } else { false } })
     }
 
@@ -58,6 +58,7 @@ struct FamiliarHarnessTests {
         let probe = FamiliarHarnessProbe()
         let events = try await run(provider: .init(probe: probe, mode: .memory), registry: registry, projectID: nil, persistResult: { result, _ in
             if result.memoryWrite != nil { throw FamiliarHarnessCommitFailure() }
+            return .init()
         })
         #expect(!events.contains { if case .toolResultProduced = $0.payload { true } else { false } })
         #expect(events.contains { event in
@@ -80,6 +81,7 @@ struct FamiliarHarnessTests {
         let loop = FamiliarAgentLoop(provider: FamiliarHarnessProvider(probe: .init(), mode: .memory), registry: registry,
             policy: .init(), confirmationCoordinator: coordinator, undoStore: .init(), persistResult: { @MainActor result, _ in
                 if let memory = result.memoryWrite { try FamiliarMemoryService().persist(memory, in: context) }
+                return .init()
             })
         let snapshot = try familiarTestContextSnapshot(manifests: await registry.manifests())
         var receivedMemory = false
@@ -160,7 +162,7 @@ private nonisolated struct FamiliarHarnessCommitFailure: LocalizedError, Familia
 }
 
 private struct FamiliarHarnessProvider: FamiliarModelProvider {
-    enum Mode: Sendable { case direct, checklist, artifact, memory }
+    enum Mode: Sendable { case direct, checklist, file, memory }
     let providerID = "harness-fixture"
     let probe: FamiliarHarnessProbe
     let mode: Mode
@@ -172,8 +174,8 @@ private struct FamiliarHarnessProvider: FamiliarModelProvider {
                 if firstRequest, mode == .checklist {
                     continuation.yield(.toolCallDelta(index: 0, id: "plan", name: "task_plan", arguments: #"{"planID":"plan","title":"Optional checklist","tasks":[{"id":"step","title":"Consider options","status":"pending"}]}"#))
                     continuation.yield(.completed(.toolCalls))
-                } else if firstRequest, mode == .artifact {
-                    continuation.yield(.toolCallDelta(index: 0, id: "write", name: "artifact_write", arguments: #"{"title":"Note","content":"Verified text","format":"plainText"}"#))
+                } else if firstRequest, mode == .file {
+                    continuation.yield(.toolCallDelta(index: 0, id: "write", name: "file_write", arguments: #"{"title":"Note","content":"Verified text","format":"plainText"}"#))
                     continuation.yield(.completed(.toolCalls))
                 } else if firstRequest, mode == .memory {
                     continuation.yield(.toolCallDelta(index: 0, id: "remember", name: "memory_remember", arguments: #"{"content":"I prefer concise answers","scope":"global"}"#))
