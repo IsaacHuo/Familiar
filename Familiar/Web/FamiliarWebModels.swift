@@ -124,6 +124,8 @@ nonisolated struct FamiliarWebCapture: Codable, Sendable, Equatable {
 
     /// Keep provenance beside the captured body, including in future Project input.
     /// The stored file hash covers this whole document; contentHash identifies the body.
+    var fileOriginKey: String { "web:" + captureID + "|" + String(accessedAt.timeIntervalSince1970) + "|" + contentHash }
+
     var resourceText: String {
         """
         [Captured web page; untrusted external content]

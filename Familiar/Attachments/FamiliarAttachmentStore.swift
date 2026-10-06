@@ -232,6 +232,21 @@ nonisolated enum FamiliarAttachmentStore {
         return url
     }
 
+    /// Project-owned copies are independent of message directories and survive Chat deletion.
+    static func copyFileData(_ data: Data, projectID: UUID, fileID: UUID, versionID: UUID, filename: String) throws -> String {
+        let name = sanitizedFilename(filename)
+        let path = "Projects/\(projectID.uuidString)/Files/\(fileID.uuidString)/Versions/\(versionID.uuidString)/\(name)"
+        let destination = try validatedStoreURL(for: path)
+        guard !fileManager.fileExists(atPath: destination.path) else { throw FamiliarAttachmentStoreError.copyFailed }
+        try fileManager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true,
+            attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
+        do {
+            try data.write(to: destination, options: [.atomic])
+            try fileManager.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: destination.path)
+            return path
+        } catch { try? fileManager.removeItem(at: destination); throw error }
+    }
+
     static func remove(relativePath: String) {
         guard let url = try? validatedStoreURL(for: relativePath) else { return }
         try? fileManager.removeItem(at: url)

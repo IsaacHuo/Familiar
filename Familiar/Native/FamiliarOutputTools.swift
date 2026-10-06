@@ -222,7 +222,7 @@ nonisolated struct FamiliarPhotosSaveOutputTool: FamiliarTool {
                             undoAvailable: false
                         ))
                     ),
-                    artifactIdentifier: identifier
+                    fileIdentifier: identifier
                 ))
             }
         ))

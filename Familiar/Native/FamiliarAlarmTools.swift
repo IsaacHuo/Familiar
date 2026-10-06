@@ -283,7 +283,7 @@ nonisolated struct FamiliarAlarmScheduleTool: FamiliarTool {
                             ))
                         ),
                         // Carries the alarm identity to the durable undo recorder.
-                        artifactIdentifier: scheduled.id,
+                        fileIdentifier: scheduled.id,
                         durableUndo: .alarm(scheduled.id)
                     ),
                     undo: {

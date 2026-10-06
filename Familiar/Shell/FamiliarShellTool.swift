@@ -362,22 +362,41 @@ nonisolated struct FamiliarShellTool: FamiliarTool {
                 diff: diff,
                 checkpointID: checkpoint.id
             )
-            return FamiliarCommittedAction(result: result) {
+            guard let projectID = context.projectID else { throw FamiliarFileError.projectRequired }
+            let managed = FamiliarManagedFileStore()
+            var captured: [FamiliarProducedFile] = []
+            do {
+                for path in Set(diff.added + diff.modified).sorted() where path.hasPrefix("Outputs/") {
+                    let data = try workspaceStore.read(relativePath: path, in: workspaceID)
+                    captured.append(try managed.capture(data, filename: URL(fileURLWithPath: path).lastPathComponent,
+                        projectID: projectID, originKey: workspaceID.directoryName + "/" + path,
+                        runID: context.runID, toolCallID: context.toolCallID))
+                }
+            } catch {
+                for file in captured { try? managed.remove(file) }
+                throw error
+            }
+            let files = captured
+            let savedResult = FamiliarToolExecutionResult(envelope: result.envelope, producedFiles: files)
+            return FamiliarCommittedAction(result: savedResult, undo: {
                 try workspaceStore.restore(checkpoint)
+                for file in files { try managed.remove(file) }
                 try? workspaceStore.removeCheckpoint(checkpoint)
                 return FamiliarToolExecutionResult(
                     envelope: try FamiliarToolResultEnvelope(
                         model: UndoOutput(restored: true, checkpointID: checkpoint.id),
                         presentation: .mutationReceipt(.init(
-                            summary: "已恢复 Shell 执行前的 Workspace Outputs checkpoint。",
-                            operation: "restoreShellOutputsCheckpoint",
-                            targetIdentifier: checkpoint.id.uuidString,
-                            succeeded: true,
-                            undoAvailable: false
+                            summary: "已恢复 Shell 执行前的 Outputs。",
+                            operation: "restoreShellOutputsCheckpoint", targetIdentifier: checkpoint.id.uuidString,
+                            succeeded: true, undoAvailable: false
                         ))
                     )
                 )
-            }
+            }, rollback: {
+                try workspaceStore.restore(checkpoint)
+                for file in files { try managed.remove(file) }
+                try? workspaceStore.removeCheckpoint(checkpoint)
+            })
         } catch {
             try? workspaceStore.restore(checkpoint)
             try? workspaceStore.removeCheckpoint(checkpoint)
