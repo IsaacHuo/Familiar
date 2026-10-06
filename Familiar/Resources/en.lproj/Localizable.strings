@@ -195,7 +195,7 @@
 "conversation.ordinary" = "Daily Chat";
 "run.context.model" = "Model";
 "run.context.project" = "Project";
-"run.context.resource" = "Resource Used";
+"run.context.resource" = "File Used";
 "run.context.skill" = "Skill Used";
 
 "project.projects" = "Projects";
@@ -245,8 +245,8 @@
 "project.run.authorization.risk" = "Risk";
 "project.run.authorization.scope" = "Scope";
 "project.run.authorization.allowed" = "Allowed choices";
-"project.run.resources" = "Resources Used";
-"project.run.resources.empty" = "No project resources were used.";
+"project.run.resources" = "Files Used";
+"project.run.resources.empty" = "No Project files were used.";
 "project.run.skills" = "Skills Used";
 "project.run.skills.empty" = "No Skills were used.";
 "project.run.tools" = "Available Tools";
@@ -639,9 +639,9 @@
 "tool.workspace_search" = "Search workspace files";
 "tool.workspace_write" = "Write workspace output";
 "tool.workspace_image_list" = "List workspace images";
-"tool.resource_list" = "List project resources";
+"tool.resource_list" = "List files";
 "tool.resource_read" = "Read project resource";
-"tool.resource_search" = "Search project resources";
+"tool.resource_search" = "Search files";
 
 /* Native tools and Shell Runtime */
 "tool.calendar_update" = "Update calendar event";
@@ -783,8 +783,8 @@
 "shell.network.enabled" = "Public Internet On";
 "shell.output.truncated" = "Output was truncated at the safety limit.";
 "shell.diff.summary" = "%lld added · %lld modified · %lld removed";
-"tool.artifact_write" = "Save output";
-"tool.artifact_edit" = "Revise output";
+"tool.file_write" = "Save file";
+"tool.file_edit" = "Revise file";
 "search.more" = "+%lld more";
 "run.context.reply_time" = "Reply time";
 "run.context.first_token" = "First token";
@@ -807,7 +807,7 @@
 "tool.environment_prepare" = "Prepare Project Environment";
 "tool.skill_list" = "List Project Skills";
 "tool.skill_read" = "Load Project Skill";
-"tool.artifact_publish" = "Save generated file";
+"tool.file_publish" = "Save generated file";
 "settings.shell.retry" = "Retry Runtime Preparation";
 "settings.python_source.title" = "Python Package Source";
 "settings.python_source.picker" = "Package Source";
@@ -964,7 +964,7 @@
 
 "tool.memory_remember" = "Remember a Preference or Fact";
 
-"tool.artifact_read" = "Read output";
+"tool.file_read" = "Read file";
 
 "capability.read" = "Reads data within the authorized scope";
 
@@ -1015,7 +1015,7 @@
 "tool.commit.rollback_failed" = "Saving failed and local recovery also failed. Inspect the existing result before continuing. Save: %1$@ Recovery: %2$@";
 "tool.commit.unconfirmed" = "The action may already have happened, but its result could not be confirmed or saved. Do not repeat it blindly. Details: %@";
 "tool.commit.retry_blocked" = "This conversation has a committed or uncertain action. Review its results first, then send a new message to continue. Regenerating would erase the receipt and might repeat the action.";
-"artifact.revision.consequence" = "Save a new version and keep the previous file.";
+"file.revision.consequence" = "Save a new version and keep the previous file.";
 "tool.undo.unconfirmed" = "Undo has started but its result is not confirmed. Inspect the system state before repeating it.";
 "error.draft.changed_during_preparation" = "The draft changed while preparing. Review it and send again.";
 "resource.error.invalid_web_capture" = "This captured page is unavailable or could not be verified.";
@@ -1088,3 +1088,11 @@
 "runtime.ui.skipped" = "Skipped";
 "runtime.ui.skipped_count" = "Skipped %lld operations";
 "runtime.ui.unconfirmed_write" = "The result of this operation is unconfirmed. Check the completed actions before trying again to avoid duplicate execution.";
+
+"file.project_context" = "Use as Project context";
+
+"file.empty" = "No files yet";
+
+"file.delete.title" = "Delete this file?";
+
+"file.delete.detail" = "Delete the file and all its versions from this Project. Chat history and action records remain.";

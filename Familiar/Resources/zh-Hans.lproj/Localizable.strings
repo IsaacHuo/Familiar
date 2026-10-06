@@ -195,7 +195,7 @@
 "conversation.ordinary" = "日常对话";
 "run.context.model" = "模型";
 "run.context.project" = "项目";
-"run.context.resource" = "使用的资料";
+"run.context.resource" = "使用的文件";
 "run.context.skill" = "使用的技能";
 
 "project.projects" = "项目";
@@ -245,8 +245,8 @@
 "project.run.authorization.risk" = "风险";
 "project.run.authorization.scope" = "授权范围";
 "project.run.authorization.allowed" = "可选范围";
-"project.run.resources" = "使用的资料";
-"project.run.resources.empty" = "本次运行没有使用项目资料。";
+"project.run.resources" = "使用的文件";
+"project.run.resources.empty" = "本次运行没有使用 Project 文件。";
 "project.run.skills" = "使用的技能";
 "project.run.skills.empty" = "本次运行没有使用 技能。";
 "project.run.tools" = "可用工具";
@@ -639,9 +639,9 @@
 "tool.workspace_search" = "搜索工作区文件";
 "tool.workspace_write" = "写入工作区输出";
 "tool.workspace_image_list" = "列出工作区图片";
-"tool.resource_list" = "列出项目资料";
+"tool.resource_list" = "列出文件";
 "tool.resource_read" = "读取项目资料";
-"tool.resource_search" = "搜索项目资料";
+"tool.resource_search" = "搜索文件";
 
 /* 原生工具与 Shell Runtime */
 "tool.calendar_update" = "修改日历事件";
@@ -783,8 +783,8 @@
 "shell.network.enabled" = "公共互联网已开启";
 "shell.output.truncated" = "输出已在安全上限处截断。";
 "shell.diff.summary" = "新增 %lld · 修改 %lld · 删除 %lld";
-"tool.artifact_write" = "保存输出";
-"tool.artifact_edit" = "修订输出";
+"tool.file_write" = "保存文件";
+"tool.file_edit" = "修订文件";
 "search.more" = "还有 %lld 条";
 "run.context.reply_time" = "回复时长";
 "run.context.first_token" = "首 token";
@@ -807,7 +807,7 @@
 "tool.environment_prepare" = "准备 项目 Environment";
 "tool.skill_list" = "列出 项目 技能";
 "tool.skill_read" = "加载 项目 技能";
-"tool.artifact_publish" = "保存生成文件";
+"tool.file_publish" = "保存生成文件";
 "settings.shell.retry" = "重试 运行环境 准备";
 "settings.python_source.title" = "Python 软件源";
 "settings.python_source.picker" = "软件源";
@@ -964,7 +964,7 @@
 
 "tool.memory_remember" = "记住偏好或事实";
 
-"tool.artifact_read" = "读取输出";
+"tool.file_read" = "读取文件";
 
 "capability.read" = "读取已授权范围内的数据";
 
@@ -1015,7 +1015,7 @@
 "tool.commit.rollback_failed" = "保存失败，本地恢复也未完成。请检查已有结果后再继续。保存：%1$@；恢复：%2$@";
 "tool.commit.unconfirmed" = "操作可能已经发生，但结果未能确认或保存。请先检查已有结果，避免重复执行。详情：%@";
 "tool.commit.retry_blocked" = "这段对话包含已提交或结果待确认的操作。请先检查已有结果，再发送新消息继续。重新生成会删除记录，并可能重复执行操作。";
-"artifact.revision.consequence" = "保存一个新版本，并保留之前的文件。";
+"file.revision.consequence" = "保存一个新版本，并保留之前的文件。";
 "tool.undo.unconfirmed" = "撤销已开始，但结果尚未确认。请先检查系统中的实际状态，避免重复撤销。";
 "error.draft.changed_during_preparation" = "准备发送时草稿发生了变化，请检查后重新发送。";
 "resource.error.invalid_web_capture" = "这份网页内容不可用或无法通过校验。";
@@ -1088,3 +1088,11 @@
 "runtime.ui.skipped" = "已跳过";
 "runtime.ui.skipped_count" = "已跳过 %lld 项操作";
 "runtime.ui.unconfirmed_write" = "这项操作的结果尚未确认。请先核对已完成的操作，避免重复执行。";
+
+"file.project_context" = "用于项目上下文";
+
+"file.empty" = "暂无文件";
+
+"file.delete.title" = "删除这个文件？";
+
+"file.delete.detail" = "从项目中删除此文件及其所有版本。聊天历史与操作记录会保留。";
