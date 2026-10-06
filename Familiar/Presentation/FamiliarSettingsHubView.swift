@@ -1027,7 +1027,7 @@ private struct FamiliarMemorySettingsView: View {
                         .frame(minHeight: 140)
                         .accessibilityLabel(String(localized: "settings.memory.editor", defaultValue: "Memory text"))
                 } footer: {
-                    Text(String(format: String(localized: "settings.memory.editor.footer", defaultValue: "Up to %@ characters. Secrets, passwords and keys are refused."), NSNumber(value: FamiliarMemoryService.maximumContentLength)))
+                    Text(String(format: String(localized: "settings.memory.editor.footer", defaultValue: "Up to %@ characters. Secrets, passwords and keys are refused."), NSNumber(value: FamiliarMemoryPolicy.maximumContentLength)))
                 }
             }
             .navigationTitle(String(localized: "settings.memory.edit", defaultValue: "Edit Memory"))
@@ -1047,13 +1047,13 @@ private struct FamiliarMemorySettingsView: View {
 
     private func save(_ item: FamiliarMemoryItem) {
         let trimmed = editedContent.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed.count <= FamiliarMemoryService.maximumContentLength else {
+        guard !trimmed.isEmpty, trimmed.count <= FamiliarMemoryPolicy.maximumContentLength else {
             errorMessage = FamiliarMemoryError.invalidContent.localizedDescription
             return
         }
         // The same rule as the tool and persistence boundaries: an edited memory must not
         // become a way to store a secret by hand.
-        guard !FamiliarMemoryService.looksSensitive(trimmed) else {
+        guard !FamiliarMemoryPolicy.looksSensitive(trimmed) else {
             errorMessage = FamiliarMemoryError.sensitiveContent.localizedDescription
             return
         }

@@ -15,7 +15,7 @@ nonisolated enum FamiliarRuntimeStageKind: Equatable, Sendable {
         case "web_search": .search
         case "web_fetch": .sources
         case "resource_list", "resource_read", "resource_search", "workspace_list", "workspace_read",
-             "workspace_search", "artifact_read", "workspace_image_list", "vision_recognition": .files
+             "workspace_search", "file_read", "workspace_image_list", "vision_recognition": .files
         case "shell_execute", "environment_prepare", "workspace_write": .execution
         case "natural_language_analyze": .analysis
         case "tools_load", "current_date_time": .preparation
@@ -294,7 +294,7 @@ nonisolated enum FamiliarAssistantResponseProjection {
         if surface.effect != nil && surface.effect != .read,
            surface.toolName != "shell_execute", surface.toolName != "environment_prepare" { return true }
         return switch surface.kind {
-        case .approval, .clarification, .artifact, .mutationReceipt, .taskList, .recommendation, .insight, .code, .share, .diff: true
+        case .approval, .clarification, .file, .mutationReceipt, .taskList, .recommendation, .insight, .code, .share, .diff: true
         case .failure: surface.effect != .read
         default: false
         }

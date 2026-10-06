@@ -5,9 +5,9 @@ import WebKit
 struct FamiliarAttachmentPreviewView: View {
     @Environment(\.dismiss) private var dismiss
     let url: URL
-    let format: FamiliarArtifactFormat?
+    let format: FamiliarFileFormat?
 
-    init(url: URL, format: FamiliarArtifactFormat? = nil) {
+    init(url: URL, format: FamiliarFileFormat? = nil) {
         self.url = url
         self.format = format
     }

@@ -10,7 +10,7 @@ nonisolated enum FamiliarSurfaceKind: String, Sendable, Equatable {
     case records
     case diff
     case mutationReceipt
-    case artifact
+    case file
     case taskList
     case recommendation
     case insight
@@ -77,7 +77,7 @@ nonisolated struct FamiliarSurfaceDescriptor: Identifiable, Sendable, Equatable 
     var clarificationAllowsCustom: Bool
     var clarificationResolution: FamiliarClarificationResolution?
     var resultEnvelope: FamiliarToolResultEnvelope?
-    var artifact: FamiliarArtifactDescriptor?
+    var file: FamiliarFileDescriptor?
     var context: FamiliarRunContextSummary?
     var startedAt: Date?
     var finishedAt: Date?
@@ -114,7 +114,7 @@ nonisolated struct FamiliarSurfaceDescriptor: Identifiable, Sendable, Equatable 
         clarificationAllowsCustom: Bool = false,
         clarificationResolution: FamiliarClarificationResolution? = nil,
         resultEnvelope: FamiliarToolResultEnvelope? = nil,
-        artifact: FamiliarArtifactDescriptor? = nil,
+        file: FamiliarFileDescriptor? = nil,
         context: FamiliarRunContextSummary? = nil,
         startedAt: Date? = nil,
         finishedAt: Date? = nil
@@ -150,7 +150,7 @@ nonisolated struct FamiliarSurfaceDescriptor: Identifiable, Sendable, Equatable 
         self.clarificationAllowsCustom = clarificationAllowsCustom
         self.clarificationResolution = clarificationResolution
         self.resultEnvelope = resultEnvelope
-        self.artifact = artifact
+        self.file = file
         self.context = context
         self.startedAt = startedAt
         self.finishedAt = finishedAt
@@ -300,14 +300,14 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             if activity.effect == .read {
                 if let result, let envelope = result.envelope {
                     let placement: FamiliarSurfacePlacement = isTopLevelPresentation(envelope.presentation.name) ? .topLevel : .trace
-                    upsert(applyingApproval(approvalsByActivity[activity.activityID], to: resultDescriptor(activity: activity, envelope: envelope, placement: placement, artifact: result.artifact)))
+                    upsert(applyingApproval(approvalsByActivity[activity.activityID], to: resultDescriptor(activity: activity, envelope: envelope, placement: placement, file: result.file)))
                 } else {
                     upsert(applyingApproval(approvalsByActivity[activity.activityID], to: toolDescriptor(activity: activity)))
                 }
             } else if phase == .failed || phase == .cancelled {
                 upsert(applyingApproval(approvalsByActivity[activity.activityID], to: failureDescriptor(activity: activity, phase: phase)))
             } else if let result, let envelope = result.envelope {
-                upsert(applyingApproval(approvalsByActivity[activity.activityID], to: resultDescriptor(activity: activity, envelope: envelope, placement: .topLevel, artifact: result.artifact)))
+                upsert(applyingApproval(approvalsByActivity[activity.activityID], to: resultDescriptor(activity: activity, envelope: envelope, placement: .topLevel, file: result.file)))
             } else {
                 upsert(applyingApproval(approvalsByActivity[activity.activityID], to: toolDescriptor(activity: activity)))
             }
@@ -470,7 +470,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         ensureTrace(runID: event.runID, assistantTurnID: event.assistantTurnID, context: nil, startedAt: event.producedAt)
         let activity = FamiliarActivitySnapshot(activityID: toolID(event.runID, event.toolCallID), parentID: traceID(event.runID), assistantTurnID: event.assistantTurnID, kind: .tool, effect: event.effect, phase: .succeeded, toolName: event.toolName, toolCallID: event.toolCallID, summary: event.toolName, detail: nil, progress: 1, resultRecordID: nil, approvalRecordID: nil, sequence: descriptors[toolID(event.runID, event.toolCallID)]?.sequence ?? eventSequence, startedAt: descriptors[toolID(event.runID, event.toolCallID)]?.startedAt ?? event.producedAt, endedAt: event.producedAt)
         let placement: FamiliarSurfacePlacement = event.effect == .read && !isTopLevelPresentation(event.envelope.presentation.name) ? .trace : .topLevel
-        let result = resultDescriptor(activity: activity, envelope: event.envelope, placement: placement, artifact: event.artifact)
+        let result = resultDescriptor(activity: activity, envelope: event.envelope, placement: placement, file: event.file)
         if result.id != activity.activityID {
             descriptors.removeValue(forKey: activity.activityID)
         }
@@ -691,14 +691,14 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         )
     }
 
-    private func resultDescriptor(activity: FamiliarActivitySnapshot, envelope: FamiliarToolResultEnvelope, placement: FamiliarSurfacePlacement, artifact: FamiliarArtifactDescriptor?) -> FamiliarSurfaceDescriptor {
+    private func resultDescriptor(activity: FamiliarActivitySnapshot, envelope: FamiliarToolResultEnvelope, placement: FamiliarSurfacePlacement, file: FamiliarFileDescriptor?) -> FamiliarSurfaceDescriptor {
         let isFileExport = activity.toolName == "prepare_file_export"
         return .init(
             id: resultSurfaceID(activity: activity, envelope: envelope),
             runID: runtimeID(from: activity.activityID),
             sequence: activity.sequence,
             assistantTurnID: activity.assistantTurnID,
-            kind: isFileExport ? .share : surfaceKind(envelope.presentation.name, hasArtifact: artifact != nil),
+            kind: isFileExport ? .share : surfaceKind(envelope.presentation.name, hasFile: file != nil),
             placement: isFileExport ? .topLevel : placement,
             phase: surfacePhase(activity.phase),
             title: FamiliarToolPresentationName.summary(for: activity.toolName, envelope: envelope),
@@ -710,7 +710,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
             toolName: activity.toolName,
             effect: activity.effect,
             resultEnvelope: envelope,
-            artifact: artifact,
+            file: file,
             startedAt: activity.startedAt,
             finishedAt: activity.endedAt
         )
@@ -739,15 +739,15 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         )
     }
 
-    private func surfaceKind(_ name: FamiliarToolPresentationPayload.Name, hasArtifact: Bool) -> FamiliarSurfaceKind {
-        if hasArtifact { return .artifact }
+    private func surfaceKind(_ name: FamiliarToolPresentationPayload.Name, hasFile: Bool) -> FamiliarSurfaceKind {
+        if hasFile { return .file }
         return switch name {
         case .searchResults: .search
         case .contextMatches, .document, .scalar: .context
         case .recordCollection: .records
         case .mutationReceipt: .mutationReceipt
         case .diff: .diff
-        case .artifactMutation: .artifact
+        case .fileMutation: .file
         case .taskList: .taskList
         case .recommendation: .recommendation
         case .insight: .insight
@@ -760,7 +760,7 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
     private func isTopLevelPresentation(_ name: FamiliarToolPresentationPayload.Name) -> Bool {
         switch name {
         case .contextMatches, .recordCollection, .diff, .taskList, .recommendation, .insight, .code, .shareDraft, .shellExecution: true
-        case .scalar, .searchResults, .document, .mutationReceipt, .artifactMutation: false
+        case .scalar, .searchResults, .document, .mutationReceipt, .fileMutation: false
         }
     }
 
@@ -895,20 +895,19 @@ nonisolated enum FamiliarToolPresentationName {
         case "skill_install": String(localized: "tool.skill_install")
         case "memory_search": String(localized: "tool.memory_search")
         case "memory_remember": String(localized: "tool.memory_remember")
-        case "artifact_read": String(localized: "tool.artifact_read")
+        case "file_read": String(localized: "tool.file_read")
         case "skill_list": String(localized: "tool.skill_list", defaultValue: "List Project Skills")
         case "skill_read": String(localized: "tool.skill_read", defaultValue: "Load Project Skill")
-        case "artifact_publish": String(localized: "tool.artifact_publish", defaultValue: "Save generated file")
+        case "file_publish": String(localized: "tool.file_publish", defaultValue: "Save generated file")
         case "workspace_list": String(localized: "tool.workspace_list", defaultValue: "List workspace files")
         case "workspace_read": String(localized: "tool.workspace_read", defaultValue: "Read workspace file")
         case "workspace_search": String(localized: "tool.workspace_search", defaultValue: "Search workspace files")
         case "workspace_write": String(localized: "tool.workspace_write", defaultValue: "Write workspace output")
         case "workspace_image_list": String(localized: "tool.workspace_image_list", defaultValue: "List workspace images")
-        case "resource_list": String(localized: "tool.resource_list", defaultValue: "List project resources")
-        case "resource_read": String(localized: "tool.resource_read", defaultValue: "Read project resource")
-        case "resource_search": String(localized: "tool.resource_search", defaultValue: "Search project resources")
-        case "artifact_write": String(localized: "tool.artifact_write", defaultValue: "Save output")
-        case "artifact_edit": String(localized: "tool.artifact_edit", defaultValue: "Revise output")
+        case "file_list": String(localized: "tool.resource_list", defaultValue: "List files")
+        case "file_search": String(localized: "tool.resource_search", defaultValue: "Search files")
+        case "file_write": String(localized: "tool.file_write", defaultValue: "Save output")
+        case "file_edit": String(localized: "tool.file_edit", defaultValue: "Revise output")
         case "task_plan": String(localized: "tool.task_plan", defaultValue: "Task plan")
         case "tools_load": String(localized: "tool.tools_load", defaultValue: "Prepare tools")
         case "present_recommendation": String(localized: "tool.present_recommendation", defaultValue: "Recommendation")
@@ -961,13 +960,13 @@ nonisolated enum FamiliarToolPresentationName {
         }
         if effect == .reversibleWrite || effect == .destructiveWrite { return "pencil" }
         switch name {
-        case "web_search", "familiar_search", "workspace_search", "resource_search", "contacts_search":
+        case "web_search", "familiar_search", "workspace_search", "file_search", "contacts_search":
             return "magnifyingglass"
         case "shell_execute":
             return "terminal"
         case "workspace_image_list":
             return "photo"
-        case "web_fetch", "workspace_read", "resource_read", "skill_read", "clipboard_read":
+        case "web_fetch", "workspace_read", "file_read", "skill_read", "clipboard_read":
             return "doc.text"
         case "current_date_time", "calendar_events":
             return "calendar"

@@ -159,7 +159,7 @@ struct FamiliarProjectsView: View {
 private struct FamiliarProjectDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @Query(sort: \FamiliarArtifact.updatedAt, order: .reverse) private var allArtifacts: [FamiliarArtifact]
+    @Query(sort: \FamiliarFileRecord.updatedAt, order: .reverse) private var fileRecords: [FamiliarFileRecord]
 
     let project: FamiliarProject
     let registry: FamiliarToolRegistry?
@@ -171,9 +171,6 @@ private struct FamiliarProjectDetailView: View {
     @State private var showsResourceImporter = false
     @State private var resourceEntry: FamiliarProjectResourceEntryDestination?
     @State private var isImportingResource = false
-    @State private var previewDocument: FamiliarProjectPreviewDocument?
-    @State private var resourceToDelete: FamiliarResource?
-    @State private var artifactToDelete: FamiliarArtifact?
     @State private var confirmsProjectDeletion = false
 
     var body: some View {
@@ -194,39 +191,20 @@ private struct FamiliarProjectDetailView: View {
 
             projectContextSection
 
-            artifactsSection
-
             Section {
-                if recentResources.isEmpty {
-                    emptyRow(
-                        String(localized: "resource.empty", defaultValue: "No resources yet"),
-                        systemImage: "doc"
-                    )
-                } else {
-                    ForEach(recentResources) { resource in
-                        resourceRow(resource)
+                NavigationLink {
+                    FamiliarFilesView(projectID: project.id)
+                } label: {
+                    HStack {
+                        Label(String(localized: "chat.files"), systemImage: "folder")
+                        Spacer()
+                        Text(fileRecords.count { $0.projectID == project.id }, format: .number)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 resourceImportMenu
-            } header: {
-                FamiliarProjectSectionHeader(
-                    title: String(localized: "resource.section"),
-                    count: project.resources.count
-                ) {
-                    FamiliarProjectResourcesView(
-                        resources: sortedResources,
-                        onPreview: previewResource,
-                        onDelete: { resourceToDelete = $0 },
-                        onDeleteAll: {
-                            perform { try FamiliarProjectResourceService().deleteAll(from: project, in: modelContext) }
-                        }
-                    )
-                }
-            } footer: {
                 if isImportingResource {
                     Label(String(localized: "resource.importing"), systemImage: "arrow.down.doc")
-                } else {
-                    Text(String(localized: "resource.footer"))
                 }
             }
 
@@ -279,39 +257,6 @@ private struct FamiliarProjectDetailView: View {
             FamiliarProjectResourceEntryView(destination: destination) { title, value in
                 resourceEntry = nil
                 importEnteredResource(destination, title: title, value: value)
-            }
-        }
-        .sheet(item: $previewDocument) { document in
-            FamiliarAttachmentPreviewView(url: document.url, format: document.format)
-        }
-        .confirmationDialog(
-            String(localized: "resource.delete.title"),
-            isPresented: Binding(
-                get: { resourceToDelete != nil },
-                set: { if !$0 { resourceToDelete = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button(String(localized: "common.delete"), role: .destructive) {
-                guard let resourceToDelete else { return }
-                perform { try FamiliarProjectResourceService().delete(resourceToDelete, in: modelContext) }
-                self.resourceToDelete = nil
-            }
-        } message: {
-            Text(String(localized: "resource.delete.detail"))
-        }
-        .confirmationDialog(
-            String(localized: "artifact.delete.title", defaultValue: "Delete this artifact?"),
-            isPresented: Binding(
-                get: { artifactToDelete != nil },
-                set: { if !$0 { artifactToDelete = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button(String(localized: "common.delete"), role: .destructive) {
-                guard let artifactToDelete else { return }
-                perform { try FamiliarArtifactService().delete(artifactToDelete, in: modelContext) }
-                self.artifactToDelete = nil
             }
         }
         .confirmationDialog(
@@ -437,32 +382,6 @@ private struct FamiliarProjectDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private var artifactsSection: some View {
-        Section {
-            if recentArtifacts.isEmpty {
-                emptyRow(
-                    String(localized: "artifact.empty", defaultValue: "No outputs yet"),
-                    systemImage: "doc.badge.gearshape"
-                )
-            } else {
-                ForEach(recentArtifacts) { artifact in
-                    artifactRow(artifact)
-                }
-            }
-        } header: {
-            FamiliarProjectSectionHeader(
-                title: String(localized: "artifact.section", defaultValue: "Outputs"),
-                count: projectArtifacts.count,
-                destination: {
-                    FamiliarProjectArtifactsView(
-                        artifacts: projectArtifacts,
-                        onPreview: previewArtifact,
-                        onDelete: { artifactToDelete = $0 }
-                    )
-                }
-            )
-        }
-    }
 
     private var resourceImportMenu: some View {
         Menu {
@@ -503,60 +422,23 @@ private struct FamiliarProjectDetailView: View {
         .accessibilityIdentifier("project.addResource")
     }
 
-    private var projectArtifacts: [FamiliarArtifact] {
-        allArtifacts.filter { $0.projectID == project.id }
-    }
     private var deleteAllConversations: (() -> Void)? {
         guard let onDeleteConversations else { return nil }
         let project = project
         return { onDeleteConversations(project.conversations) }
     }
 
-    private var sortedResources: [FamiliarResource] { project.resources.sorted { $0.updatedAt > $1.updatedAt } }
     private var sortedConversations: [FamiliarConversation] { project.conversations.sorted { $0.updatedAt > $1.updatedAt } }
     private var sortedRuns: [FamiliarAgentRun] { project.agentRuns.sorted { $0.startedAt > $1.startedAt } }
-    private var recentResources: [FamiliarResource] { Array(sortedResources.prefix(3)) }
+
     /// One entry per deliverable: taking the first three rows flatly would show v3, v2
-    /// and v1 of the same file as three separate recent artifacts.
-    private var recentArtifacts: [FamiliarArtifact] {
-        let latestPerLineage = Dictionary(grouping: projectArtifacts, by: \.lineageID)
-            .compactMap { $0.value.max { $0.version < $1.version } }
-            .sorted { lhs, rhs in
-                if lhs.updatedAt != rhs.updatedAt { return lhs.updatedAt > rhs.updatedAt }
-                return lhs.id.uuidString < rhs.id.uuidString
-            }
-        return Array(latestPerLineage.prefix(3))
-    }
+    /// and v1 of the same file as three separate recent files.
 
-    private func resourceRow(_ resource: FamiliarResource) -> some View {
-        FamiliarProjectResourceRow(
-            resource: resource,
-            onPreview: { previewResource(resource) },
-            onDelete: { resourceToDelete = resource }
-        )
-    }
 
-    private func artifactRow(_ artifact: FamiliarArtifact) -> some View {
-        FamiliarProjectArtifactRow(
-            artifact: artifact,
-            versionCount: projectArtifacts.count { $0.lineageID == artifact.lineageID },
-            exportURL: FamiliarArtifactService().exportURL(for: artifact),
-            onPreview: { previewArtifact(artifact) },
-            onDelete: { artifactToDelete = artifact }
-        )
-    }
 
-    private func previewResource(_ resource: FamiliarResource) {
-        guard let version = FamiliarProjectResourceService.latestVersion(of: resource),
-              let url = FamiliarProjectResourceService().quickLookURL(for: version)
-        else { return }
-        previewDocument = FamiliarProjectPreviewDocument(url: url, format: nil)
-    }
 
-    private func previewArtifact(_ artifact: FamiliarArtifact) {
-        guard let url = FamiliarArtifactService().exportURL(for: artifact) else { return }
-        previewDocument = FamiliarProjectPreviewDocument(url: url, format: artifact.format)
-    }
+
+
 
     private func importResource(_ result: Result<[URL], Error>) {
         do {
@@ -565,7 +447,7 @@ private struct FamiliarProjectDetailView: View {
             Task {
                 defer { isImportingResource = false }
                 do {
-                    try await FamiliarProjectResourceService().importDocument(from: url, into: project, in: modelContext)
+                    try await FamiliarFileImportService().importDocument(from: url, into: project, in: modelContext)
                 } catch {
                     onError(error.localizedDescription)
                 }
@@ -586,13 +468,13 @@ private struct FamiliarProjectDetailView: View {
             do {
                 switch destination {
                 case .webPage:
-                    try await FamiliarProjectResourceService().importWebPage(
+                    try await FamiliarFileImportService().importWebPage(
                         from: value,
                         into: project,
                         in: modelContext
                     )
                 case .pastedText:
-                    try FamiliarProjectResourceService().importPastedText(
+                    try FamiliarFileImportService().importPastedText(
                         value,
                         title: title,
                         into: project,
@@ -834,269 +716,6 @@ private struct FamiliarProjectSectionHeader<Destination: View>: View {
                     .font(FamiliarTypography.caption.weight(.medium))
             }
             .disabled(count == 0)
-        }
-    }
-}
-
-private struct FamiliarProjectResourcesView: View {
-    let resources: [FamiliarResource]
-    let onPreview: (FamiliarResource) -> Void
-    let onDelete: (FamiliarResource) -> Void
-    let onDeleteAll: () -> Void
-
-    @State private var confirmsDeleteAll = false
-
-    var body: some View {
-        List(resources) { resource in
-            FamiliarProjectResourceRow(
-                resource: resource,
-                onPreview: { onPreview(resource) },
-                onDelete: { onDelete(resource) }
-            )
-        }
-        .navigationTitle(String(localized: "resource.section"))
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(role: .destructive) {
-                    confirmsDeleteAll = true
-                } label: {
-                    Image(systemName: "trash")
-                }
-                .disabled(resources.isEmpty)
-                .accessibilityLabel(String(localized: "resource.delete_all", defaultValue: "Delete All Resources"))
-                .accessibilityIdentifier("resource.deleteAll")
-            }
-        }
-        .confirmationDialog(
-            String(localized: "resource.delete_all.title", defaultValue: "Delete all resources?"),
-            isPresented: $confirmsDeleteAll,
-            titleVisibility: .visible
-        ) {
-            Button(String(localized: "common.delete_all", defaultValue: "Delete All"), role: .destructive) {
-                onDeleteAll()
-            }
-            Button(String(localized: "common.cancel"), role: .cancel) {}
-        } message: {
-            Text(String(
-                localized: "resource.delete_all.detail",
-                defaultValue: "Every document in this project, including all of their versions, will be removed."
-            ))
-        }
-    }
-}
-
-private struct FamiliarProjectResourceRow: View {
-    let resource: FamiliarResource
-    let onPreview: () -> Void
-    let onDelete: () -> Void
-
-    var body: some View {
-        HStack(spacing: FamiliarSpacing.medium) {
-            Button(action: onPreview) {
-                HStack(spacing: FamiliarSpacing.medium) {
-                    Image(systemName: latestVersion?.source == .fetchedWeb ? "link" : "doc.text")
-                        .foregroundStyle(FamiliarTheme.accent)
-                    VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                        Text(rowTitle)
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .accessibilityLabel(resource.displayName)
-                        if let latestVersion {
-                            Text(resourceDetail(latestVersion))
-                                .font(FamiliarTypography.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    Spacer()
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("resource.row.\(resource.id.uuidString)")
-            Button(role: .destructive, action: onDelete) {
-                Image(systemName: "trash")
-                    .frame(
-                        minWidth: FamiliarControlSize.minimumHitTarget,
-                        minHeight: FamiliarControlSize.minimumHitTarget
-                    )
-            }
-            .buttonStyle(.borderless)
-            .accessibilityIdentifier("resource.delete.\(resource.id.uuidString)")
-        }
-    }
-
-    /// A web resource imported without a title falls back to its full URL as the display
-    /// name, which fills the row and pushes out the format and size. Shows the host plus a
-    /// short tail instead; the full address stays in the accessibility label.
-    private var rowTitle: String {
-        guard latestVersion?.source == .fetchedWeb,
-              let url = URL(string: resource.displayName),
-              let host = url.host
-        else { return resource.displayName }
-        let tail = url.pathComponents.filter { $0 != "/" }.last
-        guard let tail, !tail.isEmpty else { return host }
-        return "\(host)/\(String(tail.prefix(24)))"
-    }
-
-    private var latestVersion: FamiliarResourceVersion? {
-        FamiliarProjectResourceService.latestVersion(of: resource)
-    }
-
-    private func resourceDetail(_ version: FamiliarResourceVersion) -> String {
-        var values = [
-            version.detectedFormat.uppercased(),
-            ByteCountFormatter.string(fromByteCount: version.byteSize, countStyle: .file),
-            "v\(version.version)"
-        ]
-        if version.usedOCR { values.append(String(localized: "resource.ocr")) }
-        return values.joined(separator: " · ")
-    }
-}
-
-private struct FamiliarProjectArtifactsView: View {
-    let artifacts: [FamiliarArtifact]
-    let onPreview: (FamiliarArtifact) -> Void
-    let onDelete: (FamiliarArtifact) -> Void
-
-    /// Newest version first, with the rest kept as history. Identifiable by lineage so
-    /// the list needs no force unwrap of a possibly-empty group.
-    private struct Lineage: Identifiable {
-        let id: UUID
-        let latest: FamiliarArtifact
-        let earlier: [FamiliarArtifact]
-    }
-
-    /// Grouped by lineage so one deliverable is one row. Listing every version flatly
-    /// would present successive revisions of the same file as unrelated Artifacts.
-    private var lineages: [Lineage] {
-        Dictionary(grouping: artifacts, by: \.lineageID)
-            .compactMap { lineageID, group -> Lineage? in
-                let ordered = group.sorted { $0.version > $1.version }
-                guard let latest = ordered.first else { return nil }
-                return Lineage(id: lineageID, latest: latest, earlier: Array(ordered.dropFirst()))
-            }
-            .sorted { lhs, rhs in
-                if lhs.latest.updatedAt != rhs.latest.updatedAt {
-                    return lhs.latest.updatedAt > rhs.latest.updatedAt
-                }
-                return lhs.id.uuidString < rhs.id.uuidString
-            }
-    }
-
-    var body: some View {
-        List(lineages) { lineage in
-            FamiliarProjectArtifactRow(
-                artifact: lineage.latest,
-                versionCount: lineage.earlier.count + 1,
-                exportURL: FamiliarArtifactService().exportURL(for: lineage.latest),
-                onPreview: { onPreview(lineage.latest) },
-                onDelete: { onDelete(lineage.latest) }
-            )
-            if !lineage.earlier.isEmpty {
-                NavigationLink {
-                    FamiliarArtifactVersionHistoryView(
-                        title: lineage.latest.title,
-                        versions: lineage.earlier,
-                        onPreview: onPreview,
-                        onDelete: onDelete
-                    )
-                } label: {
-                    Label(
-                        String(format: String(localized: "artifact.versions.count", defaultValue: "%@ earlier versions"), NSNumber(value: lineage.earlier.count)),
-                        systemImage: "clock.arrow.circlepath"
-                    )
-                    .font(FamiliarTypography.caption)
-                    .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .navigationTitle(String(localized: "artifact.section", defaultValue: "Outputs"))
-    }
-}
-
-/// Superseded versions of one deliverable. They remain previewable and shareable
-/// because each version keeps its own row and its own bytes on disk.
-private struct FamiliarArtifactVersionHistoryView: View {
-    let title: String
-    let versions: [FamiliarArtifact]
-    let onPreview: (FamiliarArtifact) -> Void
-    let onDelete: (FamiliarArtifact) -> Void
-
-    var body: some View {
-        List(versions) { version in
-            FamiliarProjectArtifactRow(
-                artifact: version,
-                versionCount: versions.count + 1,
-                exportURL: FamiliarArtifactService().exportURL(for: version),
-                onPreview: { onPreview(version) },
-                onDelete: { onDelete(version) }
-            )
-        }
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-private struct FamiliarProjectArtifactRow: View {
-    let artifact: FamiliarArtifact
-    let versionCount: Int
-    let exportURL: URL?
-    let onPreview: () -> Void
-    let onDelete: () -> Void
-
-    var body: some View {
-        HStack(spacing: FamiliarSpacing.medium) {
-            Button(action: onPreview) {
-                HStack(spacing: FamiliarSpacing.medium) {
-                    Image(systemName: artifactIcon)
-                        .foregroundStyle(FamiliarTheme.accent)
-                    VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                        Text(artifact.title).foregroundStyle(.primary)
-                        Text(detail)
-                            .font(FamiliarTypography.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                }
-            }
-            .buttonStyle(.plain)
-            if let exportURL {
-                ShareLink(item: exportURL) {
-                    Image(systemName: "square.and.arrow.up")
-                        .frame(
-                            minWidth: FamiliarControlSize.minimumHitTarget,
-                            minHeight: FamiliarControlSize.minimumHitTarget
-                        )
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel(String(localized: "common.share", defaultValue: "Share"))
-            }
-            Button(role: .destructive, action: onDelete) {
-                Image(systemName: "trash")
-                    .frame(
-                        minWidth: FamiliarControlSize.minimumHitTarget,
-                        minHeight: FamiliarControlSize.minimumHitTarget
-                    )
-            }
-            .buttonStyle(.borderless)
-        }
-    }
-
-    /// Shows the version only once a lineage actually has history: labelling a
-    /// single-version deliverable "v1" would imply revisions that do not exist.
-    private var detail: String {
-        var values = [ByteCountFormatter.string(fromByteCount: artifact.byteSize, countStyle: .file)]
-        if versionCount > 1 { values.append("v\(artifact.version)") }
-        return values.joined(separator: " · ")
-    }
-
-    private var artifactIcon: String {
-        switch artifact.format {
-        case .markdown: "doc.richtext"
-        case .plainText: "doc.text"
-        case .docx: "doc.badge.gearshape"
-        case .pdf: "doc.fill"
-        case .xlsx: "tablecells"
-        case .html: "chevron.left.forwardslash.chevron.right"
         }
     }
 }
@@ -1598,19 +1217,7 @@ private struct FamiliarProjectResourceEntryView: View {
     }
 }
 
-private struct FamiliarProjectPreviewDocument: Identifiable {
-    let id = UUID()
-    let url: URL
-    let format: FamiliarArtifactFormat?
-}
 
-private extension FamiliarProjectResourceService {
-    static func latestVersion(of resource: FamiliarResource) -> FamiliarResourceVersion? {
-        resource.versions.max {
-            $0.version == $1.version ? $0.createdAt < $1.createdAt : $0.version < $1.version
-        }
-    }
-}
 
 private enum FamiliarProjectEditorDestination: Identifiable {
     case create

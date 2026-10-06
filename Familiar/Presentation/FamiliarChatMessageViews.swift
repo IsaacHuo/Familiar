@@ -691,7 +691,7 @@ private struct FamiliarTurnSurface: View {
             switch surface.kind {
             case .approval:
                 FamiliarApprovalCard(surface: surface, onResolve: onResolveApproval)
-            case .mutationReceipt, .artifact:
+            case .mutationReceipt, .file:
                 FamiliarWriteReceipt(surface: surface, canUndo: canUndo, onUndo: onUndo)
             case .failure:
                 FamiliarFailureRecovery(surface: surface, onRetry: onRetry, canUndo: canUndo, onUndo: onUndo)
@@ -805,7 +805,7 @@ private struct FamiliarShareDraftSurface: View {
 
 private struct FamiliarPreparedFilePreview: Identifiable {
     let url: URL
-    var format: FamiliarArtifactFormat? = nil
+    var format: FamiliarFileFormat? = nil
     var id: String { url.absoluteString }
 }
 
@@ -1714,7 +1714,7 @@ private struct FamiliarWriteReceipt: View {
     var body: some View {
         VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceM) {
             HStack(alignment: .top, spacing: FamiliarAISurfaceMetric.spaceS) {
-                Image(systemName: surface.phase == .undone ? "arrow.uturn.backward.circle" : isArtifact ? "doc.richtext" : "checkmark.circle")
+                Image(systemName: surface.phase == .undone ? "arrow.uturn.backward.circle" : isFile ? "doc.richtext" : "checkmark.circle")
                     .foregroundStyle(FamiliarTheme.inkSecondary)
                     .frame(width: FamiliarAISurfaceMetric.icon)
                 VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
@@ -1726,13 +1726,13 @@ private struct FamiliarWriteReceipt: View {
                 Spacer(minLength: 0)
             }
 
-            if isArtifact {
-                if let artifactURL {
+            if isFile {
+                if let fileURL {
                     HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
                         Label(String(localized: "common.preview", defaultValue: "Preview"), systemImage: "eye")
                             .font(FamiliarTypography.caption).foregroundStyle(.secondary)
                         Spacer(minLength: 0)
-                        ShareLink(item: artifactURL) { Image(systemName: "square.and.arrow.up") }
+                        ShareLink(item: fileURL) { Image(systemName: "square.and.arrow.up") }
                             .accessibilityLabel(String(localized: "common.share"))
                             .frame(minWidth: FamiliarControlSize.minimumHitTarget, minHeight: FamiliarControlSize.minimumHitTarget)
                         Image(systemName: "chevron.right").font(FamiliarTypography.caption).foregroundStyle(.tertiary)
@@ -1763,15 +1763,15 @@ private struct FamiliarWriteReceipt: View {
         // most of the card visually inviting a tap that does nothing.
         .contentShape(RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous))
         .onTapGesture {
-            guard let artifactURL else { return }
-            previewFile = .init(url: artifactURL, format: surface.artifact?.format)
+            guard let fileURL else { return }
+            previewFile = .init(url: fileURL, format: surface.file?.format)
         }
         // Only announce the card as a button when there is a file to open; Undo and Share
         // stay separate elements so VoiceOver can still reach them.
-        .accessibilityAddTraits(artifactURL == nil ? [] : .isButton)
+        .accessibilityAddTraits(fileURL == nil ? [] : .isButton)
         .accessibilityAction {
-            guard let url = artifactURL else { return }
-            previewFile = .init(url: url, format: surface.artifact?.format)
+            guard let url = fileURL else { return }
+            previewFile = .init(url: url, format: surface.file?.format)
         }
         .sheet(item: $previewFile) { file in
             FamiliarAttachmentPreviewView(url: file.url, format: file.format)
@@ -1781,19 +1781,19 @@ private struct FamiliarWriteReceipt: View {
     /// Resolved once and reused by the row, the tap target and the accessibility traits.
     /// It is `nil` when the file is missing, which is what keeps the card from presenting
     /// itself as openable when there is nothing to open.
-    private var artifactURL: URL? {
-        guard surface.phase != .undone, let artifact = surface.artifact else { return nil }
-        return FamiliarArtifactStore().url(relativePath: artifact.relativePath)
+    private var fileURL: URL? {
+        guard surface.phase != .undone, let file = surface.file else { return nil }
+        return FamiliarFileStore().url(relativePath: file.relativePath)
     }
 
-    private var isArtifact: Bool {
-        if case .artifactMutation = surface.resultEnvelope?.presentation.content { return true }
-        return surface.artifact != nil
+    private var isFile: Bool {
+        if case .fileMutation = surface.resultEnvelope?.presentation.content { return true }
+        return surface.file != nil
     }
 
     private var receiptTitle: String {
-        if let artifact = surface.artifact { return artifact.title }
-        if case .artifactMutation(let artifact) = surface.resultEnvelope?.presentation.content { return artifact.title }
+        if let file = surface.file { return file.title }
+        if case .fileMutation(let file) = surface.resultEnvelope?.presentation.content { return file.title }
         return surface.title
     }
 
@@ -1814,9 +1814,9 @@ private struct FamiliarWriteReceipt: View {
         guard let content = surface.resultEnvelope?.presentation.content else { return surface.detail }
         switch content {
         case .mutationReceipt: return nil
-        case .artifactMutation(let artifact):
-            let size = ByteCountFormatter.string(fromByteCount: artifact.byteSize, countStyle: .file)
-            return surface.artifact.map { $0.format.filenameExtension.uppercased() + " · " + size } ?? size
+        case .fileMutation(let file):
+            let size = ByteCountFormatter.string(fromByteCount: file.byteSize, countStyle: .file)
+            return surface.file.map { $0.format.filenameExtension.uppercased() + " · " + size } ?? size
         case .scalar, .searchResults, .document, .contextMatches, .recordCollection, .diff, .taskList, .recommendation, .insight, .code, .shareDraft, .shellExecution: return surface.detail
         }
     }
@@ -1942,8 +1942,8 @@ private struct FamiliarTypedResult: View {
             Text(document.text).font(.caption2).foregroundStyle(FamiliarTheme.inkSecondary).lineLimit(8).textSelection(.enabled)
         case .mutationReceipt(let receipt):
             traceValue(label: receipt.operation, value: receipt.targetIdentifier ?? receipt.summary)
-        case .artifactMutation(let artifact):
-            traceValue(label: artifact.operation, value: artifact.title)
+        case .fileMutation(let file):
+            traceValue(label: file.operation, value: file.title)
         case .contextMatches, .recordCollection, .diff, .taskList, .recommendation, .insight, .code, .shareDraft, .shellExecution:
             EmptyView()
         }
@@ -1963,7 +1963,7 @@ private struct FamiliarTypedResult: View {
         case .records: "list.bullet.rectangle"
         case .diff: "arrow.left.arrow.right"
         case .mutationReceipt: "checkmark.seal"
-        case .artifact: "doc.richtext"
+        case .file: "doc.richtext"
         case .failure: "exclamationmark.triangle"
         case .toolSummary: "wrench.and.screwdriver"
         case .approval: "checklist.checked"

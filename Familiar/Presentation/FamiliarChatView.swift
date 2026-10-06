@@ -200,11 +200,11 @@ struct FamiliarChatView: View {
             case .usage:
                 FamiliarUsageView(conversationID: controller.selectedConversationID)
             case .files:
-                FamiliarChatFilesView(
-                    store: workspaceStore,
-                    workspaceIDs: [controller.selectedProjectID.map(FamiliarWorkspaceID.project), controller.selectedConversationID.map(FamiliarWorkspaceID.conversation)].compactMap { $0 },
-                    attachments: controller.messages.flatMap(\.attachments)
-                )
+                NavigationStack {
+                    FamiliarFilesView(projectID: controller.selectedProjectID ?? FamiliarProject.dailyProjectID,
+                                      chatID: controller.selectedConversationID)
+                        .toolbar { ToolbarItem(placement: .confirmationAction) { FamiliarDismissButton() } }
+                }
             case .projects(let projectID):
                 FamiliarProjectsView(
                     initialProjectID: projectID,
@@ -313,9 +313,11 @@ struct FamiliarChatView: View {
             refreshConfiguredProviders()
             if !controller.isSending && !controller.isCompacting {
                 FamiliarAttachmentStore.pruneDrafts(keeping: Set(controller.draftAttachments.map(\.relativePath)))
-                FamiliarAttachmentStore.pruneMessageFiles(keeping: Set(
-                    conversations.flatMap { $0.messages.flatMap { $0.attachments.map(\.relativePath) } }
-                ))
+                if let owned = try? FamiliarFileCatalogService().ownedAttachmentPaths(in: modelContext) {
+                    FamiliarAttachmentStore.pruneMessageFiles(keeping: owned.union(
+                        conversations.flatMap { $0.messages.flatMap { $0.attachments.map(\.relativePath) } }
+                    ))
+                }
             }
             handlePendingSystemEntry()
             handleSharedInbox()
@@ -480,7 +482,7 @@ struct FamiliarChatView: View {
             isImportingSharedItem = true
             Task { @MainActor in
                 defer { isImportingSharedItem = false }
-                let service = FamiliarProjectResourceService()
+                let service = FamiliarFileImportService()
                 var firstError = prepared.firstImportErrorDescription
                 var importedCount = 0
 

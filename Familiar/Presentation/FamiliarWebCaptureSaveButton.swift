@@ -19,9 +19,10 @@ struct FamiliarWebCaptureSaveButton: View {
             }
             Button {
                 do {
-                    let resource = try FamiliarProjectResourceService().saveFetchedWebResult(
+                    let file = try FamiliarFileImportService().saveFetchedWebResult(
                         runtimeID: runtimeID, toolCallID: toolCallID, in: modelContext)
-                    savedProjectName = resource.project?.displayName
+                    let projectID = file.projectID
+                    savedProjectName = try modelContext.fetch(FetchDescriptor<FamiliarProject>(predicate: #Predicate { $0.id == projectID })).first?.displayName
                     errorMessage = nil
                 } catch {
                     savedProjectName = nil
