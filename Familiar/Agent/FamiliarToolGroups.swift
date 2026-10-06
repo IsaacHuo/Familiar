@@ -2,7 +2,7 @@ import Foundation
 
 /// One product catalog for discovery, default capability selection and core exceptions.
 nonisolated enum FamiliarToolGroup: String, CaseIterable, Sendable {
-    case base, web, calendar, places, files, artifact, memory, skills, shell, device, presentation
+    case base, web, calendar, places, files, memory, skills, shell, device, presentation
 
     static let baseToolNames: Set<String> = ["current_date_time", "ask_user", "tools_load"]
 
@@ -13,7 +13,6 @@ nonisolated enum FamiliarToolGroup: String, CaseIterable, Sendable {
         case .calendar: String(localized: "tool.group.calendar", defaultValue: "Calendar & Reminders")
         case .places: String(localized: "tool.group.places", defaultValue: "Places & Weather")
         case .files: String(localized: "tool.group.files", defaultValue: "Files")
-        case .artifact: String(localized: "tool.group.artifact", defaultValue: "Outputs")
         case .memory: String(localized: "tool.group.memory", defaultValue: "Memory")
         case .skills: String(localized: "tool.group.skills", defaultValue: "Skills")
         case .shell: String(localized: "tool.group.shell", defaultValue: "Environment & Shell")
@@ -28,8 +27,7 @@ nonisolated enum FamiliarToolGroup: String, CaseIterable, Sendable {
         case .web: "Search public information and read web pages."
         case .calendar: "Read or propose changes to calendars and reminders."
         case .places: "Find places and coordinates, then query native weather."
-        case .files: "Read this run's files/resources and prepare output sharing."
-        case .artifact: "Save, read or revise Project outputs."
+        case .files: "Read, save, revise and share files in the current Project."
         case .memory: "Read frozen memories or propose a confirmed memory."
         case .skills: "Read explicitly attached guidance; installation requires approval."
         case .shell: "Read environment status, prepare dependencies and run controlled computation."
@@ -45,9 +43,9 @@ nonisolated enum FamiliarToolGroup: String, CaseIterable, Sendable {
         case "calendar_events", "create_calendar_event", "update_calendar_event", "delete_calendar_event",
              "reminders", "create_reminder", "update_reminder", "delete_reminder": return .calendar
         case "map_search", "weather_forecast", "weather_history", "current_location": return .places
-        case "resource_list", "resource_read", "resource_search", "workspace_list", "workspace_read",
+        case "file_list", "file_search", "workspace_list", "workspace_read",
              "workspace_search", "workspace_write", "workspace_image_list", "prepare_share", "prepare_file_export": return .files
-        case "artifact_write", "artifact_edit", "artifact_read", "artifact_publish": return .artifact
+        case "file_write", "file_edit", "file_read", "file_publish": return .files
         case "memory_search", "memory_remember": return .memory
         case "skill_list", "skill_read", "skill_install": return .skills
         case "environment_status", "environment_prepare", "shell_execute": return .shell
@@ -59,9 +57,9 @@ nonisolated enum FamiliarToolGroup: String, CaseIterable, Sendable {
     static func isDefaultEnabled(_ name: String) -> Bool {
         if baseToolNames.contains(name) { return true }
         if ["skill_list", "skill_read"].contains(name) { return true }
-        if ["workspace_write", "artifact_publish"].contains(name) { return false }
+        if ["workspace_write", "file_publish"].contains(name) { return false }
         switch group(for: name) {
-        case .web, .calendar, .places, .files, .artifact, .memory: return true
+        case .web, .calendar, .places, .files, .memory: return true
         default: return false
         }
     }

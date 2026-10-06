@@ -231,6 +231,7 @@ nonisolated struct FamiliarToolManifest: Codable, Equatable, Sendable {
     let requiredScopes: [String]
     let executionClass: FamiliarToolExecutionClass
     let maximumExecutionDuration: TimeInterval?
+    let outputContract: FamiliarToolOutputContract?
 
     init(
         id: String? = nil,
@@ -253,7 +254,8 @@ nonisolated struct FamiliarToolManifest: Codable, Equatable, Sendable {
         supportsParallelism: Bool = false,
         requiredScopes: [String] = [],
         executionClass: FamiliarToolExecutionClass = .specializedLocal,
-        maximumExecutionDuration: TimeInterval? = nil
+        maximumExecutionDuration: TimeInterval? = nil,
+        outputContract: FamiliarToolOutputContract? = nil
     ) {
         self.id = id ?? name
         self.version = version
@@ -276,6 +278,7 @@ nonisolated struct FamiliarToolManifest: Codable, Equatable, Sendable {
         self.requiredScopes = requiredScopes.sorted()
         self.executionClass = executionClass
         self.maximumExecutionDuration = maximumExecutionDuration
+        self.outputContract = outputContract
     }
 }
 

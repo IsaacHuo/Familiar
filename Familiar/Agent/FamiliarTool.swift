@@ -22,7 +22,7 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         case contextMatches
         case recordCollection
         case mutationReceipt
-        case artifactMutation
+        case fileMutation
         case diff
         case taskList
         case recommendation
@@ -164,7 +164,7 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         }
     }
 
-    public struct ArtifactMutation: Codable, Equatable, Sendable {
+    public struct FileMutation: Codable, Equatable, Sendable {
         public let summary: String
         public let operation: String
         public let identifier: String
@@ -393,7 +393,7 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         case contextMatches(ContextMatches)
         case recordCollection(RecordCollection)
         case mutationReceipt(MutationReceipt)
-        case artifactMutation(ArtifactMutation)
+        case fileMutation(FileMutation)
         case diff(Diff)
         case taskList(TaskList)
         case recommendation(Recommendation)
@@ -413,7 +413,7 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
     public static func contextMatches(_ value: ContextMatches) -> Self { .init(name: .contextMatches, content: .contextMatches(value)) }
     public static func recordCollection(_ value: RecordCollection) -> Self { .init(name: .recordCollection, content: .recordCollection(value)) }
     public static func mutationReceipt(_ value: MutationReceipt) -> Self { .init(name: .mutationReceipt, content: .mutationReceipt(value)) }
-    public static func artifactMutation(_ value: ArtifactMutation) -> Self { .init(name: .artifactMutation, content: .artifactMutation(value)) }
+    public static func fileMutation(_ value: FileMutation) -> Self { .init(name: .fileMutation, content: .fileMutation(value)) }
     public static func diff(_ value: Diff) -> Self { .init(name: .diff, content: .diff(value)) }
     public static func taskList(_ value: TaskList) -> Self { .init(name: .taskList, content: .taskList(value)) }
     public static func recommendation(_ value: Recommendation) -> Self { .init(name: .recommendation, content: .recommendation(value)) }
@@ -430,7 +430,7 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         case .contextMatches(let value): value.summary
         case .recordCollection(let value): value.summary
         case .mutationReceipt(let value): value.summary
-        case .artifactMutation(let value): value.summary
+        case .fileMutation(let value): value.summary
         case .diff(let value): value.summary
         case .taskList(let value): value.title
         case .recommendation(let value): value.title
@@ -459,7 +459,12 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         guard schemaVersion == Self.currentSchemaVersion else {
             throw DecodingError.dataCorruptedError(forKey: .schemaVersion, in: container, debugDescription: "Unsupported tool presentation schema version: \(schemaVersion)")
         }
-        let name = try container.decode(Name.self, forKey: .name)
+        // Only persisted historical presentation payloads use the former name.
+        // New payloads always encode fileMutation; this is not a callable tool alias.
+        let rawName = try container.decode(String.self, forKey: .name)
+        guard let name = Name(rawValue: rawName == "artifactMutation" ? "fileMutation" : rawName) else {
+            throw DecodingError.dataCorruptedError(forKey: .name, in: container, debugDescription: "Unsupported tool presentation payload")
+        }
         self.schemaVersion = schemaVersion
         self.name = name
         content = switch name {
@@ -469,7 +474,7 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         case .contextMatches: .contextMatches(try container.decode(ContextMatches.self, forKey: .payload))
         case .recordCollection: .recordCollection(try container.decode(RecordCollection.self, forKey: .payload))
         case .mutationReceipt: .mutationReceipt(try container.decode(MutationReceipt.self, forKey: .payload))
-        case .artifactMutation: .artifactMutation(try container.decode(ArtifactMutation.self, forKey: .payload))
+        case .fileMutation: .fileMutation(try container.decode(FileMutation.self, forKey: .payload))
         case .diff: .diff(try container.decode(Diff.self, forKey: .payload))
         case .taskList: .taskList(try container.decode(TaskList.self, forKey: .payload))
         case .recommendation: .recommendation(try container.decode(Recommendation.self, forKey: .payload))
@@ -491,7 +496,7 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         case .contextMatches(let value): try container.encode(value, forKey: .payload)
         case .recordCollection(let value): try container.encode(value, forKey: .payload)
         case .mutationReceipt(let value): try container.encode(value, forKey: .payload)
-        case .artifactMutation(let value): try container.encode(value, forKey: .payload)
+        case .fileMutation(let value): try container.encode(value, forKey: .payload)
         case .diff(let value): try container.encode(value, forKey: .payload)
         case .taskList(let value): try container.encode(value, forKey: .payload)
         case .recommendation(let value): try container.encode(value, forKey: .payload)
@@ -701,6 +706,7 @@ nonisolated struct FamiliarToolContext: Sendable {
     let workspaceID: FamiliarWorkspaceID?
     let resources: [Resource]
     let attachments: [Attachment]
+    let files: [FamiliarFileSnapshot]
     let availableSkills: [FamiliarSkillSnapshot]
     let activeSkill: FamiliarSkillSnapshot?
     let loadTools: (@Sendable ([String], [String]?, Int, FamiliarSkillSnapshot?) async throws -> FamiliarToolLoadResult)?
@@ -719,6 +725,7 @@ nonisolated struct FamiliarToolContext: Sendable {
         workspaceID: FamiliarWorkspaceID? = nil,
         resources: [Resource] = [],
         attachments: [Attachment] = [],
+        files: [FamiliarFileSnapshot] = [],
         availableSkills: [FamiliarSkillSnapshot] = [],
         activeSkill: FamiliarSkillSnapshot? = nil,
         loadTools: (@Sendable ([String], [String]?, Int, FamiliarSkillSnapshot?) async throws -> FamiliarToolLoadResult)? = nil,
@@ -733,6 +740,7 @@ nonisolated struct FamiliarToolContext: Sendable {
         self.workspaceID = workspaceID
         self.resources = resources
         self.attachments = attachments
+        self.files = files
         self.availableSkills = availableSkills
         self.activeSkill = activeSkill
         self.loadTools = loadTools
@@ -750,9 +758,9 @@ nonisolated struct FamiliarToolContext: Sendable {
 
 nonisolated struct FamiliarToolExecutionResult: Sendable {
     let envelope: FamiliarToolResultEnvelope
-    let artifactIdentifier: String?
+    let fileIdentifier: String?
     let sources: [FamiliarSource]
-    let artifact: FamiliarArtifactDescriptor?
+    let file: FamiliarFileDescriptor?
     let environmentReceipt: FamiliarEnvironmentReceipt?
     let loadedSkill: FamiliarSkillSnapshot?
     let installedSkill: FamiliarSkillSnapshot?
@@ -761,18 +769,20 @@ nonisolated struct FamiliarToolExecutionResult: Sendable {
     let memoryWrite: FamiliarMemoryWriteRequest?
     let loadedTools: [FamiliarToolManifest]?
     let durableUndo: FamiliarDurableUndoDescriptor?
+    let producedFiles: [FamiliarProducedFile]
 
-    init(envelope: FamiliarToolResultEnvelope, artifactIdentifier: String? = nil, sources: [FamiliarSource] = [], artifact: FamiliarArtifactDescriptor? = nil, environmentReceipt: FamiliarEnvironmentReceipt? = nil, loadedSkill: FamiliarSkillSnapshot? = nil, installedSkill: FamiliarSkillSnapshot? = nil, memoryWrite: FamiliarMemoryWriteRequest? = nil, loadedTools: [FamiliarToolManifest]? = nil, durableUndo: FamiliarDurableUndoDescriptor? = nil) {
+    init(envelope: FamiliarToolResultEnvelope, fileIdentifier: String? = nil, sources: [FamiliarSource] = [], file: FamiliarFileDescriptor? = nil, environmentReceipt: FamiliarEnvironmentReceipt? = nil, loadedSkill: FamiliarSkillSnapshot? = nil, installedSkill: FamiliarSkillSnapshot? = nil, memoryWrite: FamiliarMemoryWriteRequest? = nil, loadedTools: [FamiliarToolManifest]? = nil, durableUndo: FamiliarDurableUndoDescriptor? = nil, producedFiles: [FamiliarProducedFile] = []) {
         self.envelope = envelope
-        self.artifactIdentifier = artifactIdentifier
+        self.fileIdentifier = fileIdentifier
         self.sources = sources
-        self.artifact = artifact
+        self.file = file
         self.environmentReceipt = environmentReceipt
         self.loadedSkill = loadedSkill
         self.installedSkill = installedSkill
         self.memoryWrite = memoryWrite
         self.loadedTools = loadedTools
         self.durableUndo = durableUndo
+        self.producedFiles = producedFiles
     }
 
     var modelContent: String { envelope.modelContent }
@@ -794,7 +804,12 @@ nonisolated struct FamiliarToolCommitContext: Sendable {
     var idempotencyKey: String { runID + ":" + call.id }
 }
 
-typealias FamiliarToolResultPersistence = @Sendable (FamiliarToolExecutionResult, FamiliarToolCommitContext) async throws -> Void
+nonisolated struct FamiliarToolPersistenceReceipt: Sendable {
+    let files: [FamiliarFileSnapshot]
+    init(files: [FamiliarFileSnapshot] = []) { self.files = files }
+}
+
+typealias FamiliarToolResultPersistence = @Sendable (FamiliarToolExecutionResult, FamiliarToolCommitContext) async throws -> FamiliarToolPersistenceReceipt
 
 nonisolated struct FamiliarCommittedAction: Sendable {
     let result: FamiliarToolExecutionResult
@@ -824,9 +839,10 @@ nonisolated struct FamiliarActionProposal: Sendable {
     let undoPolicy: FamiliarApprovalUndoPolicy
     let idempotencyKey: String
     let allowedAuthorizationDurations: [FamiliarAuthorizationDuration]
+    let validateBeforeCommit: (@Sendable () async throws -> Void)?
     let commit: @Sendable () async throws -> FamiliarCommittedAction
 
-    init(title: String, fields: [FamiliarApprovalField], target: String?, targetKey: String? = nil, effect: FamiliarToolEffect, risk: FamiliarToolRisk, consequence: String, undoPolicy: FamiliarApprovalUndoPolicy, idempotencyKey: String, allowedAuthorizationDurations: [FamiliarAuthorizationDuration] = [.once, .session, .always], commit: @escaping @Sendable () async throws -> FamiliarCommittedAction) {
+    init(title: String, fields: [FamiliarApprovalField], target: String?, targetKey: String? = nil, effect: FamiliarToolEffect, risk: FamiliarToolRisk, consequence: String, undoPolicy: FamiliarApprovalUndoPolicy, idempotencyKey: String, allowedAuthorizationDurations: [FamiliarAuthorizationDuration] = [.once, .session, .always], validateBeforeCommit: (@Sendable () async throws -> Void)? = nil, commit: @escaping @Sendable () async throws -> FamiliarCommittedAction) {
         self.title = title
         self.fields = fields
         self.target = target
@@ -837,6 +853,7 @@ nonisolated struct FamiliarActionProposal: Sendable {
         self.undoPolicy = undoPolicy
         self.idempotencyKey = idempotencyKey
         self.allowedAuthorizationDurations = allowedAuthorizationDurations
+        self.validateBeforeCommit = validateBeforeCommit
         self.commit = commit
     }
 }
@@ -974,15 +991,26 @@ nonisolated struct AnyFamiliarTool: Sendable {
     }
 
     func execute(arguments: String, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
-        try await decode(arguments: arguments) { data in
+        let outcome = try await decode(arguments: arguments) { data in
             try await executeClosure(data, context)
         }
+        switch outcome {
+        case .result(let result):
+            guard manifest.effect == .read else { throw FamiliarToolDeclarationError.invalidOutcome }
+            try manifest.resultContract.validate(result)
+        case .action(let proposal):
+            guard manifest.effect != .read, proposal.effect == manifest.effect else { throw FamiliarToolDeclarationError.invalidOutcome }
+        case .clarification:
+            guard manifest.effect == .read else { throw FamiliarToolDeclarationError.invalidOutcome }
+        }
+        return outcome
     }
 
     private func decode<T: Sendable>(
         arguments: String,
         operation: (Data) async throws -> T
     ) async throws -> T {
+        guard arguments.count <= manifest.payloadLimit else { throw FamiliarAgentError.toolArgumentsTooLarge }
         let normalized = arguments.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let data = (normalized.isEmpty ? "{}" : normalized).data(using: .utf8) else {
             throw FamiliarToolRegistryError.invalidArguments(manifest.name)
@@ -1034,6 +1062,7 @@ actor FamiliarToolRegistry {
     init(tools: [AnyFamiliarTool], capabilities: (any FamiliarCapabilityProviding)? = nil) throws {
         var values: [String: AnyFamiliarTool] = [:]
         for tool in tools {
+            try tool.manifest.validateDeclaration()
             guard values[tool.manifest.name] == nil else {
                 throw FamiliarToolRegistryError.duplicateTool(tool.manifest.name)
             }
@@ -1077,6 +1106,7 @@ actor FamiliarToolRegistry {
     }
 
     func register(_ tool: AnyFamiliarTool) throws {
+        try tool.manifest.validateDeclaration()
         guard toolsByName[tool.manifest.name] == nil else {
             throw FamiliarToolRegistryError.duplicateTool(tool.manifest.name)
         }
@@ -1084,6 +1114,7 @@ actor FamiliarToolRegistry {
     }
 
     func registerGroup(_ tools: [AnyFamiliarTool]) throws {
+        for tool in tools { try tool.manifest.validateDeclaration() }
         let names = tools.map { $0.manifest.name }
         guard Set(names).count == names.count else {
             throw FamiliarToolLoadError("A discovered group contains duplicate tool names.")
@@ -1093,6 +1124,7 @@ actor FamiliarToolRegistry {
     }
 
     func registerIfAbsent(_ tool: AnyFamiliarTool) throws {
+        try tool.manifest.validateDeclaration()
         guard toolsByName[tool.manifest.name] == nil else { return }
         toolsByName[tool.manifest.name] = tool
     }

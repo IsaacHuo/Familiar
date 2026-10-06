@@ -7,10 +7,10 @@ nonisolated private enum FamiliarEventKitToolSupport {
     static func object(_ properties: [String: FamiliarJSONSchema], required: [String]) -> FamiliarJSONSchema {
         .init(type: .object, properties: properties, required: required)
     }
-    static func result<T: Encodable>(_ value: T, presentation: FamiliarToolPresentationPayload, artifactIdentifier: String? = nil, durableUndo: FamiliarDurableUndoDescriptor? = nil) throws -> FamiliarToolExecutionResult {
+    static func result<T: Encodable>(_ value: T, presentation: FamiliarToolPresentationPayload, fileIdentifier: String? = nil, durableUndo: FamiliarDurableUndoDescriptor? = nil) throws -> FamiliarToolExecutionResult {
         FamiliarToolExecutionResult(
             envelope: try FamiliarToolResultEnvelope(model: value, presentation: presentation),
-            artifactIdentifier: artifactIdentifier,
+            fileIdentifier: fileIdentifier,
             durableUndo: durableUndo
         )
     }
@@ -99,6 +99,7 @@ nonisolated struct FamiliarCreateCalendarEventTool: FamiliarTool {
         try FamiliarISO8601.validateRange(start: input.startISO8601, end: input.endISO8601)
         let request = FamiliarPendingWriteRequest.event(input)
         let target = try await service.targetDescription(for: request)
+        let targetRevision = try await service.targetRevision(for: request)
         return .action(FamiliarActionProposal(
             title: manifest.title,
             fields: FamiliarEventKitPreview.fields(for: request),
@@ -108,6 +109,9 @@ nonisolated struct FamiliarCreateCalendarEventTool: FamiliarTool {
             consequence: "将在 \(target) 中创建日历事件。",
             undoPolicy: .durable,
             idempotencyKey: context.idempotencyKey,
+            validateBeforeCommit: {
+                guard try await service.targetRevision(for: request) == targetRevision else { throw FamiliarPolicyError.changedDuringApproval }
+            },
             commit: {
                 try await FamiliarEventKitMutationCommit.commit(
                     request,
@@ -137,6 +141,7 @@ nonisolated struct FamiliarCreateReminderTool: FamiliarTool {
         if let dueISO8601 = input.dueISO8601 { _ = try FamiliarISO8601.date(dueISO8601) }
         let request = FamiliarPendingWriteRequest.reminder(input)
         let target = try await service.targetDescription(for: request)
+        let targetRevision = try await service.targetRevision(for: request)
         return .action(FamiliarActionProposal(
             title: manifest.title,
             fields: FamiliarEventKitPreview.fields(for: request),
@@ -146,6 +151,9 @@ nonisolated struct FamiliarCreateReminderTool: FamiliarTool {
             consequence: "将在 \(target) 中创建提醒事项。",
             undoPolicy: .durable,
             idempotencyKey: context.idempotencyKey,
+            validateBeforeCommit: {
+                guard try await service.targetRevision(for: request) == targetRevision else { throw FamiliarPolicyError.changedDuringApproval }
+            },
             commit: {
                 try await FamiliarEventKitMutationCommit.commit(
                     request,
@@ -186,6 +194,7 @@ nonisolated struct FamiliarUpdateCalendarEventTool: FamiliarTool {
         try FamiliarISO8601.validateRange(start: input.startISO8601, end: input.endISO8601)
         let request = FamiliarPendingWriteRequest.eventUpdate(input)
         let target = try await service.targetDescription(for: request)
+        let targetRevision = try await service.targetRevision(for: request)
         return .action(FamiliarActionProposal(
             title: manifest.title,
             fields: FamiliarEventKitPreview.fields(for: request),
@@ -196,6 +205,9 @@ nonisolated struct FamiliarUpdateCalendarEventTool: FamiliarTool {
             consequence: "将替换 \(target) 中这一条日历事件；若为重复事件，只修改当前 occurrence。",
             undoPolicy: .durable,
             idempotencyKey: context.idempotencyKey,
+            validateBeforeCommit: {
+                guard try await service.targetRevision(for: request) == targetRevision else { throw FamiliarPolicyError.changedDuringApproval }
+            },
             commit: { try await FamiliarEventKitMutationCommit.commit(request, service: service, idempotencyKey: context.idempotencyKey, operation: "updateCalendarEvent") }
         ))
     }
@@ -216,6 +228,7 @@ nonisolated struct FamiliarDeleteCalendarEventTool: FamiliarTool {
         guard !input.identifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw FamiliarEventKitError.missingItem(input.identifier) }
         let request = FamiliarPendingWriteRequest.eventDelete(input)
         let target = try await service.targetDescription(for: request)
+        let targetRevision = try await service.targetRevision(for: request)
         return .action(FamiliarActionProposal(
             title: manifest.title,
             fields: FamiliarEventKitPreview.fields(for: request),
@@ -227,6 +240,9 @@ nonisolated struct FamiliarDeleteCalendarEventTool: FamiliarTool {
             undoPolicy: .durable,
             idempotencyKey: context.idempotencyKey,
             allowedAuthorizationDurations: [.once],
+            validateBeforeCommit: {
+                guard try await service.targetRevision(for: request) == targetRevision else { throw FamiliarPolicyError.changedDuringApproval }
+            },
             commit: { try await FamiliarEventKitMutationCommit.commit(request, service: service, idempotencyKey: context.idempotencyKey, operation: "deleteCalendarEvent") }
         ))
     }
@@ -259,6 +275,7 @@ nonisolated struct FamiliarUpdateReminderTool: FamiliarTool {
         if let dueISO8601 = input.dueISO8601 { _ = try FamiliarISO8601.date(dueISO8601) }
         let request = FamiliarPendingWriteRequest.reminderUpdate(input)
         let target = try await service.targetDescription(for: request)
+        let targetRevision = try await service.targetRevision(for: request)
         return .action(FamiliarActionProposal(
             title: manifest.title,
             fields: FamiliarEventKitPreview.fields(for: request),
@@ -269,6 +286,9 @@ nonisolated struct FamiliarUpdateReminderTool: FamiliarTool {
             consequence: "将替换 \(target) 中这一条提醒事项，包括完成状态。",
             undoPolicy: .durable,
             idempotencyKey: context.idempotencyKey,
+            validateBeforeCommit: {
+                guard try await service.targetRevision(for: request) == targetRevision else { throw FamiliarPolicyError.changedDuringApproval }
+            },
             commit: { try await FamiliarEventKitMutationCommit.commit(request, service: service, idempotencyKey: context.idempotencyKey, operation: "updateReminder") }
         ))
     }
@@ -289,6 +309,7 @@ nonisolated struct FamiliarDeleteReminderTool: FamiliarTool {
         guard !input.identifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw FamiliarEventKitError.missingItem(input.identifier) }
         let request = FamiliarPendingWriteRequest.reminderDelete(input)
         let target = try await service.targetDescription(for: request)
+        let targetRevision = try await service.targetRevision(for: request)
         return .action(FamiliarActionProposal(
             title: manifest.title,
             fields: FamiliarEventKitPreview.fields(for: request),
@@ -300,6 +321,9 @@ nonisolated struct FamiliarDeleteReminderTool: FamiliarTool {
             undoPolicy: .durable,
             idempotencyKey: context.idempotencyKey,
             allowedAuthorizationDurations: [.once],
+            validateBeforeCommit: {
+                guard try await service.targetRevision(for: request) == targetRevision else { throw FamiliarPolicyError.changedDuringApproval }
+            },
             commit: { try await FamiliarEventKitMutationCommit.commit(request, service: service, idempotencyKey: context.idempotencyKey, operation: "deleteReminder") }
         ))
     }
@@ -334,7 +358,7 @@ nonisolated private enum FamiliarEventKitMutationCommit {
                 succeeded: true,
                 undoAvailable: true
             )),
-            artifactIdentifier: commit.identifier,
+            fileIdentifier: commit.identifier,
             durableUndo: .eventKit(commit.undoDescriptor)
         )
         return FamiliarCommittedAction(result: result) {

@@ -218,6 +218,7 @@ nonisolated public protocol FamiliarEventKitWriteExecutor: Sendable {
 
 nonisolated protocol FamiliarEventKitServicing: FamiliarEventKitWriteExecutor, FamiliarCapabilityProviding {
     func targetDescription(for request: FamiliarPendingWriteRequest) async throws -> String
+    func targetRevision(for request: FamiliarPendingWriteRequest) async throws -> String
     func events(from startISO8601: String, to endISO8601: String, limit: Int) async throws -> [FamiliarCalendarEvent]
     func reminders(from startISO8601: String?, to endISO8601: String?, text: String?, limit: Int) async throws -> [FamiliarReminder]
     func undoCommit(idempotencyKey: String) async throws -> FamiliarToolExecutionResult
@@ -328,6 +329,44 @@ public actor FamiliarEventKitService: FamiliarEventKitServicing {
             return "\(String(localized: "eventkit.target.event")) \(input.identifier)"
         case .reminderDelete(let input):
             return "\(String(localized: "eventkit.target.reminder")) \(input.identifier)"
+        }
+    }
+
+    func targetRevision(for request: FamiliarPendingWriteRequest) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        func calendarRevision(_ calendar: EKCalendar) -> String {
+            calendar.calendarIdentifier + "|" + calendar.title + "|" + String(calendar.allowsContentModifications)
+        }
+        switch request {
+        case .event(let input):
+            guard authorization(for: .events) == .fullAccess else { return "permission-required" }
+            return FamiliarHash.sha256(calendarRevision(try eventCalendar(identifier: input.calendarIdentifier)))
+        case .reminder(let input):
+            guard authorization(for: .reminders) == .fullAccess else { return "permission-required" }
+            return FamiliarHash.sha256(calendarRevision(try reminderCalendar(identifier: input.listIdentifier)))
+        case .eventUpdate(let input):
+            guard authorization(for: .events) == .fullAccess else { return "permission-required" }
+            guard let event = store.event(withIdentifier: input.identifier) else { throw FamiliarEventKitError.missingItem(input.identifier) }
+            let target = try eventCalendar(identifier: input.calendarIdentifier ?? event.calendar.calendarIdentifier)
+            return FamiliarHash.sha256(try encoder.encode(snapshot(of: event))) + "|" + calendarRevision(target)
+                + "|" + String(event.lastModifiedDate?.timeIntervalSince1970 ?? 0)
+        case .eventDelete(let input):
+            guard authorization(for: .events) == .fullAccess else { return "permission-required" }
+            guard let event = store.event(withIdentifier: input.identifier) else { throw FamiliarEventKitError.missingItem(input.identifier) }
+            return FamiliarHash.sha256(try encoder.encode(snapshot(of: event))) + "|" + calendarRevision(event.calendar)
+                + "|" + String(event.lastModifiedDate?.timeIntervalSince1970 ?? 0)
+        case .reminderUpdate(let input):
+            guard authorization(for: .reminders) == .fullAccess else { return "permission-required" }
+            guard let reminder = store.calendarItem(withIdentifier: input.identifier) as? EKReminder else { throw FamiliarEventKitError.missingItem(input.identifier) }
+            let target = try reminderCalendar(identifier: input.listIdentifier ?? reminder.calendar.calendarIdentifier)
+            return FamiliarHash.sha256(try encoder.encode(snapshot(of: reminder))) + "|" + calendarRevision(target)
+                + "|" + String(reminder.lastModifiedDate?.timeIntervalSince1970 ?? 0)
+        case .reminderDelete(let input):
+            guard authorization(for: .reminders) == .fullAccess else { return "permission-required" }
+            guard let reminder = store.calendarItem(withIdentifier: input.identifier) as? EKReminder else { throw FamiliarEventKitError.missingItem(input.identifier) }
+            return FamiliarHash.sha256(try encoder.encode(snapshot(of: reminder))) + "|" + calendarRevision(reminder.calendar)
+                + "|" + String(reminder.lastModifiedDate?.timeIntervalSince1970 ?? 0)
         }
     }
 
@@ -448,7 +487,7 @@ public actor FamiliarEventKitService: FamiliarEventKitServicing {
                 model: FamiliarUndoResult(undone: true, identifier: resultingIdentifier),
                 presentation: .mutationReceipt(.init(summary: String(localized: "tool.undone", defaultValue: "Undone"), operation: "undo", targetIdentifier: resultingIdentifier, succeeded: true, undoAvailable: false))
             ),
-            artifactIdentifier: resultingIdentifier
+            fileIdentifier: resultingIdentifier
         )
     }
 
