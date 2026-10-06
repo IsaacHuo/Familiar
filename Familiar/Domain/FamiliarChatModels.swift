@@ -227,7 +227,7 @@ nonisolated struct FamiliarToolResultSnapshot: Identifiable, Equatable, Sendable
     let toolCallID: String
     let envelope: FamiliarToolResultEnvelope?
     let envelopeJSON: String
-    let artifact: FamiliarArtifactDescriptor?
+    let file: FamiliarFileDescriptor?
     let schemaVersion: Int
     let payloadName: String
     let payloadHash: String
@@ -236,13 +236,13 @@ nonisolated struct FamiliarToolResultSnapshot: Identifiable, Equatable, Sendable
     let trust: FamiliarContentTrust
     let truncated: Bool
 
-    init(id: UUID, activityID: String, toolCallID: String, envelope: FamiliarToolResultEnvelope?, envelopeJSON: String, schemaVersion: Int, payloadName: String, payloadHash: String, semanticID: String? = nil, revision: Int = 1, trust: FamiliarContentTrust, truncated: Bool, artifact: FamiliarArtifactDescriptor? = nil) {
+    init(id: UUID, activityID: String, toolCallID: String, envelope: FamiliarToolResultEnvelope?, envelopeJSON: String, schemaVersion: Int, payloadName: String, payloadHash: String, semanticID: String? = nil, revision: Int = 1, trust: FamiliarContentTrust, truncated: Bool, file: FamiliarFileDescriptor? = nil) {
         self.id = id
         self.activityID = activityID
         self.toolCallID = toolCallID
         self.envelope = envelope
         self.envelopeJSON = envelopeJSON
-        self.artifact = artifact
+        self.file = file
         self.schemaVersion = schemaVersion
         self.payloadName = payloadName
         self.payloadHash = payloadHash

@@ -1,42 +1,9 @@
 import Foundation
 import SwiftData
 
-enum FamiliarMemoryScope: String, Codable, Sendable, CaseIterable { case global, project, conversation }
-enum FamiliarMemoryCreator: String, Codable, Sendable { case user, agentConfirmed }
-
-/// A memory the Agent proposed and the user approved. Tools are `nonisolated` and have
-/// no SwiftData access, so the controller's commit callback persists the write before
-/// the runtime emits its successful result.
-nonisolated struct FamiliarMemoryWriteRequest: Equatable, Sendable {
-    let content: String
-    let scope: FamiliarMemoryScope
-    let projectID: UUID?
-    let conversationID: UUID?
-    let provenance: String
-}
-
 @MainActor
 struct FamiliarMemoryService {
-    // `nonisolated` because the tool layer is nonisolated and must apply the same limit
-    // and the same sensitive-content rule as the persistence boundary. Duplicating them
-    // there would let the two drift apart.
-    nonisolated static let maximumContentLength = 2_000
     static let defaultSearchLimit = 8
-
-    /// Refused at the write boundary rather than cleaned up afterwards: once a secret is
-    /// stored it is also already eligible to be compiled back into a prompt.
-    nonisolated static func looksSensitive(_ content: String) -> Bool {
-        let value = content.lowercased()
-        let markers = [
-            "api key", "api-key", "apikey", "secret", "password", "passphrase",
-            "private key", "access token", "bearer ", "credit card", "cvv",
-            "身份证", "密码", "密钥", "银行卡", "验证码"
-        ]
-        if markers.contains(where: value.contains) { return true }
-        // Common provider key shapes, which carry no descriptive marker of their own.
-        if value.contains("sk-") || value.contains("ghp_") || value.contains("xoxb-") { return true }
-        return false
-    }
 
     /// Dedup identity. The scope and its owner are part of the key because the same
     /// sentence means different things in different Projects: a content-only key let
@@ -129,14 +96,14 @@ struct FamiliarMemoryService {
         now: Date = Date()
     ) throws -> FamiliarMemoryItem {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed.count <= Self.maximumContentLength else {
+        guard !trimmed.isEmpty, trimmed.count <= FamiliarMemoryPolicy.maximumContentLength else {
             throw FamiliarMemoryError.invalidContent
         }
         guard scope == .global
             || (scope == .project && projectID != nil)
             || (scope == .conversation && conversationID != nil)
         else { throw FamiliarMemoryError.invalidScope }
-        guard !Self.looksSensitive(trimmed) else { throw FamiliarMemoryError.sensitiveContent }
+        guard !FamiliarMemoryPolicy.looksSensitive(trimmed) else { throw FamiliarMemoryError.sensitiveContent }
 
         let key = Self.normalizedKey(
             content: trimmed,
@@ -185,10 +152,11 @@ extension FamiliarMemoryItem {
     }
 
     func isInScope(projectID: UUID?, conversationID: UUID?) -> Bool {
-        switch scope {
-        case .global: true
-        case .project: self.projectID != nil && self.projectID == projectID
-        case .conversation: self.conversationID != nil && self.conversationID == conversationID
+        guard let scope = FamiliarMemoryScope(rawValue: scopeRawValue) else { return false }
+        return switch scope {
+        case .global: self.projectID == nil && self.conversationID == nil
+        case .project: self.projectID != nil && self.projectID == projectID && self.conversationID == nil
+        case .conversation: self.projectID == projectID && self.conversationID != nil && self.conversationID == conversationID
         }
     }
 }

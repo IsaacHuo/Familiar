@@ -29,12 +29,12 @@ nonisolated struct FamiliarMemoryRememberTool: FamiliarTool {
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
         let content = input.content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !content.isEmpty, content.count <= FamiliarMemoryService.maximumContentLength else {
+        guard !content.isEmpty, content.count <= FamiliarMemoryPolicy.maximumContentLength else {
             throw FamiliarMemoryError.invalidContent
         }
         // Refused before the approval card appears, so a secret is never shown back to
         // the user as something Familiar is about to remember.
-        guard !FamiliarMemoryService.looksSensitive(content) else {
+        guard !FamiliarMemoryPolicy.looksSensitive(content) else {
             throw FamiliarMemoryError.sensitiveContent
         }
         let scope = Self.resolvedScope(requested: input.scope, projectID: context.projectID)
