@@ -196,6 +196,34 @@ private struct FamiliarRetryingReadTool: FamiliarTool {
 
 @Suite("Familiar runtime")
 struct FamiliarRuntimeTests {
+    @Test("Clarification is registered before an immediate answer is delivered")
+    func immediateClarificationResolution() async throws {
+        let coordinator = FamiliarClarificationCoordinator()
+        let option = FamiliarClarificationOption(id: "markdown", label: "Markdown")
+        let request = FamiliarClarificationRequest(runID: "atomic-question", toolCallID: "call", question: "Format?", options: [option], allowCustom: false)
+        let answer = FamiliarClarificationResolution.selectedOption(id: option.id, label: option.label)
+        let resolution = try await coordinator.requestClarification(request, onPending: {
+            let result = await coordinator.resolve(requestID: request.id, resolution: answer)
+            #expect(result == .resolved)
+        })
+        #expect(resolution == answer)
+        let duplicate = await coordinator.resolve(requestID: request.id, resolution: .cancelled)
+        #expect(duplicate == .alreadyResolved(answer))
+    }
+
+    @Test("Approval is registered before its presentation callback can immediately resolve it")
+    func immediateApprovalResolution() async throws {
+        let coordinator = FamiliarToolConfirmationCoordinator()
+        let request = FamiliarToolConfirmationRequest(runID: "atomic-presentation", toolCallID: "call", toolName: "fixture", risk: .sensitive, title: "Fixture", allowedAuthorizationDurations: [.once])
+        let decision = try await coordinator.requestConfirmation(request, onPending: {
+            let resolution = await coordinator.resolve(requestID: request.id, decision: .confirmedOnce)
+            #expect(resolution == .confirmed)
+        })
+        #expect(decision == .confirmedOnce)
+        let duplicate = await coordinator.resolve(requestID: request.id, decision: .confirmedAlways)
+        #expect(duplicate == .alreadyResolved(.confirmedOnce))
+    }
+
     @Test("Runtime emits one typed finish event with contiguous sequence")
     func orderedEvents() async throws {
         let registry = try FamiliarToolRegistry(tools: [AnyFamiliarTool(FamiliarFakeTool())])

@@ -5,6 +5,17 @@ import Testing
 
 @Suite("Familiar web tools")
 struct FamiliarWebTests {
+    @Test("HTTP request targets preserve trailing slash and reserved escapes without header injection")
+    func requestTargetEncoding() throws {
+        let url = try FamiliarWebURLPolicy.normalize("https://example.com/a%2Fb/?q=x%2Fy")
+        let request = FamiliarRestrictedHTTPClient.makeRequest(url: url, host: "example.com", method: "GET", body: nil)
+        let text = String(decoding: request, as: UTF8.self)
+        #expect(text.hasPrefix("GET /a%2Fb/?q=x%2Fy HTTP/1.1\r\n"))
+        let injected = try FamiliarWebURLPolicy.normalize("https://example.com/a%0D%0AX-Injected:%20yes/")
+        let safe = String(decoding: FamiliarRestrictedHTTPClient.makeRequest(url: injected, host: "example.com", method: "GET", body: nil), as: UTF8.self)
+        #expect(safe.contains("%0D%0A"))
+        #expect(!safe.contains("\r\nX-Injected:"))
+    }
     @Test("URL policy allows public HTTPS and rejects unsafe destinations")
     func urlPolicy() throws {
         let normalized = try FamiliarWebURLPolicy.normalize("HTTPS://Example.COM/path#fragment")
@@ -75,6 +86,18 @@ struct FamiliarWebTests {
         #expect(results.count == 1)
         #expect(results.first?.title == "Beijing")
         #expect(results.first?.snippet == "City guide.")
+    }
+
+    @Test("Bing production redirect links decode to public source URLs")
+    func bingRedirectLinks() throws {
+        let destination = "https://developer.apple.com/swift/?utm_source=bing"
+        let encoded = "a1" + Data(destination.utf8).base64EncodedString().replacingOccurrences(of: "=", with: "")
+        let html = "<li class='b_algo'><h2><a href='https://www.bing.com/ck/a?u=" + encoded + "'>Swift</a></h2></li>"
+        let results = try FamiliarWebContentService.parseBingHTML(html, maximumResults: 5)
+        #expect(results.first?.url == "https://developer.apple.com/swift/")
+        let privateURL = "a1" + Data("https://localhost/private".utf8).base64EncodedString()
+        let unsafe = "<li class='b_algo'><h2><a href='https://www.bing.com/ck/a?u=" + privateURL + "'>Private</a></h2></li>"
+        #expect(throws: FamiliarWebError.self) { try FamiliarWebContentService.parseBingHTML(unsafe, maximumResults: 5) }
     }
 
     @Test("Readable HTML extractor removes navigation and scripts")

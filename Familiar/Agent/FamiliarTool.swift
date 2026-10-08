@@ -711,6 +711,7 @@ nonisolated struct FamiliarToolContext: Sendable {
     let activeSkill: FamiliarSkillSnapshot?
     let loadTools: (@Sendable ([String], [String]?, Int, FamiliarSkillSnapshot?) async throws -> FamiliarToolLoadResult)?
     let fetchedSources: [FamiliarSource]
+    let webEvidence: FamiliarWebEvidenceState?
     /// The memories the Context Compiler selected for this run, already inside the
     /// prompt. Frozen like resources so the tool and the prompt cannot disagree about
     /// what Familiar remembers mid-run.
@@ -730,6 +731,7 @@ nonisolated struct FamiliarToolContext: Sendable {
         activeSkill: FamiliarSkillSnapshot? = nil,
         loadTools: (@Sendable ([String], [String]?, Int, FamiliarSkillSnapshot?) async throws -> FamiliarToolLoadResult)? = nil,
         fetchedSources: [FamiliarSource] = [],
+        webEvidence: FamiliarWebEvidenceState? = nil,
         memories: [FamiliarContextMemory] = [],
         progressReporter: ProgressReporter? = nil
     ) {
@@ -745,6 +747,7 @@ nonisolated struct FamiliarToolContext: Sendable {
         self.activeSkill = activeSkill
         self.loadTools = loadTools
         self.fetchedSources = fetchedSources
+        self.webEvidence = webEvidence
         self.memories = memories
         self.progressReporter = progressReporter
     }

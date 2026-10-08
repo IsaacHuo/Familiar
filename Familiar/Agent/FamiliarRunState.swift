@@ -30,6 +30,7 @@ nonisolated struct FamiliarCachedFileRead: Sendable {
 }
 
 actor FamiliarRunState {
+    nonisolated let webEvidence = FamiliarWebEvidenceState()
     private var installedSkills: [FamiliarSkillSnapshot] = []
     private var loadedSkills: [String: FamiliarSkillSnapshot] = [:]
     private var attemptedWrites: Set<String> = []

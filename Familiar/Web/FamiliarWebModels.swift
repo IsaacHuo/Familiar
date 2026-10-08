@@ -18,6 +18,8 @@ nonisolated enum FamiliarWebError: LocalizedError, FamiliarStructuredToolError, 
     case rateLimited
     case missingSearchAPIKey(String)
     case searchUnavailable
+    case searchChallenge
+    case searchNoProgress
     case noReadableContent
 
     var code: String {
@@ -39,6 +41,8 @@ nonisolated enum FamiliarWebError: LocalizedError, FamiliarStructuredToolError, 
         case .rateLimited: "rate_limited"
         case .missingSearchAPIKey: "missing_search_api_key"
         case .searchUnavailable: "search_unavailable"
+        case .searchChallenge: "search_challenge"
+        case .searchNoProgress: "search_no_progress"
         case .noReadableContent: "no_readable_content"
         }
     }
@@ -74,6 +78,8 @@ nonisolated enum FamiliarWebError: LocalizedError, FamiliarStructuredToolError, 
         case .missingSearchAPIKey(let provider):
             String(format: String(localized: "error.web.search_api_key_missing", defaultValue: "Add a %@ API key in Web Search settings first."), provider)
         case .searchUnavailable: "搜索服务当前不可用。"
+        case .searchChallenge: "搜索服务要求人机验证，当前无法读取结果。"
+        case .searchNoProgress: "连续搜索没有新增来源。请读取已有来源并根据已有证据回答，不要继续重复搜索。"
         case .noReadableContent: "网页没有可读取的正文。"
         }
     }

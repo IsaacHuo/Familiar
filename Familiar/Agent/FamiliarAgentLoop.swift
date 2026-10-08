@@ -636,6 +636,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                 try await loader.load(groups: groups, toolNames: names, offset: offset, skill: skill, schemaBudget: schemaBudget)
             },
             fetchedSources: sources,
+            webEvidence: state.webEvidence,
             memories: input.memories,
             progressReporter: { progress in
                 let detail: String = switch progress {
@@ -753,7 +754,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                 name: call.name,
                 arguments: call.arguments,
                 context: toolContext,
-                allowsRetry: manifest.effect == .read,
+                allowsRetry: manifest.effect == .read && call.name != "web_search" && call.name != "web_fetch",
                 maximumExecutionDuration: manifest.maximumExecutionDuration ?? 30,
                 emitter: emitter,
                 deadline: deadline
@@ -823,9 +824,10 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                     allowCustom: proposal.allowCustom
                 )
                 await emitter.emit(.runPhaseChanged(.awaitingClarification))
-                await emitter.emit(.clarificationRequested(request))
                 let resolution = try await Self.withDeadline(deadline) {
-                    try await clarificationCoordinator.requestClarification(request)
+                    try await clarificationCoordinator.requestClarification(request, onPending: {
+                        await emitter.emit(.clarificationRequested(request))
+                    })
                 }
                 await emitter.emit(.clarificationResolved(requestID: request.id, resolution: resolution))
                 guard let answer = resolution.answer else { throw CancellationError() }
@@ -948,9 +950,10 @@ nonisolated struct FamiliarAgentLoop: Sendable {
     private func approve(_ request: FamiliarToolConfirmationRequest, emitter: FamiliarRuntimeEventEmitter,
                          deadline: ContinuousClock.Instant) async throws -> FamiliarToolConfirmationDecision {
         await emitter.emit(.runPhaseChanged(.awaitingApproval))
-        await emitter.emit(.approvalRequested(request))
         let decision = try await Self.withDeadline(deadline) {
-            try await confirmationCoordinator.requestConfirmation(request)
+            try await confirmationCoordinator.requestConfirmation(request, onPending: {
+                await emitter.emit(.approvalRequested(request))
+            })
         }
         await emitter.emit(.approvalResolved(requestID: request.id, decision: decision))
         await emitter.emit(.runPhaseChanged(.executingActivities([request.toolName])))

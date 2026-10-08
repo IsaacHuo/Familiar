@@ -37,7 +37,8 @@ nonisolated struct FamiliarWebSearchService: Sendable {
             providerID: providerID,
             apiKey: keyStore.load(for: providerID)
         )
-        let sources = response.results.compactMap { result -> FamiliarSource? in
+        let results = Self.diverseResults(response.results, maximum: maximumResults)
+        let sources = results.compactMap { result -> FamiliarSource? in
             guard let url = URL(string: result.url) else { return nil }
             return FamiliarSource(
                 id: result.sourceID,
@@ -54,7 +55,7 @@ nonisolated struct FamiliarWebSearchService: Sendable {
                 query: query.trimmingCharacters(in: .whitespacesAndNewlines),
                 engine: response.providerID,
                 contentTrust: "untrusted_external_content",
-                results: response.results,
+                results: results,
                 truncated: response.truncated
             ),
             sources
@@ -88,6 +89,21 @@ nonisolated struct FamiliarWebSearchService: Sendable {
     private func normalizedRequest(query: String, maximumResults: Int) throws -> FamiliarSearchRequest {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty, query.count <= 512 else { throw FamiliarWebError.invalidQuery }
-        return .init(query: query, maximumResults: min(max(maximumResults, 1), 10))
+        return .init(query: query, maximumResults: min(max(maximumResults, 1), 20))
+    }
+
+    static func diverseResults(_ input: [FamiliarWebSearchResult], maximum: Int) -> [FamiliarWebSearchResult] {
+        var seen = Set<String>(), hosts = Set<String>()
+        var first: [FamiliarWebSearchResult] = [], remaining: [FamiliarWebSearchResult] = []
+        for result in input {
+            guard let url = try? FamiliarWebURLPolicy.normalize(result.url), seen.insert(url.absoluteString).inserted else { continue }
+            let host = (url.host ?? "").replacingOccurrences(of: "^www\\.", with: "", options: .regularExpression)
+            let canonical = FamiliarWebSearchResult(sourceID: FamiliarSourceIdentifier.make(for: url), position: 0,
+                title: result.title, url: url.absoluteString, displayURL: host, snippet: result.snippet)
+            if hosts.insert(host).inserted { first.append(canonical) } else { remaining.append(canonical) }
+        }
+        return (first + remaining).prefix(min(max(maximum, 1), 20)).enumerated().map { index, item in
+            .init(sourceID: item.sourceID, position: index + 1, title: item.title, url: item.url, displayURL: item.displayURL, snippet: item.snippet)
+        }
     }
 }

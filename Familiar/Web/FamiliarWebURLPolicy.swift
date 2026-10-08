@@ -35,6 +35,15 @@ nonisolated enum FamiliarWebURLPolicy {
         components?.host = host
         components?.port = nil
         components?.fragment = nil
+        let trackingNames: Set<String> = ["fbclid", "gclid", "dclid", "msclkid", "mc_cid", "mc_eid", "igshid"]
+        if let items = components?.queryItems {
+            let filtered = items.filter {
+                !$0.name.lowercased().hasPrefix("utm_") && !trackingNames.contains($0.name.lowercased())
+            }
+            // Avoid re-encoding meaningful query values when no tracking item exists.
+            if filtered != items { components?.queryItems = filtered.isEmpty ? nil : filtered }
+        }
+        if components?.queryItems?.isEmpty == true { components?.query = nil }
         if components?.path.isEmpty == true { components?.path = "/" }
         guard let normalized = components?.url else { throw FamiliarWebError.invalidURL }
         return normalized

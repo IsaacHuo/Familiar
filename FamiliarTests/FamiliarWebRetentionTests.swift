@@ -63,7 +63,7 @@ struct FamiliarWebRetentionTests {
         #expect(bytes == Data(version.extractedText.utf8))
         #expect(FamiliarHash.sha256(bytes) == version.contentHash)
         #expect(FamiliarHash.sha256(version.extractedText) == version.extractedTextHash)
-        // This reserved URL cannot supply the fixture body over HTTP. Successful
+        // This fixture capture has unique bytes. Successful
         // import must use the recorded bytes instead of another network fetch.
         #expect(version.extractedText.hasSuffix(fixture.output.text))
     }
@@ -181,7 +181,7 @@ struct FamiliarWebRetentionTests {
         let recorder = FamiliarRunPersistenceRecorder()
         recorder.ensureRun(runtimeID: runtimeID, snapshot: snapshot, startedAt: Date(timeIntervalSince1970: 1), context: context)
         let text = "Recorded content, including an incomplete page boundary."
-        let output = FamiliarWebFetchOutput(sourceID: "src_fixture", finalURL: "https://example.invalid/page", title: "Recorded page",
+        let output = FamiliarWebFetchOutput(sourceID: "src_fixture", finalURL: "https://example.com/fixture-page", title: "Recorded page",
             mimeType: "text/html", contentTrust: "untrusted_external_content", text: text, truncated: true,
             accessedAt: Date(timeIntervalSince1970: 10), contentHash: contentHash ?? FamiliarHash.sha256(text))
         let turnID = runtimeID + ":turn:0"

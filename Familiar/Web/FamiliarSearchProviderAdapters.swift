@@ -148,7 +148,7 @@ nonisolated struct FamiliarDuckDuckGoSearchProvider: FamiliarSearchProvider {
             components.queryItems = [.init(name: "q", value: request.query)]
             var liteRequest = URLRequest(url: components.url!)
             liteRequest.setValue("text/html", forHTTPHeaderField: "Accept")
-            liteRequest.setValue("zh-CN,zh;q=0.9,en;q=0.6", forHTTPHeaderField: "Accept-Language")
+            liteRequest.setValue(request.acceptLanguage, forHTTPHeaderField: "Accept-Language")
             let liteResponse = try await transport.send(liteRequest, responseLimit: 512_000)
             try FamiliarSearchAdapterSupport.validate(liteResponse)
             return .init(
@@ -171,6 +171,7 @@ nonisolated struct FamiliarDuckDuckGoSearchProvider: FamiliarSearchProvider {
         htmlRequest.httpMethod = "POST"
         htmlRequest.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         htmlRequest.setValue("text/html", forHTTPHeaderField: "Accept")
+        htmlRequest.setValue(request.acceptLanguage, forHTTPHeaderField: "Accept-Language")
         htmlRequest.httpBody = Data("q=\(Self.formEncode(request.query))".utf8)
         let htmlResponse = try await transport.send(htmlRequest, responseLimit: 512_000)
         try FamiliarSearchAdapterSupport.validate(htmlResponse)
@@ -207,13 +208,12 @@ nonisolated struct FamiliarBingSearchProvider: FamiliarSearchProvider {
         components.queryItems = [
             .init(name: "q", value: request.query),
             .init(name: "count", value: String(request.maximumResults)),
-            .init(name: "mkt", value: "zh-CN"),
-            .init(name: "setlang", value: "zh-hans"),
+            .init(name: "setlang", value: request.language),
             .init(name: "safesearch", value: "moderate")
         ]
         var urlRequest = URLRequest(url: components.url!)
         urlRequest.setValue("text/html", forHTTPHeaderField: "Accept")
-        urlRequest.setValue("zh-CN,zh;q=0.9,en;q=0.6", forHTTPHeaderField: "Accept-Language")
+        urlRequest.setValue(request.acceptLanguage, forHTTPHeaderField: "Accept-Language")
         urlRequest.setValue(
             "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1",
             forHTTPHeaderField: "User-Agent"

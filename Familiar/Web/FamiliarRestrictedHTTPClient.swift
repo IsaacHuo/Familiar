@@ -9,7 +9,11 @@ nonisolated struct FamiliarRestrictedHTTPResponse: Sendable {
     let body: Data
 }
 
-nonisolated struct FamiliarRestrictedHTTPClient: Sendable {
+nonisolated protocol FamiliarWebHTTPTransport: Sendable {
+    func get(_ url: URL, bodyLimit: Int, redirectLimit: Int, timeout: Duration) async throws -> FamiliarRestrictedHTTPResponse
+}
+
+nonisolated struct FamiliarRestrictedHTTPClient: FamiliarWebHTTPTransport {
     private let resolver = FamiliarWebDNSResolver()
 
     func get(
@@ -197,9 +201,13 @@ nonisolated struct FamiliarRestrictedHTTPClient: Sendable {
         return error
     }
 
-    private static func makeRequest(url: URL, host: String, method: String, body: Data?) -> Data {
-        var target = url.path.isEmpty ? "/" : url.path
-        if let query = url.query, !query.isEmpty { target += "?" + query }
+    static func makeRequest(url: URL, host: String, method: String, body: Data?) -> Data {
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        // URL.path drops a trailing slash and decodes reserved escapes. HTTP must
+        // retain both, or a canonical redirect loops and encoded input can inject CRLF.
+        let path = components?.percentEncodedPath ?? ""
+        var target = path.isEmpty ? "/" : path
+        if let query = components?.percentEncodedQuery, !query.isEmpty { target += "?" + query }
         var lines = [
             "\(method) \(target) HTTP/1.1",
             "Host: \(host)",

@@ -1,8 +1,17 @@
 import Foundation
+import NaturalLanguage
 
 nonisolated struct FamiliarSearchRequest: Equatable, Sendable {
     let query: String
     let maximumResults: Int
+    var language: String {
+        let detector = NLLanguageRecognizer()
+        detector.processString(query)
+        let language = detector.dominantLanguage?.rawValue
+            ?? Locale.preferredLanguages.first?.split(separator: "-").first.map(String.init) ?? "en"
+        return language.hasPrefix("zh") ? "zh" : language
+    }
+    var acceptLanguage: String { language == "zh" ? "zh-CN,zh;q=0.9" : language + ",en;q=0.7" }
 }
 
 nonisolated struct FamiliarSearchResponse: Equatable, Sendable {
@@ -65,11 +74,11 @@ nonisolated enum FamiliarSearchProviderCatalog {
         )
     ]
 
-    /// Providers exposed by the iOS 1.0 settings UI. Additional adapters stay
+    /// Providers exposed by the iOS 1.0 settings UI. Tavily passed explicit Simulator live HTTP acceptance; other adapters stay
     /// available for deterministic contract tests until their real-key release
     /// smoke tests are complete.
     static var releaseVisible: [FamiliarSearchProviderDescriptor] {
-        all.filter { ["duckduckgo", "bing"].contains($0.id) }
+        all.filter { ["duckduckgo", "bing", "tavily"].contains($0.id) }
     }
 
     static func descriptor(for id: String) -> FamiliarSearchProviderDescriptor? {
