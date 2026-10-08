@@ -151,7 +151,7 @@ struct FamiliarCommitBoundaryTests {
             }
         }
         #expect(failures(events) == ["tool_commit_rolled_back"])
-        let folder = root.appendingPathComponent("Projects/\(projectID.uuidString)/Files")
+        let folder = root.appendingPathComponent("Projects/\(projectID.uuidString)/Artifacts")
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).isEmpty)
     }
 

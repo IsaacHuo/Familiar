@@ -5,6 +5,7 @@ repository_root="$(cd "$(dirname "$0")/.." && pwd)"
 
 simulator_suites=(
     FamiliarAppleNativeToolTests
+    FamiliarBluetoothLifecycleTests
     FamiliarAssistantTurnPersistenceTests
     FamiliarBaselineTests
     FamiliarBeautifulUIRuntimeTests
@@ -20,9 +21,17 @@ simulator_suites=(
     FamiliarSubmissionBoundaryTests
     FamiliarDesignSystemTests
     FamiliarStreamingObservationTests
+    FamiliarStreamingPresentationTests
+    FamiliarMarkdownWebKitTests
+    FamiliarTimelinePerformanceTests
+    FamiliarChatScrollTests
+    FamiliarChatTestProviderTests
     FamiliarImportContractsTests
+    FamiliarFunctionalFilesTests
+    FamiliarFilePathBoundaryTests
     FamiliarGroupBoundaryTests
     FamiliarMemoryTests
+    FamiliarFollowUpTests
     FamiliarNativeFirstArchitectureTests
     FamiliarNativeOutputToolTests
     FamiliarPersistenceReleaseTests
@@ -45,6 +54,7 @@ simulator_suites=(
     FamiliarWP5Tests
     FamiliarWP6WP7Tests
     FamiliarWebTests
+    FamiliarWebEvidenceTests
     FamiliarWorkspaceShellTests
 )
 
@@ -53,6 +63,12 @@ simulator_suites=(
 device_suites=(
     FamiliarDeviceRuntimeTests
     FamiliarSignedSubmissionTests
+    FamiliarNativeDeviceTests
+)
+
+live_service_suites=(
+    FamiliarWebLiveTests
+    FamiliarISHSimulatorRuntimeTests
 )
 
 check_suite_list() {
@@ -68,12 +84,13 @@ for path in (root/'FamiliarTests').glob('*.swift'):
 script=Path(sys.argv[2]).read_text()
 sim=re.findall(r'^    (\w+)\s*$',re.search(r'simulator_suites=\(([\s\S]*?)\n\)',script).group(1),re.M)
 device=re.findall(r'^    (\w+)\s*$',re.search(r'device_suites=\(([\s\S]*?)\n\)',script).group(1),re.M)
-listed=sim+device
+live=re.findall(r'^    (\w+)\s*$',re.search(r'live_service_suites=\(([\s\S]*?)\n\)',script).group(1),re.M)
+listed=sim+device+live
 missing=source-set(listed)
 obsolete=set(listed)-source
 if missing or obsolete or len(listed)!=len(set(listed)):
     raise SystemExit(f'Test list mismatch: missing={sorted(missing)}, obsolete={sorted(obsolete)}, duplicates={len(listed)-len(set(listed))}')
-print(f'Test inventory: {len(sim)} Simulator suites, {len(device)} signed-device suites, plus the complete FamiliarUITests target.')
+print(f'Test inventory: {len(sim)} Simulator suites, {len(device)} signed-device suites, {len(live)} explicit live-service suites, plus the complete FamiliarUITests target.')
 PYLIST
 }
 
@@ -91,8 +108,13 @@ if [[ "${1:-}" == "--device" ]]; then
     signing="YES"
     selected_suites=("${device_suites[@]}")
 fi
+if [[ "${1:-}" == "--live" ]]; then
+    shift
+    selected_suites=("${live_service_suites[@]}")
+    live_mode="YES"
+fi
 if [[ $# -ne 2 ]]; then
-    echo "Usage: $0 [--device] <destination-udid> <prebuilt-derived-data-path> | --check-list" >&2
+    echo "Usage: $0 [--device|--live] <destination-udid> <prebuilt-derived-data-path> | --check-list" >&2
     exit 64
 fi
 check_suite_list
@@ -101,11 +123,15 @@ derived_data="$2"
 results_directory="$derived_data/ReleaseTestResults/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$results_directory"
 
-run_test_identifier() {
-    local identifier="$1"
-    local result_name="${identifier//\//-}"
+run_test_identifiers() {
+    local result_name="$1"
+    shift
+    local selections=()
+    local identifier
+    for identifier in "$@"; do selections+=("-only-testing:$identifier"); done
+    local execution_status=0
     local bundle="$results_directory/${result_name}.xcresult"
-    echo "Running ${identifier} on ${platform}"
+    echo "Running ${result_name} on ${platform}"
     xcodebuild -quiet \
         -project "$repository_root/familiar.xcodeproj" \
         -scheme Familiar \
@@ -117,8 +143,8 @@ run_test_identifier() {
         COMPILER_INDEX_STORE_ENABLE=NO \
         -parallel-testing-enabled NO \
         -resultBundlePath "$bundle" \
-        -only-testing:"$identifier" \
-        test-without-building
+        "${selections[@]}" \
+        test-without-building || execution_status=$?
     xcrun xcresulttool get test-results summary --path "$bundle" > "$bundle.summary.json"
     python3 - "$bundle.summary.json" <<'PYRESULT'
 import json, sys
@@ -132,13 +158,16 @@ print(f'Tests: total={total}, passed={passed}, failed={failed}, skipped={skipped
 if total<=0 or passed!=total or failed or skipped or expected or summary.get('result')!='Passed':
     raise SystemExit('Selected suite did not fully pass; zero tests, skips and expected failures are not acceptance.')
 PYRESULT
+    if [[ $execution_status -ne 0 ]]; then return "$execution_status"; fi
 }
 
-for suite in "${selected_suites[@]}"; do
-    run_test_identifier "FamiliarTests/${suite}"
-done
-if [[ "$platform" == "iOS Simulator" ]]; then
-    run_test_identifier "FamiliarUITests"
+identifiers=()
+for suite in "${selected_suites[@]}"; do identifiers+=("FamiliarTests/$suite"); done
+run_test_identifiers "all-selected-suites" "${identifiers[@]}"
+if [[ "${live_mode:-NO}" == "YES" ]]; then
+    echo "Live-service results are separate from deterministic and device acceptance. Results: $results_directory"
+elif [[ "$platform" == "iOS Simulator" ]]; then
+    run_test_identifiers "ui" "FamiliarUITests"
     echo "Selected Simulator suites passed. Signed-device/guest acceptance is separate. Results: $results_directory"
 else
     echo "Selected signed-device suites passed. This does not complete real-provider or UI acceptance. Results: $results_directory"

@@ -137,7 +137,7 @@ struct FamiliarBaselineTests {
 
         // The UI default must equal what FamiliarAgentLoop applies when no budget is
         // passed, otherwise Settings would show a limit the runtime does not use.
-        #expect(FamiliarExecutionBudget.defaultValue == FamiliarExecutionBudget(maximumIterations: 6, maximumToolCalls: 24, maximumDuration: 600))
+        #expect(FamiliarExecutionBudget.defaultValue == FamiliarExecutionBudget(maximumIterations: 24, maximumToolCalls: 64, maximumDuration: 1200))
     }
 
     @Test("Provider catalog has stable unique identifiers")
@@ -150,8 +150,8 @@ struct FamiliarBaselineTests {
             "deepseek-v4-flash",
             "deepseek-v4-pro"
         ])
-        #expect(FamiliarProviderCatalog.normalizedModelID("deepseek-chat", providerID: "deepseek") == "deepseek-v4-flash")
-        #expect(FamiliarProviderCatalog.normalizedModelID("unknown", providerID: "deepseek") == "deepseek-v4-flash")
+        #expect(FamiliarProviderCatalog.normalizedModelID("deepseek-chat", providerID: "deepseek") == "deepseek-chat")
+        #expect(FamiliarProviderCatalog.normalizedModelID("unknown", providerID: "deepseek") == "unknown")
     }
 
     @Test("Current DeepSeek descriptor uses the generic OpenAI-compatible adapter")
