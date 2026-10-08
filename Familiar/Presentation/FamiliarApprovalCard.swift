@@ -5,7 +5,7 @@ struct FamiliarApprovalCard: View {
     let onResolve: (UUID, FamiliarToolConfirmationDecision) -> Void
 
     @AccessibilityFocusState private var isAccessibilityFocused: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.familiarReduceMotion) private var reduceMotion
     @State private var selectedDecision: FamiliarToolConfirmationDecision
     @State private var submittedDecision: FamiliarToolConfirmationDecision?
 
@@ -144,6 +144,7 @@ struct FamiliarApprovalCard: View {
                     ForEach(authorizationOptions) { option in
                         Button {
                             withAnimation(reduceMotion ? nil : FamiliarMotion.micro) {
+                                if selectedDecision != option.decision { FamiliarHaptics.shared.perform(.selection) }
                                 selectedDecision = option.decision
                             }
                         } label: {
@@ -194,11 +195,11 @@ struct FamiliarApprovalCard: View {
 
     private func submittedState(_ decision: FamiliarToolConfirmationDecision) -> some View {
         HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
-            Image(systemName: decision == .cancelled ? "xmark.circle.fill" : "checkmark.circle.fill")
-                .foregroundStyle(decision == .cancelled ? FamiliarTheme.inkTertiary : FamiliarTheme.success)
+            Image(systemName: decision == .cancelled ? "xmark.circle.fill" : "hourglass")
+                .foregroundStyle(FamiliarTheme.inkTertiary)
             Text(decision == .cancelled
                  ? String(localized: "approval.skipped", defaultValue: "Approval cancelled")
-                 : String(localized: "approval.sent", defaultValue: "Approved"))
+                 : String(localized: "approval.executing", defaultValue: "Approval sent · waiting for execution"))
                 .font(FamiliarTypography.secondary.weight(.semibold))
         }
         .foregroundStyle(FamiliarTheme.inkSecondary)
@@ -252,8 +253,9 @@ struct FamiliarApprovalCard: View {
     }
 
     private func resolve(_ decision: FamiliarToolConfirmationDecision) {
-        guard let id = surface.approvalRequestID else { return }
-        withAnimation(reduceMotion ? nil : FamiliarMotion.state) {
+        guard submittedDecision == nil, let id = surface.approvalRequestID else { return }
+        FamiliarHaptics.shared.perform(decision == .cancelled ? .selection : .approval)
+        withAnimation(reduceMotion ? nil : FamiliarMotion.standard) {
             submittedDecision = decision
         }
         onResolve(id, decision)

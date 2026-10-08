@@ -140,7 +140,7 @@ struct FamiliarSurfaceTests {
         let renderer = try source("Familiar/Resources/FamiliarMarkdownRenderer/renderer.js")
 
         #expect(presentation.contains("private var contentBlocks: [FamiliarAssistantContentBlock]"))
-        #expect(presentation.contains("ForEach(contentBlocks)"))
+        #expect(presentation.contains("ForEach(blocks)"))
         #expect(presentation.contains("FamiliarRuntimeCard("))
         #expect(presentation.contains("disclosure.binding(for: activity.id)"))
         #expect(presentation.contains(".transition(.opacity)"))
@@ -258,10 +258,10 @@ struct FamiliarSurfaceTests {
 
     @Test("Haptics mark approval, success, and failure boundaries")
     func haptics() {
-        #expect(FamiliarHapticPolicy.feedback(from: .running, to: .awaitingApproval) == .warning)
-        #expect(FamiliarHapticPolicy.feedback(from: .running, to: .succeeded) == .success)
-        #expect(FamiliarHapticPolicy.feedback(from: .running, to: .failed) == .error)
-        #expect(FamiliarHapticPolicy.feedback(from: .queued, to: .running) == nil)
+        #expect(FamiliarHaptics.boundary(from: .running, to: .awaitingApproval) == .warning)
+        #expect(FamiliarHaptics.boundary(from: .running, to: .succeeded) == .success)
+        #expect(FamiliarHaptics.boundary(from: .running, to: .failed) == .warning)
+        #expect(FamiliarHaptics.boundary(from: .queued, to: .running) == nil)
     }
 
     @Test("Interrupted pending approval projects as a settled non-interactive summary")

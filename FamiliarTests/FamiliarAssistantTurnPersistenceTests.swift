@@ -196,7 +196,7 @@ struct FamiliarAssistantTurnPersistenceTests {
     func failedRunProjection() throws {
         let fixture = try makeRun(runtimeID: "failed-run")
         let recorder = FamiliarRunPersistenceRecorder()
-        recorder.finishRun(
+        try recorder.finishRun(
             runtimeID: "failed-run",
             outcome: .init(status: .failed, failureKind: .transientServer, message: "Provider unavailable"),
             eventSequence: 2,
@@ -259,6 +259,42 @@ struct FamiliarAssistantTurnPersistenceTests {
         #expect(clarification.phase == .failed)
         #expect(clarification.clarificationRequestID == nil)
         #expect(clarification.clarificationResolution == .interrupted)
+    }
+
+    @MainActor
+    @Test("Terminal save failure is propagated and cannot persist a successful Run")
+    func terminalSaveFailure() throws {
+        let fixture = try makeRun(runtimeID: "terminal-failure")
+        let recorder = FamiliarRunPersistenceRecorder(saveContext: { _ in throw CocoaError(.fileWriteOutOfSpace) })
+        #expect(throws: CocoaError.self) {
+            try recorder.finishRun(runtimeID: "terminal-failure", outcome: .succeeded,
+                eventSequence: 8, at: Date(), context: fixture.context)
+        }
+        let reopened = ModelContext(fixture.container)
+        let run = try #require(reopened.fetch(FetchDescriptor<FamiliarAgentRun>()).first)
+        #expect(run.status == .running)
+        #expect(run.finishedAt == nil)
+    }
+
+    @Test("Final response and successful Run remain staged until a single save")
+    @MainActor
+    func atomicFinalResponse() throws {
+        let fixture = try makeRun(runtimeID: "atomic-final")
+        let recorder = FamiliarRunPersistenceRecorder()
+        let message = FamiliarMessage(role: .assistant, content: "Durable answer", sequence: 1, conversation: fixture.conversation)
+        fixture.context.insert(message)
+        _ = try recorder.recordResponseBlock(runtimeID: "atomic-final", assistantTurnID: "atomic-final:response",
+            messageID: message.id, kind: .markdown, state: .completed, content: message.content,
+            endedAt: Date(), context: fixture.context, save: false)
+        try recorder.finishRun(runtimeID: "atomic-final", outcome: .succeeded, eventSequence: 5,
+            at: Date(), context: fixture.context, save: false)
+        let before = ModelContext(fixture.container)
+        #expect(try before.fetch(FetchDescriptor<FamiliarMessage>()).isEmpty)
+        #expect(try #require(before.fetch(FetchDescriptor<FamiliarAgentRun>()).first).status == .running)
+        try fixture.context.save()
+        let after = ModelContext(fixture.container)
+        #expect(try after.fetch(FetchDescriptor<FamiliarMessage>()).count == 1)
+        #expect(try #require(after.fetch(FetchDescriptor<FamiliarAgentRun>()).first).status == .completed)
     }
 
     @MainActor

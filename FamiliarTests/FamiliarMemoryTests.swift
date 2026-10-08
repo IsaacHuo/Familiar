@@ -6,6 +6,29 @@ import Testing
 @Suite("Familiar Memory")
 @MainActor
 struct FamiliarMemoryTests {
+    @Test("Confirmed response preferences remain candidates across synonym and language changes")
+    func preferencesWithoutLiteralKeywords() throws {
+        let container = try FamiliarTestStore.make(name: "PreferenceRecall")
+        let context = container.mainContext
+        let service = FamiliarMemoryService()
+        let memory = try service.insert(content: "Prefers concise replies", scope: .global,
+            projectID: nil, conversationID: nil, provenance: "user", creator: .user, in: context)
+        for query in ["Keep it brief", "请用简短的话解释这段代码"] {
+            #expect(try service.candidates(query: query, projectID: nil, conversationID: nil, in: context).contains { $0.id == memory.id })
+        }
+    }
+
+    @Test("Chinese sentence queries recall scoped facts without requiring identical whole sentences")
+    func chineseSentenceRecall() throws {
+        let container = try FamiliarTestStore.make(name: "ChineseRecall"), context = container.mainContext
+        let service = FamiliarMemoryService(), projectID = UUID()
+        let memory = try service.insert(content: "用户居住在北京", scope: .project,
+            projectID: projectID, conversationID: nil, provenance: "user", creator: .user, in: context)
+        #expect(try service.candidates(query: "推荐北京周末可以去的博物馆", projectID: projectID,
+            conversationID: nil, in: context).contains { $0.id == memory.id })
+        #expect(try service.candidates(query: "北京", projectID: UUID(), conversationID: nil, in: context).isEmpty)
+    }
+
     @Test("A moved Chat cannot carry Conversation memory from its original Project")
     func movedChatMemoryScope() throws {
         let container = try FamiliarTestStore.make(name: "MovedChatMemory")
@@ -52,8 +75,8 @@ struct FamiliarMemoryTests {
         try service.insert(content: "Global fact about beijing", scope: .global, projectID: nil, conversationID: nil, provenance: "t", creator: .user, in: context)
         try service.insert(content: "Project fact about beijing", scope: .project, projectID: project, conversationID: nil, provenance: "t", creator: .user, in: context)
         try service.insert(content: "Other project fact about beijing", scope: .project, projectID: UUID(), conversationID: nil, provenance: "t", creator: .user, in: context)
-        try service.insert(content: "Conversation fact about beijing", scope: .conversation, projectID: nil, conversationID: conversation, provenance: "t", creator: .user, in: context)
-        try service.insert(content: "Other conversation fact about beijing", scope: .conversation, projectID: nil, conversationID: UUID(), provenance: "t", creator: .user, in: context)
+        try service.insert(content: "Conversation fact about beijing", scope: .conversation, projectID: project, conversationID: conversation, provenance: "t", creator: .user, in: context)
+        try service.insert(content: "Other conversation fact about beijing", scope: .conversation, projectID: project, conversationID: UUID(), provenance: "t", creator: .user, in: context)
 
         let used = Date(timeIntervalSince1970: 5_000)
         let results = try service.candidates(query: "beijing", projectID: project, conversationID: conversation, in: context)

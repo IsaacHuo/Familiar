@@ -33,7 +33,8 @@ enum FamiliarSettingsRoute: String, Hashable {
     case storage
     case permissions
     case runHistory
-    case privacy
+    case privacyData
+    case dataHandling
     case about
 }
 
@@ -86,81 +87,29 @@ struct FamiliarSettingsView: View {
         NavigationStack(path: $path) {
             List {
                 Section(String(localized: "settings.hub.models")) {
-                    settingsLink(
-                        .modelService,
-                        title: String(localized: "settings.hub.model_service", defaultValue: "Model Service"),
-                        subtitle: "\(settings.selectedProvider.displayName) · \(settings.selectedModel.displayName)",
-                        symbol: "key.horizontal.fill",
-                        color: FamiliarTheme.accent
-                    )
+                    settingsLink(.modelService, title: String(localized: "settings.hub.model_service"),
+                                 subtitle: "\(settings.selectedProvider.displayName) · \(settings.selectedModel.displayName)",
+                                 symbol: "key.horizontal.fill", color: FamiliarTheme.accent)
+                    settingsLink(.modelGroups, title: String(localized: "group.title"), subtitle: String(localized: "group.detail"), symbol: "square.stack", color: .blue)
+                }
+                Section(String(localized: "settings.hub.personalization")) {
+                    settingsLink(.soul, title: String(localized: "settings.hub.soul"), subtitle: String(localized: "settings.hub.soul.detail"), symbol: "sparkles", color: .pink)
+                    settingsLink(.memory, title: String(localized: "settings.memory.title"),
+                                 subtitle: settings.isAutomaticMemoryEnabled ? String(localized: "settings.hub.memory.detail") : String(localized: "settings.memory.detail.off"),
+                                 symbol: "brain", color: .pink)
+                }
+                Section(String(localized: "settings.hub.capabilities")) {
+                    settingsLink(.advanced, title: String(localized: "settings.advanced.title"), subtitle: String(localized: "settings.advanced.detail"), symbol: "slider.horizontal.3", color: .gray)
+                }
+                Section(String(localized: "settings.hub.interface")) {
+                    settingsLink(.appearance, title: String(localized: "settings.hub.appearance"), subtitle: FamiliarAppearancePreference.current.localizedTitle, symbol: "paintbrush.fill", color: .indigo)
                     settingsLink(.voice, title: String(localized: "voice.title"), subtitle: String(localized: "voice.providers"), symbol: "waveform", color: .blue)
-                    settingsLink(
-                        .soul,
-                        title: String(localized: "settings.hub.soul", defaultValue: "Response Preferences"),
-                        subtitle: String(localized: "settings.hub.soul.detail", defaultValue: "Tone, language and response style"),
-                        symbol: "sparkles",
-                        color: .pink
-                    )
                 }
-                Section(String(localized: "settings.hub.appearance")) {
-                    settingsLink(
-                        .appearance,
-                        title: String(localized: "settings.hub.appearance", defaultValue: "Appearance"),
-                        subtitle: FamiliarAppearancePreference.current.localizedTitle,
-                        symbol: "paintbrush.fill",
-                        color: .indigo
-                    )
-                }
-                Section(String(localized: "settings.hub.privacy_data")) {
-                    settingsLink(
-                        .memory,
-                        title: String(localized: "settings.memory.title", defaultValue: "Memory"),
-                        subtitle: settings.isAutomaticMemoryEnabled
-                            ? String(localized: "settings.memory.detail.on", defaultValue: "Remembers confirmed preferences and facts")
-                            : String(localized: "settings.memory.detail.off", defaultValue: "Off · stored memories are kept but unused"),
-                        symbol: "brain",
-                        color: .pink
-                    )
-                    settingsLink(
-                        .permissions,
-                        title: String(localized: "settings.hub.permissions", defaultValue: "Permissions"),
-                        subtitle: String(localized: "settings.hub.permissions.detail", defaultValue: "Review access managed by iOS"),
-                        symbol: "hand.raised.fill",
-                        color: .orange
-                    )
-                    settingsLink(
-                        .authorizations,
-                        title: String(localized: "settings.hub.authorizations", defaultValue: "Approved Actions"),
-                        subtitle: String(localized: "settings.hub.authorizations.detail", defaultValue: "Review or revoke remembered permissions"),
-                        symbol: "checkmark.shield.fill",
-                        color: .green
-                    )
-                    settingsLink(.appLock, title: String(localized: "lock.setting"), subtitle: String(localized: "lock.footer"), symbol: "lock", color: .blue)
-                    settingsLink(
-                        .storage,
-                        title: String(localized: "settings.hub.storage", defaultValue: "Local Storage"),
-                        subtitle: String(localized: "settings.hub.storage.detail", defaultValue: "Conversations and attachments on this iPhone"),
-                        symbol: "internaldrive.fill",
-                        color: .blue
-                    )
-                    settingsLink(
-                        .privacy,
-                        title: String(localized: "settings.privacy.title"),
-                        subtitle: String(localized: "settings.hub.privacy.detail", defaultValue: "How Familiar handles your data"),
-                        symbol: "hand.raised.square.fill",
-                        color: .cyan
-                    )
+                Section {
+                    settingsLink(.privacyData, title: String(localized: "settings.privacy.title"), subtitle: String(localized: "settings.hub.privacy_data.detail"), symbol: "hand.raised.square.fill", color: .cyan)
                 }
                 Section(String(localized: "settings.hub.support")) {
-                    settingsLink(.advanced, title: String(localized: "settings.advanced.title"),
-                        subtitle: String(localized: "settings.advanced.detail"), symbol: "slider.horizontal.3", color: .gray)
-                    settingsLink(
-                        .about,
-                        title: String(localized: "settings.hub.about", defaultValue: "About Familiar"),
-                        subtitle: appVersion,
-                        symbol: "info.circle.fill",
-                        color: .indigo
-                    )
+                    settingsLink(.about, title: String(localized: "settings.hub.about"), subtitle: appVersion, symbol: "info.circle.fill", color: .indigo)
                 }
             }
             .navigationTitle(String(localized: "drawer.settings"))
@@ -181,78 +130,43 @@ struct FamiliarSettingsView: View {
 
     private var advancedSettings: some View {
         List {
+            Section(String(localized: "settings.hub.capabilities")) {
+                settingsLink(.skills, title: String(localized: "settings.skills.title"), subtitle: String(localized: "settings.skills.detail"), symbol: "wand.and.stars", color: .purple)
+                settingsLink(.mcp, title: String(localized: "mcp.title"), subtitle: String(localized: "mcp.settings.detail"), symbol: "wrench.and.screwdriver", color: .blue)
+                settingsLink(.searchService, title: String(localized: "settings.search.title"),
+                             subtitle: FamiliarSearchProviderCatalog.descriptor(for: searchService.settingsStore.selectedProviderID)?.displayName ?? "DuckDuckGo",
+                             symbol: "magnifyingglass", color: .blue)
+                settingsLink(.tools, title: String(localized: "settings.hub.tools"), subtitle: String(localized: "settings.hub.tools.detail"), symbol: "puzzlepiece.extension.fill", color: .blue)
+            }
             Section(String(localized: "settings.advanced.configuration")) {
-                settingsLink(.modelGroups, title: String(localized: "group.title"), subtitle: String(localized: "group.detail"), symbol: "square.stack", color: .blue)
-                settingsLink(
-                    .searchService,
-                    title: String(localized: "settings.search.title", defaultValue: "Web Search"),
-                    subtitle: FamiliarSearchProviderCatalog.descriptor(
-                        for: searchService.settingsStore.selectedProviderID
-                    )?.displayName ?? "DuckDuckGo",
-                    symbol: "magnifyingglass",
-                    color: .blue
-                )
-                settingsLink(
-                    .tools,
-                    title: String(localized: "settings.hub.tools", defaultValue: "Tools"),
-                    subtitle: String(localized: "settings.hub.tools.detail", defaultValue: "Capabilities registered with the Agent Runtime"),
-                    symbol: "puzzlepiece.extension.fill",
-                    color: .blue
-                )
-                settingsLink(
-                    .executionBudget,
-                    title: String(localized: "settings.budget.title", defaultValue: "Execution Limits"),
-                    subtitle: executionBudgetSubtitle,
-                    symbol: "gauge.with.needle",
-                    color: .purple
-                )
-                settingsLink(
-                    .shellRuntime,
-                    title: String(localized: "settings.shell.title", defaultValue: "Shell Runtime"),
-                    subtitle: String(localized: "settings.shell.detail", defaultValue: "Alpine Linux in the current Familiar Workspace"),
-                    symbol: "shippingbox",
-                    color: .gray
-                )
-                settingsLink(
-                    .pythonPackageSource,
-                    title: String(localized: "settings.python_source.title", defaultValue: "Python Package Source"),
-                    subtitle: pythonPackageSourceSettings.selectedSource.displayName,
-                    symbol: "shippingbox.fill",
-                    color: .orange
-                )
-                settingsLink(
-                    .mcp,
-                    title: String(localized: "mcp.title"),
-                    subtitle: String(localized: "mcp.settings.detail"),
-                    symbol: "wrench.and.screwdriver",
-                    color: .blue
-                )
-                settingsLink(
-                    .skills,
-                    title: String(localized: "settings.skills.title", defaultValue: "Skills"),
-                    subtitle: String(localized: "settings.skills.detail", defaultValue: "Instruction-only guidance available from the composer"),
-                    symbol: "wand.and.stars",
-                    color: .purple
-                )
+                settingsLink(.executionBudget, title: String(localized: "settings.budget.title"), subtitle: executionBudgetSubtitle, symbol: "gauge.with.needle", color: .purple)
+                settingsLink(.shellRuntime, title: String(localized: "settings.shell.title"), subtitle: String(localized: "settings.shell.detail"), symbol: "shippingbox", color: .gray)
+                settingsLink(.pythonPackageSource, title: String(localized: "settings.python_source.title"), subtitle: pythonPackageSourceSettings.selectedSource.displayName, symbol: "shippingbox.fill", color: .orange)
             }
             Section(String(localized: "settings.advanced.activity")) {
-                settingsLink(
-                    .runHistory,
-                    title: String(localized: "settings.hub.run_history", defaultValue: "Run History"),
-                    subtitle: String(localized: "settings.hub.run_history.detail", defaultValue: "Local Agent activity"),
-                    symbol: "clock.arrow.circlepath",
-                    color: .gray
-                )
-                settingsLink(
-                    .diagnostics,
-                    title: String(localized: "settings.diagnostics.title", defaultValue: "Diagnostics"),
-                    subtitle: String(localized: "settings.diagnostics.detail", defaultValue: "Why a capability is unavailable right now"),
-                    symbol: "stethoscope",
-                    color: .teal
-                )
+                settingsLink(.runHistory, title: String(localized: "settings.hub.run_history"), subtitle: String(localized: "settings.hub.run_history.detail"), symbol: "clock.arrow.circlepath", color: .gray)
+                settingsLink(.diagnostics, title: String(localized: "settings.diagnostics.title"), subtitle: String(localized: "settings.diagnostics.detail"), symbol: "stethoscope", color: .teal)
             }
         }
         .navigationTitle(String(localized: "settings.advanced.title"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var privacyDataSettings: some View {
+        List {
+            Section(String(localized: "settings.privacy.access")) {
+                settingsLink(.permissions, title: String(localized: "settings.hub.permissions"), subtitle: String(localized: "settings.hub.permissions.detail"), symbol: "hand.raised.fill", color: .orange)
+                settingsLink(.authorizations, title: String(localized: "settings.hub.authorizations"), subtitle: String(localized: "settings.hub.authorizations.detail"), symbol: "checkmark.shield.fill", color: .green)
+            }
+            Section(String(localized: "settings.privacy.security")) {
+                settingsLink(.appLock, title: String(localized: "lock.setting"), subtitle: String(localized: "lock.footer"), symbol: "lock", color: .blue)
+            }
+            Section(String(localized: "settings.privacy.local_data")) {
+                settingsLink(.storage, title: String(localized: "settings.hub.storage"), subtitle: String(localized: "settings.hub.storage.detail"), symbol: "internaldrive.fill", color: .blue)
+                settingsLink(.dataHandling, title: String(localized: "settings.privacy.data_handling"), subtitle: String(localized: "settings.hub.privacy.detail"), symbol: "hand.raised.square.fill", color: .cyan)
+            }
+        }
+        .navigationTitle(String(localized: "settings.privacy.title"))
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -275,20 +189,27 @@ struct FamiliarSettingsView: View {
                         in: RoundedRectangle(cornerRadius: FamiliarRadius.compact, style: .continuous)
                     )
 
-                HStack(spacing: FamiliarSpacing.small) {
-                    Text(title)
-                        .font(FamiliarTypography.body)
-                    if let badge {
-                        Text(badge)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(FamiliarTheme.accent)
-                            .padding(.horizontal, FamiliarSpacing.small)
-                            .padding(.vertical, FamiliarSpacing.xSmall)
-                            .background(FamiliarTheme.accent.opacity(0.12), in: Capsule())
+                VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
+                    HStack(spacing: FamiliarSpacing.small) {
+                        Text(title).font(FamiliarTypography.body)
+                        if let badge {
+                            Text(badge)
+                                .font(FamiliarTypography.caption.weight(.semibold))
+                                .foregroundStyle(FamiliarTheme.accent)
+                        }
+                    }
+                    if !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(FamiliarTypography.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
+            .frame(minHeight: FamiliarControlSize.minimumHitTarget)
         }
+        .accessibilityIdentifier("settings.route.\(route.rawValue)")
+        .accessibilityLabel(title)
         .accessibilityValue(badge ?? subtitle)
     }
 
@@ -350,7 +271,9 @@ struct FamiliarSettingsView: View {
             FamiliarPermissionsSettingsView()
         case .runHistory:
             FamiliarRunHistoryView()
-        case .privacy:
+        case .privacyData:
+            privacyDataSettings
+        case .dataHandling:
             FamiliarPrivacySettingsView()
         case .about:
             FamiliarAboutView()
@@ -948,7 +871,14 @@ private struct FamiliarMemorySettingsView: View {
                             editedContent = item.content
                             editing = item
                         } label: {
-                            memoryRow(item)
+                            HStack(spacing: FamiliarSpacing.small) {
+                                memoryRow(item)
+                                Image(systemName: "chevron.right")
+                                    .font(FamiliarTypography.caption.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                                    .accessibilityHidden(true)
+                            }
+                            .frame(minHeight: FamiliarControlSize.minimumHitTarget)
                         }
                         .buttonStyle(.plain)
                         .swipeActions {
@@ -1697,7 +1627,7 @@ private struct FamiliarPrivacySettingsView: View {
                 Label(String(localized: "settings.privacy.web_tools"), systemImage: "network")
             }
         }
-        .navigationTitle(String(localized: "settings.privacy.title"))
+        .navigationTitle(String(localized: "settings.privacy.data_handling"))
         .navigationBarTitleDisplayMode(.inline)
     }
 }

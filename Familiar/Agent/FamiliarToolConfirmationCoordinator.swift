@@ -149,9 +149,12 @@ public actor FamiliarToolConfirmationCoordinator {
     /// Suspends until the UI calls `resolve`, or until the request is cancelled.
     /// A task cancelled while waiting is removed and cannot later be confirmed.
     public func requestConfirmation(
-        _ request: FamiliarToolConfirmationRequest
+        _ request: FamiliarToolConfirmationRequest,
+        onPending: (@Sendable () async -> Void)? = nil
     ) async throws -> FamiliarToolConfirmationDecision {
         let key = IdempotencyKey(runID: request.runID, toolCallID: request.toolCallID)
+        var notification: Task<Void, Never>?
+        defer { notification?.cancel() }
 
         return try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation {
@@ -179,6 +182,12 @@ public actor FamiliarToolConfirmationCoordinator {
                     continuation: continuation
                 )
                 pendingIDByKey[key] = request.id
+                if let onPending {
+                    notification = Task {
+                        guard !Task.isCancelled, self.pendingByID[request.id] != nil else { return }
+                        await onPending()
+                    }
+                }
             }
         }, onCancel: {
             Task {

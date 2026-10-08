@@ -47,6 +47,8 @@ final class FamiliarChatController {
     private let runRecorder: FamiliarRunPersistenceRecorder
     private let runRecovery: FamiliarRunRecoveryService
     private var runningTask: Task<Void, Never>?
+    private var followUpTask: Task<Void, Never>?
+    private var followUpGenerationID: UUID?
 
     init(dependencies: FamiliarAppDependencies) {
         self.dependencies = dependencies
@@ -57,6 +59,7 @@ final class FamiliarChatController {
     }
 
     func moveCurrentConversation(to project: FamiliarProject, in context: ModelContext) {
+        cancelFollowUps()
         guard !isSending && !isCompacting, let conversation = selectedConversation(in: context) else { return }
         do {
             try FamiliarFileCatalogService().move(conversation, to: project, in: context)
@@ -161,6 +164,7 @@ final class FamiliarChatController {
     }
 
     func select(_ id: UUID?, in context: ModelContext) {
+        cancelFollowUps()
         guard !isSending && !isCompacting else { return }
         discardDraftAttachments()
         draft = ""
@@ -240,6 +244,7 @@ final class FamiliarChatController {
     }
 
     func startNewConversation(project: FamiliarProject?, in context: ModelContext) {
+        cancelFollowUps()
         guard !isSending && !isCompacting else { return }
         discardDraftAttachments()
         draft = ""
@@ -254,6 +259,7 @@ final class FamiliarChatController {
     }
 
     func delete(_ conversations: [FamiliarConversation], in context: ModelContext) {
+        cancelFollowUps()
         guard !isSending && !isCompacting else { return }
         let deletedIDs = Set(conversations.map(\.id))
         deleteSkillSnapshots(for: conversations.flatMap(\.agentRuns), in: context)
@@ -296,6 +302,7 @@ final class FamiliarChatController {
     }
 
     func startSending(in context: ModelContext) {
+        cancelFollowUps()
         guard !isSending && !isCompacting else { return }
         let capturedDraft = draft
         let prompt = capturedDraft.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -312,7 +319,7 @@ final class FamiliarChatController {
             errorMessage = String(format: String(localized: "error.provider.invalid_configuration"), requestSettings.providerID)
             return
         }
-        guard let apiKey = FamiliarProviderFactory.credential(for: descriptor) else {
+        guard let apiKey = FamiliarProviderFactory.credential(for: descriptor) ?? FamiliarChatTestScenario.credential else {
             errorMessage = String(localized: "error.api_key_missing")
             return
         }
@@ -371,7 +378,7 @@ final class FamiliarChatController {
                 // check also avoids expensive Vision work for impossible Project input.
                 var snapshot = try FamiliarContextCompiler.assemble(seed: seed, settings: requestSettings,
                     messages: history + [pending], toolManifests: manifests, additionalToolGroups: deferredGroups.map(\.summary),
-                    attachmentReadPaths: readPaths)
+                    attachmentReadPaths: readPaths, resolvedModel: descriptor.model(for: requestSettings.modelID))
                 try FamiliarContextCompiler.validateSubmission(snapshot)
                 let images = attachments.filter { $0.kind == .image }
                 if !images.isEmpty && !requestSettings.selectedModel.capabilities.supportsImages {
@@ -387,11 +394,11 @@ final class FamiliarChatController {
                     }
                     snapshot = try FamiliarContextCompiler.assemble(seed: seed, settings: requestSettings,
                         messages: history + [pending], toolManifests: manifests, additionalToolGroups: deferredGroups.map(\.summary),
-                        visualEvidence: evidence, attachmentReadPaths: readPaths)
+                        visualEvidence: evidence, attachmentReadPaths: readPaths, resolvedModel: descriptor.model(for: requestSettings.modelID))
                     try FamiliarContextCompiler.validateSubmission(snapshot)
                 }
                 try Task.checkCancellation()
-                guard FamiliarProviderFactory.credential(for: descriptor) != nil else {
+                guard FamiliarProviderFactory.credential(for: descriptor) != nil || FamiliarChatTestScenario.credential != nil else {
                     throw FamiliarOAuthError.missingCredential
                 }
                 guard draft == capturedDraft, draftAttachments == capturedAttachments,
@@ -1261,14 +1268,15 @@ final class FamiliarChatController {
                     updateRunCursor(runtimeID: event.runID, phase: .model, eventSequence: event.sequence, context: context)
                 case .runFinished(let outcome):
                     runOutcome = outcome
-                    do {
+                    if outcome.status != .succeeded {
                         try runRecorder.recordInterruptedText(streamingResponseBlocks, runtimeID: event.runID,
                             outcome: outcome, at: event.timestamp, context: context)
-                    } catch {
-                        errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription)
+                        try runRecorder.finishRun(runtimeID: event.runID, outcome: outcome,
+                            eventSequence: event.sequence, at: event.timestamp, context: context)
                     }
-                    updateRunCursor(runtimeID: event.runID, phase: .terminal, eventSequence: event.sequence, context: context)
-                    runRecorder.finishRun(runtimeID: event.runID, outcome: outcome, eventSequence: event.sequence, at: event.timestamp, context: context)
+                    // A successful model stream is only a candidate success. The final
+                    // Message, blocks, Sources and terminal Run are saved together below.
+
                 }
                 if FamiliarSurfaceStore.affectsPresentation(event.payload) { refreshRuntimeContentBlocks() }
             }
@@ -1326,7 +1334,7 @@ final class FamiliarChatController {
                     payloadJSON: #"{"format":"plainText"}"#,
                     order: completedBlocks.first?.order ?? 0,
                     endedAt: Date(),
-                    context: context
+                    context: context, save: false
                 )
             }
             if completedBlocks.isEmpty {
@@ -1341,7 +1349,7 @@ final class FamiliarChatController {
                     payloadJSON: #"{"format":"markdown"}"#,
                     order: 0,
                     endedAt: Date(),
-                    context: context
+                    context: context, save: false
                 )
             } else {
                 for block in completedBlocks {
@@ -1357,7 +1365,7 @@ final class FamiliarChatController {
                         order: block.order,
                         startedAt: block.startedAt,
                         endedAt: Date(),
-                        context: context
+                        context: context, save: false
                     )
                 }
             }
@@ -1382,9 +1390,15 @@ final class FamiliarChatController {
                 run.responseMessageID = responseID
             }
             conversation.updatedAt = Date()
+            try runRecorder.finishRun(runtimeID: runtimeID, outcome: .succeeded,
+                eventSequence: lastEventSequence, at: Date(), context: context, save: false)
             try context.save()
             reloadMessages(in: context)
             resetTransientRunState()
+            scheduleFollowUps(messageID: responseID, blockID: responseBlockID,
+                conversationID: conversationID, projectID: contextSnapshot.projectID,
+                question: contextSnapshot.providerMessages.last(where: { $0.role == .user })?.networkText ?? "",
+                answer: answer, model: responseModel, context: context)
             await FamiliarNotificationService.scheduleCompletedRun(
                 conversationID: conversationID,
                 runID: activeRunID
@@ -1397,7 +1411,7 @@ final class FamiliarChatController {
             reloadMessages(in: context)
         } catch {
             context.rollback()
-            if runOutcome == nil, let runtimeID = activeRuntimeID {
+            if runOutcome == nil || runOutcome?.status == .succeeded, let runtimeID = activeRuntimeID {
                 recordInterruptedStream(runtimeID: runtimeID, outcome: .failed(error), sequence: lastEventSequence + 1, context: context)
             }
             resetTransientRunState()
@@ -1407,6 +1421,53 @@ final class FamiliarChatController {
                 conversationID: conversationID,
                 runID: activeRunID
             )
+        }
+    }
+
+    func cancelFollowUps() { followUpTask?.cancel() }
+
+    private func scheduleFollowUps(messageID: UUID, blockID: UUID, conversationID: UUID,
+                                   projectID: UUID?, question: String, answer: String,
+                                   model: FamiliarModelReference, context: ModelContext) {
+        cancelFollowUps()
+        guard let descriptor = FamiliarProviderCatalog.descriptor(for: model.providerID), descriptor.routes == nil,
+              let credential = FamiliarChatTestScenario.credential ?? FamiliarProviderFactory.credential(for: descriptor),
+              let block = try? context.fetch(FetchDescriptor<FamiliarResponseBlockRecord>(predicate: #Predicate { $0.id == blockID })).first,
+              FamiliarFollowUpSuggestions.read(block.payloadJSON) == nil else { return }
+        let hash = FamiliarHash.sha256(answer)
+        do {
+            block.payloadJSON = try FamiliarFollowUpSuggestions(state: .pending, model: model, answerHash: hash).adding(to: block.payloadJSON)
+            try context.save()
+        } catch { context.rollback(); return }
+        let generationID = UUID()
+        followUpGenerationID = generationID
+        let provider = dependencies.makeModelProvider(for: descriptor, apiKey: credential)
+        followUpTask = Task { [weak self] in
+            guard let self else { return }
+            let result: FamiliarFollowUpSuggestions
+            do {
+                result = try await FamiliarFollowUpService.generate(question: question, answer: answer, model: model, provider: provider)
+            } catch is CancellationError {
+                result = .init(state: .cancelled, model: model, answerHash: hash)
+            } catch {
+                result = .init(state: .failed, model: model, answerHash: hash,
+                    failureCode: FamiliarRuntimeFailure.kind(for: error).code)
+            }
+            defer {
+                if followUpGenerationID == generationID { followUpTask = nil; followUpGenerationID = nil }
+            }
+            guard followUpGenerationID == generationID,
+                  let conversation = fetchConversation(id: conversationID, in: context),
+                  conversation.project?.id == projectID,
+                  let message = conversation.messages.first(where: { $0.id == messageID }),
+                  FamiliarHash.sha256(message.content) == hash,
+                  let current = try? context.fetch(FetchDescriptor<FamiliarResponseBlockRecord>(predicate: #Predicate { $0.id == blockID })).first,
+                  current.messageID == messageID else { return }
+            do {
+                current.payloadJSON = try result.adding(to: current.payloadJSON)
+                try context.save()
+                if selectedConversationID == conversationID { reloadMessages(in: context) }
+            } catch { context.rollback() }
         }
     }
 
@@ -1539,7 +1600,8 @@ final class FamiliarChatController {
         do { try runRecorder.recordInterruptedText(streamingResponseBlocks, runtimeID: runtimeID, outcome: outcome, at: date, context: context) }
         catch { errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription) }
         updateRunCursor(runtimeID: runtimeID, phase: .terminal, eventSequence: sequence, context: context)
-        runRecorder.finishRun(runtimeID: runtimeID, outcome: outcome, eventSequence: sequence, at: date, context: context)
+        do { try runRecorder.finishRun(runtimeID: runtimeID, outcome: outcome, eventSequence: sequence, at: date, context: context) }
+        catch { errorMessage = String(format: String(localized: "error.save_tool_record"), error.localizedDescription) }
     }
 
     private func refreshRuntimeContentBlocks() {

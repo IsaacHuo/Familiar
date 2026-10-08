@@ -50,8 +50,11 @@ public actor FamiliarClarificationCoordinator {
 
     public init() {}
 
-    public func requestClarification(_ request: FamiliarClarificationRequest) async throws -> FamiliarClarificationResolution {
-        try await withTaskCancellationHandler(operation: {
+    public func requestClarification(_ request: FamiliarClarificationRequest,
+                                     onPending: (@Sendable () async -> Void)? = nil) async throws -> FamiliarClarificationResolution {
+        var notification: Task<Void, Never>?
+        defer { notification?.cancel() }
+        return try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
                 if let resolution = completed[request.id] {
                     continuation.resume(returning: resolution)
@@ -60,6 +63,12 @@ public actor FamiliarClarificationCoordinator {
                     continuation.resume(throwing: CancellationError())
                 } else {
                     pending[request.id] = Pending(request: request, continuation: continuation)
+                    if let onPending {
+                        notification = Task {
+                            guard !Task.isCancelled, self.pending[request.id] != nil else { return }
+                            await onPending()
+                        }
+                    }
                 }
             }
         }, onCancel: {

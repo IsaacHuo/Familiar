@@ -26,6 +26,9 @@ struct FamiliarApp: App {
                 FamiliarRootView(dependencies: dependencies)
                     .tint(FamiliarTheme.accent)
                     .modelContainer(modelContainer)
+                    .transformEnvironment(\.dynamicTypeSize) { value in
+                        if FamiliarChatTestScenario.accessibilityEnabled { value = .accessibility3 }
+                    }
             } else {
                 FamiliarStoreRecoveryView(diagnostic: storeError ?? "未知错误")
                     .tint(FamiliarTheme.accent)
@@ -34,6 +37,17 @@ struct FamiliarApp: App {
     }
 
     private static func makeModelContainer() throws -> ModelContainer {
+#if DEBUG && targetEnvironment(simulator)
+        if FamiliarChatTestScenario.isEnabled {
+            if let id = FamiliarChatTestScenario.persistentStoreID {
+                let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                    .appendingPathComponent("Familiar/Verification/UITests/" + id, isDirectory: true)
+                try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+                return try FamiliarModelContainer.make(at: root.appendingPathComponent("Functional.store"), configurationName: "FunctionalUI")
+            }
+            return try FamiliarModelContainer.makeInMemory(name: "PresentationTests")
+        }
+#endif
         let fileManager = FileManager.default
         let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let persistence = support.appendingPathComponent("Familiar/Persistence", isDirectory: true)

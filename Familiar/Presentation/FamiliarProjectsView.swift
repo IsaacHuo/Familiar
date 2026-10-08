@@ -7,50 +7,35 @@ enum FamiliarProjectConversationRequest: Equatable, Sendable {
     case create(projectID: UUID)
 }
 
-struct FamiliarProjectsView: View {
+private enum FamiliarProjectRoute: Hashable { case project(UUID), chat(UUID) }
+
+struct FamiliarProjectsView<ChatContent: View>: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \FamiliarProject.updatedAt, order: .reverse) private var projects: [FamiliarProject]
 
     let initialProjectID: UUID?
     private let registry: FamiliarToolRegistry?
-    private let onConversationRequest: ((FamiliarProjectConversationRequest) -> Void)?
-    private let onSelectConversation: ((FamiliarConversation) -> Void)?
-    private let onNewConversation: ((FamiliarProject) -> Void)?
+    private let onConversationRequest: (FamiliarProjectConversationRequest, @escaping () -> Void) -> Void
+    private let chatContent: () -> ChatContent
+    private let onChatVisibilityChange: (Bool) -> Void
     private let onDeleteConversations: (([FamiliarConversation]) -> Void)?
 
-    @State private var path: [UUID]
+    @State private var path: [FamiliarProjectRoute]
     @State private var editor: FamiliarProjectEditorDestination?
     @State private var errorMessage: String?
 
     init(
-        initialProjectID: UUID? = nil,
-        registry: FamiliarToolRegistry? = nil,
-        onConversationRequest: @escaping (FamiliarProjectConversationRequest) -> Void,
-        onDeleteConversations: @escaping ([FamiliarConversation]) -> Void
+        initialProjectID: UUID? = nil, registry: FamiliarToolRegistry? = nil,
+        onConversationRequest: @escaping (FamiliarProjectConversationRequest, @escaping () -> Void) -> Void,
+        onDeleteConversations: @escaping ([FamiliarConversation]) -> Void,
+        onChatVisibilityChange: @escaping (Bool) -> Void,
+        @ViewBuilder chatContent: @escaping () -> ChatContent
     ) {
-        self.initialProjectID = initialProjectID
-        self.registry = registry
-        self.onConversationRequest = onConversationRequest
-        self.onDeleteConversations = onDeleteConversations
-        onSelectConversation = nil
-        onNewConversation = nil
-        _path = State(initialValue: initialProjectID.map { [$0] } ?? [])
-    }
-
-    init(
-        initialProjectID: UUID? = nil,
-        registry: FamiliarToolRegistry? = nil,
-        onSelectConversation: @escaping (FamiliarConversation) -> Void,
-        onNewConversation: @escaping (FamiliarProject) -> Void
-    ) {
-        self.initialProjectID = initialProjectID
-        self.registry = registry
-        onConversationRequest = nil
-        onDeleteConversations = nil
-        self.onSelectConversation = onSelectConversation
-        self.onNewConversation = onNewConversation
-        _path = State(initialValue: initialProjectID.map { [$0] } ?? [])
+        self.initialProjectID = initialProjectID; self.registry = registry
+        self.onConversationRequest = onConversationRequest; self.onDeleteConversations = onDeleteConversations
+        self.onChatVisibilityChange = onChatVisibilityChange; self.chatContent = chatContent
+        _path = State(initialValue: initialProjectID.map { [.project($0)] } ?? [])
     }
 
     var body: some View {
@@ -88,7 +73,12 @@ struct FamiliarProjectsView: View {
                     .accessibilityIdentifier("projects.create")
                 }
             }
-            .navigationDestination(for: UUID.self) { projectID in
+            .navigationDestination(for: FamiliarProjectRoute.self) { route in
+                switch route {
+                case .chat:
+                    chatContent()
+                        .toolbar(.visible, for: .navigationBar)
+                case .project(let projectID):
                 if let project = projects.first(where: { $0.id == projectID }) {
                     FamiliarProjectDetailView(
                         project: project,
@@ -101,12 +91,17 @@ struct FamiliarProjectsView: View {
                 } else {
                     ContentUnavailableView(String(localized: "project.unavailable"), systemImage: "folder.badge.questionmark")
                 }
+                }
             }
         }
+        .onChange(of: path) { _, path in
+            onChatVisibilityChange(path.contains { route in if case .chat = route { return true }; return false })
+        }
+        .onDisappear { onChatVisibilityChange(false) }
         .sheet(item: $editor) { destination in
             FamiliarProjectEditorView(destination: destination) { project in
                 editor = nil
-                if path.last != project.id { path.append(project.id) }
+                if path.last != .project(project.id) { path.append(.project(project.id)) }
             }
         }
         .alert(String(localized: "app.name"), isPresented: Binding(
@@ -122,7 +117,7 @@ struct FamiliarProjectsView: View {
     private func projectSection(title: String, projects: [FamiliarProject]) -> some View {
         Section(title) {
             ForEach(projects) { project in
-                NavigationLink(value: project.id) {
+                NavigationLink(value: FamiliarProjectRoute.project(project.id)) {
                     VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                         Text(project.displayName)
                             .font(FamiliarTypography.body.weight(.medium))
@@ -135,25 +130,17 @@ struct FamiliarProjectsView: View {
                     }
                     .padding(.vertical, FamiliarSpacing.xSmall)
                 }
+                .accessibilityIdentifier("project.open.\(project.id)")
             }
         }
     }
 
     private func handleConversationRequest(_ request: FamiliarProjectConversationRequest) {
-        dismiss()
-        if let onConversationRequest {
-            onConversationRequest(request)
-            return
-        }
-        switch request {
-        case .open(let conversationID):
-            guard let conversation = projects.lazy.flatMap(\.conversations).first(where: { $0.id == conversationID }) else { return }
-            onSelectConversation?(conversation)
-        case .create(let projectID):
-            guard let project = projects.first(where: { $0.id == projectID }) else { return }
-            onNewConversation?(project)
+        onConversationRequest(request) {
+            path.append(.chat(UUID()))
         }
     }
+
 }
 
 private struct FamiliarProjectDetailView: View {
@@ -182,6 +169,7 @@ private struct FamiliarProjectDetailView: View {
                     Label(String(localized: "project.new_chat"), systemImage: "square.and.pencil")
                 }
                 .disabled(project.status != .active)
+                .accessibilityIdentifier("project.newChat")
             }
             if !project.summary.isEmpty {
                 Section {
@@ -281,12 +269,19 @@ private struct FamiliarProjectDetailView: View {
             // here because it is project context, and tapping it opens the same editor that
             // owns it rather than duplicating an editing surface.
             Button(action: onEdit) {
-                FamiliarProjectContextRow(
-                    title: String(localized: "project.instruction"),
-                    detail: project.instruction?.text ?? String(localized: "project.instruction.empty"),
-                    symbol: "text.quote",
-                    count: nil
-                )
+                HStack(spacing: FamiliarSpacing.small) {
+                    FamiliarProjectContextRow(
+                        title: String(localized: "project.instruction"),
+                        detail: project.instruction?.text ?? String(localized: "project.instruction.empty"),
+                        symbol: "text.quote", count: nil
+                    )
+                    Image(systemName: "chevron.right")
+                        .font(FamiliarTypography.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                }
+                .contentShape(Rectangle())
+                .frame(minHeight: FamiliarControlSize.minimumHitTarget)
             }
             .buttonStyle(.plain)
 
@@ -408,7 +403,7 @@ private struct FamiliarProjectDetailView: View {
                     ProgressView()
                 }
             } else {
-                Label(String(localized: "resource.add"), systemImage: "plus")
+                Text(String(localized: "resource.add"))
             }
         }
         .font(FamiliarTypography.button)
@@ -585,9 +580,14 @@ private struct FamiliarProjectCapabilitiesView: View {
     let projectID: UUID
     let registry: FamiliarToolRegistry
     @State private var manifests: [FamiliarToolManifest] = []
+    @State private var saveError: String?
+    @State private var unavailable: [String: String] = [:]
 
     var body: some View {
         List {
+            if let saveError {
+                Section { Text(saveError).foregroundStyle(FamiliarTheme.failure).accessibilityIdentifier("capabilities.save-error") }
+            }
             // Grouped by category so a 50-plus tool list is scannable. Category order comes
             // from the enum's declaration order, not from whatever order the registry
             // happens to return, so the screen does not reshuffle between launches.
@@ -604,25 +604,33 @@ private struct FamiliarProjectCapabilitiesView: View {
         }
         .navigationTitle(String(localized: "project.capabilities", defaultValue: "Capabilities"))
         .navigationBarTitleDisplayMode(.inline)
-        .task { manifests = await registry.manifests() }
+        .task {
+            manifests = await registry.snapshot()
+            let report = await registry.availabilityReport()
+            unavailable = Dictionary(report.unavailable.map { ($0.name, $0.reason) }, uniquingKeysWith: { _, latest in latest })
+        }
     }
 
     private func capabilityToggle(_ manifest: FamiliarToolManifest) -> some View {
         Toggle(isOn: Binding(
             get: { isEnabled(manifest.id) },
             set: { enabled in
-                try? FamiliarProjectService().setCapability(
+                do {
+                    try FamiliarProjectService().setCapability(
                     manifest.id,
                     enabled: enabled,
                     allCapabilities: manifests,
                     projectID: projectID,
                     in: modelContext
                 )
+                    saveError = nil
+                } catch { saveError = error.localizedDescription }
             }
         )) {
             VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                 Text(FamiliarToolPresentationName.title(for: manifest.name))
                 Text(FamiliarToolPresentationName.effectDescription(manifest)).font(FamiliarTypography.caption).foregroundStyle(.secondary).lineLimit(2)
+                if let reason = unavailable[manifest.name] { Text(reason).font(FamiliarTypography.caption).foregroundStyle(FamiliarTheme.inkSecondary) }
             }
         }
         .disabled(FamiliarToolGroup.baseToolNames.contains(manifest.name))

@@ -19,16 +19,24 @@ struct FamiliarMCPSettingsView: View {
                 ForEach(servers) { server in
                     HStack {
                         Button { editing = .init(id: server.id, server: server) } label: {
-                            VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                                Text(server.displayName)
-                                Text(server.endpointString).font(FamiliarTypography.caption).foregroundStyle(.secondary).lineLimit(1)
+                            HStack(spacing: FamiliarSpacing.small) {
+                                VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
+                                    Text(server.displayName)
+                                    Text(server.endpointString).font(FamiliarTypography.caption).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                                Spacer(minLength: FamiliarSpacing.small)
+                                Image(systemName: "chevron.right")
+                                    .font(FamiliarTypography.caption.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                                    .accessibilityHidden(true)
                             }
+                            .frame(maxWidth: .infinity, minHeight: FamiliarControlSize.minimumHitTarget, alignment: .leading)
                         }
                         Toggle(server.displayName, isOn: enabledBinding(server)).labelsHidden()
                     }
                 }
             } footer: { Text(String(localized: "mcp.scope.footer")) }
-            Button { editing = .init(id: UUID(), server: nil) } label: { Label(String(localized: "mcp.add"), systemImage: "plus") }
+            Button { editing = .init(id: UUID(), server: nil) } label: { Text(String(localized: "mcp.add")) }
             Button(String(localized: "mcp.import")) { showsImport = true }
         }
         .navigationTitle(String(localized: "mcp.title"))

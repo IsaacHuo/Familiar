@@ -111,6 +111,12 @@ struct FamiliarAppDependencies {
             if let shellRuntime {
                 tools += [shellRuntime.tool, AnyFamiliarTool(FamiliarEnvironmentPrepareTool(executor: shellRuntime.executor, workspaceStore: workspaceStore, packageSourceSettings: pythonPackageSourceSettings))]
             }
+#if DEBUG && targetEnvironment(simulator)
+            if FamiliarChatTestScenario.isEnabled {
+                tools.removeAll { $0.manifest.name == "file_read" }
+                tools.append(AnyFamiliarTool(FamiliarChatTestReadTool()))
+            }
+#endif
             registry = try FamiliarToolRegistry(
                 tools: tools,
                 capabilities: FamiliarDeviceCapabilityProvider(
@@ -172,7 +178,7 @@ struct FamiliarAppDependencies {
         deferredToolGroups: [FamiliarDeferredToolGroup] = []
     ) -> FamiliarAgentLoop {
         let normalized = budget.normalized
-        let provider = FamiliarProviderFactory.makeProvider(for: descriptor, apiKey: apiKey, sessionID: sessionID)
+        let provider = makeModelProvider(for: descriptor, apiKey: apiKey, sessionID: sessionID)
         return FamiliarAgentLoop(
             provider: provider,
             registry: runRegistry ?? registry,
@@ -190,4 +196,11 @@ struct FamiliarAppDependencies {
             maximumDuration: normalized.maximumDuration
         )
     }
+    func makeModelProvider(for descriptor: FamiliarProviderDescriptor, apiKey: String, sessionID: String = "") -> any FamiliarModelProvider {
+#if DEBUG && targetEnvironment(simulator)
+        if FamiliarChatTestScenario.isEnabled { return FamiliarChatTestProvider() }
+#endif
+        return FamiliarProviderFactory.makeProvider(for: descriptor, apiKey: apiKey, sessionID: sessionID)
+    }
+
 }

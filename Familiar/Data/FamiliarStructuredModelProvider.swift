@@ -150,7 +150,7 @@ nonisolated struct FamiliarStructuredModelProvider: FamiliarModelProvider, Senda
                     messages[messages.count - 1]["content"] = existing + parts
                 } else { messages.append(["role": role, "content": parts]) }
             }
-            var body: [String: Any] = ["model": input.model, "messages": messages, "system": system, "stream": true, "max_tokens": 8192]
+            var body: [String: Any] = ["model": input.model, "messages": messages, "system": system, "stream": true, "max_tokens": input.maximumOutputTokens ?? 8192]
             if !schemas.isEmpty { body["tools"] = schemas.map { ["name": $0["name"]!, "description": $0["description"]!, "input_schema": $0["parameters"]!] } }
             return body
         case .openAIResponses:
@@ -172,6 +172,7 @@ nonisolated struct FamiliarStructuredModelProvider: FamiliarModelProvider, Senda
                 for call in message.toolCalls { items.append(["type": "function_call", "call_id": call.id, "name": call.name, "arguments": call.arguments]) }
             }
             var body: [String: Any] = ["model": input.model, "instructions": system, "input": items, "stream": true, "store": false]
+            if let maximum = input.maximumOutputTokens { body["max_output_tokens"] = maximum }
             if !schemas.isEmpty { body["tools"] = schemas.map { $0.merging(["type": "function", "strict": false]) { _, new in new } } }
             return body
         case .gemini:
@@ -203,6 +204,7 @@ nonisolated struct FamiliarStructuredModelProvider: FamiliarModelProvider, Senda
                 } else { contents.append(["role": role, "parts": parts]) }
             }
             var body: [String: Any] = ["contents": contents, "systemInstruction": ["parts": [["text": system]]]]
+            if let maximum = input.maximumOutputTokens { body["generationConfig"] = ["maxOutputTokens": maximum] }
             if !schemas.isEmpty {
                 body["tools"] = [["functionDeclarations": schemas.map { ["name": $0["name"]!, "description": $0["description"]!, "parametersJsonSchema": $0["parameters"]!] }]]
             }

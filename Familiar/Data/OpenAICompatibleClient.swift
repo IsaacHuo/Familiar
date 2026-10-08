@@ -151,17 +151,20 @@ private nonisolated extension FamiliarOpenAICompatibleModelProvider {
         let stream = true
         let streamOptions: StreamOptions?
         let tools: [RequestTool]?
+        let maxTokens: Int?
 
         init(_ request: FamiliarModelRequest, sendsStreamOptions: Bool) {
             model = request.model
             messages = request.messages.map(RequestMessage.init)
             streamOptions = sendsStreamOptions ? StreamOptions(includeUsage: true) : nil
             tools = request.tools.isEmpty ? nil : request.tools.map(RequestTool.init)
+            maxTokens = request.maximumOutputTokens
         }
 
         enum CodingKeys: String, CodingKey {
             case model, messages, stream, tools
             case streamOptions = "stream_options"
+            case maxTokens = "max_tokens"
         }
     }
 

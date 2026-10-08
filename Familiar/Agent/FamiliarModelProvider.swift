@@ -300,6 +300,11 @@ nonisolated struct FamiliarModelRequest: Sendable {
     let model: String
     let messages: [FamiliarProviderMessage]
     let tools: [FamiliarToolManifest]
+    let maximumOutputTokens: Int?
+    init(model: String, messages: [FamiliarProviderMessage], tools: [FamiliarToolManifest], maximumOutputTokens: Int? = nil) {
+        self.model = model; self.messages = messages; self.tools = tools
+        self.maximumOutputTokens = maximumOutputTokens.map { min(max($0, 1), 8192) }
+    }
 }
 
 nonisolated enum FamiliarModelFinishReason: String, Sendable {

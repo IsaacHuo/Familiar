@@ -12,7 +12,7 @@ struct FamiliarFilesView: View {
     @State private var errorMessage: String?
     @State private var pendingDeletion: FamiliarFileRecord?
 
-    private struct Preview: Identifiable {
+    private struct Preview: Identifiable, Hashable {
         let id: UUID
         let url: URL
     }
@@ -48,11 +48,7 @@ struct FamiliarFilesView: View {
                         Button(String(localized: "common.delete"), role: .destructive) { pendingDeletion = file }
                     } label: {
                         Button { openLatest(file) } label: {
-                            VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                                Text(file.displayName)
-                                Text(ByteCountFormatter.string(fromByteCount: snapshot.byteSize, countStyle: .file))
-                                    .font(FamiliarTypography.caption).foregroundStyle(.secondary)
-                            }
+                            FamiliarFileLabel(file: .init(snapshot: snapshot))
                             .frame(minHeight: 44)
                         }
                     }
@@ -62,9 +58,10 @@ struct FamiliarFilesView: View {
         .overlay { if visibleFiles.isEmpty { ContentUnavailableView(String(localized: "file.empty"), systemImage: "folder") } }
         .navigationTitle(String(localized: "chat.files"))
         .searchable(text: $query)
-        .sheet(item: $preview) { preview in FamiliarAttachmentPreviewView(url: preview.url) }
+        .navigationDestination(item: $preview) { preview in FamiliarAttachmentPreviewView(url: preview.url) }
         .alert(String(localized: "file.delete.title"), isPresented: Binding(get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } })) {
             Button(String(localized: "common.delete"), role: .destructive) {
+                FamiliarHaptics.shared.perform(.destructive)
                 if let file = pendingDeletion { perform { try FamiliarFileCatalogService().delete(file, in: context) } }
                 pendingDeletion = nil
             }

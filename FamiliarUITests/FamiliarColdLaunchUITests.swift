@@ -8,7 +8,7 @@ final class FamiliarColdLaunchUITests: XCTestCase {
     @MainActor
     func testColdLaunchShowsOnboardingOrChatShell() {
         let app = XCUIApplication()
-        app.launchArguments += ["-familiar.ui-testing", "1"]
+        app.launchArguments += ["-familiar.ui-testing", "1", "-familiar.chat-testing", "1"]
         app.launch()
 
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
@@ -18,7 +18,7 @@ final class FamiliarColdLaunchUITests: XCTestCase {
     @MainActor
     func testAssistantTurnVisualFixtureSelectionAndCollapsedSources() {
         let app = XCUIApplication()
-        app.launchArguments += ["-familiar.ui-testing", "1", "-familiar.visual-fixture", "1"]
+        app.launchArguments += ["-familiar.ui-testing", "1", "-familiar.chat-testing", "1", "-familiar.visual-fixture", "1"]
         app.launch()
 
         let fixtureIDs = [

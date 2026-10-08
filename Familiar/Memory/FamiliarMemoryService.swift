@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import NaturalLanguage
 
 @MainActor
 struct FamiliarMemoryService {
@@ -24,7 +25,7 @@ struct FamiliarMemoryService {
         return "\(owner)|\(body)"
     }
 
-    /// Read-only keyword candidates, ordered by confidence and recency. The compiler
+    /// Read-only scoped candidates, ranked by lexical relevance, confidence and recency. The compiler
     /// applies its own budget before accepted submission records actual usage.
     func candidates(
         query: String,
@@ -32,19 +33,30 @@ struct FamiliarMemoryService {
         conversationID: UUID?,
         in context: ModelContext
     ) throws -> [FamiliarMemoryItem] {
-        let tokens = Set(
-            query.lowercased()
-                .split { $0.isWhitespace || $0.isPunctuation }
-                .map(String.init)
-        )
-        return try context.fetch(FetchDescriptor<FamiliarMemoryItem>())
-            .filter { item in
-                guard item.isVisible, item.isInScope(projectID: projectID, conversationID: conversationID) else { return false }
-                guard !tokens.isEmpty else { return true }
-                let content = item.content.lowercased()
-                return tokens.contains { content.contains($0) }
-            }
-            .sorted(by: Self.isMoreUseful)
+        let queryTerms = Self.words(query)
+        // Confirmed scoped facts remain eligible even when wording/language changes.
+        // Lexical overlap ranks first; the Compiler is the sole admission budget.
+        let ranked = try context.fetch(FetchDescriptor<FamiliarMemoryItem>())
+            .filter { $0.isVisible && $0.isInScope(projectID: projectID, conversationID: conversationID) }
+            .map { item in (item, queryTerms.intersection(Self.words(item.content)).count) }
+        return ranked.sorted { lhs, rhs in
+            if lhs.1 != rhs.1 { return lhs.1 > rhs.1 }
+            return Self.isMoreUseful(lhs.0, rhs.0)
+        }.map { $0.0 }
+    }
+
+    private static func words(_ input: String) -> Set<String> {
+        let value = input.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+        let tokenizer = NLTokenizer(unit: .word)
+        tokenizer.string = value
+        var tokens = Set<String>()
+        let stop: Set<String> = ["a", "an", "the", "i", "my", "me", "it", "to", "is", "of", "and", "please", "我", "请", "的", "是", "在", "了"]
+        tokenizer.enumerateTokens(in: value.startIndex..<value.endIndex) { range, _ in
+            let token = String(value[range])
+            if !stop.contains(token) { tokens.insert(token) }
+            return true
+        }
+        return tokens
     }
 
     /// Stage actual use in the same save as the accepted user message. Selection and

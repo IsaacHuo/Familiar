@@ -53,7 +53,7 @@ body {
   user-select: none;
 }
 
-#content.streaming > :last-child::after {
+#content.streaming > .markdown-block:last-child > :last-child::after {
   content: "";
   display: inline-block;
   width: 2px;
@@ -62,7 +62,7 @@ body {
   border-radius: 999px;
   background: currentColor;
   vertical-align: -0.08em;
-  animation: streaming-cursor-in 150ms ease-out both;
+  animation: streaming-cursor-in var(--familiar-content-duration, 150ms) ease-out both;
 }
 
 @keyframes streaming-cursor-in {
@@ -71,7 +71,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #content.streaming > :last-child::after {
+  #content.streaming > .markdown-block:last-child > :last-child::after {
     animation: none;
   }
 }
@@ -439,3 +439,18 @@ summary {
   outline-offset: 3px;
 }
 .hljs-deletion { color: var(--familiar-failure); }
+
+
+.markdown-block:first-child > :first-child { margin-top: 0; }
+.markdown-block:last-child > :last-child { margin-bottom: 0; }
+.familiar-chunk { display: inline; position: relative; animation: familiar-soft-rise var(--familiar-content-duration, 150ms) ease-out both; }
+.familiar-appear { position: relative; animation: familiar-soft-rise var(--familiar-content-duration, 150ms) ease-out both; }
+@keyframes familiar-soft-rise {
+  from { opacity: 0; top: var(--familiar-content-offset, 2.5px); }
+  to { opacity: 1; top: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .familiar-chunk, .familiar-appear { position: relative; animation: none; }
+}
+
+#content.reduce-motion .familiar-chunk, #content.reduce-motion .familiar-appear, #content.reduce-motion.streaming > .markdown-block:last-child > :last-child::after { animation: none; }

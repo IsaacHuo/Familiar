@@ -30,6 +30,8 @@ enum FamiliarMarkdownStyle {
         variables["--familiar-radius-compact"] = "\(FamiliarRadius.compact)px"
         variables["--familiar-radius-control"] = "\(FamiliarRadius.control)px"
         variables["--familiar-width"] = "\(FamiliarAISurfaceMetric.timelineWidth)px"
+        variables["--familiar-content-duration"] = "\(FamiliarMotion.contentAppearDuration * 1000)ms"
+        variables["--familiar-content-offset"] = "\(FamiliarMotion.contentAppearOffset)px"
         let data = try? JSONSerialization.data(withJSONObject: variables, options: [.sortedKeys])
         return data.map { String(decoding: $0, as: UTF8.self) } ?? "{}"
     }

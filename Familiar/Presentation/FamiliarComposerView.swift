@@ -57,7 +57,7 @@ private struct FamiliarComposerLayout: Layout {
             let micX = sendX - 2 - control
             let editorX = bounds.minX + control * CGFloat(leadingControlCount) + CGFloat(max(leadingControlCount - 1, 0) * 2) + 4
             let editorWidth = max(micX - 4 - editorX, 1)
-            subviews[0].place(at: CGPoint(x: editorX, y: y), anchor: .topLeading, proposal: .init(width: editorWidth, height: control))
+            subviews[0].place(at: CGPoint(x: editorX, y: bounds.minY), anchor: .topLeading, proposal: .init(width: editorWidth, height: bounds.height))
             subviews[1].place(at: CGPoint(x: micX, y: y), anchor: .topLeading, proposal: .init(width: control, height: control))
             subviews[2].place(at: CGPoint(x: sendX, y: y), anchor: .topLeading, proposal: .init(width: control, height: control))
         } else {
@@ -72,7 +72,7 @@ private struct FamiliarComposerLayout: Layout {
     }
 
     private var desiredHeight: CGFloat {
-        mode == .compact ? control : editorHeight + 8 + control
+        mode == .compact ? max(control, editorHeight) : editorHeight + 8 + control
     }
 }
 
@@ -128,7 +128,7 @@ private struct FamiliarInlinePhotoPickerSheet: View {
 }
 
 struct FamiliarComposer: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.familiarReduceMotion) private var reduceMotion
     @Binding var draft: String
     @Binding var images: [FamiliarDraftImage]
     @Binding var documents: [FamiliarAttachmentDraft]
@@ -157,6 +157,7 @@ struct FamiliarComposer: View {
     @State private var showsFiles = false
     @State private var showsSkillPalette = false
     @State private var notice: FamiliarComposerNotice?
+    @Namespace private var imageTransition
     @State private var previewImage: FamiliarDraftImage?
     private let availableHeight: CGFloat
     /// Scales with Dynamic Type. It must be one value shared by the font and the height
@@ -202,7 +203,7 @@ struct FamiliarComposer: View {
     private var isLongText: Bool { effectiveTextHeight >= lineHeight * 4 - 0.5 }
     private var showsExpansion: Bool { mode == .fullscreen || isLongText }
     private var editorHeight: CGFloat { min(max(effectiveTextHeight + 18, 44), lineHeight * 4 + 20) }
-    private var controlsHeight: CGFloat { mode == .compact ? 44 : editorHeight + 8 + 44 }
+    private var controlsHeight: CGFloat { mode == .compact ? max(44, editorHeight) : editorHeight + 8 + 44 }
     private var fullscreenHeight: CGFloat {
         min(max(availableHeight * 0.8 - 14, 240), max(availableHeight - 14, 240))
     }
@@ -269,6 +270,7 @@ struct FamiliarComposer: View {
             FamiliarDraftImagePreviewView(image: item.image) {
                 images.removeAll { $0.id == item.id }
             }
+            .modifier(FamiliarImageZoom(sourceID: item.id, namespace: imageTransition))
         }
         .fileImporter(isPresented: $showsFiles, allowedContentTypes: Self.allowedFileTypes, allowsMultipleSelection: true, onCompletion: importFiles)
         .alert(item: $notice) { notice in
@@ -285,7 +287,14 @@ struct FamiliarComposer: View {
         }
         .onChange(of: draftScopeID) { _, _ in cancelDraftTasks() }
         .onDisappear { cancelDraftTasks() }
-        .onPreferenceChange(FamiliarComposerTextHeightKey.self) { measuredTextHeight = $0; updateModeForText() }
+        .onPreferenceChange(FamiliarComposerTextHeightKey.self) { height in
+            guard abs(measuredTextHeight - height) >= 0.5 else { return }
+            withAnimation(reduceMotion ? nil : FamiliarMotion.standard) { measuredTextHeight = height }
+            updateModeForText()
+        }
+        .animation(reduceMotion ? nil : FamiliarMotion.standard, value: images.map(\.id))
+        .animation(reduceMotion ? nil : FamiliarMotion.standard, value: documents.map(\.id))
+        .animation(reduceMotion ? nil : FamiliarMotion.standard, value: importingFileCount)
     }
 
     @ViewBuilder
@@ -387,12 +396,14 @@ struct FamiliarComposer: View {
             if draft.isEmpty {
                 Text(String(localized: "composer.placeholder"))
                     .font(.system(size: editorFontSize))
+                    .lineLimit(1)
                     .foregroundStyle(.tertiary)
                     .padding(.leading, mode == .compact ? 5 : 14)
                     .padding(.top, mode == .compact ? 8 : 14)
                     .allowsHitTesting(false)
             }
             TextEditor(text: $draft)
+                .accessibilityIdentifier("composer.input")
                 .font(.system(size: editorFontSize))
                 .scrollContentBackground(.hidden)
                 .scrollIndicators(.hidden)
@@ -490,7 +501,9 @@ struct FamiliarComposer: View {
             Image(systemName: isListening ? "waveform" : "mic")
                 .font(.system(size: isListening ? 20 : 23, weight: isListening ? .semibold : .regular))
                 .foregroundStyle(isListening ? FamiliarTheme.accent : Color.primary)
-                .symbolEffect(.variableColor.iterative, isActive: isListening)
+                .contentTransition(reduceMotion ? .opacity : .symbolEffect(.replace))
+                .symbolEffect(.breathe, isActive: isListening && !reduceMotion)
+                .animation(reduceMotion ? nil : FamiliarMotion.micro, value: isListening)
                 .frame(
                     width: FamiliarControlSize.minimumHitTarget,
                     height: FamiliarControlSize.minimumHitTarget
@@ -502,11 +515,14 @@ struct FamiliarComposer: View {
 
     private var sendButton: some View {
         Button {
-            if isSending { onSend() }
+            if isSending { FamiliarHaptics.shared.perform(.selection); onSend() }
             else if importingFileCount > 0 { return }
             else if hasText || !documents.isEmpty || !images.isEmpty { onSend() }
         } label: {
             Image(systemName: isSending ? "stop.fill" : "arrow.up")
+                .contentTransition(reduceMotion ? .opacity : .symbolEffect(.replace))
+                .scaleEffect(isSending && !reduceMotion ? 0.94 : 1)
+                .animation(reduceMotion ? nil : FamiliarMotion.micro, value: isSending)
                 .font(.system(size: FamiliarIconSize.compact, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: FamiliarControlSize.standardVisual, height: FamiliarControlSize.standardVisual)
@@ -518,6 +534,8 @@ struct FamiliarComposer: View {
         }
         .buttonStyle(FamiliarIconButtonStyle())
         .disabled(!canSend)
+        .animation(reduceMotion ? nil : FamiliarMotion.micro, value: canSend)
+        .accessibilityIdentifier("composer.send")
         .accessibilityLabel(String(localized: isSending ? "message.stop" : "message.send"))
         .accessibilityHint(sendDisabledReason ?? "")
     }
@@ -559,6 +577,7 @@ struct FamiliarComposer: View {
                                     .frame(width: 96, height: 96)
                                     .clipShape(RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous))
                                     .clipped()
+                                    .matchedTransitionSource(id: item.id, in: imageTransition)
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(String(localized: "attachment.preview_image", defaultValue: "Preview image"))
@@ -579,20 +598,11 @@ struct FamiliarComposer: View {
                             .offset(x: 8, y: -8)
                         }
                         .padding(.trailing, FamiliarSpacing.xSmall)
+                        .transition(reduceMotion ? .opacity : FamiliarMotion.softRise)
                     }
                     ForEach(documents) { file in
                         HStack(spacing: FamiliarSpacing.small) {
-                            Image(systemName: file.mimeType == "application/pdf" ? "doc.richtext" : "doc.text")
-                                .foregroundStyle(FamiliarTheme.accent)
-                            VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                                Text(file.filename).font(FamiliarTypography.caption).lineLimit(1)
-                                Text(
-                                    "\(file.detectedFormat.uppercased()) · "
-                                    + ByteCountFormatter.string(fromByteCount: file.byteSize, countStyle: .file)
-                                )
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                            }
+                            FamiliarFileLabel(file: .init(draft: file), compact: true)
                             removeButton(label: String(localized: "attachment.remove_file")) {
                                 FamiliarAttachmentStore.remove(relativePath: file.relativePath)
                                 documents.removeAll { $0.id == file.id }
@@ -601,6 +611,7 @@ struct FamiliarComposer: View {
                         .padding(.leading, FamiliarSpacing.medium)
                         .frame(height: 48)
                         .background(FamiliarTheme.elevatedFill, in: Capsule())
+                        .transition(reduceMotion ? .opacity : FamiliarMotion.softRise)
                     }
                     if importingFileCount > 0 {
                         HStack(spacing: FamiliarSpacing.small) {
@@ -638,7 +649,7 @@ struct FamiliarComposer: View {
     }
 
     private func toggleFullscreen() {
-        setMode(mode == .fullscreen ? .expanded : .fullscreen, response: 0.38)
+        setMode(mode == .fullscreen ? .expanded : .fullscreen, emphasized: true)
         Task { @MainActor in await Task.yield(); focus.wrappedValue = true }
     }
 
@@ -655,11 +666,11 @@ struct FamiliarComposer: View {
         else if !isLongText, !focus.wrappedValue, mode == .expanded, !hasDraftContent { setMode(.compact) }
     }
 
-    private func setMode(_ newMode: FamiliarComposerMode, response: Double = 0.32) {
+    private func setMode(_ newMode: FamiliarComposerMode, emphasized: Bool = false) {
         if reduceMotion {
             mode = newMode
         } else {
-            withAnimation(.smooth(duration: response)) {
+            withAnimation(emphasized ? FamiliarMotion.emphasized : FamiliarMotion.standard) {
                 mode = newMode
             }
         }
@@ -797,5 +808,16 @@ private struct FamiliarComposerNotice: Identifiable {
     }
     static func fileImportFailed(_ detail: String) -> FamiliarComposerNotice {
         FamiliarComposerNotice(kind: .fileImportFailed(detail))
+    }
+}
+
+
+private struct FamiliarImageZoom: ViewModifier {
+    let sourceID: UUID
+    let namespace: Namespace.ID
+    @Environment(\.familiarReduceMotion) private var reduceMotion
+    @ViewBuilder func body(content: Content) -> some View {
+        if reduceMotion { content }
+        else { content.navigationTransition(.zoom(sourceID: sourceID, in: namespace)) }
     }
 }

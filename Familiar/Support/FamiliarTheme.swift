@@ -151,7 +151,7 @@ nonisolated enum FamiliarControlSize {
 }
 
 struct FamiliarPillButtonStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.familiarReduceMotion) private var reduceMotion
     let prominence: Prominence
 
     enum Prominence: Equatable {
@@ -183,7 +183,7 @@ struct FamiliarPillButtonStyle: ButtonStyle {
 /// Shared feedback and target size for custom icon actions. Native form/list
 /// buttons keep their system treatment; labels remain owned by each action.
 struct FamiliarIconButtonStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.familiarReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .frame(minWidth: FamiliarControlSize.minimumHitTarget, minHeight: FamiliarControlSize.minimumHitTarget)
@@ -197,7 +197,10 @@ struct FamiliarIconButtonStyle: ButtonStyle {
 struct FamiliarDismissButton: View {
     @Environment(\.dismiss) private var dismiss
     var body: some View {
-        Button(String(localized: "common.done", defaultValue: "Done")) { dismiss() }
+        Button(String(localized: "common.done", defaultValue: "Done")) {
+            FamiliarHaptics.shared.perform(.selection)
+            dismiss()
+        }
             .font(FamiliarTypography.button)
     }
 }

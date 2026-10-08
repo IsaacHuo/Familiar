@@ -15,6 +15,10 @@ struct FamiliarModelGroupsView: View {
                         Spacer()
                         if settings.providerID == group.id { Image(systemName: "checkmark") }
                         Text(group.members.count, format: .number).foregroundStyle(.secondary)
+                        Image(systemName: "chevron.right")
+                            .font(FamiliarTypography.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                            .accessibilityHidden(true)
                     }.frame(minHeight: 44)
                 }
             }
@@ -24,7 +28,7 @@ struct FamiliarModelGroupsView: View {
                     groups = FamiliarModelGroupStore.load()
                 } catch { errorMessage = error.localizedDescription }
             }
-            Button { editing = .init(name: "") } label: { Label(String(localized: "group.add"), systemImage: "plus") }
+            Button { editing = .init(name: "") } label: { Text(String(localized: "group.add")) }
         }
         .navigationTitle(String(localized: "group.title"))
         .sheet(item: $editing, onDismiss: { groups = FamiliarModelGroupStore.load() }) { group in
@@ -71,7 +75,7 @@ private struct FamiliarModelGroupEditor: View {
                                 }
                             }
                         }
-                    } label: { Label(String(localized: "common.add"), systemImage: "plus") }
+                    } label: { Text(String(localized: "common.add")) }
                 }
                 Section {
                     Button(String(localized: "provider.use")) { save(use: true) }

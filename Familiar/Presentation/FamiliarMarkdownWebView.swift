@@ -8,6 +8,7 @@ import AppKit
 #endif
 
 struct FamiliarMarkdownWebView: View {
+    @Environment(\.familiarChatScrollSession) private var scrollSession
     enum Mode {
         case compact
         case document
@@ -21,11 +22,13 @@ struct FamiliarMarkdownWebView: View {
     let onSelectionChange: (String?) -> Void
 
     @Environment(\.openURL) private var openURL
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.familiarReduceMotion) private var reduceMotion
     @State private var contentHeight: CGFloat = 1
     @State private var hasReportedHeight = false
     @State private var didFailRendering = false
+    @State private var isVisible = false
     @State private var previewedDiagram: FamiliarMermaidPreview?
+    @State private var presentation: FamiliarStreamingPresentation
 
     init(
         markdown: String,
@@ -41,6 +44,9 @@ struct FamiliarMarkdownWebView: View {
         self.isStreaming = isStreaming
         self.allowsMermaidPreview = allowsMermaidPreview
         self.onSelectionChange = onSelectionChange
+        _presentation = State(initialValue: FamiliarStreamingPresentation(
+            text: FamiliarMarkdownNormalizer.normalize(markdown), streaming: isStreaming
+        ))
     }
 
     var body: some View {
@@ -56,7 +62,7 @@ struct FamiliarMarkdownWebView: View {
             } else {
                 ZStack(alignment: .topLeading) {
                     FamiliarMarkdownPlatformWebView(
-                        markdown: markdown,
+                        markdown: presentation.text,
                         sources: sources,
                         height: $contentHeight,
                         didFailRendering: $didFailRendering,
@@ -64,6 +70,8 @@ struct FamiliarMarkdownWebView: View {
                         isStreaming: isStreaming,
                         allowsMermaidPreview: allowsMermaidPreview,
                         reduceMotion: reduceMotion,
+                        readingRevision: scrollSession?.readingRevision ?? 0,
+                        isReading: scrollSession?.mode == .userReading,
                         onSelectionChange: onSelectionChange,
                         onMermaidPreview: { previewedDiagram = .init(source: $0) },
                         openURL: { openURL($0) }
@@ -75,7 +83,7 @@ struct FamiliarMarkdownWebView: View {
                     }
 
                     if mode == .compact, !hasReportedHeight {
-                        FamiliarMarkdownFallbackText(markdown: markdown)
+                        FamiliarMarkdownFallbackText(markdown: presentation.text)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -85,6 +93,10 @@ struct FamiliarMarkdownWebView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: mode == .document ? .infinity : nil, alignment: .topLeading)
+        .onAppear { isVisible = true; presentation.receive(markdown, streaming: isStreaming) }
+        .onChange(of: markdown) { _, value in if isVisible { presentation.receive(value, streaming: isStreaming) } }
+        .onChange(of: isStreaming) { _, value in if isVisible { presentation.receive(markdown, streaming: value) } }
+        .onDisappear { isVisible = false; presentation.stop() }
         .onChange(of: contentHeight) { _, newHeight in
             if newHeight > 1 { hasReportedHeight = true }
         }
@@ -117,17 +129,37 @@ struct FamiliarMarkdownFallbackText: View {
     let markdown: String
 
     var body: some View {
-        if let attributed = try? AttributedString(
+        if let attributed = try? Self.attributed(markdown) {
+            Text(attributed)
+        } else {
+            Text(markdown)
+        }
+    }
+
+    /// Text does not lay out Foundation's block presentation intents by itself.
+    /// Preserve paragraph boundaries while the WebKit document loads.
+    static func attributed(_ markdown: String) throws -> AttributedString {
+        let parsed = try AttributedString(
             markdown: markdown,
             options: AttributedString.MarkdownParsingOptions(
                 interpretedSyntax: .full,
                 failurePolicy: .returnPartiallyParsedIfPossible
             )
-        ) {
-            Text(attributed)
-        } else {
-            Text(markdown)
+        )
+        var result = AttributedString()
+        var lastBlock: Int?
+        for run in parsed.runs {
+            let block = run.presentationIntent?.components.first?.identity
+            if let lastBlock, let block, block != lastBlock { result += AttributedString("\n\n") }
+            var piece = AttributedString(parsed[run.range])
+            if let intent = run.presentationIntent?.components.first,
+               case .header(let level) = intent.kind {
+                piece.font = level == 1 ? .title2.bold() : .headline
+            }
+            result += piece
+            lastBlock = block
         }
+        return result
     }
 }
 
@@ -227,6 +259,7 @@ enum FamiliarMarkdownHTML {
 
 #if os(iOS)
 private struct FamiliarMarkdownPlatformWebView: UIViewRepresentable {
+    @Environment(\.familiarChatScrollSession) private var scrollSession
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorSchemeContrast) private var accessibilityContrast
@@ -238,6 +271,8 @@ private struct FamiliarMarkdownPlatformWebView: UIViewRepresentable {
     let isStreaming: Bool
     let allowsMermaidPreview: Bool
     let reduceMotion: Bool
+    let readingRevision: Int
+    let isReading: Bool
     let onSelectionChange: (String?) -> Void
     let onMermaidPreview: (String) -> Void
     let openURL: (URL) -> Void
@@ -259,6 +294,8 @@ private struct FamiliarMarkdownPlatformWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
+        context.coordinator.scrollSession = scrollSession
+        context.coordinator.refreshReadingAnchor(revision: readingRevision, isReading: isReading, in: webView)
         context.coordinator.openURL = openURL
         context.coordinator.onSelectionChange = onSelectionChange
         context.coordinator.onMermaidPreview = onMermaidPreview
@@ -271,7 +308,7 @@ private struct FamiliarMarkdownPlatformWebView: UIViewRepresentable {
 
     private static func makeWebView(context: Context, isScrollEnabled: Bool) -> WKWebView {
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
+        configuration.websiteDataStore = FamiliarMarkdownWebCoordinator.dataStore
         configuration.userContentController = WKUserContentController()
         FamiliarMarkdownWebCoordinator.messageNames.forEach {
             configuration.userContentController.add(context.coordinator, name: $0)
@@ -279,6 +316,7 @@ private struct FamiliarMarkdownPlatformWebView: UIViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
+        webView.accessibilityIdentifier = "markdown.webview"
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
@@ -298,6 +336,8 @@ private struct FamiliarMarkdownPlatformWebView: NSViewRepresentable {
     let isStreaming: Bool
     let allowsMermaidPreview: Bool
     let reduceMotion: Bool
+    let readingRevision: Int
+    let isReading: Bool
     let onSelectionChange: (String?) -> Void
     let onMermaidPreview: (String) -> Void
     let openURL: (URL) -> Void
@@ -331,7 +371,7 @@ private struct FamiliarMarkdownPlatformWebView: NSViewRepresentable {
 
     private static func makeWebView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
+        configuration.websiteDataStore = FamiliarMarkdownWebCoordinator.dataStore
         configuration.userContentController = WKUserContentController()
         FamiliarMarkdownWebCoordinator.messageNames.forEach {
             configuration.userContentController.add(context.coordinator, name: $0)
@@ -348,9 +388,11 @@ private struct FamiliarMarkdownPlatformWebView: NSViewRepresentable {
 #endif
 
 private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+    // Bundled, network-isolated documents share one ephemeral store.
+    static let dataStore = WKWebsiteDataStore.nonPersistent()
     static let selectionMessageName = "selectionChanged"
     static let mermaidPreviewMessageName = "previewMermaid"
-    static let messageNames = ["heightChanged", "rendererReady", "renderFailed", "copyCode", mermaidPreviewMessageName, selectionMessageName]
+    static let messageNames = ["heightChanged", "rendererReady", "renderFailed", "copyCode", "readingShift", mermaidPreviewMessageName, selectionMessageName]
 
     private var height: Binding<CGFloat>
     private var didFailRendering: Binding<Bool>
@@ -358,6 +400,32 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
     private var didStartLoading = false
     private var isRendererReady = false
     private var pendingRender = FamiliarMarkdownRenderState(markdown: "", sourcesJSON: "[]", isStreaming: false, allowsMermaidPreview: true, reduceMotion: false, styleJSON: "{}")
+    #if os(iOS)
+    private var readingRevision = -1
+    private var readingActive = false
+    func refreshReadingAnchor(revision: Int, isReading: Bool, in web: WKWebView) {
+        guard revision != readingRevision || isReading != readingActive else { return }
+        readingRevision = revision
+        readingActive = isReading
+        guard isRendererReady else { return }
+        web.evaluateJavaScript("window.FamiliarMarkdown.setReadingTop(\(readingTop(in: web)));", completionHandler: nil)
+    }
+    private func readingTop(in web: WKWebView) -> String {
+        guard let session = scrollSession, session.mode == .userReading, !session.isInteracting,
+              let scroll = containingScrollView else { return "null" }
+        let y = scroll.convert(CGPoint(x: 0, y: scroll.bounds.minY + scroll.adjustedContentInset.top), to: web).y
+        return y > 0 && y < web.bounds.height ? String(Double(y)) : "null"
+    }
+    weak var scrollSession: FamiliarChatScrollSession?
+    private var containingScrollView: UIScrollView? {
+        var ancestor = webView?.superview
+        while let view = ancestor {
+            if let scroll = view as? UIScrollView, scroll.isScrollEnabled { return scroll }
+            ancestor = view.superview
+        }
+        return nil
+    }
+    #endif
     private var renderedState: FamiliarMarkdownRenderState?
     private var isRendering = false
     private var scheduledRender: DispatchWorkItem?
@@ -439,7 +507,7 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
             switch message.name {
             case "heightChanged":
                 if let value = message.body as? NSNumber {
-                    let newHeight = max(1, min(CGFloat(truncating: value), 16_000))
+                    let newHeight = max(1, min(CGFloat(truncating: value), 1_000_000))
                     guard abs(self.height.wrappedValue - newHeight) >= 1 else { break }
                     var transaction = Transaction(animation: nil)
                     transaction.disablesAnimations = true
@@ -452,9 +520,27 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
                 self.renderIfReady()
             case "renderFailed":
                 self.didFailRendering.wrappedValue = true
+            case "readingShift":
+                #if os(iOS)
+                if let delta = message.body as? NSNumber, delta.doubleValue.isFinite {
+                    // Let the paired height message settle native layout first.
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, let session = self.scrollSession,
+                              session.mode == .userReading, !session.isInteracting,
+                              let scroll = self.containingScrollView else { return }
+                        scroll.superview?.layoutIfNeeded()
+                        let shift = CGFloat(truncating: delta)
+                        let target = min(max(-scroll.adjustedContentInset.top, scroll.contentOffset.y + shift),
+                                         max(0, scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom))
+                        session.contentShifted(target - scroll.contentOffset.y)
+                        scroll.setContentOffset(CGPoint(x: scroll.contentOffset.x, y: target), animated: false)
+                    }
+                }
+                #endif
             case "copyCode":
                 if let text = message.body as? String {
                     Self.copyToPasteboard(text)
+                    FamiliarHaptics.shared.perform(.success)
                 }
             case Self.mermaidPreviewMessageName:
                 if let source = message.body as? String, !source.isEmpty {
@@ -523,8 +609,12 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
         let mermaidPreviewLabel = FamiliarMarkdownHTML.javascriptStringLiteral(String(localized: "mermaid.preview.action", defaultValue: "Open full-screen diagram"))
         let copyLabel = FamiliarMarkdownHTML.javascriptStringLiteral(String(localized: "common.copy"))
         let copiedLabel = FamiliarMarkdownHTML.javascriptStringLiteral(String(localized: "common.copied", defaultValue: "Copied"))
+        var readingTop = "null"
+        #if os(iOS)
+        readingTop = self.readingTop(in: webView)
+        #endif
         isRendering = true
-        webView.evaluateJavaScript("window.FamiliarMarkdown.render(\(literal), { sources: \(target.sourcesJSON), streaming: \(target.isStreaming), mermaidPreviewEnabled: \(target.allowsMermaidPreview), mermaidPreviewLabel: \(mermaidPreviewLabel), reduceMotion: \(target.reduceMotion), style: \(target.styleJSON), copyLabel: \(copyLabel), copiedLabel: \(copiedLabel) });") { [weak self] _, error in
+        webView.evaluateJavaScript("window.FamiliarMarkdown.setReadingTop(\(readingTop)); window.FamiliarMarkdown.render(\(literal), { sources: \(target.sourcesJSON), streaming: \(target.isStreaming), mermaidPreviewEnabled: \(target.allowsMermaidPreview), mermaidPreviewLabel: \(mermaidPreviewLabel), reduceMotion: \(target.reduceMotion), style: \(target.styleJSON), copyLabel: \(copyLabel), copiedLabel: \(copiedLabel) });") { [weak self] _, error in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isRendering = false
@@ -542,16 +632,9 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
 
     private func scheduleRender(isStreaming: Bool) {
         scheduledRender?.cancel()
-        if isStreaming {
-            let work = DispatchWorkItem { [weak self] in
-                self?.renderIfReady()
-            }
-            scheduledRender = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
-        } else {
-            scheduledRender = nil
-            renderIfReady()
-        }
+        scheduledRender = nil
+        // Input is already paced. A second debounce would starve a continuous stream.
+        renderIfReady()
     }
 
     private static func copyToPasteboard(_ text: String) {

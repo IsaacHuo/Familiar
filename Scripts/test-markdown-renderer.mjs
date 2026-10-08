@@ -12,13 +12,26 @@ class Element {
   classes = new Set();
   classList = {
     add: name => this.classes.add(name),
+    contains: name => this.classes.has(name),
     toggle: (name, enabled) => enabled ? this.classes.add(name) : this.classes.delete(name)
   };
   events = {};
   html = '';
   clientWidth = 300;
+  style = {};
+  nodeType = 1;
+  get childNodes() { return this.children; }
+  get nodeName() { return this.tag.toUpperCase(); }
+  get outerHTML() { return this.html; }
+  get textContent() { return this.html; }
+  set textContent(value) { this.html = value; }
+  get parentNode() { return this.parent; }
+  contains(target) { return this === target || this.children.some(node => node.contains(target)); }
+  getBoundingClientRect() { return {height: 100}; }
+  remove() { if (this.parent) this.parent.children = this.parent.children.filter(node => node !== this); }
   constructor(tag, diagramID) { this.tag = tag; this.diagramID = diagramID; }
   get firstChild() { return this.children[0]; }
+  setAttribute() {}
   getAttribute(name) { return name === 'data-mermaid-id' ? String(this.diagramID) : null; }
   set innerHTML(html) {
     this.html = html;
@@ -26,15 +39,17 @@ class Element {
   }
   get innerHTML() { return this.html; }
   querySelectorAll(selector) {
-    return selector === '[data-mermaid-id]' ? this.children.filter(node => node.diagramID !== undefined) : [];
+    const nested = this.children.flatMap(node => node.querySelectorAll(selector));
+    return selector === '[data-mermaid-id]' ? [...this.children.filter(node => node.diagramID !== undefined), ...nested] : nested;
   }
   querySelector(selector) {
+    if (selector.includes('[data-mermaid-id]')) return this.querySelectorAll('[data-mermaid-id]')[0];
     if (selector === 'svg') return this.html.includes('<svg') ? { scrollWidth: 100 } : null;
     if (selector === '.mermaid-preview-button') return this.children.find(node => node.className === 'mermaid-preview-button');
     return null;
   }
   replaceChildren(...nodes) { this.children = nodes.flatMap(node => node.children && node.tag === 'fragment' ? node.children : [node]); }
-  appendChild(node) { this.children.push(node); }
+  appendChild(node) { node.parent = this; this.children.push(node); }
   insertBefore(node) { this.children.unshift(node); }
   addEventListener(name, handler) { this.events[name] = handler; }
 }
@@ -46,7 +61,7 @@ function harness() {
   const errors = [];
   const window = {
     getSelection: () => null,
-    markdownit: () => ({ render: value => value }),
+    markdownit: () => ({ render: value => value, renderer: { rules: { fence() {} } } }),
     mermaid: {
       initialize() {},
       render: (id, text) => new Promise((resolve, reject) => pending.push({ text, resolve, reject }))
@@ -82,9 +97,9 @@ for (const outcome of ['resolve', 'reject']) {
     const oldText = diagram('Old');
     const newText = diagram('New');
     h.render(fenced(oldText), options);
-    const oldNode = h.content.children[0];
+    const oldNode = h.content.children[0].children[0];
     h.render(fenced(newText), options);
-    const newNode = h.content.children[0];
+    const newNode = h.content.children[0].children[0];
     assert.equal(h.pending.length, 2);
     if (outcome === 'resolve') h.pending[0].resolve({ svg: '<svg>old</svg>' });
     else h.pending[0].reject(new Error('Old parse failed'));
@@ -110,5 +125,18 @@ test('Replacing a pending diagram stops scheduling its remaining diagrams', asyn
   await settle();
   assert.equal(h.pending.length, 1);
   assert.equal(h.content.children.length, 0);
+  assert.deepEqual(h.errors, []);
+});
+
+test('Appending prose reuses the same pending Mermaid job', async () => {
+  const h = harness();
+  const text = diagram('Same');
+  h.render(fenced(text), options);
+  const node = h.content.children[0].children[0];
+  h.render(fenced(text) + '\\n\\nNew prose', options);
+  assert.equal(h.pending.length, 1);
+  h.pending[0].resolve({ svg: '<svg>same</svg>' });
+  await settle();
+  assert.equal(node.innerHTML, '<svg>same</svg>');
   assert.deepEqual(h.errors, []);
 });

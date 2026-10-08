@@ -158,7 +158,7 @@ struct FamiliarRuntimePresentationTests {
             let recorder = FamiliarRunPersistenceRecorder()
             let text = FamiliarLiveResponseBlock(assistantTurnID: "run:turn:1", order: 9, startedAt: date, content: "Partial answer")
             try recorder.recordInterruptedText([text], runtimeID: "run", outcome: outcome, at: date, context: fixture.context)
-            recorder.finishRun(runtimeID: "run", outcome: outcome, eventSequence: 10, at: date, context: fixture.context)
+            try recorder.finishRun(runtimeID: "run", outcome: outcome, eventSequence: 10, at: date, context: fixture.context)
             let controller = FamiliarChatController(dependencies: .init())
             controller.select(fixture.conversation.id, in: fixture.context)
             let run = try #require(controller.agentRuns.first)
@@ -192,7 +192,7 @@ struct FamiliarRuntimePresentationTests {
         _ = try recorder.recordToolResult(.init(runID: "run", toolCallID: "write", toolName: "file_write", effect: .reversibleWrite,
             assistantTurnID: "run:turn:0", envelope: envelope, sources: [], file: nil, producedAt: date), eventSequence: 2,
             conversationID: fixture.conversation.id, context: fixture.context)
-        recorder.finishRun(runtimeID: "run", outcome: .succeeded, eventSequence: 3, at: date, context: fixture.context)
+        try recorder.finishRun(runtimeID: "run", outcome: .succeeded, eventSequence: 3, at: date, context: fixture.context)
         let controller = FamiliarChatController(dependencies: .init())
         controller.select(fixture.conversation.id, in: fixture.context)
         let run = try #require(controller.agentRuns.first)
@@ -247,7 +247,7 @@ struct FamiliarRuntimePresentationTests {
             toolName: "file_write", argumentsHash: "hash", state: .committing))
         try FamiliarRunPersistenceRecorder().recordActivityStarted(.init(id: "write", toolName: "file_write", effect: .reversibleWrite,
             startedAt: date), runtimeID: "run", assistantTurnID: "run:turn:0", eventSequence: 1, context: fixture.context)
-        FamiliarRunPersistenceRecorder().finishRun(runtimeID: "run", outcome: .cancelled(), eventSequence: 2, at: date, context: fixture.context)
+        try FamiliarRunPersistenceRecorder().finishRun(runtimeID: "run", outcome: .cancelled(), eventSequence: 2, at: date, context: fixture.context)
         let controller = FamiliarChatController(dependencies: .init())
         controller.select(fixture.conversation.id, in: fixture.context)
         let run = try #require(controller.agentRuns.first)

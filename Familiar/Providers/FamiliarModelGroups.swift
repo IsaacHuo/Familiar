@@ -72,7 +72,7 @@ nonisolated struct FamiliarGroupModelProvider: FamiliarModelProvider, Sendable {
                         var emittedContent = false
                         do {
                             continuation.yield(.providerSelection(providerID: member.provider.providerID, modelID: member.modelID))
-                            for try await event in member.provider.stream(request: .init(model: member.modelID, messages: request.messages, tools: request.tools)) {
+                            for try await event in member.provider.stream(request: .init(model: member.modelID, messages: request.messages, tools: request.tools, maximumOutputTokens: request.maximumOutputTokens)) {
                                 try Task.checkCancellation()
                                 // The group already emitted this member's exact identity.
                                 if case .providerSelection = event { continue }

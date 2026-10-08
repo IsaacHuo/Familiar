@@ -13,8 +13,7 @@ struct FamiliarAttachmentPreviewView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
+        Group {
                 if format == .html {
                     FamiliarLocalHTMLPreviewView(url: url)
                 } else {
@@ -29,7 +28,6 @@ struct FamiliarAttachmentPreviewView: View {
                         FamiliarDismissButton()
                     }
                 }
-        }
     }
 }
 

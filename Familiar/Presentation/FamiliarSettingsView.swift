@@ -37,8 +37,8 @@ struct FamiliarModelServiceSettingsView: View {
                         }.frame(minHeight: 44)
                     }
                 }
-                Button { destination = .chooser } label: { Label(String(localized: "provider.add"), systemImage: "plus") }
-                Button { importing = true } label: { Label(String(localized: "provider.import"), systemImage: "square.and.arrow.down") }
+                Button { destination = .chooser } label: { Text(String(localized: "provider.add")) }
+                Button { importing = true } label: { Text(String(localized: "provider.import")) }
             }
         }
         .navigationTitle(String(localized: "settings.hub.model_service"))

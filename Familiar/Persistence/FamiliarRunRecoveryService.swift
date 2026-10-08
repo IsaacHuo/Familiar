@@ -97,12 +97,12 @@ final class FamiliarRunRecoveryService {
         for run in runs {
             let runtimeID = run.runtimeID
             let cursor = try context.fetch(FetchDescriptor<FamiliarRunResumeCursorRecord>(predicate: #Predicate { $0.runtimeID == runtimeID })).first
-            recorder.finishRun(
+            try recorder.finishRun(
                 runtimeID: runtimeID,
                 outcome: .init(status: .failed, failureKind: .unknown, message: reason),
                 eventSequence: (cursor?.lastEventSequence ?? -1) + 1,
                 at: now,
-                context: context
+                context: context, save: false
             )
         }
         for runtimeID in runtimeIDs {

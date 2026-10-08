@@ -39,7 +39,7 @@ struct FamiliarSelectionPresentationTests {
         let presentation = try source("Familiar/Presentation/FamiliarChatMessageViews.swift")
         let sources = try section(
             named: "private struct FamiliarAssistantFooter",
-            endingAt: "nonisolated enum FamiliarFollowUpPrompt",
+            endingAt: "private struct FamiliarFollowUps",
             in: presentation
         )
         let typedResult = try section(
@@ -76,12 +76,12 @@ struct FamiliarSelectionPresentationTests {
             in: presentation
         )
 
-        #expect(followUps.contains("FamiliarFollowUpPrompt.allCases"))
-        #expect(followUps.contains("onInsertPrompt(followUp.title)"))
+        #expect(followUps.contains("questions.enumerated()"))
+        #expect(followUps.contains("onInsertPrompt(question)"))
         #expect(!followUps.contains("onSend"))
         #expect(footer.contains("FamiliarInlineSources(sources: message.sources)"))
-        #expect(footer.contains("FamiliarFollowUps(onInsertPrompt: onInsertPrompt)"))
-        #expect(footer.contains("symbol: \"doc.on.doc\""))
+        #expect(footer.contains("FamiliarFollowUps(questions: message.followUpQuestions, onInsertPrompt: onInsertPrompt)"))
+        #expect(footer.contains("copyConfirmation.isConfirmed ? \"checkmark\" : \"doc.on.doc\""))
         #expect(footer.contains("symbol: \"arrow.clockwise\""))
         #expect(!footer.contains("hand.thumbsup"))
         #expect(!footer.contains("hand.thumbsdown"))

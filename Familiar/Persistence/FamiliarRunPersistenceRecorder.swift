@@ -3,6 +3,10 @@ import SwiftData
 
 @MainActor
 final class FamiliarRunPersistenceRecorder {
+    private let saveContext: (ModelContext) throws -> Void
+    init(saveContext: @escaping (ModelContext) throws -> Void = { try $0.save() }) {
+        self.saveContext = saveContext
+    }
     static func toolActivityID(runtimeID: String, toolCallID: String) -> String {
         "tool:\(runtimeID):\(toolCallID)"
     }
@@ -472,10 +476,11 @@ final class FamiliarRunPersistenceRecorder {
         outcome: FamiliarRunOutcome,
         eventSequence: Int,
         at date: Date,
-        context: ModelContext
-    ) {
+        context: ModelContext,
+        save: Bool = true
+    ) throws {
         let descriptor = FetchDescriptor<FamiliarAgentRun>(predicate: #Predicate { $0.runtimeID == runtimeID })
-        guard let run = try? context.fetch(descriptor).first else { return }
+        guard let run = try context.fetch(descriptor).first else { return }
         let status: FamiliarAgentRunStatus = switch outcome.status {
         case .succeeded: .completed
         case .cancelled: .cancelled
@@ -490,7 +495,14 @@ final class FamiliarRunPersistenceRecorder {
         }
         finishClarifications(runtimeID: runtimeID, state: status == .cancelled ? .cancelled : .interrupted, at: date, context: context)
         finishTurnActivities(for: run, status: status, at: date, context: context)
-        try? context.save()
+        if let cursor = try context.fetch(FetchDescriptor<FamiliarRunResumeCursorRecord>(predicate: #Predicate { $0.runtimeID == runtimeID })).first {
+            cursor.phase = .terminal
+            cursor.lastEventSequence = eventSequence
+            cursor.updatedAt = date
+        }
+        if save {
+            do { try saveContext(context) } catch { context.rollback(); throw error }
+        }
     }
 
     @discardableResult
@@ -507,7 +519,8 @@ final class FamiliarRunPersistenceRecorder {
         order: Int? = nil,
         startedAt: Date? = nil,
         endedAt: Date,
-        context: ModelContext
+        context: ModelContext,
+        save: Bool = true
     ) throws -> FamiliarResponseBlockRecord? {
         guard let run = fetchRun(runtimeID: runtimeID, in: context) else { return nil }
         let descriptor = FetchDescriptor<FamiliarResponseBlockRecord>(predicate: #Predicate { $0.id == id })
@@ -516,7 +529,7 @@ final class FamiliarRunPersistenceRecorder {
                 existing.messageID = messageID
                 run.responseBlockID = existing.id
                 if state == .completed { run.responseMessageID = messageID }
-                try context.save()
+                if save { try saveContext(context) }
             }
             return existing
         }
@@ -539,7 +552,7 @@ final class FamiliarRunPersistenceRecorder {
         run.assistantTurnID = assistantTurnID
         run.responseBlockID = block.id
         if state == .completed { run.responseMessageID = messageID }
-        try context.save()
+        if save { try saveContext(context) }
         return block
     }
 

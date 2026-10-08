@@ -2,76 +2,76 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleDevelopmentRegion</key>
-    <string>zh-Hans</string>
-    <key>CFBundleURLTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleTypeRole</key>
-            <string>Editor</string>
-            <key>CFBundleURLName</key>
-            <string>com.isaachuo.familiar</string>
-            <key>CFBundleURLSchemes</key>
-            <array>
-                <string>familiar</string>
-            </array>
-        </dict>
-    </array>
-    <key>CFBundleDisplayName</key>
-    <string>Familiar</string>
-    <key>CFBundleExecutable</key>
-    <string>$(EXECUTABLE_NAME)</string>
-    <key>CFBundleIdentifier</key>
-    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundleName</key>
-    <string>$(PRODUCT_NAME)</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>$(MARKETING_VERSION)</string>
-    <key>CFBundleVersion</key>
-    <string>$(CURRENT_PROJECT_VERSION)</string>
-    <key>LSRequiresIPhoneOS</key>
-    <true/>
-    <key>NSCameraUsageDescription</key>
-    <string>Familiar uses the camera to add a photo draft to your message.</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>zh-Hans</string>
+	<key>CFBundleDisplayName</key>
+	<string>Familiar</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.isaachuo.familiar</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>familiar</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>NSAlarmKitUsageDescription</key>
+	<string>Familiar schedules an alarm only after you confirm its exact time, and you can cancel it at any time.</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Familiar searches the Apple Music catalog only when you ask and never plays or changes your library automatically.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Familiar scans only for the Bluetooth service UUIDs you explicitly request and never connects automatically.</string>
-    <key>NSCalendarsFullAccessUsageDescription</key>
-    <string>Familiar reads calendar events you ask about and adds an event only after you confirm its preview.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Familiar reads calendar events you ask about and adds an event only after you confirm its preview.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Familiar uses the camera to add a photo draft to your message.</string>
 	<key>NSContactsUsageDescription</key>
 	<string>Familiar searches contacts only when you ask and only after you approve access.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Unlock your private Familiar workspace.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Familiar reads only the health activity summaries you explicitly request and never writes health data.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-    <string>Familiar requests a single foreground location only when your task needs it.</string>
+	<string>Familiar requests a single foreground location only when your task needs it.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Familiar uses the microphone only while transcribing your voice into an editable message draft.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Familiar saves a Workspace image to Photos only after you approve the exact output.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Familiar reads recent photo metadata only when you ask, respects limited access, and does not read image pixels without a separate selection.</string>
-	<key>NSAppleMusicUsageDescription</key>
-	<string>Familiar searches the Apple Music catalog only when you ask and never plays or changes your library automatically.</string>
-	<key>NSAlarmKitUsageDescription</key>
-	<string>Familiar schedules an alarm only after you confirm its exact time, and you can cancel it at any time.</string>
-    <key>NSRemindersFullAccessUsageDescription</key>
-    <string>Familiar reads reminders you ask about and adds a reminder only after you confirm its preview.</string>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>Familiar uses the microphone only while transcribing your voice into an editable message draft.</string>
-    <key>NSSpeechRecognitionUsageDescription</key>
-    <string>Familiar uses Apple Speech to turn your voice into editable text and does not keep an audio recording.</string>
-    <key>UIApplicationSupportsIndirectInputEvents</key>
-    <true/>
-    <key>UILaunchScreen</key>
-    <dict/>
-    <key>UISupportedInterfaceOrientations</key>
-    <array>
-        <string>UIInterfaceOrientationPortrait</string>
-        <string>UIInterfaceOrientationLandscapeLeft</string>
-        <string>UIInterfaceOrientationLandscapeRight</string>
-    </array>
-	<key>NSFaceIDUsageDescription</key>
-	<string>Unlock your private Familiar workspace.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Familiar reads reminders you ask about and adds a reminder only after you confirm its preview.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Familiar uses Apple Speech to turn your voice into editable text and does not keep an audio recording.</string>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
 </dict>
 </plist>

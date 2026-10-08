@@ -11,6 +11,8 @@ struct FamiliarDesignSystemTests {
         let light = try decode(FamiliarMarkdownStyle.json(colorScheme: .light, size: .large, contrast: .standard))
         let dark = try decode(FamiliarMarkdownStyle.json(colorScheme: .dark, size: .large, contrast: .standard))
         let accessible = try decode(FamiliarMarkdownStyle.json(colorScheme: .dark, size: .accessibility5, contrast: .increased))
+        #expect(light["--familiar-content-duration"] == "150.0ms")
+        #expect(light["--familiar-content-offset"] == "2.5px")
         #expect(light["--familiar-ink"] != dark["--familiar-ink"])
         #expect(light["--familiar-inset"] != dark["--familiar-inset"])
         #expect(try pixels(accessible["--familiar-body-size"]) > pixels(light["--familiar-body-size"]))

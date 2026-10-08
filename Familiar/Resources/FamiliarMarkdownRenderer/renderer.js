@@ -8,6 +8,17 @@
   let lastReportedSelection = "";
   let selectionEnabled = false;
   let renderVersion = 0;
+  let markdownParser = null;
+  let readingAnchor = null;
+  function setReadingTop(y) {
+    readingAnchor = null;
+    if (!Number.isFinite(y)) return;
+    const nodes = content.querySelectorAll("p, li, h1, h2, h3, h4, pre, table, [data-mermaid-id]");
+    for (const node of nodes) {
+      const rect = node.getBoundingClientRect();
+      if (rect.bottom > y) { readingAnchor = { node: node, top: rect.top }; break; }
+    }
+  }
 
   function post(name, payload) {
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers[name]) {
@@ -19,6 +30,12 @@
     if (pendingHeightFrame !== null) return;
     pendingHeightFrame = requestAnimationFrame(function () {
       pendingHeightFrame = null;
+      if (readingAnchor && content.contains(readingAnchor.node)) {
+        const top = readingAnchor.node.getBoundingClientRect().top;
+        const shift = top - readingAnchor.top;
+        if (Math.abs(shift) > 0.5) post("readingShift", shift);
+        readingAnchor.top = top;
+      }
       const height = Math.ceil(Math.max(content.scrollHeight, content.getBoundingClientRect().height));
       if (Math.abs(height - lastReportedHeight) < 1) return;
       lastReportedHeight = height;
@@ -183,7 +200,8 @@
     if (!window.markdownit) {
       return null;
     }
-    return window.markdownit({
+    if (markdownParser) return markdownParser;
+    markdownParser = window.markdownit({
       html: true,
       linkify: true,
       typographer: false,
@@ -202,6 +220,18 @@
         }
       }
     });
+    const fence = markdownParser.renderer.rules.fence;
+    markdownParser.renderer.rules.fence = function (tokens, index, options, env, self) {
+      const token = tokens[index];
+      const last = env && env.lines && token.map ? env.lines[token.map[1] - 1] || "" : "";
+      const closed = last.trim().startsWith(token.markup) && last.trim().slice(token.markup.length).trim() === "";
+      if (env && env.streaming && !closed) {
+        const language = (token.info || "").trim().split(/\s+/)[0];
+        return '<pre data-familiar-open-code="true"><code class="language-' + escapeHTML(language) + '">' + escapeHTML(token.content) + '</code></pre>';
+      }
+      return fence(tokens, index, options, env, self);
+    };
+    return markdownParser;
   }
 
   function renderFootnotes(notes, md) {
@@ -341,9 +371,10 @@
     }
     root.querySelectorAll("[data-math-id]").forEach(function (node) {
       const item = math[Number(node.getAttribute("data-math-id"))];
-      if (!item) {
-        return;
-      }
+      if (!item) { return; }
+      const signature = JSON.stringify(item);
+      if (node._familiarMath === signature) return;
+      node._familiarMath = signature;
       try {
         window.katex.render(item.expression, node, {
           displayMode: item.display,
@@ -365,7 +396,7 @@
     node.replaceChildren(pre);
   }
 
-  async function renderMermaid(root, diagrams, version) {
+  async function renderMermaid(root, diagrams, version, options) {
     if (!diagrams.length) {
       return;
     }
@@ -399,6 +430,10 @@
       if (version !== renderVersion) return;
       const node = nodes[index];
       const source = diagrams[Number(node.getAttribute("data-mermaid-id"))] || "";
+      const style = document.documentElement.getAttribute ? document.documentElement.getAttribute("style") || "" : "";
+      const signature = source + style;
+      if (node._familiarMermaid === signature || node._familiarMermaidPending === signature) continue;
+      node._familiarMermaidPending = signature;
       if (!source.trim()) {
         fallbackMermaid(node, source);
         continue;
@@ -406,12 +441,18 @@
       try {
         const id = "familiar-mermaid-" + Date.now() + "-" + index;
         const result = await window.mermaid.render(id, source);
-        if (version !== renderVersion) return;
+        if (!content.contains(node) || node._familiarMermaidPending !== signature) continue;
         node.innerHTML = sanitizeMermaidSVG(result.svg || "");
         node.classList.add("rendered");
+        node._familiarMermaid = signature;
+        node._familiarMermaidPending = null;
+        decorateMermaidPreviews(root, diagrams, options);
+        reportHeight();
       } catch (_) {
-        if (version !== renderVersion) return;
+        if (!content.contains(node) || node._familiarMermaidPending !== signature) continue;
+        node._familiarMermaidPending = null;
         fallbackMermaid(node, source);
+        reportHeight();
       }
     }
   }
@@ -456,6 +497,7 @@
       const button = document.createElement("button");
       button.className = "copy-code";
       button.type = "button";
+      button.disabled = pre.hasAttribute("data-familiar-open-code");
       button.textContent = options.copyLabel;
       button.addEventListener("click", function () {
         post("copyCode", code.textContent || "");
@@ -484,6 +526,90 @@
     });
   }
 
+  // The block wrapper owns identity; content changes never replace the whole document.
+  function appendChunk(parent, value, animate) {
+    if (!value) return;
+    if (!animate) { parent.appendChild(document.createTextNode(value)); return; }
+    const span = document.createElement("span");
+    span.className = "familiar-chunk";
+    span.textContent = value;
+    span.addEventListener("animationend", function () {
+      span.replaceWith(document.createTextNode(span.textContent));
+      parent.normalize();
+    }, { once: true });
+    parent.appendChild(span);
+  }
+
+  function patchNode(current, next, animate) {
+    if (current.nodeType !== next.nodeType || current.nodeName !== next.nodeName) {
+      current.replaceWith(next);
+      return;
+    }
+    if (current.nodeType === 3) { current.data = next.data; return; }
+    if (current.nodeType !== 1) return;
+    Array.from(current.attributes).forEach(function (attr) {
+      if (!next.hasAttribute(attr.name)) current.removeAttribute(attr.name);
+    });
+    Array.from(next.attributes).forEach(function (attr) { current.setAttribute(attr.name, attr.value); });
+    // Preserve already appearing text chunks across subsequent pacing ticks.
+    const nextText = next.childNodes.length === 1 && next.firstChild.nodeType === 3;
+    const currentText = Array.from(current.childNodes).every(function (node) {
+      return node.nodeType === 3 || (node.nodeType === 1 && node.classList.contains("familiar-chunk"));
+    });
+    if (nextText && currentText) {
+      const before = current.textContent;
+      const after = next.textContent;
+      if (after.startsWith(before)) appendChunk(current, after.slice(before.length), animate);
+      else current.textContent = after;
+      return;
+    }
+    const children = Array.from(next.childNodes);
+    children.forEach(function (child, index) {
+      if (current.childNodes[index]) patchNode(current.childNodes[index], child, animate);
+      else current.appendChild(child);
+    });
+    while (current.childNodes.length > children.length) current.lastChild.remove();
+  }
+
+  function reconcileBlocks(fragment, options) {
+    const animate = Boolean(options && options.streaming && !options.reduceMotion);
+    const nodes = Array.from(fragment.childNodes).filter(function (node) {
+      return node.nodeType !== 3 || node.textContent.trim();
+    });
+    const old = Array.from(content.children);
+    nodes.forEach(function (node, index) {
+      const html = node.outerHTML || node.textContent;
+      let block = old[index];
+      if (!block) {
+        block = document.createElement("div");
+        block.className = "markdown-block";
+        block.setAttribute("data-familiar-block", String(index));
+        block.appendChild(node);
+        block._familiarHTML = html;
+        content.appendChild(block);
+        if (animate) block.classList.add("familiar-appear");
+      } else if (block._familiarHTML !== html) {
+        // Code/table/diagram decoration changes structure; retain their measured wrapper.
+        const complex = block.querySelector("pre, table, [data-mermaid-id], .code-block, .table-scroll");
+        if (complex) {
+          block.style.minHeight = options && options.streaming ? block.getBoundingClientRect().height + "px" : "";
+          const pre = block.querySelector("pre");
+          const table = block.querySelector("table");
+          if (pre && node.nodeName === "PRE" && pre.querySelector("code") && node.querySelector("code")) {
+            patchNode(pre.querySelector("code"), node.querySelector("code"), false);
+            pre.toggleAttribute("data-familiar-open-code", node.hasAttribute("data-familiar-open-code"));
+            const copy = block.querySelector(".copy-code");
+            if (copy) copy.disabled = node.hasAttribute("data-familiar-open-code");
+          } else if (table && node.nodeName === "TABLE") patchNode(table, node, false);
+          else block.replaceChildren(node);
+        } else if (block.firstChild) patchNode(block.firstChild, node, animate);
+        else block.appendChild(node);
+        block._familiarHTML = html;
+      }
+    });
+    old.slice(nodes.length).forEach(function (node) { node.remove(); });
+  }
+
   function render(markdown, options) {
     const version = ++renderVersion;
     try {
@@ -492,7 +618,11 @@
         if (key.indexOf("--familiar-") === 0) document.documentElement.style.setProperty(key, String(style[key]));
       });
       setSelectionEnabled(!(options && options.streaming));
+      content.classList.toggle("reduce-motion", Boolean(options && options.reduceMotion));
       content.classList.toggle("streaming", Boolean(options && options.streaming));
+      if (!(options && options.streaming)) {
+        Array.from(content.children).forEach(function (block) { if (block.style) block.style.minHeight = ""; });
+      }
       const md = createMarkdownIt();
       if (!md) {
         content.innerHTML = "<p>" + escapeHTML(markdown).replace(/\n/g, "<br>") + "</p>";
@@ -504,13 +634,15 @@
       const footnoteResult = extractFootnotes(preprocessTaskLists(citedMarkdown));
       const mathResult = extractMath(footnoteResult.markdown);
       const mermaidResult = extractMermaid(mathResult.markdown);
-      const rawHTML = md.render(mermaidResult.markdown) + renderFootnotes(footnoteResult.notes, md);
+      const rawHTML = md.render(mermaidResult.markdown, {
+        streaming: Boolean(options && options.streaming), lines: mermaidResult.markdown.split("\n")
+      }) + renderFootnotes(footnoteResult.notes, md);
       const template = document.createElement("template");
       template.innerHTML = sanitize(rawHTML);
       hardenLinksAndImages(template.content);
-      content.replaceChildren(template.content);
+      reconcileBlocks(template.content, options);
       renderMath(content, mathResult.math);
-      renderMermaid(content, mermaidResult.diagrams, version)
+      renderMermaid(content, mermaidResult.diagrams, version, options)
         .catch(function () {
           if (version !== renderVersion) return;
           content.querySelectorAll("[data-mermaid-id]").forEach(function (node) {
@@ -537,7 +669,8 @@
   document.addEventListener("selectionchange", reportSelection);
 
   window.FamiliarMarkdown = {
-    render: render
+    render: render,
+    setReadingTop: setReadingTop
   };
   post("rendererReady", true);
 })();
