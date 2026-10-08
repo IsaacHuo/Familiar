@@ -71,3 +71,23 @@ Scripts/run-release-test-suites.sh --device <device-udid> <signed-device-derived
 - [ ] 默认折叠，手动展开后执行结束仍保持展开；先滚离底部时不会被抢回，跟随底部时最终正文连续到达。中英、深浅色、大字体、VoiceOver、减少动态效果、小屏／键盘条件均检查。
 
 本切片默认只编译 arm64 Simulator App／扩展／测试目标，不启动 Simulator；上述真实执行、视觉与可访问性仍待所有者记录。
+
+## Motion 与连续内容流的真机验收（I）
+
+Simulator 确定性 Provider、WebKit/UI/状态回归的证据独立记录于 PLAN.md；这里保留需要真实服务或设备的项目。
+
+- [ ] 实际 Provider 的弱网、突发 token、长回复、取消/重开和错误；核对完整已接收正文、最终复制和真实 Sources。
+- [ ] 真实文档/图片导入与移除，PDF/DOCX/XLSX/HTML 预览与分享，缺失/撤销/多版本；Composer 录音权限与实际听写，后台/返回不串草稿。
+- [ ] Project→Chat→文件/临时 Sheet→返回，交互式返回/关闭后阅读位置与 Run 归属；检查图片 zoom、Mermaid 全屏和恢复焦点。
+- [ ] 在系统设置开启 Reduce Motion、较大文字、VoiceOver/降低透明度，检查导航、正文、Activity、附件和按钮。Debug Simulator 自定义 motion 覆盖不能替代真实系统设置验收。
+- [ ] 六类物理触感的强度/时机；多 Tool 完成、重复点击、成功/失败/批准/删除不产生多次或假成功反馈。
+- [ ] 同一设备/构建/数据的 100/300 条历史、长代码/表格/Mermaid 连续滑动：记录 FPS、hitch 和包含 WebContent 的总内存。原生进程 resident 与初始构建耗时不能替代总内存/帧率。
+
+
+## Functional Convergence 当前真机交付
+
+2026-10-08 当前源码串行 Debug arm64 device build 成功，签名 deep/strict verification 通过；已覆盖安装并正常启动 hwf（com.isaachuo.familiar，无测试参数）。没有清空 App 数据或 Keychain。
+
+终端入口：聊天右上角 More → Terminal → Start。默认关闭本次会话网络；仅当前 Project，前台 180 秒。可直接键盘输入，或用命令字段和 Send；辅助键包括 Esc/Tab/方向键/Ctrl-C/Ctrl-D。HOME 保存在当前 Project，临时目录随会话清理，离开页面或后台停止。手工与 Agent 共用一个 guest，忙时互斥。命令修改没有自动 Undo；人工会话不能授予模型工具授权。
+
+真实 Simulator guest/PTY 回归 4/4 通过；生产 UI worker/AX 自动化超时，用户已要求停止 Simulator 验证。真机手工操作可检查 `printf '你好\n'`、`python3 -c 'print(1+1)'`、长命令 Ctrl-C、Ctrl-D 退出及重新启动；这些尚未由本次安装证明通过。WeatherKit/MusicKit/硬件、强杀恢复、广泛终端和其余 Release Gate 保持独立待验收。

@@ -1,6 +1,6 @@
 # Familiar 产品收敛与 Agent Harness 长期计划
 
-最后更新：2026-10-06。此清单跨对话持续维护。
+最后更新：2026-10-08。此清单跨对话持续维护。
 
 ## 目标与工作规则
 
@@ -17,6 +17,7 @@ Harness 收敛为 **One Agent + One Loop + Lazy Tools + Progressive Escalation**
 - 每个切片保持可构建；完成切片后更新本清单及必要的 state 文档。
 - 直接在 main 工作，保留无关改动。不自动提交、推送、清空 store 或删除用户数据。
 - 默认只做 arm64 iOS Simulator 构建，不启动／运行 Simulator。真机视觉与真实服务由所有者验收。
+- I 阶段例外：所有者已授权启动 Simulator 并执行测试；使用生产 Chat 与确定性 Provider／Tool，不调用真实服务或使用真实凭据。真机视觉／触感仍独立验收。
 
 ## 如何跨对话继续
 
@@ -30,6 +31,10 @@ Harness 收敛为 **One Agent + One Loop + Lazy Tools + Progressive Escalation**
 `[x]` 表示这一项规定的工作及验证已完成。`[ ]` 表示仍有工作或必要证据缺失。测试只编译时明确标为“未执行”。
 
 ## 当前切片
+
+**Functional Convergence（FC0→FC9）现为当前阶段。** 用户已授权运行 Simulator、生产页面操作和真实服务验证；按下方 FC 独立账本推进。保留 I/J 的实现与历史证据，I2.4 性能对照仍单列。当前开始 FC0 代码功能矩阵与 FC1 全量测试基线；不把源码、fixture 或编译当成真实验收。设备/签名/账号条件不足的项目保持未完成。
+
+**按用户要求在本轮收尾，I1-I8 代码实施完成；I2.4 性能对照未完成，保留为后续独立任务。** 本轮按 I1→I8 顺序推进；先建立流式呈现、稳定 Turn/Markdown identity 和统一 File 呈现契约。每阶段执行 Simulator 行为／UI 回归，失败先修复再进入下一阶段。完整规格与验收在本文 I 节；未执行的项目不得勾选。
 
 **H1-H5 架构收敛实现与静态/arm64 测试目标编译已完成。** 产品为 Chat / Project / Files。正式迁移链冻结原 37 实体 1.0.0，经 Files 加法桥接与旧生成元数据移除，再归档/移除 Grant，当前为 4.0.0 / 37 实体。Artifact 与 Grant 不在当前 schema；Resource/Attachment 保留必要历史关系与存储字段，新导入不再写 Resource 元数据。
 
@@ -381,3 +386,333 @@ H4/H5：Policy 返回 allow/requireApproval/deny，接管精确授权匹配/保�
 最终静态：git diff --check、strings plist、1034/1034 中英 key parity、零缺失生产字面量键、42 个 Simulator suites + 2 个 signed-device suites 清单通过；Core Runtime/Context/Domain 无 SwiftData/SwiftUI/EventKit import。旧的无生产调用纯 Policy gate 已删除，基线测试改用当前 evaluate 入口。
 
 下一步是独立执行 H7 磁盘迁移/故障回归与 H8 真实服务/真机验收，按实际失败修复；不把未执行测试写成通过。
+
+
+## I. 连续交互与 Motion Language（2026-10-07）
+
+### 产品契约与实施边界
+
+目标是连续、安静、排版稳定的原生 Chat。参考成熟产品的直接正文、轻量执行过程、明确审批和可打开成果；不机械照搬截图，不制造来源、文件或进度。两个 signature motion 是新增内容 soft rise，以及执行状态收束为完成摘要。
+
+- 维持 iOS 18、一个 Controller/Agent Runtime、现有授权/journal/非重放/Undo/保存边界。展示速度不能改变执行状态、事实时间、权限或保存内容。
+- 直接在 main 实施；保留进入本轮前的文档、strings 和 staged/unstaged 测试改动。不自动提交、推送、清空用户 store、添加服务或依赖。
+- 用独立测试 store、确定性 Provider/Tool 与生产 Chat 链路执行 Simulator 测试。Debug 注入不绕过生产授权，Release 不包含测试入口。
+- 构建、单元测试、WebKit/UI 执行、性能测量、真实服务、真机视觉与触感分别记录。所有者明确本轮仅验证 iOS 27 Simulator；不安排 iOS 18 运行验收，部署最低版本保持原配置。
+- 每阶段构建并执行相关测试，修复失败后再推进；只扩展与新变更相关的回归。既有 H7/H8/G9/F 所有者验收不随 I 阶段自动完成。
+
+### 统一 File 呈现架构（贯穿 I1/I5/I6）
+
+文件是可打开、可追溯版本的内容对象；卡片仅是消息流中的一种布局。File/FileVersion 是唯一生产身份，展示对象不创建新的持久化实体。
+
+1. File presentation value 从 canonical 快照生成名称、格式、大小、版本、可用状态和可执行动作；历史 attachment/receipt 只在入口转换，不新增旧路径生产写入。历史消息固定对应版本，Files 默认最新版本。
+2. 共享 File component family：Composer 的紧凑附件、用户/Assistant 消息的 File Tile、Files 的 Row 共用图标、元信息、命中区域、状态与操作规则。密度与内容可不同；图片使用缩略图，普通文档默认紧凑 Tile，多文件按统一间距纵向排列。
+3. 主体操作统一打开，分享/更多独立可访问；缺失/撤销状态保留名称与原位置，关闭不能执行的动作。内容成果与授权/执行/撤销 receipt 分离、关联显示；失败和安全重要信息不能被藏掉。
+4. 统一身份驱动的预览 destination；解析/完整性校验共用 FileCatalog/ByteReader，避免 View 自行拼路径。图片/Mermaid 全屏，文档 push，分享使用系统 Sheet。
+5. 生成前仅显示真实 Activity。只有 typed 数据能够确定输出槽位时才预留占位；保存成功后关联真实 FileVersion，失败不能出现可打开假文件。正文、Activity、文件使用相同 soft rise。
+
+### I1 Assistant Turn & Streaming
+
+- [x] I1.1 新增 Presentation-only pacing，原始 delta 单独供 Runtime/Recorder 使用；按 Run/正文 block 隔离队列。首次缓冲 60ms，40ms 节拍，按完整字符和自然边界分 chunk，积压自适应追赶，额外展示延迟上限 500ms。
+- [x] I1.2 完成在 120ms 内补齐；取消/错误立即补齐已接收文本并终止任务。事件边界先补齐前置正文，切换 Chat/Run/dismantle 后旧队列不得更新新视图。后台/恢复不新增执行能力。
+- [x] I1.3 实时与历史放在同一稳定 Turn 节点；message/response block identity 保持，正文和 WKWebView 不因终态换分支。Footer 在补齐后出现，token 仅更新正文/轻量状态，不重算全历史和 Runtime 聚合。
+- [x] I1.4 Markdown 首先去除整段 DOM 替换：稳定顶层 block 与已完成前缀复用，尾部局部 patch；source/footnote/appearance 更新只改受影响内容。新 chunk 150ms opacity + 2.5pt soft rise，已有文字不重复入场。
+- [x] I1.5 定义共享 File presentation/Tile 最小契约，文件与 mutation receipt 分开；复用真实输出身份，不改 schema。
+- [x] I1.6 可控时钟测试 pacing/Unicode/积压/flush/取消/旧任务；真实 WebKit 测试 block identity、终态复用、选择与复杂内容；生产 Chat 确定性短/长/突发/失败场景在 Simulator 执行。
+
+### I2 Chat Scroll
+
+- [x] I2.1 following/userReading/returnToLatest 显式状态；iOS 18 scroll phase/geometry/position 区分用户手势、程序滚动和内容高度变化。上滑立即取消自动跟随和待滚动任务。
+- [x] I2.2 following 只在布局测量完成后合并跟随；userReading 保留可见 item/内部偏移，不因 token、Runtime 展开、Mermaid 高度、键盘或 Composer 增高重回底部。
+- [x] I2.3 阅读中有新内容才显示轻量回到最新；点击时远距离先定位末屏附近，再约 200ms 短滚动。用户拖动可打断，手动回到底部恢复 following。
+- [ ] I2.4 100/300 条混合历史测量 eager 基线和 LazyVStack 对照。仅当 WebView 数量明显降低、锚点漂移≤2pt、首屏/滚动耗时恶化≤10%时采用 lazy；否则保留 eager，记录原因与已完成的局部观察/增量优化，不宣称未测性能收益。
+- [x] I2.5 状态机与生产 Chat UI 测试覆盖上滑/新内容/返回中断/展开/键盘/多行/终态/重新打开，记录布局和 WebView 生命周期计数。
+
+### I3 Runtime / Tool
+
+- [x] I3.1 沿用真实聚合与事件顺序；普通 search/read/file/process 为无背景 Activity Row，运行微 pulse，完成降低权重，失败/取消明确且无假完成摘要。
+- [x] I3.2 固定图标区域与稳定 Row identity，动态执行自然收束；展开联动局部高度/opacity，保持用户展开状态，不触发全 Timeline 动画。
+- [x] I3.3 Approval、clarification、File、mutation receipt、error recovery 维持操作边界；技术详情二级 push，重要失败/不确定写入/Undo 不被聚合隐藏。
+- [x] I3.4 多 Tool、并发读、审批等待、局部失败、重复/过期事件、取消/不确定提交回归和 Chat UI 执行。
+
+### I4 Composer
+
+- [x] I4.1 输入/附件/导入/录音/发送共享连续局部 layout；复用现有草稿/异步任务隔离与发送校验。
+- [x] I4.2 arrow→stop 固定中心/尺寸，symbol replacement + 微 scale/opacity；可发送/导入中/停止标签与命中区域保持。
+- [x] I4.3 附件按原 identity insertion/collapse，移除自然收缩；录音轻量呼吸反馈，无真实能量数据时不伪造音量波形。
+- [x] I4.4 键盘服从系统动画，Composer 高度、多行和附件变化使用局部 standard/interactiveSpring，不与滚动阅读竞争。
+- [x] I4.5 UI 测试发送/停止/重复点击/导入/附件移除/长输入/语音状态/草稿切换/键盘以及大字体。
+
+### I5 Markdown / Code / File
+
+- [x] I5.1 完成代码/表格/引用/公式/链接/脚注的增量稳定布局。代码围栏生成时同容器纯文本，闭合后高亮/Copy；表格完整行渐进显示，横向位置保留。
+- [x] I5.2 Mermaid 同尺寸最小高度源码占位，闭合后异步渲染，局部终态替换；保留版本隔离/安全过滤，缓存实际已测高度，错误可读。
+- [x] I5.3 Composer、用户文件、Assistant 输出、Files Row 全面接入共享 File family；格式/大小/版本/可用性一致，主体打开与次操作分离，receipt 不占据成果主体。
+- [x] I5.4 WebKit/Sources/footnote/selection/code copy/表格横滚/外观切换/文件版本/缺失/撤销测试；长 Markdown 生成与终态前后截图。
+
+### I6 Navigation / Sheet
+
+- [x] I6.1 Project→Chat 真正 push，返回原 Project 列表位置；共享既有 Controller/Runtime，只让当前 Chat 订阅 live presentation，保留草稿确认与忙碌限制。
+- [x] I6.2 Chat→File Preview、Runtime→Detail push；Settings→Advanced 保留 push。Composer 图片原生 zoom 全屏、Mermaid 全屏；消息图片与文档交给系统 Quick Look push，无有效源节点时使用标准系统过渡。
+- [x] I6.3 创建/编辑/导入/分享为 Sheet；轻量选择 Menu/Popover，身份驱动 destination；关闭与交互式返回恢复焦点/阅读位置。
+- [x] I6.4 UI 验证返回路径、草稿/Run 归属、预览分享、关闭/返回手势、缺失目标和 Reduce Motion。
+
+### I7 Haptics & Microinteraction
+
+- [x] I7.1 FamiliarHaptics 固定 selection/send/approval/success/warning/destructive。selection=selection，send=light，approval=medium，success/warning=notification，destructive=rigid；事件去重，批量 Tool 完成合并，系统已反馈的操作不追加。
+- [x] I7.2 Copy 成功 icon→check，1.2s 恢复；Save 仅保存成功后确认；Approval 点击先等待，真实执行完成后收束 receipt，失败保留上下文及安全 retry。
+- [x] I7.3 Tool completion 平滑结束 pulse；Project/Model 标题 micro crossfade；Context Menu/Swipe/Long Press/自定义 dismiss 采用统一反馈归属。
+- [x] I7.4 行为/UI 测试确认时机、失败不报成功、重复点击/离场任务清理。物理触感验收单独保留。
+
+### I8 全局 Motion 收敛
+
+| Token | 默认 | 用途 |
+| --- | --- | --- |
+| micro | 120ms ease-out | 按压/图标/短确认 |
+| standard | 220ms smooth | 一般状态/布局 |
+| emphasized | 340ms smooth | 页面内强调 |
+| interactiveSpring | response .36 / damping .88 / blend .08 | 可中断布局 |
+| contentAppear | 150ms ease-out / opacity 0→1 / Y 2.5→0pt | soft rise |
+| collapse | 200ms smooth + opacity | 详情/操作区收起 |
+
+- [x] I8.1 I1 先接入必要 tokens，I8 迁移全 App 旧名称和自定义曲线，删除旧别名；系统 Navigation/keyboard/symbol effect 保持系统行为，不造自定义全局转场。
+- [x] I8.2 SwiftUI/CSS 共用参数，通过既有 renderer style/options bridge 下发；动画仅局部作用，无整 Timeline spring。
+- [x] I8.3 Reduce Motion 关闭位移/pulse/zoom/spring，改即时状态或 micro 淡入；保留 VoiceOver、Dynamic Type、44pt hit target、降低透明度与 iOS 26+ 原生 Glass availability。
+- [x] I8.4 全相关回归、UI/renderer 执行、本地化 parity/缺失键、diff 静态检查；state 只写已实现事实。未测试 OS、真实服务、真机视觉/触感和性能限制明确列出。
+
+### 分阶段证据与下一步
+
+I1：arm64 iOS 27 Simulator build-for-testing 通过，最终编译日志 /tmp/familiar-motion-i1-build.log 无 error/warning。相关单元/WebKit 共 25 个不同用例执行通过：/tmp/familiar-motion-i1-unit.xcresult（23/23）及 /tmp/familiar-motion-i1-native-final.xcresult（8/8，含重复及新增原生视图/首帧回退用例）；无跳过或预期失败。/tmp/familiar-motion-i1-ui-final.xcresult 生产 Chat 短回复、取消、Provider 中断三个 UI 用例 3/3 执行通过，保留截图。Node Mermaid 调度 3/3 通过。测试使用 Simulator Debug 双旗标和内存 store；未使用真实凭据/Provider/服务。
+首次混合测试的 Xcode 日志收束停住，已中止并分开执行；首次 UI 的停止标签/AX WebView 层级断言失败，修正后重跑通过，不把失败尝试计作验收。截图发现首帧回退段落丢失，已修复并补原生 WebView 保持 identity/回传高度的执行用例。复杂 Markdown 的完整渐进策略、全部 File family/统一预览仍由 I5/I6 完成；本阶段仅建立生成 File Tile 与回执分离最小契约。
+I2：/tmp/familiar-motion-i2-build.log arm64 iOS 27 build-for-testing 通过，无编译 error/warning。/tmp/familiar-motion-i2-lazy.xcresult 9/9（滚动状态机、100/300 原生布局及真实 WKWebView/完整 Timeline 终态复用）通过；/tmp/familiar-motion-i2-ui.xcresult 上滑后新内容锚点漂移≤2pt、键盘/多行草稿/返回最新及短回复 2/2 UI 通过，无跳过。
+相同混合历史原生布局：eager 100/300 各创建 100/300 个 WKWebView，初始布局 6.032/26.026s；lazy 两档均 4 个，0.118/0.167s（/tmp/familiar-motion-i2-eager.log、i2-lazy.log）。采用 LazyVStack。频繁 geometry 留在非观察字段，历史顺序/Run 关联以输入初始化值复用，避免延迟 State 缓存造成实时→历史中间空帧；旧底部距离 PreferenceKey 已移除。
+I2.4 仍保留完整滚动时延/内存/后续实例数量测量待办；以上是初始原生构建成本，不是 FPS、真实服务或真机性能验收。下一步 I3，本轮仅验证 iOS 27。
+
+I3：Runtime 改为透明 Activity Row，固定状态图标/breathe→完成摘要，显式 44pt 展开按钮和局部高度/opacity；技术详情 push，写/审批/file/error 操作边界保留。/tmp/familiar-motion-i3-unit-retry.xcresult 31/31 通过；/tmp/familiar-motion-i3-provider.xcresult Tool Call ID 配对 1/1 通过；/tmp/familiar-motion-i3-controls-ui.xcresult 生产 Lazy Tools→三并发读→聚合/展开→详情 1/1 UI 通过。审批→真实文件/回执→Quick Look→返回的 UI 用例在 i3-ui.log 中单项通过，整次运行另一项失败，不计整包通过；后续统一复验。修复容器 AX identifier 覆盖子控件导致的不可定位，移除旧文件手势死代码，过时 UI 源码断言改为 canonical File 版本/缺失字节行为。
+磁盘不足曾阻止构建，仅清理本轮失败/未收束测试临时包和重复 SourcePackages（保留日志/导出证据及成功包），复用 /tmp/familiar-architecture-dd-20261006/SourcePackages；之后构建无 error/warning。Xcode 失败时 sysdiagnose 收束停顿，后续测试使用 collect-test-diagnostics never，保留 XCTest 结果和显式截图。
+
+I4：Composer arrow/stop 相同 frame/中心、symbol replace + micro scale，录音 breathe 并尊重 Reduce Motion，附件 insertion/collapse、测量高度 standard 和统一 mode tokens。/tmp/familiar-motion-i4-build.log 无编译 error/warning；i4-ui 中审批/file/预览、发送/停止两个用例通过，阅读用例遇到 Simulator AX query 超时，整包失败；相同构建 /tmp/familiar-motion-i4-reading-retry.xcresult 1/1 通过，未复现布局循环。附件实际导入/录音设备权限/物理触感仍为真实服务/设备验收，不从状态动画或源码验证推导通过。
+
+I5：共享 FileLabel 用于 Composer/消息/Files，FileTile 文件打开与分享分离，生成文件通过 canonical FileVersion 解析并在预览前校验字节 hash；撤销/缺失保持不可用。代码围栏未闭合用纯文本同容器并禁用复制，闭合高亮/Copy；表格 patch 保留横向 wrapper/位置；数学/成功 Mermaid 缓存，pending Mermaid 在同源码正文增长时复用任务且保留异步归属验证。移除 16k pt 正文截断，保持有界 1M pt 测量。/tmp/familiar-motion-i5-unit.xcresult 17/17（包含原生/真实 WebKit code/table identity 与 UI/File/Theme）通过，Node 4/4；/tmp/familiar-motion-i5-ui.xcresult Markdown/code/table/Mermaid 及审批/file/预览 2/2 UI 通过。source/复杂内容内部阅读锚点、真实多格式文件/图片和物理效果仍需后续/所有者验收，不能据测试 fixture 宣称服务通过。
+
+I6：Project 浏览器保留临时 Sheet，其 NavigationStack 内 Project→Chat 使用类型化 path push；关闭前返回同一 Project，忙碌/草稿确认沿用既有 Controller。移除旧回调构造路径，底层 Chat 在子 Chat 显示时退出订阅。文件预览由 Sheet 改为身份驱动 push，临时 Share Draft 保留 Sheet，Composer 图片使用原生 zoom 并尊重 Reduce Motion。/tmp/familiar-motion-i6-ui.xcresult 文件审批/预览/Done 单项通过，Project 测试因重复 Daily Chat 标签失败；改显式 project.open 标识后 /tmp/familiar-motion-i6-project-verified.xcresult 1/1 返回原 Project 执行通过并检查截图。误拼筛选器的 0 tests 包不算通过。完整交互式手势/真机视觉仍单独验收。
+
+I7：六种 FamiliarHaptics 集中到一个入口，事件 key 有界去重，300ms 内并发成功合并；自定义操作负责反馈，Menu/Context Menu/Swipe 的系统反馈不叠加。Copy/Save 共用 1.2s confirmation，可重复点击保护和离场取消；审批先显示待执行，真实结果才成为 receipt。/tmp/familiar-motion-i7-unit-fixed.xcresult 32/32；/tmp/familiar-motion-i7-confirm-unit.xcresult 10/10；审批→文件→预览用例在 i7-ui 中通过，Copy 用例因 XCTest idle 等待超过确认窗口失败，改为状态测试验证即时确认、UI 验证恢复后 /tmp/familiar-motion-i7-copy-ui-fixed.xcresult 1/1 通过。未修改产品确认时长迎合测试。
+
+I8 实现：新增 Activity/File 共用 soft rise，历史 Follow-ups 固定排版且 44pt 命中，不逐条入场改变高度。Motion 曲线及触感入口均集中；原生 Navigation/keyboard 保持系统行为，Reduce Motion 来自系统环境，Debug Simulator 双旗标可单独验收自定义动作及大字体。局部内容块几何优先于整 Turn，Mermaid/表格等 DOM 高度变化回传阅读补偿；环境几何 action 是可比较值，避免每次更新替换 closure。renderer 共用一个非持久、禁网络的 DataStore；离开正文会停止 pacing。
+最终回归发现审批展示早于 coordinator 注册等待，立即回复可成为 unknownRequest 并挂起。已改为注册 continuation 后 onPending 再发事件；确认规则、作用域、重验证、取消和 idempotency 不变。/tmp/familiar-motion-i8-approval-regression.xcresult 21 个用例（29 个参数化实例）全部通过，新增立即回复/重复决策回归。
+/tmp/familiar-motion-i8-anchor-verified-build.log arm64 iOS 27 build-for-testing exit 0、无 error/warning；/tmp/familiar-motion-final-unit.xcresult 102 个逻辑用例（110 个实例）通过，零跳过/预期失败。包括 native WebKit、稳定 DOM/code/table、滚动状态/内容块锚点、pacing、Runtime/授权/提交/本地化与 UI 合同。Native 100/300 初始布局均 3 个 WebViews；20 步布局工作负载最大 8/17 个，采样原生进程 resident 约 327/329 MiB，不包含独立 WebContent 进程，也不代表真实手势帧率。真实滑动及最终 UI 包仍在执行。
+
+资源保护与中断恢复（2026-10-07）：用户要求验证前主动检查内存/磁盘并提前清理。临时 /tmp 证据目录已消失，eager 对照脚本及恢复构建未收束，不计对照通过；已明确恢复 Timeline 为 LazyVStack。此前最终 UI 目标 12/13 通过，唯一失败为 100 条历史的 XCTest AX 快照/目标失效；主线程 sample 在 XCTAutomationSupport/UIAccessibility 遍历，未显示布局补偿循环。同构建 300 条真实滑动通过：原生 App 绝对/峰值 physical memory 约 64.4/65.0 MiB，Scroll_DraggingAndDeceleration 平均 2.586s；不包含 WebContent，也不是 FPS。Project→Chat→Files 临时 Sheet→原 Project、阅读/键盘/大字体、短/取消/错误/Markdown/Tool/冷启动及生产 fixture 均单项通过。整包失败不能写成全 UI 包通过。坐标手势已替代重复的整树目标解析，等待复测。
+清理时保留源代码、SourcePackages、Build Products 与测试记录，只移除可重建的 DerivedData Intermediates、ModuleCache 和 SDK 编译缓存；磁盘从约 155 MiB 恢复到约 2.8 GiB。后续采用单并发构建，先不启动 Simulator；证据移到 ~/Library/Logs/FamiliarVerification/20261007-motion，当前 DerivedData 位于仓库忽略目录 DerivedData/motion-20261007。每轮启动前和执行中检查内存压力、磁盘余量及遗留进程。
+Clarification 同类注册先后时序已修复并增加立即回答回归。截图发现大字体 Composer 占位超出紧凑框，已按实际行高扩大编辑区并保持占位单行；保存成功后的 Project 名称查询失败不再误报保存失败。上述最新改动等待本次构建和针对性回归，不复用旧构建证明。
+
+持久证据与资源恢复完成：~/Library/Logs/FamiliarVerification/20261007-motion/build.log 单并发 Debug arm64 build-for-testing exit 0，无 error/warning；final-unit.xcresult 47/47（含立即审批/立即回答、Clarification 同 Run/取消、pacing、滚动内容块、WebKit、Copy/Save 生命周期与主题）通过，零跳过；final-ui-fixes.xcresult 2/2（坐标真实滑动 100 历史、大字体 Reduce Motion）通过，已导出截图和 metrics.json。截图确认 Composer 占位已位于框内；100 历史 App physical 绝对/峰值平均约 61.1/61.5 MiB，scroll/deceleration 平均 1.897s。此前相同 iOS 27 构建已完成的其他 12 UI 单项与本次修复证据合并说明覆盖，不称为新的整包全通过。结束后关闭本轮 Simulator，可回收内存约 63%，磁盘约 2.5 GiB；无遗留测试/构建进程。有效产品、日志和结果包保留，结束构建后移除本轮编译中间产物/SDK模块缓存和 npm 下载缓存。
+I1-I8 代码实施与所列 Simulator 验证完成。I2.4 的同条件 eager/lazy 全滚动 ≤10% 对照未完成：eager 对照中断且临时记录消失，不能冒充通过；保留独立性能验收项。真实 Provider/多格式导入/语音/物理触感及包含 WebContent 的真机 FPS/总内存仍在 docs/15 的所有者验收列表；iOS 18 本轮不验证。后续先做资源预检，按单并发、分组执行和及时关闭任务 Simulator 验证；不重复未改变且已通过的用例。
+
+真机安装优先任务（2026-10-07）：hwf/iPhone 17 Pro/iOS 27.0.1 已配对，开发者模式开启。当前 Debug arm64 真机构建成功，Team G229WP43HH 与证书匹配；devicectl 覆盖安装成功、无测试参数启动，进程 PID 2849 持续存在。证据在 ~/Library/Logs/FamiliarVerification/20261007-hwf 的 build.log、install.json、launch.json。未删除旧 App 或用户数据。此前具体 Xcode 安装报错未复现；Mac 磁盘多次接近耗尽，已清理可重建缓存并保留签名产品。性能对照仍为下一任务，其隔离副本的首次创建因磁盘耗尽未启动，主代码保持 LazyVStack。
+
+### 本轮最终收尾清单（2026-10-07）
+
+- [x] Assistant 流式 pacing、稳定 Turn/Markdown identity、阅读状态与内容块/DOM补偿、轻量 Runtime、Composer、统一 File family/预览、Motion/Haptics 和 Copy/Save 确认已实施。
+- [x] 审批/Clarification 先注册等待再展示；最新相关 47 个单元/WebKit用例及 2 项 UI 修复复测通过。此前整 UI 包 12/13 通过，失败的 100 历史用例已通过坐标手势复测；不将跨构建证据合并成新整包通过。
+- [x] 当前版本已签名覆盖安装到 hwf/iOS 27.0.1 并启动；未删除原 App 或用户数据。此前 Xcode 具体失败未复现，已确认宿主机磁盘持续接近耗尽。
+- [x] 本轮 DerivedData/motion-20261007、hwf-20261007 已删除；eager 隔离副本未创建。借用的 SourcePackages 缓存经 31 个仓库无本地修改检查后删除，可按 Package.resolved 重新下载。已停止本轮 Simulator，无残留构建/测试进程；手机安装保持。
+- [x] 源码、Vendor、Package.resolved、现有 Git 改动保留；在 main，未提交/推送。
+- [ ] 同条件 eager/lazy 全滚动 ≤10% 对照（I2.4）未完成；本轮按用户要求不再继续，下一轮由代理承担。
+- [ ] 用户真机验收：真实 Provider 弱网/长回复/多 Tool/取消错误，真实附件多格式/图片/录音，导航阅读/键盘、系统大字体/Reduce Motion、物理触感；FPS与包含 WebContent 总内存独立验证，见 docs/15。
+
+证据可用性：关闭时检查，/tmp 历史证据及 ~/Library/Logs/FamiliarVerification/20261007-motion、20261007-hwf 已不在预期路径；本次收尾清理前就已缺失，无法提供原包复查。保留上述来自已执行工具结果的验证记录，不宣称结果包/截图现仍存在；将来需要重新交付原始证据时重新生成。
+
+## J. 设置分类、列表与聊天顶栏（2026-10-07）
+
+本轮仅 UI/导航/文案；上一轮 I2.4 性能对照保持关闭，不恢复。全部旧功能、保存逻辑、权限/Memory/Runtime 不变；用户明确只做编译，不启动 Simulator，最后由用户真机视觉验收。
+
+- [x] 首页按模型、个性化、能力与连接、界面与交互、隐私与数据单入口、关于与支持排列。模型分组回到模型；回复偏好/记忆独立并明确差别；高级提前且显示 Skills/MCP/工具/执行说明。
+- [x] 高级依次是 Skills/MCP/搜索/工具、执行限制/Shell/Python源、运行历史/诊断；隐私汇总按访问与授权、安全、本地数据组织，原说明页改数据处理说明。
+- [x] 设置行展示必要副标题、保留系统导航箭头/44pt命中；MCP/Provider/模型组/项目普通添加导入动作纯文字；项目指令、模型组、MCP编辑、记忆编辑增加进入提示，保存行为保持。
+- [x] 聊天顶栏为设置、模型选择、项目、更多；项目与更多组成右侧组，新建对话移到更多首项；保留草稿/忙碌规则。图标20pt semibold、模型17pt medium、下拉11pt semibold，保留Dynamic Type/完整辅助标签和crossfade。
+- [x] 静态核对23条设置路由全部可达且不重复，顶栏/菜单顺序和禁用条件正确；中英1045键相等，零缺失生产字面量；plist与diff检查通过。
+- [x] 单并发 Debug arm64 iOS27 Simulator构建通过；不启动/运行Simulator，不声称真机视觉验收。
+
+J 验证：2026-10-07 最终 generic iOS Simulator/Debug/arm64 build exit 0，final-build.log 为空（零 warning/error），产物时间晚于本轮最后的呈现源码改动。日志路径 ~/Library/Logs/FamiliarVerification/20261007-settings；23条设置路由可达且顺序核对、1045/1045文案parity/零缺失生产字面量、plist、diff静态检查通过。按用户要求没有Simulator启动/UI测试/真机视觉宣称；用户自行视觉验收。仅本轮UI文件、strings和状态文档增量修改；原有未提交工作保留，main无提交或推送。
+
+J 真机交付（2026-10-08）：用户要求将设置分类/列表/顶栏新版本安装到 hwf。Debug arm64 真机构建完成，codesign --verify --deep --strict 通过；devicectl 覆盖安装 com.isaachuo.familiar 成功，生产参数为空启动成功，进程核对持续运行。证据在 ~/Library/Logs/FamiliarVerification/20261007-settings-hwf 的 install.json/launch.json；仅确认安装启动，不代替用户视觉验收，未删除手机数据、未运行Simulator。
+
+## FC. Functional Convergence（2026-10-08）
+
+### 目标、授权和最新基线
+
+全部现有生产能力须从入口、配置、权限、执行、结果呈现到持久化/恢复贯通。单 Agent/Loop 保留；不增加 Router、后台承接、跨重启自动续跑、云同步、STDIO/MCP OAuth 或供应商数量。完整交互 Terminal 是用户明确新增的现有 Linux 能力入口。
+
+本阶段用户已授权 Simulator 测试/生产页面操作和真实服务验证。Tavily 仅用测试凭据做少量公开查询，不内置 Key、不记录 Key；真实模型主要验收 DeepSeek，其他 Provider/OAuth 后置且不能伪称通过。hwf 需要连接、解锁及签名；硬件/账号阻断单列。直接 main，保留原改动，不自动提交/推送/清库。
+
+当前源清单 47 Simulator suites + 2 signed-device suites + 完整 UI target。复用 I/J 的生产 Chat 测试 Provider、Streaming pacing、Scroll State、WebKit/审批注册修复。现有双旗标测试用内存 store，不证明 relaunch；补独立磁盘模式。旧 I2.4 eager/lazy 对照保持独立，不恢复大规模视觉开发。
+
+### FC0 Feature Matrix
+
+唯一生产清单在 [state/FEATURE_MATRIX.md](state/FEATURE_MATRIX.md)，逐入口/工具列注册、实现、默认发现、Project scope、系统权限/签名/账号、六状态、写边界、存储、测试和缺陷；源码存在、fixture、编译、执行、真实服务和真机分开。通用六状态为 success/empty/denied/failure/cancelled/relaunch；写操作额外 approve/reject/duplicate/undo/interrupted。不适用注明理由，没有 Undo 的能力明确 unavailable。
+
+覆盖 Chat/Runtime/Provider/Streaming/Project/Context/Compaction/Attachments/Vision/Web/Memory/Files/Artifact/Workspace，Calendar/Reminder/Location/Maps/Weather/Contacts/Photos/Health/Music/Bluetooth/Notification/Alarm/Clipboard/NaturalLanguage/Spotlight，Skill/MCP/Environment/Shell/Terminal/Voice/OAuth/Share Extension/Widget/App Intents/Deep Link/锁定/Settings/存储恢复/渲染。
+
+### 阶段任务与顺序
+
+- [ ] FC0 完整矩阵、入口/测试清单、源码问题分级；证据与待验收分开。
+- [ ] FC1 运行全部 Simulator suites/UI baseline；修 Runtime 唯一终态/保存错误/取消/工具循环/Web Evidence；生产 Chat 操作。
+- [ ] FC2 Project/Context/Files：真实导入/版本/冻结/预算/隔离/磁盘重开。
+- [ ] FC3 Memory/追问：质量用例、确认写入、相关建议生成/保存/历史。
+- [ ] FC4 所有 Native：普通聊天按需发现、授权/权限、签名/服务、真实读写。
+- [ ] FC5 Artifact/Output：write→read→edit→version→preview→share→delete→undo。
+- [ ] FC6 Skill/MCP/iSH/Terminal：真实高级执行、PTY、现代入口/消息流、资源限制/隔离。
+- [ ] FC7 SwiftData/文件边界、1.0→4.0升级/覆盖安装、强杀/不确定动作/Undo。
+- [ ] FC8 全 UI/Settings/Voice/系统扩展入口操作，状态/返回/配置一致。
+- [ ] FC9 全量回归/端到端复验/Release Gate。
+
+任何拒绝后写入、重复副作用、跨 Project 泄漏、数据丢失、假成功即时提升 P0，优先处理。
+
+### FC1 Runtime/Chat/Web
+
+Runtime：实际执行所有 suites 和 UI target。助手消息/ResponseBlock/Sources/Run/cursor 成功终态在一致的保存边界提交，保存错误传播；首 token 前/中途取消、断流/空回复/异常 Tool JSON/deadline/压缩/预算耗尽均只有一个明确终态。保留已执行结果/部分正文，不重试不确定写入。发送/压缩禁止切换 Chat/Project并明确说明。测试用生产 Controller/Loop/Policy，保留 pacing/阅读机制。
+
+Web：免 Key 搜索保留，Tavily 只作已有 API 路线/真实对照。单 Run Web Evidence 缓存 normalized query、provider/language、sourceID、canonical URL、redirect aliases、页面/失败/原观察时间；合并进行中请求，重复结果不联网。保守归一 fragment/tracking/host/默认端口，保留业务参数/路径语义。跨查询URL去重与来源多样性。独立 web_fetch 允许安全并行，最多2 reads。连续2次无新增来源阻止继续搜索、允许读取已有来源回答，不叠加多层重试。
+
+article/main优先，内容/链接密度 fallback，清噪音/嵌套重复，保留代码/表格/标题与24K边界。按query/device语言选择语言/市场；已有adapters支持新闻/时间/来源控制。传输、反爬挑战、无结果、正文不可解析、相关性分别诊断；query改写/证据缺口仍由单Agent处理。
+
+回归：重复查询/URL/进行中请求只执行一次；并发URL上限与调用顺序；归一URL/稳定source/跨Run隔离；失败后继续回答；预算/取消/权限优先。真实DDG/Bing/Tavily中英文/新闻/技术公开查询；429/超时/重定向/无结果/解析错误通过可控传输稳定复现。
+
+参考：https://docs.tavily.com/documentation/api-reference/endpoint/search ，https://api-dashboard.search.brave.com/app/documentation/web-search/query ，Mozilla Readability。研究不等于采用新的云执行器或硬编码Key。
+
+### FC2/FC3 Project/Files/Memory/追问
+
+Daily/普通Project指令/模型/文件/Memory/Skill/输出/摘要隔离；真实 TXT/Markdown/PDF/DOCX/PPTX/XLSX/CSV/EPUB，扫描/混合PDF、损坏/加密/超限/取消；选择器/导入/文案同支持范围。Vision模型直传及Apple Vision fallback，发送失败保留草稿，冻结版本/预算。
+
+Memory：中文分词/同义/跨语言/无关/跨域负例，先量化候选和最终入选再修简单有效检索，不先建向量系统。三作用域、remember批准/拒绝/取消、编辑删除/关闭/冲突/超预算/重启。Memory不能授权，保存前无成功回执。
+
+追问：主回复成功保存后，同实际模型一次无工具小请求，最多3条内容相关问题，可空。输入只取该用户问题+最终正文，预算裁剪，不读取其他Project。Typed suggestion存在最终ResponseBlock payload，不加实体。JSON错误/超时/取消/保存失败不显示固定模板、不改变主Run终态。新发送/切换/退出取消旧任务，回答身份防重，重开只读保存项。点击只填Composer，模型/报告用量单独审计。参考 https://github.com/langgenius/dify/blob/main/api/core/llm_generator/llm_generator.py 。
+
+### FC4 Native 全链路
+
+无显式capability配置的Project/Daily默认按需发现现有原生工具，已明确关闭尊重；启动不批量权限申请。目录→Project scope→Policy/系统权限→Service→结果五层诊断。Settings与Runtime同配置；错误不得被try?吞掉。
+
+逐工具真实验证：Calendar/Reminder 查询/增改删/目标变化/拒绝零写/重复/跨重启Undo；Location/Maps 城市/当前位置/撤权/取消/坐标；Weather 坐标直查及Maps→Weather/current/forecast/history/来源；Contacts空/limited/拒绝/撤权；Photos limited/full/add-only/重复保存；Health真实聚合/空值非零；Music授权/目录/地区/token/网络（不加播放）；Bluetooth UUID/真设备/关闭/取消；Notification/Alarm触发/重复/取消/Undo/版本门控；Clipboard/NaturalLanguage/Spotlight结果、索引/跳转与删除更新。
+
+签名必须核对源码、最终codesign、profile、App ID服务；WeatherKit声明不证明账号的capability/app service，MusicKit使用系统授权/自动token而非要求用户音乐Key。参考 https://developer.apple.com/help/account/identifiers/enable-app-capabilities/ ，https://developer.apple.com/documentation/musickit/using-automatic-token-generation-for-apple-music-api 。
+
+### FC5 Output
+
+旧版本不可变；Markdown/TXT默认，复杂文档真实打开/内容/签名校验。磁盘缺失/元数据孤立/保存失败/分享取消/重复发布不可假成功。保存/删除/Undo故障补偿；输出与receipt分开。
+
+### FC6 Skill/MCP/iSH/完整Terminal
+
+Skill安装/卸载/binding/Run选择/allowedTools/hash/非法路径/损坏/超限/下一Run不继承；HTTP MCP lazy/paging/exact selection/approval/断开/取消/重复call，未实现STDIO/MCP OAuth明确不可用。iSH冷/热prepare、依赖/mount、网络/进程/磁盘/输出/timeout/cancel/失败恢复；普通聊天不启动guest。
+
+More→Terminal归属当前Project，Project环境与Settings同状态。当地打包xterm.js+非持久WKWebView，不CDN；ANSI/光标/选择复制/中文/软键盘辅助键/resize。复用iSH现有TTY/PTY，不复制旧App；bridge start/sendInput/resize/interrupt/close，output/state/exited/failed，byte输出不走按行callback；重建arm64 device/Simulator XCFramework并更新供应链。
+
+同guest执行所有者：Agent时terminal只读，不能抢输入/挂载/取消；手工占用Agent明确busy。手工会话显示Project/网络/资源边界，其许可不能授权模型。仅当前Project mount，验证HOME/tmp/history和guest写路径隔离，不只cd。基础环境/包准备/网络/配额保持受控。后台不保证、重启不重放。显式保存手工成果进入canonical File版本，日志不自动注入Memory/Context。
+
+消息流沿现有Activity Row显示prepare/run/完成/失败/取消；stdout只在展开详情/同执行只读terminal，高频日志不进正文。Run/toolCallID/执行身份一致；File Tile与receipt分开，部分失败/不确定/Undo保持可见。验收交互shell/ANSI/中文/Tab/arrows/Ctrl-C/D/resize/TUI/冷启动/取消/超时/残留进程/Project切换/Agent冲突。先PTY后UI，层层真实可用。参考 https://xtermjs.org/docs/api/terminal/classes/terminal/ 。
+
+### FC7/FC8 恢复/所有入口
+
+检查Conversation/Message/Run/ToolResult/Approval/FileVersion/Attachment/历史Resource/Memory/Skill/Authorization/Undo及磁盘；正式1.0→4.0磁盘升级/重复打开/失败回滚/覆盖安装，身份/关系/hash/审计。提交前/外部效果后/保存前/Undo中强杀，不确定写不自动重放。恢复不自动删用户数据，升级不靠清库。独立磁盘UI store证明relaunch。
+
+逐页 Button/Menu/Context Menu/Swipe/Sheet/NavigationLink/Toolbar/Toggle，Voice/相机/锁定/Share Extension/Widget/App Intents/DeepLink/Spotlight/通知/权限/撤销/预览分享和全部Settings routes；沿I/J，不重做已完成设计。
+
+### 验证资源与证据
+
+由代理执行Simulator页面操作/快照/截图/日志。47 suites同一次选择执行，UI target独立，新增suite更新清单；纯回归、production+可控依赖、真实服务、签名设备四种证据单列。0 tests/skips/expectedFailures/crash/未执行不算通过。持久证据 ~/Library/Logs/FamiliarVerification/20261008-functional-convergence。
+
+用户要求提前资源清理：串行build/test，监测memory_pressure和磁盘；清理本任务可重建Build/Intermediates、旧失败产品/冗余临时包，保留源码、用户数据、结果摘要/截图/必要日志，不删除借用的Package源或其他项目。每切片更新实现/执行/服务/设备证据与下一任务。
+
+### 缺陷索引（初始源码发现，尚需执行复现）
+
+| ID | 优先级 | 问题 | 状态 |
+|---|---|---|---|
+| FC-R01 | P0 | Controller在assistant最终保存前finishRun；terminal save try?，可能假成功/丢正文 | 已修复，原子保存/失败回归已执行；真实Provider待验收 |
+| FC-W01 | P0 | Run仅缓存File读；重复Web无证据复用/无进展限制 | 已实现并实际回归，真实搜索已验收 |
+| FC-W02 | P0 | fetch禁止并行，正文max字符选body，固定中文搜索市场 | 已修复并执行，真实fetch通过 |
+| FC-N01 | P1 | 其他Native默认高级关闭；capability toggle吞save错误 | 已修复，adapter回归通过，真实权限/设备待验收 |
+| FC-F01 | P1 | 固定两条追问，没有内容生成/持久化 | 已实现，production UI点击仅填Composer通过，真实模型质量待验收 |
+| FC-T01 | P1 | 无完整terminal入口/PTY桥接 | 待实施 |
+| FC-P01 | P1 | 当前UI test内存store无法验证重启 | 独立磁盘模式已实现；新UI selector修复后复跑 |
+| FC-N02 | P1 | Bluetooth新manager的unknown被判失败，取消permission waiter不释放，旧scan timer能结束下一scan | 生产Service修复及3项生命周期回归已编译，执行中 |
+
+### Release Gate
+
+- [ ] 所有生产能力入口/范围/权限/真实可用结论。
+- [ ] 核心Runtime/Chat/Files/Memory/Native/Output/恢复通过。
+- [ ] Terminal真实PTY、执行所有权/Project隔离通过。
+- [ ] 内容相关追问/失败无假模板。
+- [ ] 无数据丢失/重复副作用/假成功/跨Project泄漏/无限循环/残留状态。
+- [ ] 拒绝/取消不越权写，不确定动作不重放。
+- [ ] 升级不清库，Settings/Runtime一致。
+- [ ] 缺设备/账号或后置Provider/OAuth保持未通过；不以blocked/unavailable冒充正向验收。
+
+下一切片：FC0矩阵核对 → FC1基线实际运行/首批P0修复。所有门槛满足后才进入下一阶段UI/Motion Polish。
+
+### FC0/FC1 当前执行记录（2026-10-08）
+
+FC0已建立逐项矩阵：56个production tools、29个非工具/未接线入口族、24种AnyDoc声明格式。矩阵仍需随实际验收逐行补证据；不以格式声明算转换成功。
+
+基线原工程Simulator test build成功，47 suites同一次选择实际执行：345 tests，328 passed，17 failed，0 skipped/expectedFailures。baseline-unit.xcresult/summary位于持久验证目录。失败包括过时Daily/路径/budget/model alias断言、虚构Web capture的invalid域名、未实际写字节的File版本fixture、Shell缺Project上下文、Conversation Memory缺Project归属和两个Codex instance强制解包crash；逐项核对当前真实合同，保留所有失败记录，不称基线通过。
+
+UI基线实际启动，但100历史性能用例的app.screenshot请求AX主线程超时，300项因中止未执行完：3 tests，1 passed，2 failed/cancelled。MCP等待300s超时后xcodebuild仍运行；读取日志确认后SIGINT终止本任务PID，改屏幕级XCUIScreen截图以避免额外app AX查找。不是整UI通过，须新构建完整重跑。
+
+FC1在实现：Run-local Web Evidence、URL/来源归一/多样性、fetch并发、语言与正文抽取；终态save错误传播与Final Message/blocks/Sources/Run/cursor单次成功保存；补Web evidence和终态原子边界回归。初次编译发现URLComponents独占访问错误，已修正，验证仍在进行。源码修复不称runtime通过。
+
+资源：serial -jobs1/禁index，读memory_pressure/df。UI停止后内存free67%，磁盘约2.5GB；删除本任务已结束baseline prepared test products，保留xcresult、summary和logs，不删除借用Package源。未连接hwf，真实签名/系统/guest仍待验收。未提交/推送。
+
+FC1追加证据：fc1-unit.xcresult实际353 tests/352 passed/1 failed/0 skips；唯一失败为select(nil)应保留当前Project的旧测试断言，已核对并加上显式startNewConversation(nil)切回Daily验证。fc1-ui.xcresult完整13/13通过、0 skips/expectedFailures：包含100/300历史手势、短/长/取消/错误、工具详情、文件审批/预览、Project导航、Markdown与大字/Reduce Motion。UI使用生产链路+可控Provider，不代表真实模型/系统服务。为规避MCP300s等待限制，长UI使用相同prepared products的xcodebuild test-without-building，日志和summary保留。
+
+真实host公开搜索探针：Bing200结果实际是/ck/a?u=a1<base64>包装链接；旧解析器排除所有bing.com链接会丢掉正常来源。补按真实形态解码、HTTPS/公网校验和回归，未跟随tracking；DDG Lite也返回200非challenge。Host探针不替代Simulator生产adapter实时验收。增加单独live-service测试入口，Tavily只在0600临时配置读Key，CLI/.xctestrun仅传配置路径，结束后删除。
+
+已有真机交付产物的codesign/profile均含WeatherKit和HealthKit；profile有效期2027-08-31。不能据此确认App ID在线服务或Weather/Music真实请求成功；hwf仍unavailable。原生live/guest签名验收等待连接。当前源码新build成功，48 suites最终回归在执行（新增Web evidence含Loop重复/失败后回答，Bing包装链接）。
+
+FC1真实Simulator Web测试：5 tests，4 passed/1 failed，0 skips。Bing英文/中文、DDG英文+中文、Tavily英文+中文均经生产SearchService/adapters真实联网通过；0600临时测试Key配置已删除。受限Swift.org页面失败redirectLoop，追到HTTP request使用URL.path会丢末尾slash、解码reserved字符，导致/about/实际发送/about→自重定向。改percentEncodedPath/query，补slash/%2F/%0D%0A防header注入回归；须重跑真实fetch，不把这一失败算服务通过。
+
+FC2源审查发现file_edit只找generated byte root，不能修改已canonical导入TXT/Markdown，接入context.files+统一ByteReader并做Project/hash/批准后字节复核；旧版本不改。Import保存前重新确认目标Project仍存在，避免删除Project后的孤立File成功。PDF锁定明确报encrypted；修支持格式fallback文案。生成13份真实Office/EPUB/文本/扫描/混合/加密/损坏PDF夹具，新增49th Simulator suite含格式/字节/hash/隔离/修订/磁盘重开，编译/执行进行中。
+
+FC2/FC3 当前构建包50 Simulator suites实际执行366/366 logical tests通过，0 skips/expectedFailures（参数化实例另计）。新FunctionalFiles suite覆盖9种真实格式、扫描/混合PDF、加密/损坏、删除目标Project、导入TXT修订/旧字节/外域拒绝及磁盘重开；新FollowUp suite覆盖实质输入/实际模型/无工具/512输出预算、无效JSON无模板、去重/长度、metadata/独立usage与取消。真实模型建议质量仍需DeepSeek。新UI15项（内容追问仅填Composer、独立磁盘relaunch）待执行。
+
+受限网页实际重跑fc1-live-fetch-fixed.xcresult：1/1通过，Swift.org抓取正文/hash/source真实验证。之前4/5Web包保留失败，修复后单项证据分开，不合称新5/5整包。Tavily live验收已通过，允许Settings显式选择这个已有adapter，免费默认DDG不变，不内置Key。
+
+原生按需默认发现（保留已有bindings）、capability保存失败可见、当前不可用工具仍可在设置看到具体原因已进入源码；Weather错误追加原NSError domain/code利于签名/服务定位。用户设备验收仍未完成，不能称Weather/Music真实可用。
+
+Memory质量实际复现：fc3-memory-recall-suite-before.xcresult 13 logical tests/11 passed/2 failed，零skips。同义/跨语言偏好、整句中文都被旧keyword硬过滤漏掉。改为NaturalLanguage分词做lexical ranking，所有可见且作用域正确的已确认记忆仍可作为候选，由Compiler唯一1200字符预算决定实际入选；不引入向量库/额外模型请求。这能保留少量通用偏好，不保证超预算大量记忆的跨语言语义排序；后续验证这一边界。此前函数selector执行0 tests明记未验证，未算通过。
+
+FC3新UI首次执行2项：内容追问/点击只填Composer通过；磁盘relaunch失败为历史Button selector误查找并误折叠Daily。导出的AX树已出现持久化正文和追问；只读SQLite确认1个Chat、1个user+1个assistant及Run记录，非数据丢失。历史行增加稳定accessibility ID、改selector，并补已保存追问重开一致性断言，当前重跑。失败xcresult/AX/录屏保留。
+
+FC4 Bluetooth生产Service生命周期和原生adapter合同实际18/18、0 skips/expected通过。覆盖已授权新manager的unknown初始化等待、permission waiter取消及随后重试、cancel-before-scan、旧scan timer不能停止下一scan和蓝牙关闭终止扫描。manager边界可控，不能替代真实硬件扫描。首次泛型Void推断编译失败已补明确continuation类型；当前稳定build-for-testing成功74.4秒，零警告/错误。清单现51 Simulator suites，3 signed-device suites；新增真实Simulator guest探针作为第二个显式live suite，尚未编译/执行。
+
+FC5新增P0候选FC-FS01：generated/managed/attachment字节路径仅字符串前缀校验，Project父目录符号链接可能重定向到另一Project。建立真实磁盘父目录link读取/写入/删除回归，先运行旧实现复现，再修统一路径边界；不只用虚构metadata证明隔离。
+
+FC5真实磁盘负向包3/3失败、8条断言复现跨Project字节读取/改写；修复后文件隔离/多格式/版本/正式磁盘升级相关38/38 logical tests通过（48个参数化实例）、0 skips。统一FamiliarFilePath检查内部父目录link，保留真实系统祖先alias；read/write/managed capture/delete及Attachment路径已接入。证据fc5-path-before与fc5-files-isolation-fixed均保留。
+
+FC6真实Simulator guest冷/热准备、Python/SSL和中文输出首次1/1通过。随后增加原生字节PTY bridge、执行所有者继承/清理、readonly基础root、Project HOME/tmp、canonical原始文件投影以及底层16进程/512MiB/128MiB文件/1MiB输出约束。arm64 device与Simulator XCFramework实际重建；未开放Terminal UI，不能称完整Terminal通过。旧writable guest base保留，新scoped base不读取旧home/tmp。新增patch仍须补供应链hash记录和最终执行证明。
+
+FC6真实负向包fc6-scoped-pty实际4 tests/1 passed/3 failed、0 skips。内存、文件、进程限制以及init保护/不存在process group用例正常运行；超长无换行输出标志/内容丢失、重挂init的sleep未及时停止导致guest明确failed并阻止后续执行，PTY因此未通过。修复Producer仅在cancelled终止时取消、反复唤醒pending KILL的host线程，以及在终止前提交有界partial line；新构建/复跑继续。失败不能用编译替代；仍先保持不开放终端入口。
+
+FC4额外源审查发现Bluetooth UUID未验证就传CBUUID，有非法输入触发Objective-C异常的风险。新增ASCII hex/完整UUID校验，preflight与生产service在创建manager/请求权限前拒绝；新增参数化回归，尚待编译/执行。待办另记录Clipboard只保存旧文本导致非文本数据丢失/Undo覆盖后续内容，以及Files删除先移动字节再保存metadata的强杀恢复边界，均作为P0验证/修复。
+
+当前下一切片：完成FC6受控guest/PTY真实回归 → 修Clipboard/本地文件删除恢复P0 → 接入并真实操作完整Terminal入口 → 其余Skill/MCP、全入口走查和最终全量回归。FC4签名原生服务、DeepSeek真实质量、广泛Provider/OAuth和硬件仍未验收；hwf unavailable。未提交/推送/清库。
+
+FC3最新复验（2026-10-08）：fc3-native-discovery-unit.xcresult实际368 tests/367 passed/1 failed、0 skips/expected；唯一失败Timeline原1秒阈值实测1.035秒，未改阈值。当前稳定源码重新build-for-testing成功20.1秒，fc3-focused.xcresult实际31/31、0 skips，100/300布局峰值0.334/0.595秒；Memory质量新用例和原生adapter合同通过。原失败证据保留，不把focused复验写成新全量368/368。新增两项生产UI追问/磁盘重启正在执行。Signed Native六项真实服务探针已编译，hwf unavailable，尚未执行；Weather/Music不能判通过。提前退休本任务旧prepared products约213MB，保留xcresult/summary/log，不动其他项目或用户数据。
+
+### 2026-10-08 阶段收尾与安装切片
+
+用户将当前切片收尾，要求保留终端真实入口并安装 hwf；随后授权所有当前改动按模块分别 commit 并 push。仍在 main；不清空数据库或 Keychain。
+
+- [x] FC6 sliced host nanosleep 修复 pending KILL 无法及时结束 guest sleep 的根因。真实 guest 包 `fc6-sliced-sleep.xcresult` 实际 4/4、0 failures/skip，通过资源限制/无换行输出恢复、冷热 Python/SSL、Project HOME/tmp 隔离、reparented child 清理及真实 PTY 输入/resize/中文 ANSI/Ctrl-C/Ctrl-D/Agent busy。
+- [x] Clipboard 拒绝后零写入、完整非文本 checkpoint、revision 冲突/重复/Undo 保护；真实 Simulator PNG Undo 和 Bluetooth 输入/生命周期、独立 PTY 回归包 `fc4-clipboard-pty-isolated` 实际 11 logical/16 instances 全通过。不能替代蓝牙硬件或 signed 原生服务。
+- [x] 原生 bridge、资源限制/隔离 patches、两片 arm64 XCFramework 实际重建，供应链 manifest 新增本地源/patch/二进制 SHA-256；verify-ish-supply-chain 实际通过。
+- [x] 新增生产 `More → Terminal` 页面、本地打包 xterm 6.0.0/fit 0.11.0/unicode11 0.9.0、真实 raw-byte PTY 输入及 resize、辅助键、命令字段、Start/Stop、Project HOME、默认禁网、页面离开/后台停止。仅显式 Start 准备环境；人工许可不构成模型工具授权。
+- [x] hwf 当前源码签名 build、codesign deep/strict verification 与覆盖安装成功；启动结果单列。
+- [ ] 终端生产 UI/手工交互验收：自动化 worker/AX 超时，用户已停止 Simulator 验证。
+- [x] 六个功能/回归提交已推送 origin/main；收尾文档提交记录最终安装结果。
+
+本次交付不代表 Functional Convergence 完成。后续仍需 Files/Project 删除阶段移动字节后的强杀恢复、FilePresentation 缺 metadata/分享前字节一致性、完整手工 Output 显式发布回执、Agent 日志只读终端、终端广泛全屏程序/软键盘验收、全部 Native signed 服务与硬件、DeepSeek/其他 Provider/OAuth、Skill/MCP、FC7/FC8 和最终 Release Gate。正式磁盘迁移已有实际回归，不将一次真机安装等同覆盖安装/强杀完整验收。
+
+按用户最新指示停止所有 Simulator 验证，仅进行 hwf 安装与收尾推送。`fc6-terminal-ui` 在 preparing execution worker 超时，没有执行测试体，不能算 UI 通过；普通启动已成功，但 snapshot remote automation session 也超时，未获得终端操作证据。Simulator 已关闭。保留此前真实 guest/PTY 4/4 结果，生产终端 UI/真机手工交互仍须用户验收。首轮 hwf build 失败未输出明确 error，保留日志；当前串行重跑带 xcresult，不能用首轮残留产物安装。
+
+hwf `hwf-terminal-build-retry.xcresult` 实际 BUILD SUCCEEDED，codesign --verify --deep --strict 通过。`hwf-terminal-install.json/log` 确认 devicectl 成功覆盖安装 com.isaachuo.familiar；本次没有清空 App 数据/Keychain，也没有执行生产 Provider/原生服务工具。完整终端手工交互和其余 Release Gate 保持待验收。
+
+hwf devicectl 启动成功，未带测试参数，生产进程 PID 6780。安装/启动均返回 success；该证据证明交付与启动，不代表已在真机执行终端命令或验证 Native 服务。
