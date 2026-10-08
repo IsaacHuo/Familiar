@@ -1,0 +1,2 @@
+TXT PROBE 1024
+A durable Functional Convergence document.

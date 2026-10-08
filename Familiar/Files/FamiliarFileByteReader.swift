@@ -13,11 +13,7 @@ nonisolated enum FamiliarFileByteReader {
         case .resource: url = FamiliarProjectResourceStore().url(for: snapshot.storage.relativePath)
         case .file: url = FamiliarFileStore().url(relativePath: snapshot.storage.relativePath)
         case .managed:
-            let root = FamiliarManagedFileStore().rootURL.standardizedFileURL
-            let candidate = root.appendingPathComponent(snapshot.storage.relativePath).standardizedFileURL
-            guard !snapshot.storage.relativePath.split(separator: "/").contains(".."),
-                  candidate.resolvingSymlinksInPath().path.hasPrefix(root.resolvingSymlinksInPath().path + "/") else { return nil }
-            url = candidate
+            url = try? FamiliarFilePath.confined(snapshot.storage.relativePath, to: FamiliarManagedFileStore().rootURL)
         }
         guard let url, let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]),
               values.isRegularFile == true, values.isSymbolicLink != true else { return nil }

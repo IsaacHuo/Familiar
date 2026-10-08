@@ -82,14 +82,15 @@ struct FamiliarSendPreflightTests {
     }
 
     @Test("Supported image input fails explicitly when its bytes are unavailable")
-    func missingImageFails() {
+    func missingImageFails() throws {
         var visionSettings = settings
         visionSettings.providerID = "codex"
-        visionSettings.modelID = FamiliarProviderCatalog.descriptor(for: "codex")!.defaultModel.id
-        #expect(visionSettings.selectedModel.capabilities.supportsImages)
+        let model = try #require(FamiliarProviderCatalog.templates.first { $0.id == "codex" }).defaultModel
+        visionSettings.modelID = model.id
+        #expect(model.capabilities.supportsImages)
         #expect(throws: FamiliarVisionProcessorError.self) {
             _ = try FamiliarContextCompiler.assemble(seed: seed(), settings: visionSettings,
-                messages: [message("Read", attachments: [attachment(kind: .image)])], toolManifests: [])
+                messages: [message("Read", attachments: [attachment(kind: .image)])], toolManifests: [], resolvedModel: model)
         }
     }
 
@@ -108,9 +109,10 @@ struct FamiliarSendPreflightTests {
             extractionVersion: draft.extractionVersion, detectedFormat: draft.detectedFormat, usedOCR: draft.usedOCR)
         var visionSettings = settings
         visionSettings.providerID = "codex"
-        visionSettings.modelID = FamiliarProviderCatalog.descriptor(for: "codex")!.defaultModel.id
+        let model = try #require(FamiliarProviderCatalog.templates.first { $0.id == "codex" }).defaultModel
+        visionSettings.modelID = model.id
         let snapshot = try FamiliarContextCompiler.assemble(seed: seed(), settings: visionSettings,
-            messages: [message("Read", attachments: [input])], toolManifests: [], attachmentReadPaths: [draft.id: draft.relativePath])
+            messages: [message("Read", attachments: [input])], toolManifests: [], attachmentReadPaths: [draft.id: draft.relativePath], resolvedModel: model)
         try FamiliarContextCompiler.validateSubmission(snapshot)
         #expect(snapshot.attachments.first?.relativePath == path)
         let draftURL = try #require(FamiliarAttachmentStore.url(for: draft.relativePath))

@@ -63,10 +63,19 @@ nonisolated struct FamiliarFileEditTool: FamiliarTool {
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
         guard let projectID = context.projectID else { throw FamiliarFileError.projectRequired }
-        let original = try store.editableFile(projectID: projectID, identifier: input.identifier)
+        let known = context.files.first { "file_" + $0.reference.versionID.uuidString == input.identifier }
+        let original: (id: UUID, filename: String, relativePath: String, data: Data)
+        if let known {
+            guard known.reference.projectID == projectID else { throw FamiliarFileError.invalidPath }
+            original = (known.reference.versionID, known.filename, known.storage.relativePath,
+                try FamiliarFileByteReader.read(known, projectID: projectID))
+        } else {
+            original = try store.editableFile(projectID: projectID, identifier: input.identifier)
+        }
         guard ["md", "markdown", "txt"].contains(URL(fileURLWithPath: original.filename).pathExtension.lowercased()) else {
             throw FamiliarFileError.unsupportedFormat
         }
+        let originalHash = FamiliarHash.sha256(original.data)
         let originalTitle = URL(fileURLWithPath: original.filename).deletingPathExtension().lastPathComponent
         let proposedTitle = input.title?.trimmingCharacters(in: .whitespacesAndNewlines)
         let title = proposedTitle.flatMap { $0.isEmpty ? nil : $0 } ?? originalTitle
@@ -81,7 +90,13 @@ nonisolated struct FamiliarFileEditTool: FamiliarTool {
             .init(id: "size", label: String(localized: "file.field.size"), type: .text, value: ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file))
         ], target: filename, targetKey: input.identifier, effect: manifest.effect, risk: manifest.risk,
             consequence: String(localized: "file.revision.consequence", defaultValue: "Save a new version and keep the previous file."),
-            undoPolicy: .currentSession, idempotencyKey: context.idempotencyKey, commit: {
+            undoPolicy: .currentSession, idempotencyKey: context.idempotencyKey, validateBeforeCommit: {
+                let current = try known.map { try FamiliarFileByteReader.read($0, projectID: projectID) }
+                    ?? store.read(relativePath: original.relativePath)
+                guard FamiliarHash.sha256(current) == originalHash else {
+                    throw FamiliarFileError.contentMismatch
+                }
+            }, commit: {
                 let stored = try store.write(data, projectID: projectID, fileID: fileID, filename: filename)
                 let descriptor = FamiliarFileDescriptor(id: fileID, identifier: identifier, projectID: projectID, title: title,
                     supersedesFileID: original.id, format: format, relativePath: stored.path, byteSize: Int64(data.count),

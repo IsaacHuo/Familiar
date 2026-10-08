@@ -12,7 +12,7 @@ struct FamiliarWP5Tests {
         let store = FamiliarFileStore(rootURL: root)
         let projectID = UUID(); let fileID = UUID()
         let result = try store.write(Data("# body".utf8), projectID: projectID, fileID: fileID, filename: "report.md")
-        #expect(result.path == "Projects/\(projectID.uuidString)/Files/\(fileID.uuidString)/report.md")
+        #expect(result.path == "Projects/\(projectID.uuidString)/Artifacts/\(fileID.uuidString)/report.md")
         #expect(result.hash == FamiliarHash.sha256("# body"))
         #expect(try store.read(relativePath: result.path) == Data("# body".utf8))
         #expect(store.url(relativePath: "../outside") == nil)

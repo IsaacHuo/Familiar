@@ -1,6 +1,6 @@
 import Foundation
 
-nonisolated enum FamiliarFileFormat: String, Codable, CaseIterable, Sendable {
+nonisolated enum FamiliarFileFormat: String, Codable, CaseIterable, Hashable, Sendable {
     case markdown
     case plainText
     case docx

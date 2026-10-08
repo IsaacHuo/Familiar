@@ -316,18 +316,19 @@ struct FamiliarProjectWorkspaceTests {
             isDirectory: true
         )
         defer { try? FileManager.default.removeItem(at: root) }
-        let service = FamiliarFileService(store: FamiliarFileStore(rootURL: root))
+        let store = FamiliarFileStore(rootURL: root)
+        let service = FamiliarFileService(store: store)
         let projectID = UUID()
 
         let firstID = UUID()
-        try service.persist(descriptor(id: firstID, projectID: projectID, title: "Beijing", supersedes: nil), in: context)
+        try service.persist(try descriptor(store: store, id: firstID, projectID: projectID, title: "Beijing", supersedes: nil), in: context)
         let first = try #require(service.storedFile(id: firstID, in: context))
         // A first version is the origin of its own lineage, so it is well-formed on its own.
         #expect(first.version == 1)
         #expect(first.lineageID == firstID)
 
         let secondID = UUID()
-        try service.persist(descriptor(id: secondID, projectID: projectID, title: "Beijing", supersedes: firstID), in: context)
+        try service.persist(try descriptor(store: store, id: secondID, projectID: projectID, title: "Beijing", supersedes: firstID), in: context)
         let second = try #require(service.storedFile(id: secondID, in: context))
         #expect(second.version == 2)
         #expect(second.lineageID == firstID)
@@ -339,27 +340,28 @@ struct FamiliarProjectWorkspaceTests {
         #expect(service.latestVersion(inLineage: firstID, in: context)?.id == secondID)
 
         let thirdID = UUID()
-        try service.persist(descriptor(id: thirdID, projectID: projectID, title: "Beijing", supersedes: secondID), in: context)
+        try service.persist(try descriptor(store: store, id: thirdID, projectID: projectID, title: "Beijing", supersedes: secondID), in: context)
         #expect(service.storedFile(id: thirdID, in: context)?.version == 3)
         #expect(service.storedFile(id: thirdID, in: context)?.lineageID == firstID)
 
         // Deleting a middle version must not let a later revision reuse its number.
         try service.delete(second, in: context)
-        #expect(service.nextVersion(inLineage: firstID, in: context) == 3)
         #expect(service.nextVersion(inLineage: firstID, in: context) == 4)
     }
 
-    private func descriptor(id: UUID, projectID: UUID, title: String, supersedes: UUID?) -> FamiliarFileDescriptor {
-        FamiliarFileDescriptor(
+    private func descriptor(store: FamiliarFileStore, id: UUID, projectID: UUID, title: String, supersedes: UUID?) throws -> FamiliarFileDescriptor {
+        let bytes = Data(("# Version " + id.uuidString).utf8)
+        let written = try store.write(bytes, projectID: projectID, fileID: id, filename: title + ".md")
+        return FamiliarFileDescriptor(
             id: id,
             identifier: "file_" + id.uuidString,
             projectID: projectID,
             title: title,
             supersedesFileID: supersedes,
             format: .markdown,
-            relativePath: "Projects/\(projectID.uuidString)/Files/\(id.uuidString)/\(title).md",
-            byteSize: 12,
-            contentHash: String(repeating: "a", count: 64),
+            relativePath: written.path,
+            byteSize: Int64(bytes.count),
+            contentHash: written.hash,
             source: .generated,
             sourceURLString: nil,
             sourceResourceID: nil,

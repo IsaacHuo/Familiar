@@ -136,8 +136,10 @@ nonisolated enum FamiliarContextCompiler {
         additionalToolGroups: [FamiliarToolGroupSummary] = [],
         visualEvidence: [FamiliarVisualEvidence] = [],
         attachmentReadPaths: [UUID: String] = [:],
+        resolvedModel: FamiliarModelDescriptor? = nil,
         now: Date = Date()
     ) throws -> FamiliarContextSnapshot {
+        let model = resolvedModel ?? settings.selectedModel
         let skills = seed.skills.sorted {
             if $0.stableID == $1.stableID {
                 if $0.version == $1.version { return $0.contentHash < $1.contentHash }
@@ -225,7 +227,7 @@ nonisolated enum FamiliarContextCompiler {
             if snapshot.role == .assistant { return .assistant(snapshot.content) }
             var parts: [FamiliarProviderContent] = snapshot.content.isEmpty ? [] : [.text(snapshot.content)]
             parts += try snapshot.attachments.map { attachment in
-                if attachment.kind == .image, settings.selectedModel.capabilities.supportsImages {
+                if attachment.kind == .image, model.capabilities.supportsImages {
                     guard let url = FamiliarAttachmentStore.url(for: attachmentReadPaths[attachment.id] ?? attachment.relativePath),
                           let data = try? Data(contentsOf: url) else {
                         throw FamiliarVisionProcessorError.imageUnavailable(attachment.filename)
@@ -241,7 +243,7 @@ nonisolated enum FamiliarContextCompiler {
             return .user(parts: parts)
         }
 
-        let maximum = settings.selectedModel.capabilities.maximumInputCharacters
+        let maximum = model.capabilities.maximumInputCharacters
         let pending = providerMessages.last.flatMap { $0.role == .user ? [$0] : nil } ?? []
         let minimum = inputCharacterCount(messages: [.system(systemPrompt)] + pending, manifests: manifests)
         let resourceBudget = min(maximum / 4, max(0, maximum - minimum - min(16_000, maximum / 4)))

@@ -2,12 +2,13 @@ import Foundation
 import SwiftData
 
 enum FamiliarFileImportError: LocalizedError {
-    case emptyText, textTooLarge, invalidWebCapture
+    case emptyText, textTooLarge, invalidWebCapture, projectUnavailable
     var errorDescription: String? {
         switch self {
         case .emptyText: String(localized: "resource.error.empty_text")
         case .textTooLarge: String(localized: "resource.error.text_too_large")
         case .invalidWebCapture: String(localized: "resource.error.invalid_web_capture")
+        case .projectUnavailable: String(localized: "resource.error.project_unavailable", defaultValue: "The destination Project is no longer available.")
         }
     }
 }
@@ -23,6 +24,7 @@ struct FamiliarFileImportService {
         let draft = try await FamiliarAttachmentStore.importDocument(from: sourceURL)
         defer { FamiliarAttachmentStore.remove(relativePath: draft.relativePath) }
         try Task.checkCancellation()
+        try requireProject(project, in: context)
         guard let stagedURL = FamiliarAttachmentStore.url(for: draft.relativePath) else { throw FamiliarAttachmentStoreError.sourceUnavailable }
         let fileID = UUID(), versionID = UUID()
         let copied = try store.copyVersion(from: stagedURL, projectID: project.id, resourceID: fileID,
@@ -76,6 +78,7 @@ struct FamiliarFileImportService {
 
     func importFetchedWebText(_ capture: FamiliarWebCapture, displayName: String? = nil, into project: FamiliarProject,
                               in context: ModelContext) throws -> FamiliarFileRecord {
+        try requireProject(project, in: context)
         guard !capture.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               Int64(capture.text.utf8.count) <= FamiliarAttachmentStore.maximumSourceBytes,
               capture.contentHash == FamiliarHash.sha256(capture.text),
@@ -102,6 +105,7 @@ struct FamiliarFileImportService {
     private func saveText(_ text: String, name: String, filename: String, origin: FamiliarFileOrigin,
                           sourceURL: String?, provenance: [String: String], originKey: String? = nil, createdAt: Date = Date(),
                           into project: FamiliarProject, in context: ModelContext) throws -> FamiliarFileRecord {
+        try requireProject(project, in: context)
         let fileID = UUID(), versionID = UUID()
         let copied = try store.copyText(text, projectID: project.id, resourceID: fileID, version: 1, versionID: versionID, filename: filename)
         do {
@@ -109,6 +113,14 @@ struct FamiliarFileImportService {
                 copied: copied, text: text, sourceURL: sourceURL, provenance: provenance, originKey: originKey,
                 createdAt: createdAt, into: project, in: context)
         } catch { context.rollback(); try? store.removeVersion(relativePath: copied.relativePath); throw error }
+    }
+
+    private func requireProject(_ project: FamiliarProject, in context: ModelContext) throws {
+        guard project.modelContext != nil, !project.isDeleted else { throw FamiliarFileImportError.projectUnavailable }
+        let id = project.id
+        guard
+              try context.fetch(FetchDescriptor<FamiliarProject>(predicate: #Predicate { $0.id == id })).first != nil
+        else { throw FamiliarFileImportError.projectUnavailable }
     }
 
     private func persist(id: UUID, versionID: UUID, name: String, origin: FamiliarFileOrigin, filename: String, mimeType: String,

@@ -260,12 +260,7 @@ nonisolated struct FamiliarFileStore: @unchecked Sendable {
     }
 
     private func validate(_ relative: String) throws -> URL {
-        let normalized = relative.replacingOccurrences(of: "\\", with: "/")
-        let parts = normalized.split(separator: "/", omittingEmptySubsequences: false)
-        guard !normalized.isEmpty, !normalized.hasPrefix("/"), !parts.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." }) else { throw FamiliarFileError.invalidPath }
-        let url = rootURL.appendingPathComponent(normalized).standardizedFileURL
-        guard url.path.hasPrefix(rootURL.standardizedFileURL.path + "/") else { throw FamiliarFileError.invalidPath }
-        return url
+        try FamiliarFilePath.confined(relative, to: rootURL)
     }
 
     private func isRegular(_ url: URL) -> Bool {

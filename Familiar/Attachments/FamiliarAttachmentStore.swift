@@ -20,7 +20,7 @@ nonisolated enum FamiliarAttachmentStoreError: LocalizedError, Sendable {
         case .sourceUnavailable:
             return String(localized: "attachment.error.source_unavailable", defaultValue: "The selected file is unavailable.")
         case .unsupportedFile:
-            return String(localized: "attachment.error.unsupported_file", defaultValue: "Only PDF, TXT, and Markdown files are supported.")
+            return String(localized: "attachment.error.unsupported_file", defaultValue: "Familiar supports Word, PowerPoint, Excel, OpenDocument, RTF, EPUB, CSV, PDF, TXT, and Markdown files.")
         case .fileTooLarge:
             return String(localized: "attachment.error.file_too_large", defaultValue: "The file is larger than the 25 MiB limit.")
         case .malformedDocument:
@@ -306,11 +306,8 @@ nonisolated enum FamiliarAttachmentStore {
     }
 
     private static func validatedStoreURL(for relativePath: String) throws -> URL {
-        let path = relativePath.replacingOccurrences(of: "\\", with: "/")
-        guard isSafeRelativePath(path) else { throw FamiliarAttachmentStoreError.invalidRelativePath }
-        let url = attachmentsURL.appendingPathComponent(path).standardizedFileURL
-        guard url.path.hasPrefix(attachmentsURL.standardizedFileURL.path + "/") else { throw FamiliarAttachmentStoreError.invalidRelativePath }
-        return url
+        do { return try FamiliarFilePath.confined(relativePath, to: attachmentsURL) }
+        catch { throw FamiliarAttachmentStoreError.invalidRelativePath }
     }
 
     static func isSafeRelativePath(_ relativePath: String) -> Bool {
@@ -366,6 +363,9 @@ nonisolated enum FamiliarAttachmentStore {
             throw FamiliarAttachmentStoreError.unreadableDocument
         }
 
+        if url.pathExtension.lowercased() == "pdf", PDFDocument(url: url)?.isLocked == true {
+            throw FamiliarAnyDocError.encrypted
+        }
         do {
             let conversion = try FamiliarAnyDocService.convert(data: data, filename: filename)
             guard url.pathExtension.lowercased() == "pdf" else { return conversion }

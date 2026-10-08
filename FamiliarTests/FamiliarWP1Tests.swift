@@ -132,8 +132,8 @@ struct FamiliarWP1Tests {
         try recorder.recordActivityCompleted(completion, eventSequence: 1, conversationID: conversation.id, context: context)
         #expect(try recorder.recordToolResult(toolEvent, eventSequence: 2, conversationID: conversation.id, context: context))
         #expect(try !recorder.recordToolResult(toolEvent, eventSequence: 2, conversationID: conversation.id, context: context))
-        recorder.finishRun(runtimeID: "run", outcome: .succeeded, eventSequence: 3, at: finishedAt, context: context)
-        recorder.finishRun(runtimeID: "run", outcome: .succeeded, eventSequence: 3, at: finishedAt, context: context)
+        try recorder.finishRun(runtimeID: "run", outcome: .succeeded, eventSequence: 3, at: finishedAt, context: context)
+        try recorder.finishRun(runtimeID: "run", outcome: .succeeded, eventSequence: 3, at: finishedAt, context: context)
 
         let runs = try context.fetch(FetchDescriptor<FamiliarAgentRun>())
         let run = try #require(runs.first)

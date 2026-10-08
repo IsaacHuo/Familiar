@@ -182,10 +182,10 @@ struct FamiliarWP4Tests {
         try context.save()
 
         try FamiliarProjectService(resourceStore: store).permanentlyDelete(project, in: context)
-        #expect(try context.fetch(FetchDescriptor<FamiliarProject>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<FamiliarProject>()).allSatisfy { $0.isDefaultProject })
         #expect(try context.fetch(FetchDescriptor<FamiliarResource>()).isEmpty)
         #expect(try context.fetch(FetchDescriptor<FamiliarResourceVersion>()).isEmpty)
-        #expect(try #require(context.fetch(FetchDescriptor<FamiliarConversation>()).first).project == nil)
+        #expect(try #require(context.fetch(FetchDescriptor<FamiliarConversation>()).first).project?.isDefaultProject == true)
         #expect(try #require(context.fetch(FetchDescriptor<FamiliarAgentRun>()).first).project == nil)
         #expect(store.url(for: stored.relativePath) == nil)
     }
@@ -207,7 +207,7 @@ struct FamiliarWP4Tests {
         )
         let recorder = FamiliarRunPersistenceRecorder()
         recorder.ensureRun(runtimeID: "failed-run", snapshot: snapshot, startedAt: Date(), context: context)
-        recorder.finishRun(runtimeID: "failed-run", outcome: .init(status: .failed, failureKind: .unknown, message: "fixture"), eventSequence: 1, at: Date(), context: context)
+        try recorder.finishRun(runtimeID: "failed-run", outcome: .init(status: .failed, failureKind: .unknown, message: "fixture"), eventSequence: 1, at: Date(), context: context)
         let cancelledSnapshot = try FamiliarContextCompiler.assemble(
             seed: .init(projectID: fixtureProjectID, projectName: "P", conversationID: conversation.id, projectInstruction: "Instruction", resources: [contextResource]),
             settings: .defaultValue,
@@ -215,7 +215,7 @@ struct FamiliarWP4Tests {
             toolManifests: []
         )
         recorder.ensureRun(runtimeID: "cancelled-run", snapshot: cancelledSnapshot, startedAt: Date(), context: context)
-        recorder.finishRun(runtimeID: "cancelled-run", outcome: .cancelled(message: "fixture"), eventSequence: 1, at: Date(), context: context)
+        try recorder.finishRun(runtimeID: "cancelled-run", outcome: .cancelled(message: "fixture"), eventSequence: 1, at: Date(), context: context)
         let record = try #require(context.fetch(FetchDescriptor<FamiliarContextSnapshotRecord>()).first { $0.id == snapshot.id })
         let reference = try #require(record.resourceReferences.first)
         #expect(record.run?.status == .failed)
