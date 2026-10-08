@@ -293,27 +293,98 @@ nonisolated struct FamiliarCurrentLocationTool: FamiliarTool {
 
 @MainActor
 protocol FamiliarClipboardServicing: AnyObject, Sendable {
-    func readText() async -> String?
-    func writeText(_ text: String?) async
+    func readText() async throws -> String?
+    func revision() async -> Int
+    func checkpoint() async throws -> FamiliarClipboardCheckpoint
+    func writeText(_ text: String?) async throws -> Int
+    func restore(_ checkpoint: FamiliarClipboardCheckpoint, after revision: Int) async throws
+}
+
+/// Private restoration data stays on MainActor and never enters model output.
+@MainActor final class FamiliarClipboardCheckpoint {
+    let revision: Int
+    private let restoreContents: () -> Void
+    init(revision: Int, restore: @escaping () -> Void) {
+        self.revision = revision
+        restoreContents = restore
+    }
+    func restore() { restoreContents() }
+}
+
+nonisolated enum FamiliarClipboardError: LocalizedError, Sendable {
+    case unavailable, changed, writeFailed
+    var errorDescription: String? {
+        switch self {
+        case .unavailable: "无法读取现有剪贴板内容，未执行替换。请检查系统粘贴权限。"
+        case .changed: "剪贴板内容已经变化，操作已停止，未覆盖新内容。"
+        case .writeFailed: "系统未保留请求的剪贴板内容。"
+        }
+    }
 }
 
 @MainActor
 final class FamiliarClipboardService: FamiliarClipboardServicing, @unchecked Sendable {
-    func readText() -> String? {
+    func readText() throws -> String? {
 #if os(iOS)
-        UIPasteboard.general.string
+        let board = UIPasteboard.general
+        let text = board.string
+        if board.hasStrings && text == nil { throw FamiliarClipboardError.unavailable }
+        return text
 #else
-        NSPasteboard.general.string(forType: .string)
+        return NSPasteboard.general.string(forType: .string)
 #endif
     }
 
-    func writeText(_ text: String?) {
+    func revision() -> Int {
+#if os(iOS)
+        UIPasteboard.general.changeCount
+#else
+        NSPasteboard.general.changeCount
+#endif
+    }
+
+    func checkpoint() throws -> FamiliarClipboardCheckpoint {
+#if os(iOS)
+        let board = UIPasteboard.general
+        let before = board.changeCount
+        let count = board.numberOfItems
+        let items = board.items
+        guard count == 0 || !items.isEmpty else { throw FamiliarClipboardError.unavailable }
+        guard board.changeCount == before else { throw FamiliarClipboardError.changed }
+        return .init(revision: before) { board.items = items }
+#else
+        let board = NSPasteboard.general
+        let before = board.changeCount
+        let items = (board.pasteboardItems ?? []).map { item in
+            Dictionary(uniqueKeysWithValues: item.types.compactMap { type in item.data(forType: type).map { (type, $0) } })
+        }
+        guard board.changeCount == before else { throw FamiliarClipboardError.changed }
+        return .init(revision: before) {
+            board.clearContents()
+            let restored = items.map { values in
+                let item = NSPasteboardItem()
+                for (type, data) in values { item.setData(data, forType: type) }
+                return item
+            }
+            board.writeObjects(restored)
+        }
+#endif
+    }
+
+    @discardableResult func writeText(_ text: String?) throws -> Int {
 #if os(iOS)
         UIPasteboard.general.string = text
+        guard UIPasteboard.general.string == text else { throw FamiliarClipboardError.writeFailed }
 #else
         NSPasteboard.general.clearContents()
-        if let text { NSPasteboard.general.setString(text, forType: .string) }
+        if let text, !NSPasteboard.general.setString(text, forType: .string) { throw FamiliarClipboardError.writeFailed }
 #endif
+        return revision()
+    }
+
+    func restore(_ checkpoint: FamiliarClipboardCheckpoint, after expectedRevision: Int) throws {
+        guard revision() == expectedRevision else { throw FamiliarClipboardError.changed }
+        checkpoint.restore()
     }
 }
 
@@ -345,7 +416,7 @@ nonisolated struct FamiliarClipboardReadTool: FamiliarTool {
             undoPolicy: .unavailable,
             idempotencyKey: context.idempotencyKey,
             commit: {
-                let text = await service.readText() ?? ""
+                let text = try await service.readText() ?? ""
                 let result = FamiliarToolExecutionResult(envelope: try FamiliarToolResultEnvelope(
                     model: Output(text: text),
                     presentation: .document(.init(
@@ -382,18 +453,23 @@ nonisolated struct FamiliarClipboardWriteTool: FamiliarTool {
     )
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
+        let expectedRevision = await service.revision()
         return .action(FamiliarActionProposal(
             title: "写入剪贴板",
             fields: [.init(id: "text", label: "Text", type: .text, value: input.text)],
             target: "clipboard",
             effect: manifest.effect,
             risk: manifest.risk,
-            consequence: "将替换当前系统剪贴板文本。",
+            consequence: "将替换当前剪贴板内容。为当前会话的撤销临时保留原内容；原内容不会发送给模型。无法读取原内容时不执行替换。",
             undoPolicy: .currentSession,
             idempotencyKey: context.idempotencyKey,
+            validateBeforeCommit: {
+                guard await service.revision() == expectedRevision else { throw FamiliarClipboardError.changed }
+            },
             commit: {
-                let previous = await service.readText()
-                await service.writeText(input.text)
+                let previous = try await service.checkpoint()
+                guard previous.revision == expectedRevision else { throw FamiliarClipboardError.changed }
+                let writtenRevision = try await service.writeText(input.text)
                 let result = FamiliarToolExecutionResult(envelope: try FamiliarToolResultEnvelope(
                     model: Output(written: true, characterCount: input.text.count),
                     presentation: .mutationReceipt(.init(
@@ -405,7 +481,7 @@ nonisolated struct FamiliarClipboardWriteTool: FamiliarTool {
                     ))
                 ))
                 return FamiliarCommittedAction(result: result) {
-                    await service.writeText(previous)
+                    try await service.restore(previous, after: writtenRevision)
                     return .init(envelope: try FamiliarToolResultEnvelope(
                         model: UndoOutput(restored: true),
                         presentation: .mutationReceipt(.init(

@@ -18,17 +18,56 @@ protocol FamiliarBluetoothServicing: AnyObject, Sendable {
     func scan(serviceUUIDs: [String], duration: TimeInterval) async throws -> [FamiliarBluetoothPeripheral]
 }
 
+/// The native manager boundary lets lifecycle regressions drive real service logic.
+@MainActor
+protocol FamiliarBluetoothCentral: AnyObject {
+    var state: CBManagerState { get }
+    func scanForPeripherals(withServices serviceUUIDs: [CBUUID]?, options: [String: Any]?)
+    func stopScan()
+}
+
+extension CBCentralManager: FamiliarBluetoothCentral {}
+
+nonisolated enum FamiliarBluetoothServices {
+    static func validate(_ values: [String]) throws {
+        guard (FamiliarToolDefaults.BluetoothScan.minimumServiceUUIDs...FamiliarToolDefaults.BluetoothScan.maximumServiceUUIDs).contains(values.count) else {
+            throw FamiliarAppleDeviceToolError.bluetoothServicesRequired
+        }
+        for value in values {
+            let compact = (value.count == 4 || value.count == 8) && value.utf8.allSatisfy { (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0) }
+            let full = value.count == 36 && UUID(uuidString: value) != nil
+            guard compact || full else { throw FamiliarAppleDeviceToolError.invalidBluetoothServiceUUID }
+        }
+    }
+}
+
 @MainActor
 final class FamiliarBluetoothService: NSObject, FamiliarBluetoothServicing, CBCentralManagerDelegate, @unchecked Sendable {
-    private var manager: CBCentralManager?
+    private var manager: (any FamiliarBluetoothCentral)?
+    private let authorization: () -> CBManagerAuthorization
+    private let makeManager: (any CBCentralManagerDelegate) -> any FamiliarBluetoothCentral
+    private var scanTask: Task<Void, Never>?
+    private var scanID: UUID?
     private var authorizationContinuation: CheckedContinuation<Void, Error>?
+    private var authorizationID: UUID?
     private var scanContinuation: CheckedContinuation<[FamiliarBluetoothPeripheral], Error>?
     private var discovered: [UUID: FamiliarBluetoothPeripheral] = [:]
 
+    init(
+        authorization: @escaping () -> CBManagerAuthorization = { CBManager.authorization },
+        makeManager: @escaping (any CBCentralManagerDelegate) -> any FamiliarBluetoothCentral = {
+            CBCentralManager(delegate: $0, queue: .main)
+        }
+    ) {
+        self.authorization = authorization
+        self.makeManager = makeManager
+        super.init()
+    }
+
     func availability() -> FamiliarCapabilityAvailability {
-        switch CBManager.authorization {
+        switch authorization() {
         case .allowedAlways:
-            if let manager, manager.state != .poweredOn {
+            if let manager, manager.state != .poweredOn, manager.state != .unknown, manager.state != .resetting {
                 return .unavailable(reason: stateDescription(manager.state))
             }
             return .available
@@ -39,29 +78,37 @@ final class FamiliarBluetoothService: NSObject, FamiliarBluetoothServicing, CBCe
     }
 
     func requestAccess() async throws {
-        switch availability() {
-        case .available:
-            try await ensurePoweredOn()
-        case .unavailable(let reason):
+        try Task.checkCancellation()
+        if case .unavailable(let reason) = availability() {
             throw FamiliarToolRegistryError.capabilityUnavailable(reason)
-        case .requestable:
-            guard authorizationContinuation == nil else {
-                throw FamiliarAppleDeviceToolError.requestInProgress
-            }
-            manager = manager ?? CBCentralManager(delegate: self, queue: .main)
-            try await withCheckedThrowingContinuation { continuation in
+        }
+        guard authorizationContinuation == nil else { throw FamiliarAppleDeviceToolError.requestInProgress }
+        let id = UUID()
+        // CBCentralManager reports .unknown until its first delegate update, even
+        // when permission was granted previously. Register before constructing it.
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                guard !Task.isCancelled else { continuation.resume(throwing: CancellationError()); return }
+                authorizationID = id
                 authorizationContinuation = continuation
+                manager = manager ?? makeManager(self)
+                centralStateDidChange()
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                guard self?.authorizationID == id else { return }
+                self?.authorizationID = nil
+                self?.authorizationContinuation?.resume(throwing: CancellationError())
+                self?.authorizationContinuation = nil
             }
         }
+        try Task.checkCancellation()
     }
 
     func scan(serviceUUIDs: [String], duration: TimeInterval) async throws -> [FamiliarBluetoothPeripheral] {
-        guard serviceUUIDs.count >= FamiliarToolDefaults.BluetoothScan.minimumServiceUUIDs,
-              serviceUUIDs.count <= FamiliarToolDefaults.BluetoothScan.maximumServiceUUIDs
-        else {
-            throw FamiliarAppleDeviceToolError.bluetoothServicesRequired
-        }
+        try FamiliarBluetoothServices.validate(serviceUUIDs)
         try await requestAccess()
+        try Task.checkCancellation()
         guard scanContinuation == nil else { throw FamiliarAppleDeviceToolError.requestInProgress }
         let uuids = serviceUUIDs.map(CBUUID.init(string:))
         discovered = [:]
@@ -69,38 +116,50 @@ final class FamiliarBluetoothService: NSObject, FamiliarBluetoothServicing, CBCe
             max(duration, FamiliarToolDefaults.BluetoothScan.minimumDuration),
             FamiliarToolDefaults.BluetoothScan.maximumDuration
         )
+        let id = UUID()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
+                guard !Task.isCancelled else { continuation.resume(throwing: CancellationError()); return }
+                scanID = id
                 scanContinuation = continuation
                 manager?.scanForPeripherals(
                     withServices: uuids,
                     options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]
                 )
-                Task { @MainActor [weak self] in
-                    try? await Task.sleep(for: .seconds(boundedDuration))
+                scanTask = Task { @MainActor [weak self] in
+                    do { try await Task.sleep(for: .seconds(boundedDuration)) } catch { return }
+                    guard self?.scanID == id else { return }
                     self?.finishScan()
                 }
             }
         } onCancel: {
-            Task { @MainActor [weak self] in self?.cancelScan() }
+            Task { @MainActor [weak self] in
+                guard self?.scanID == id else { return }
+                self?.cancelScan()
+            }
         }
     }
 
-    func centralManagerDidUpdateState(_ central: CBCentralManager) {
+    func centralManagerDidUpdateState(_ central: CBCentralManager) { centralStateDidChange() }
+
+    func centralStateDidChange() {
+        guard let manager else { return }
         if let continuation = authorizationContinuation {
-            switch central.state {
-            case .poweredOn where CBManager.authorization == .allowedAlways:
+            switch manager.state {
+            case .poweredOn where authorization() == .allowedAlways:
+                authorizationID = nil
                 authorizationContinuation = nil
                 continuation.resume()
             case .unknown, .resetting:
                 break
             default:
+                authorizationID = nil
                 authorizationContinuation = nil
-                continuation.resume(throwing: FamiliarToolRegistryError.capabilityUnavailable(stateDescription(central.state)))
+                continuation.resume(throwing: FamiliarToolRegistryError.capabilityUnavailable(stateDescription(manager.state)))
             }
         }
-        if scanContinuation != nil, central.state != .poweredOn, central.state != .unknown, central.state != .resetting {
-            failScan(FamiliarToolRegistryError.capabilityUnavailable(stateDescription(central.state)))
+        if scanContinuation != nil, manager.state != .poweredOn, manager.state != .unknown, manager.state != .resetting {
+            failScan(FamiliarToolRegistryError.capabilityUnavailable(stateDescription(manager.state)))
         }
     }
 
@@ -121,14 +180,10 @@ final class FamiliarBluetoothService: NSObject, FamiliarBluetoothServicing, CBCe
         )
     }
 
-    private func ensurePoweredOn() async throws {
-        manager = manager ?? CBCentralManager(delegate: self, queue: .main)
-        guard manager?.state == .poweredOn else {
-            throw FamiliarToolRegistryError.capabilityUnavailable(stateDescription(manager?.state ?? .unknown))
-        }
-    }
-
     private func finishScan() {
+        scanTask?.cancel()
+        scanTask = nil
+        scanID = nil
         manager?.stopScan()
         guard let continuation = scanContinuation else { return }
         scanContinuation = nil
@@ -136,6 +191,9 @@ final class FamiliarBluetoothService: NSObject, FamiliarBluetoothServicing, CBCe
     }
 
     private func cancelScan() {
+        scanTask?.cancel()
+        scanTask = nil
+        scanID = nil
         manager?.stopScan()
         guard let continuation = scanContinuation else { return }
         scanContinuation = nil
@@ -143,6 +201,9 @@ final class FamiliarBluetoothService: NSObject, FamiliarBluetoothServicing, CBCe
     }
 
     private func failScan(_ error: Error) {
+        scanTask?.cancel()
+        scanTask = nil
+        scanID = nil
         manager?.stopScan()
         guard let continuation = scanContinuation else { return }
         scanContinuation = nil
@@ -203,6 +264,7 @@ nonisolated struct FamiliarBluetoothScanTool: FamiliarTool {
     /// The scan is bounded by the explicit service UUID list, so the confirmation
     /// card shows exactly which UUIDs and for how long.
     func preflight(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolAuthorizationAssessment {
+        try FamiliarBluetoothServices.validate(input.serviceUUIDs)
         let duration = min(
             max(input.durationSeconds ?? FamiliarToolDefaults.BluetoothScan.duration, FamiliarToolDefaults.BluetoothScan.minimumDuration),
             FamiliarToolDefaults.BluetoothScan.maximumDuration
@@ -348,6 +410,7 @@ nonisolated struct FamiliarScheduleNotificationTool: FamiliarTool {
 nonisolated enum FamiliarAppleDeviceToolError: LocalizedError, FamiliarStructuredToolError, Sendable {
     case requestInProgress
     case bluetoothServicesRequired
+    case invalidBluetoothServiceUUID
     case invalidNotification
     case invalidFutureDate
 
@@ -355,6 +418,7 @@ nonisolated enum FamiliarAppleDeviceToolError: LocalizedError, FamiliarStructure
         switch self {
         case .requestInProgress: "capability_request_in_progress"
         case .bluetoothServicesRequired: "bluetooth_service_uuids_required"
+        case .invalidBluetoothServiceUUID: "invalid_bluetooth_service_uuid"
         case .invalidNotification: "invalid_notification"
         case .invalidFutureDate: "invalid_future_date"
         }
@@ -364,7 +428,7 @@ nonisolated enum FamiliarAppleDeviceToolError: LocalizedError, FamiliarStructure
         switch self {
         // A concurrent request can finish, so the same call may succeed later.
         case .requestInProgress: true
-        case .bluetoothServicesRequired, .invalidNotification, .invalidFutureDate: false
+        case .bluetoothServicesRequired, .invalidBluetoothServiceUUID, .invalidNotification, .invalidFutureDate: false
         }
     }
 
@@ -372,6 +436,7 @@ nonisolated enum FamiliarAppleDeviceToolError: LocalizedError, FamiliarStructure
         switch self {
         case .requestInProgress: "已有一个相同的系统能力请求正在进行。"
         case .bluetoothServicesRequired: "蓝牙扫描必须指定 1 到 8 个 Service UUID。"
+        case .invalidBluetoothServiceUUID: "Service UUID 必须是 4 位或 8 位十六进制值，或者完整的 128 位 UUID。"
         case .invalidNotification: "通知标题或正文为空或过长。"
         case .invalidFutureDate: "触发时间必须是有效且晚于当前时间的 ISO8601 日期。"
         }

@@ -1,5 +1,9 @@
 import Foundation
 import Testing
+#if os(iOS)
+import UIKit
+import UniformTypeIdentifiers
+#endif
 @testable import Familiar
 
 @MainActor
@@ -7,6 +11,8 @@ private final class FamiliarClipboardSpy: FamiliarClipboardServicing, @unchecked
     var value: String?
     var readCount = 0
     var writes: [String?] = []
+    var changeCount = 0
+    var denyCheckpoint = false
 
     init(value: String?) { self.value = value }
 
@@ -15,9 +21,23 @@ private final class FamiliarClipboardSpy: FamiliarClipboardServicing, @unchecked
         return value
     }
 
-    func writeText(_ text: String?) {
+    func revision() -> Int { changeCount }
+    func checkpoint() throws -> FamiliarClipboardCheckpoint {
+        if denyCheckpoint { throw FamiliarClipboardError.unavailable }
+        readCount += 1
+        let previous = value
+        return .init(revision: changeCount) { self.value = previous; self.changeCount += 1 }
+    }
+    func writeText(_ text: String?) -> Int {
         value = text
         writes.append(text)
+        changeCount += 1
+        return changeCount
+    }
+    func restore(_ checkpoint: FamiliarClipboardCheckpoint, after expected: Int) throws {
+        guard changeCount == expected else { throw FamiliarClipboardError.changed }
+        checkpoint.restore()
+        writes.append(value)
     }
 }
 
@@ -39,6 +59,62 @@ private actor FamiliarContactsFixture: FamiliarContactsServicing {
 
 @Suite("Release tool hardening")
 struct FamiliarReleaseToolTests {
+    @Test("Clipboard denial and target changes perform no writes; Undo preserves later copies")
+    @MainActor func clipboardFailureAndConflict() async throws {
+        let spy = FamiliarClipboardSpy(value: "before")
+        let tool = FamiliarClipboardWriteTool(service: spy)
+        guard case .action(let denied) = try await tool.execute(.init(text: "after"), context: .init()) else {
+            Issue.record("Expected proposal"); return
+        }
+        spy.denyCheckpoint = true
+        await #expect(throws: FamiliarClipboardError.self) { _ = try await denied.commit() }
+        #expect(spy.writes.isEmpty)
+        spy.denyCheckpoint = false
+        _ = spy.writeText("changed during approval")
+        await #expect(throws: FamiliarClipboardError.self) { try await denied.validateBeforeCommit?() }
+        await #expect(throws: FamiliarClipboardError.self) { _ = try await denied.commit() }
+        #expect(spy.value == "changed during approval")
+        guard case .action(let accepted) = try await tool.execute(.init(text: "after"), context: .init()) else {
+            Issue.record("Expected proposal"); return
+        }
+        let action = try await accepted.commit()
+        await #expect(throws: FamiliarClipboardError.self) { _ = try await accepted.commit() }
+        _ = spy.writeText("newer copy")
+        let undo = try #require(action.undo)
+        await #expect(throws: FamiliarClipboardError.self) { _ = try await undo() }
+        #expect(spy.value == "newer copy")
+    }
+
+#if os(iOS)
+    @Test("Actual Simulator pasteboard Undo restores PNG data instead of clearing non-text content")
+    @MainActor func clipboardRealImageUndo() async throws {
+        let service = FamiliarClipboardService()
+        let original = try service.checkpoint()
+        var cleanupRevision = service.revision()
+        defer { if service.revision() == cleanupRevision { try? service.restore(original, after: cleanupRevision) } }
+        let image = UIGraphicsImageRenderer(size: .init(width: 12, height: 12)).image { value in
+            UIColor.blue.setFill(); value.fill(.init(x: 0, y: 0, width: 12, height: 12))
+        }
+        let bytes = try #require(image.pngData())
+        UIPasteboard.general.items = [[UTType.png.identifier: bytes]]
+        cleanupRevision = service.revision()
+        let expectedItems = UIPasteboard.general.items
+        let expectedImage = UIPasteboard.general.image?.pngData()
+        #expect(expectedImage != nil)
+        guard case .action(let proposal) = try await FamiliarClipboardWriteTool(service: service).execute(.init(text: "FC public test"), context: .init()) else {
+            Issue.record("Expected proposal"); return
+        }
+        let result = try await proposal.commit()
+        cleanupRevision = service.revision()
+        #expect(try service.readText() == "FC public test")
+        let undo = try #require(result.undo)
+        _ = try await undo()
+        cleanupRevision = service.revision()
+        #expect(UIPasteboard.general.image?.pngData() == expectedImage)
+        #expect(UIPasteboard.general.items.count == expectedItems.count)
+    }
+#endif
+
     @Test("Clipboard proposals do not read or write before commit")
     @MainActor
     func clipboardCommitBoundary() async throws {

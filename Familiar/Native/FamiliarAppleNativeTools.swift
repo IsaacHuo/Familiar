@@ -239,7 +239,8 @@ actor FamiliarWeatherService: FamiliarWeatherServicing {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            throw FamiliarWeatherError.serviceFailed(error.localizedDescription)
+            let detail = error as NSError
+            throw FamiliarWeatherError.serviceFailed(error.localizedDescription + " [" + detail.domain + ":" + String(detail.code) + "]")
         }
         let boundedDays = min(
             max(days, FamiliarToolDefaults.WeatherForecast.minimumDays),
@@ -291,7 +292,8 @@ actor FamiliarWeatherService: FamiliarWeatherServicing {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            throw FamiliarWeatherError.serviceFailed(error.localizedDescription)
+            let detail = error as NSError
+            throw FamiliarWeatherError.serviceFailed(error.localizedDescription + " [" + detail.domain + ":" + String(detail.code) + "]")
         }
         return FamiliarWeatherHistory(
             latitude: latitude,

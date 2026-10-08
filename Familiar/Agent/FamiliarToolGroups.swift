@@ -31,7 +31,7 @@ nonisolated enum FamiliarToolGroup: String, CaseIterable, Sendable {
         case .memory: "Read frozen memories or propose a confirmed memory."
         case .skills: "Read explicitly attached guidance; installation requires approval."
         case .shell: "Read environment status, prepare dependencies and run controlled computation."
-        case .device: "Additional explicitly enabled native device capabilities."
+        case .device: "Native contacts, photos, health activity, music catalog, Bluetooth, notifications, alarms, clipboard and Familiar search. System access and sensitive actions still require permission or approval."
         case .presentation: "Optional checklists, recommendations and charts."
         }
     }
@@ -59,7 +59,7 @@ nonisolated enum FamiliarToolGroup: String, CaseIterable, Sendable {
         if ["skill_list", "skill_read"].contains(name) { return true }
         if ["workspace_write", "file_publish"].contains(name) { return false }
         switch group(for: name) {
-        case .web, .calendar, .places, .files, .memory: return true
+        case .web, .calendar, .places, .files, .memory, .device: return true
         default: return false
         }
     }
