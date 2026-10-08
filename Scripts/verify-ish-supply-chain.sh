@@ -82,3 +82,14 @@ for script in \
 done
 
 printf '%s\n' "iSH supply-chain metadata and script syntax verified."
+
+python3 - "$REPOSITORY_ROOT" "$MANIFEST" <<'PYHASH'
+from pathlib import Path
+import hashlib, json, sys
+root=Path(sys.argv[1]); manifest=json.loads(Path(sys.argv[2]).read_text())
+for relative, expected in manifest['localSourcesAndBinaries'].items():
+    path=root/relative
+    if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest()!=expected:
+        raise SystemExit('iSH local source/binary digest mismatch: '+relative)
+print('iSH local patches, bridge sources and rebuilt slices verified.')
+PYHASH

@@ -52,7 +52,7 @@
 "settings.error.title" = "Couldn't Save Settings";
 
 "common.done" = "Done";
-"settings.hub.models" = "Models & Responses";
+"settings.hub.models" = "Models";
 "settings.hub.model_service" = "Model Service";
 "settings.search.title" = "Web Search";
 "settings.search.provider" = "Search Provider";
@@ -68,7 +68,7 @@
 "settings.hub.tools" = "Tools";
 "settings.hub.tools.detail" = "Capabilities registered with the Agent Runtime";
 "settings.hub.soul" = "Response Preferences";
-"settings.hub.soul.detail" = "Tone, language and response style";
+"settings.hub.soul.detail" = "Set tone, language and response format manually";
 "settings.hub.appearance" = "Appearance";
 "settings.hub.storage" = "Local Storage";
 "settings.hub.storage.detail" = "Conversations and attachments on this iPhone";
@@ -76,7 +76,7 @@
 "settings.hub.permissions.detail" = "Review access managed by iOS";
 "settings.hub.run_history" = "Run History";
 "settings.hub.run_history.detail" = "Local Agent activity";
-"settings.hub.support" = "Privacy & Support";
+"settings.hub.support" = "About & Support";
 "settings.hub.privacy.detail" = "How Familiar handles your data";
 "settings.hub.about" = "About Familiar";
 "error.web.search_api_key_missing" = "Add a %@ API key in Web Search settings first.";
@@ -999,7 +999,7 @@
 "tool.group.memory" = "Memory";
 "tool.group.skills" = "Skills";
 "tool.group.shell" = "Environment & Shell";
-"tool.group.device" = "Other Device Tools";
+"tool.group.device" = "Native Tools";
 "tool.group.presentation" = "Presentation";
 "tool.tools_load" = "Prepare tools";
 "tool.load.complete" = "Tools prepared";
@@ -1025,8 +1025,8 @@
 "chat.model.project" = "Project model";
 "usage.partial" = "%@ (partial)";
 "settings.advanced.title" = "Advanced";
-"settings.advanced.detail" = "Additional configuration and troubleshooting";
-"settings.advanced.configuration" = "Optional setup";
+"settings.advanced.detail" = "Skills, MCP, tools and execution";
+"settings.advanced.configuration" = "Execution Configuration";
 "settings.advanced.activity" = "Activity & troubleshooting";
 "settings.hub.privacy_data" = "Privacy & Data";
 "project.advanced.detail" = "Optional tools, connections and activity history";
@@ -1096,3 +1096,41 @@
 "file.delete.title" = "Delete this file?";
 
 "file.delete.detail" = "Delete the file and all its versions from this Project. Chat history and action records remain.";
+
+"approval.executing" = "Approval sent · waiting for execution";
+"common.saved" = "Saved";
+
+"settings.hub.personalization" = "Personalization";
+
+"settings.hub.capabilities" = "Capabilities & Connections";
+
+"settings.hub.interface" = "Interface & Interaction";
+
+"settings.hub.memory.detail" = "Manage confirmed preferences and facts";
+
+"settings.hub.privacy_data.detail" = "Access, authorizations, security and local data";
+
+"settings.privacy.access" = "Access & Authorization";
+
+"settings.privacy.security" = "Security";
+
+"settings.privacy.local_data" = "Local Data";
+
+"settings.privacy.data_handling" = "Data Handling";
+
+"resource.error.project_unavailable" = "The destination Project is no longer available.";
+
+"terminal.title" = "Terminal";
+"terminal.idle" = "Not started";
+"terminal.preparing" = "Preparing Linux…";
+"terminal.running" = "Running";
+"terminal.limit" = "Stopped: session time or storage limit reached";
+"terminal.output_limit" = "Stopped: output limit reached";
+"terminal.exited" = "Exited (%d)";
+"terminal.stopped" = "Stopped";
+"terminal.stop" = "Stop";
+"terminal.start" = "Start";
+"terminal.network" = "Allow network for this session";
+"terminal.scope" = "Current Project only · 3 minute foreground session · 512 MB memory · 16 processes. HOME is saved in this Project; temporary files are cleared. Commands can change Project files and have no automatic Undo.";
+"terminal.command" = "Shell command";
+"terminal.send" = "Send";

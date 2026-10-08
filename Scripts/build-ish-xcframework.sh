@@ -56,6 +56,8 @@ rm -rf "$PATCHED_SOURCE"
 mkdir -p "$PATCHED_SOURCE"
 rsync -a --exclude '.git' --exclude 'build-*' "$ISH_SOURCE/" "$PATCHED_SOURCE/"
 patch -d "$PATCHED_SOURCE" -p1 < "$NETWORK_PATCH"
+patch -d "$PATCHED_SOURCE" -p1 < "$REPOSITORY_ROOT/Vendor/ISHRuntime/Patches/workspace-isolation.patch"
+patch -d "$PATCHED_SOURCE" -p1 < "$REPOSITORY_ROOT/Vendor/ISHRuntime/Patches/resource-limits.patch"
 
 for command_name in xcodebuild xcrun; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
@@ -80,12 +82,14 @@ build_platform() {
       -configuration Release \
       -sdk "$sdk" \
       -arch arm64 \
+      -jobs 1 \
       SYMROOT="$platform_build/symroot" \
       OBJROOT="$objects" \
       CONFIGURATION_BUILD_DIR="$products" \
       ARCHS=arm64 \
       ONLY_ACTIVE_ARCH=YES \
       CODE_SIGNING_ALLOWED=NO \
+      COMPILER_INDEX_STORE_ENABLE=NO \
       SKIP_INSTALL=NO \
       IPHONEOS_DEPLOYMENT_TARGET=18.0 \
       GUEST_ARCH=arm64 \
@@ -110,7 +114,7 @@ build_platform() {
     *) printf 'Unsupported SDK: %s\n' "$sdk" >&2; exit 1 ;;
   esac
 
-  for source in "$BRIDGE_SOURCE/ISHKernel.m" "$BRIDGE_SOURCE/ISHShellExecutor.m" "$BRIDGE_SOURCE/FamiliarISHNetworkPolicy.m"; do
+  for source in "$BRIDGE_SOURCE/ISHKernel.m" "$BRIDGE_SOURCE/ISHShellExecutor.m" "$BRIDGE_SOURCE/ISHTerminalSession.m" "$BRIDGE_SOURCE/FamiliarISHNetworkPolicy.m"; do
     object="$bridge_objects/$(basename "$source" .m).o"
     xcrun --sdk "$sdk" clang \
       -target "$target" \
@@ -131,6 +135,7 @@ build_platform() {
     "$products/libfakefs.a" \
     "$bridge_objects/ISHKernel.o" \
     "$bridge_objects/ISHShellExecutor.o" \
+    "$bridge_objects/ISHTerminalSession.o" \
     "$bridge_objects/FamiliarISHNetworkPolicy.o" \
     -o "$platform_build/libFamiliarISHRuntime.a"
 }
@@ -140,8 +145,11 @@ mkdir -p "$(dirname "$XCFRAMEWORK_OUTPUT")"
 mkdir -p "$PUBLIC_HEADERS"
 cp "$BRIDGE_SOURCE/FamiliarISHRuntime.h" "$PUBLIC_HEADERS/"
 cp "$BRIDGE_SOURCE/FamiliarISHNetworkPolicy.h" "$PUBLIC_HEADERS/"
+cp "$BRIDGE_SOURCE/FamiliarISHFilesystemPolicy.h" "$PUBLIC_HEADERS/"
+cp "$BRIDGE_SOURCE/FamiliarISHExecutionOwner.h" "$PUBLIC_HEADERS/"
 cp "$BRIDGE_SOURCE/ISHKernel.h" "$PUBLIC_HEADERS/"
 cp "$BRIDGE_SOURCE/ISHShellExecutor.h" "$PUBLIC_HEADERS/"
+cp "$BRIDGE_SOURCE/ISHTerminalSession.h" "$PUBLIC_HEADERS/"
 
 build_platform iphoneos "$IPHONEOS_BUILD"
 build_platform iphonesimulator "$SIMULATOR_BUILD"

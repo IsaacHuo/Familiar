@@ -200,7 +200,7 @@ nonisolated struct FamiliarShellTool: FamiliarTool {
     let manifest = FamiliarToolManifest(
         name: "shell_execute",
         title: String(localized: "tool.shell_execute"),
-        description: "仅当 Native Tool 或专用本地 Tool 无法方便完成任务时，在当前 Familiar Workspace 的受控 Linux 环境中运行命令。每次执行都需要确认。",
+        description: "仅当 Native Tool 或专用本地 Tool 无法方便完成任务时，在当前 Familiar Workspace 的受控 Linux 环境中运行命令。canonical 文件原始字节位于 /workspace/files/Versions/<versionID>/<filename>，只读；不要把抽取文本当作原始 Office/PDF。每次执行都需要确认。",
         parameters: FamiliarJSONSchema(
             type: .object,
             properties: [
@@ -315,6 +315,7 @@ nonisolated struct FamiliarShellTool: FamiliarTool {
                 taskID: taskID,
                 workspaceID: workspaceID,
                 resources: context.resources,
+                files: context.files,
                 attachments: context.attachments,
                 skills: context.activeSkill.map { [$0] } ?? []
             )

@@ -11,6 +11,7 @@ extern NSNotificationName const ISHProcessExitedNotification;
 
 - (int)bootWithRootPath:(NSString *)rootPath;
 - (BOOL)configureDNS;
+- (void)setWorkspaceIsolationEnabled:(BOOL)enabled;
 - (BOOL)installRootfsArchive:(NSString *)archivePath
                destination:(NSString *)destinationPath
                      error:(NSError * _Nullable * _Nullable)error;

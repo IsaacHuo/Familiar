@@ -52,7 +52,7 @@
 "settings.error.title" = "设置失败";
 
 "common.done" = "完成";
-"settings.hub.models" = "模型与回复";
+"settings.hub.models" = "模型";
 "settings.hub.model_service" = "模型服务";
 "settings.search.title" = "网页搜索";
 "settings.search.provider" = "搜索服务";
@@ -68,7 +68,7 @@
 "settings.hub.tools" = "工具";
 "settings.hub.tools.detail" = "Agent 运行环境 当前注册的能力";
 "settings.hub.soul" = "回复偏好";
-"settings.hub.soul.detail" = "语气、语言与回复风格";
+"settings.hub.soul.detail" = "手动设定语气、语言与回复格式";
 "settings.hub.appearance" = "外观";
 "settings.hub.storage" = "本地存储";
 "settings.hub.storage.detail" = "此 iPhone 上的会话与附件";
@@ -76,7 +76,7 @@
 "settings.hub.permissions.detail" = "查看由 iOS 管理的访问权限";
 "settings.hub.run_history" = "运行记录";
 "settings.hub.run_history.detail" = "本地 Agent 活动";
-"settings.hub.support" = "隐私与支持";
+"settings.hub.support" = "关于与支持";
 "settings.hub.privacy.detail" = "了解 Familiar 如何处理数据";
 "settings.hub.about" = "关于 Familiar";
 "error.web.search_api_key_missing" = "请先在网页搜索设置中添加 %@ API 密钥。";
@@ -999,7 +999,7 @@
 "tool.group.memory" = "记忆";
 "tool.group.skills" = "技能";
 "tool.group.shell" = "环境与 Shell";
-"tool.group.device" = "其他设备工具";
+"tool.group.device" = "原生工具";
 "tool.group.presentation" = "内容展示";
 "tool.tools_load" = "准备工具";
 "tool.load.complete" = "工具已准备好";
@@ -1025,8 +1025,8 @@
 "chat.model.project" = "项目模型";
 "usage.partial" = "%@（部分用量）";
 "settings.advanced.title" = "高级";
-"settings.advanced.detail" = "更多配置与问题排查";
-"settings.advanced.configuration" = "可选配置";
+"settings.advanced.detail" = "Skills、MCP、工具与执行";
+"settings.advanced.configuration" = "执行配置";
 "settings.advanced.activity" = "操作记录与问题排查";
 "settings.hub.privacy_data" = "隐私与数据";
 "project.advanced.detail" = "可选工具、连接与操作记录";
@@ -1096,3 +1096,41 @@
 "file.delete.title" = "删除这个文件？";
 
 "file.delete.detail" = "从项目中删除此文件及其所有版本。聊天历史与操作记录会保留。";
+
+"approval.executing" = "审批已提交 · 等待执行";
+"common.saved" = "已保存";
+
+"settings.hub.personalization" = "个性化";
+
+"settings.hub.capabilities" = "能力与连接";
+
+"settings.hub.interface" = "界面与交互";
+
+"settings.hub.memory.detail" = "管理已确认的偏好与事实";
+
+"settings.hub.privacy_data.detail" = "访问、授权、安全与本地数据";
+
+"settings.privacy.access" = "访问与授权";
+
+"settings.privacy.security" = "安全";
+
+"settings.privacy.local_data" = "本地数据";
+
+"settings.privacy.data_handling" = "数据处理说明";
+
+"resource.error.project_unavailable" = "目标项目已不可用，请选择另一个项目。";
+
+"terminal.title" = "终端";
+"terminal.idle" = "尚未启动";
+"terminal.preparing" = "正在准备 Linux…";
+"terminal.running" = "运行中";
+"terminal.limit" = "已停止：会话时间或存储超限";
+"terminal.output_limit" = "已停止：输出超限";
+"terminal.exited" = "已退出（%d）";
+"terminal.stopped" = "已停止";
+"terminal.stop" = "停止";
+"terminal.start" = "启动";
+"terminal.network" = "允许本次会话联网";
+"terminal.scope" = "仅当前 Project · 前台运行 3 分钟 · 512 MB 内存 · 16 个进程。HOME 保存在此 Project，临时文件随会话清理。命令可修改 Project 文件，不提供自动撤销。";
+"terminal.command" = "Shell 命令";
+"terminal.send" = "发送";

@@ -1,0 +1,175 @@
+diff --git a/fs/fake.c b/fs/fake.c
+--- a/fs/fake.c
++++ b/fs/fake.c
+@@ -19,6 +19,7 @@
+ #include "fs/real.h"
+ #define ISH_INTERNAL
+ #include "fs/fake.h"
++#include "FamiliarISHFilesystemPolicy.h"
+ 
+ // TODO document database
+ 
+@@ -195,15 +196,18 @@
+         snprintf(normalized, sizeof(normalized), "/%s", path);
+         cmp_path = normalized;
+     }
++    bool writable = false;
+     for (int i = 0; i < FAKEFS_MAX_BIND_MOUNTS; i++) {
+-        if (!g_bind_mounts[i].active || !g_bind_mounts[i].read_only)
++        if (!g_bind_mounts[i].active)
+             continue;
+         int len = g_bind_mounts[i].path_len;
+         if (strncmp(g_bind_mounts[i].path, cmp_path, len) == 0 &&
+-            (cmp_path[len] == '/' || cmp_path[len] == '\0'))
+-            return true;
+-    }
+-    return false;
++            (cmp_path[len] == '/' || cmp_path[len] == '\0')) {
++            if (g_bind_mounts[i].read_only) return true;
++            writable = true;
++        }
++    }
++    return familiar_ish_workspace_isolation_enabled() && !writable;
+ }
+ 
+ /* Auto-create a meta.db entry for a path under a bind mount.
+@@ -245,6 +249,12 @@
+ // this exists only to override readdir to fix the returned inode numbers
+ static struct fd_ops fakefs_fdops;
+ 
++static bool workspace_ephemeral_device(const char *path) {
++    const char *p = path[0] == '/' ? path + 1 : path;
++    return strcmp(p, "dev/null") == 0 || strcmp(p, "dev/zero") == 0 ||
++        strcmp(p, "dev/full") == 0 || strcmp(p, "dev/random") == 0 || strcmp(p, "dev/urandom") == 0;
++}
++
+ static struct fd *fakefs_open(struct mount *mount, const char *path, int flags, int mode) {
+     struct fakefs_db *fs = &mount->fakefs;
+ 
+@@ -252,7 +262,8 @@
+      * iSH processes run as root and bypass the meta.db mode DAC check,
+      * so the 0555 bits on the mount dir don't actually block anything. */
+     if ((flags & (O_WRONLY_ | O_RDWR_ | O_CREAT_ | O_TRUNC_ | O_APPEND_)) &&
+-        is_under_readonly_bind_mount(path)) {
++        is_under_readonly_bind_mount(path) &&
++        !(familiar_ish_workspace_isolation_enabled() && workspace_ephemeral_device(path))) {
+         return ERR_PTR(_EROFS);
+     }
+ 
+@@ -1017,6 +1028,11 @@
+     db_commit(fs);
+ }
+ 
++static int fakefs_scoped_utime(struct mount *mount, const char *path, struct timespec atime, struct timespec mtime) {
++    if (is_under_readonly_bind_mount(path)) return _EROFS;
++    return realfs_utime(mount, path, atime, mtime);
++}
++
+ const struct fs_ops fakefs = {
+     .name = "fake", .magic = 0x66616b65,
+     .mount = fakefs_mount,
+@@ -1037,7 +1053,7 @@
+     .setattr = fakefs_setattr,
+     .fsetattr = fakefs_fsetattr,
+     .getpath = realfs_getpath,
+-    .utime = realfs_utime,
++    .utime = fakefs_scoped_utime,
+ 
+     .mkdir = fakefs_mkdir,
+     .rmdir = fakefs_rmdir,
+diff --git a/fs/mount.c b/fs/mount.c
+--- a/fs/mount.c
++++ b/fs/mount.c
+@@ -1,3 +1,4 @@
++#include "FamiliarISHFilesystemPolicy.h"
+ #include <string.h>
+ #include <sys/stat.h>
+ #include "kernel/calls.h"
+@@ -176,6 +177,7 @@
+ #define MS_FLAGS (MS_READONLY_|MS_NOSUID_|MS_NODEV_|MS_NOEXEC_)
+ 
+ dword_t sys_mount(addr_t source_addr, addr_t point_addr, addr_t type_addr, dword_t flags, addr_t data_addr) {
++    if (familiar_ish_workspace_isolation_enabled()) return _EPERM;
+     char source[MAX_PATH];
+     if (user_read_string(source_addr, source, sizeof(source)))
+         return _EFAULT;
+@@ -228,6 +230,7 @@
+ #define UMOUNT_NOFOLLOW_ 8
+ 
+ dword_t sys_umount2(addr_t target_addr, dword_t flags) {
++    if (familiar_ish_workspace_isolation_enabled()) return _EPERM;
+     char target_raw[MAX_PATH];
+     if (user_read_string(target_addr, target_raw, sizeof(target_raw)))
+         return _EFAULT;
+diff --git a/kernel/task.h b/kernel/task.h
+--- a/kernel/task.h
++++ b/kernel/task.h
+@@ -98,6 +98,8 @@
+ 
+     // Native offload: when is_native_proxy is true, this task is waiting
+     // for a host-native process instead of running emulated code.
++    // Inherited by fork/clone, even after setsid or reparenting to init.
++    uint64_t familiar_execution_owner;
+     pid_t native_pid;
+     bool is_native_proxy;
+ 
+diff --git a/kernel/exit.c b/kernel/exit.c
+--- a/kernel/exit.c
++++ b/kernel/exit.c
+@@ -1,3 +1,4 @@
++#include "FamiliarISHExecutionOwner.h"
+ #include <pthread.h>
+ #include <signal.h>
+ #include <stdio.h>
+@@ -459,6 +460,27 @@
+     return true;
+ }
+ 
++// Native guest owners reap only their stopped, init-adopted children. A live
++// session continues to use the ordinary Linux wait semantics.
++void familiar_ish_reap_execution_owner(uint64_t owner) {
++    if (owner == 0) return;
++    lock(&pids_lock);
++    struct task *saved = current;
++    struct task *init = pid_get_task(1);
++    current = init;
++    if (init) {
++        for (int pid = 2; pid <= MAX_PID; pid++) {
++            struct task *task = pid_get_task_zombie(pid);
++            if (task && task->familiar_execution_owner == owner && task->zombie && task->parent == init) {
++                struct siginfo_ info = SIGINFO_NIL;
++                reap_if_zombie(task, &info, NULL, WEXITED_);
++            }
++        }
++    }
++    current = saved;
++    unlock(&pids_lock);
++}
++
+ static bool notify_if_stopped(struct task *task, struct siginfo_ *info_out) {
+     lock(&task->group->lock);
+     bool stopped = task->group->stopped;
+diff --git a/kernel/signal.c b/kernel/signal.c
+--- a/kernel/signal.c
++++ b/kernel/signal.c
+@@ -149,10 +149,7 @@
+ int send_group_signal(dword_t pgid, int sig, struct siginfo_ info) {
+     lock(&pids_lock);
+     struct pid *pid = pid_get(pgid);
+-    if (pid == NULL) {
+-        unlock(&pids_lock);
+-        return _ESRCH;
+-    }
++    if (pid == NULL) return _ESRCH;
+     struct tgroup *tgroup;
+     list_for_each_entry(&pid->pgroup, tgroup, pgroup) {
+         send_signal(tgroup->leader, sig, info);
+@@ -999,6 +996,8 @@
+ }
+ 
+ static int kill_task(struct task *task, dword_t sig) {
++    if (current->familiar_execution_owner && current->familiar_execution_owner != task->familiar_execution_owner)
++        return _EPERM;
+     if (!superuser() &&
+             current->uid != task->uid &&
+             current->uid != task->suid &&

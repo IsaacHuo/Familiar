@@ -1,0 +1,346 @@
+diff --git a/kernel/task.c b/kernel/task.c
+--- a/kernel/task.c
++++ b/kernel/task.c
+@@ -43,6 +43,14 @@
+ 
+ struct task *task_create_(struct task *parent) {
+     lock(&pids_lock);
++    if (parent && parent->familiar_execution_owner) {
++        unsigned count = 0;
++        for (int pid = 2; pid <= MAX_PID; pid++) {
++            struct task *owned = pid_get_task_zombie((dword_t)pid);
++            if (owned && owned->familiar_execution_owner == parent->familiar_execution_owner) count++;
++        }
++        if (count >= 16) { unlock(&pids_lock); return NULL; }
++    }
+     static int cur_pid = 0;
+     do {
+         cur_pid++;
+@@ -54,8 +62,7 @@
+     list_init(&pid->pgroup);
+ 
+     struct task *task = malloc(sizeof(struct task));
+-    if (task == NULL)
+-        return NULL;
++    if (task == NULL) { unlock(&pids_lock); return NULL; }
+     *task = (struct task) {};
+     if (parent != NULL)
+         *task = *parent;
+diff --git a/kernel/mm.h b/kernel/mm.h
+--- a/kernel/mm.h
++++ b/kernel/mm.h
+@@ -10,10 +10,19 @@
+ // 0 = no limit. Non-zero = hard limit in pages (4KB each).
+ // Go runtime alone needs ~1.1GB for page summary reservations (PROT_NONE).
+ // 524288 pages = 2GB.
+-#define ANON_MMAP_LIMIT_PAGES 1048576
++#define ANON_MMAP_LIMIT_PAGES 131072 // 512 MiB, shared by all guest processes
+ 
+ #if ANON_MMAP_LIMIT_PAGES > 0
+ extern _Atomic long anon_page_count;
++static inline bool familiar_reserve_anon_pages(long pages) {
++    if (pages < 0 || pages > ANON_MMAP_LIMIT_PAGES) return false;
++    long previous = atomic_fetch_add(&anon_page_count, pages);
++    if (previous > ANON_MMAP_LIMIT_PAGES - pages) {
++        atomic_fetch_sub(&anon_page_count, pages);
++        return false;
++    }
++    return true;
++}
+ #endif
+ 
+ // uses mem.lock instead of having a lock of its own
+diff --git a/kernel/mmap.c b/kernel/mmap.c
+--- a/kernel/mmap.c
++++ b/kernel/mmap.c
+@@ -34,8 +34,9 @@
+     mem_init(&new_mm->mem);
+     fd_retain(new_mm->exefile);
+     write_wrlock(&mm->mem.lock);
+-    pt_copy_on_write(&mm->mem, &new_mm->mem, 0, MEM_PAGES);
++    int error = pt_copy_on_write(&mm->mem, &new_mm->mem, 0, MEM_PAGES);
+     write_wrunlock(&mm->mem.lock);
++    if (error < 0) { mm_release(new_mm); return NULL; }
+     return new_mm;
+ }
+ 
+@@ -104,10 +105,8 @@
+         }
+ #endif
+ #if ANON_MMAP_LIMIT_PAGES > 0
+-        if (!is_prot_none && atomic_load(&anon_page_count) + (long)pages > ANON_MMAP_LIMIT_PAGES)
++        if (!is_prot_none && !familiar_reserve_anon_pages((long)pages))
+             return _ENOMEM;
+-        if (!is_prot_none)
+-            atomic_fetch_add(&anon_page_count, (long)pages);
+ #endif
+         if ((err = pt_map_nothing(current->mem, page, pages, prot)) < 0) {
+ #if ANON_MMAP_LIMIT_PAGES > 0
+@@ -306,9 +305,7 @@
+         if (!pt_is_hole(&mm->mem, start, size))
+             goto out;
+ #if ANON_MMAP_LIMIT_PAGES > 0
+-        if (atomic_load(&anon_page_count) + (long)size > ANON_MMAP_LIMIT_PAGES)
+-            goto out;
+-        atomic_fetch_add(&anon_page_count, (long)size);
++        if (!familiar_reserve_anon_pages((long)size)) goto out;
+ #endif
+         int err = pt_map_nothing(&mm->mem, start, size, P_WRITE);
+         if (err < 0) {
+diff --git a/kernel/memory.c b/kernel/memory.c
+--- a/kernel/memory.c
++++ b/kernel/memory.c
+@@ -630,15 +630,20 @@
+ }
+ 
+ int pt_copy_on_write(struct mem *src, struct mem *dst, page_t start, page_t pages) {
+-#if ANON_MMAP_LIMIT_PAGES > 0
+-    long anon_copied = 0;
+-#endif
+     for (page_t page = start; page < start + pages; mem_next_page(src, &page)) {
+         struct pt_entry *entry = mem_pt(src, page);
+         if (entry == NULL)
+             continue;
+-        if (pt_unmap_always(dst, page, 1) < 0)
++#if ANON_MMAP_LIMIT_PAGES > 0
++        bool anonymous = (entry->flags & P_ANONYMOUS) != 0;
++        if (anonymous && !familiar_reserve_anon_pages(1)) return -1;
++#endif
++        if (pt_unmap_always(dst, page, 1) < 0) {
++#if ANON_MMAP_LIMIT_PAGES > 0
++            if (anonymous) atomic_fetch_sub(&anon_page_count, 1);
++#endif
+             return -1;
++        }
+         if (!(entry->flags & P_SHARED))
+             entry->flags |= P_COW;
+         entry->data->refcount++;
+@@ -646,16 +651,7 @@
+         dst_entry->data = entry->data;
+         dst_entry->offset = entry->offset;
+         dst_entry->flags = entry->flags;
+-#if ANON_MMAP_LIMIT_PAGES > 0
+-        if (entry->flags & P_ANONYMOUS)
+-            anon_copied++;
+-#endif
+-    }
+-#if ANON_MMAP_LIMIT_PAGES > 0
+-    // The child process now has its own set of anonymous pages.
+-    // These will be decremented per-page when the child's mm is freed.
+-    atomic_fetch_add(&anon_page_count, anon_copied);
+-#endif
++    }
+     for (struct mem_reservation *r = src->reservations; r; r = r->next) {
+         struct mem_reservation *copy = malloc(sizeof(struct mem_reservation));
+         if (copy) {
+@@ -745,7 +741,11 @@
+             goto have_entry;
+         }
+ #if ANON_MMAP_LIMIT_PAGES > 0
+-        atomic_fetch_add(&anon_page_count, 1);
++        if (!familiar_reserve_anon_pages(1)) {
++            write_wrunlock(&mem->lock);
++            read_wrlock(&mem->lock);
++            return NULL;
++        }
+ #endif
+         pt_map_nothing(mem, page, 1, P_WRITE | P_GROWSDOWN);
+         write_wrunlock(&mem->lock);
+@@ -770,7 +770,11 @@
+         entry = mem_pt(mem, page);
+         if (entry == NULL) {
+ #if ANON_MMAP_LIMIT_PAGES > 0
+-            atomic_fetch_add(&anon_page_count, 1);
++            if (!familiar_reserve_anon_pages(1)) {
++                write_wrunlock(&mem->lock);
++                read_wrlock(&mem->lock);
++                return NULL;
++            }
+ #endif
+             pt_map_nothing(mem, page, 1, res->flags & ~P_GROWSDOWN);
+         }
+diff --git a/kernel/fork.c b/kernel/fork.c
+--- a/kernel/fork.c
++++ b/kernel/fork.c
+@@ -80,7 +80,9 @@
+     if (flags & CLONE_VM_) {
+         mm_retain(mm);
+     } else {
+-        task_set_mm(task, mm_copy(mm));
++        struct mm *copy = mm_copy(mm);
++        if (!copy) return _ENOMEM;
++        task_set_mm(task, copy);
+     }
+ 
+     if (flags & CLONE_FILES_) {
+diff --git a/fs/real.c b/fs/real.c
+--- a/fs/real.c
++++ b/fs/real.c
+@@ -164,7 +164,20 @@
+     return res;
+ }
+ 
++// Applies to regular guest files, not PTYs, pipes, or host preparation I/O.
++static bool familiar_file_write_fits(struct fd *fd, size_t size, off_t offset) {
++    if (!current || current->familiar_execution_owner == 0) return true;
++    struct stat st;
++    if (fstat(fd->real_fd, &st) < 0) return false;
++    if (!S_ISREG(st.st_mode)) return true;
++    if (fcntl(fd->real_fd, F_GETFL) & O_APPEND) offset = st.st_size;
++    if (offset < 0) offset = lseek(fd->real_fd, 0, SEEK_CUR);
++    const uint64_t maximum = 128ULL * 1024 * 1024;
++    return offset >= 0 && (uint64_t)offset <= maximum && size <= maximum - (uint64_t)offset;
++}
++
+ ssize_t realfs_write(struct fd *fd, const void *buf, size_t bufsize) {
++    if (!familiar_file_write_fits(fd, bufsize, -1)) return _EFBIG;
+     ssize_t res;
+     do {
+         res = write(fd->real_fd, buf, bufsize);
+@@ -185,6 +198,7 @@
+ }
+ 
+ ssize_t realfs_pwrite(struct fd *fd, const void *buf, size_t bufsize, off_t off) {
++    if (!familiar_file_write_fits(fd, bufsize, off)) return _EFBIG;
+     ssize_t res;
+     do {
+         res = pwrite(fd->real_fd, buf, bufsize, off);
+@@ -487,6 +501,7 @@
+ }
+ 
+ int realfs_truncate(struct mount *mount, const char *path, off_t_ size) {
++    if (current && current->familiar_execution_owner && size > 128ULL * 1024 * 1024) return _EFBIG;
+     int fd = openat(mount->root_fd, fix_path(path), O_RDWR);
+     if (fd < 0)
+         return errno_map();
+@@ -543,6 +558,7 @@
+             err = fchmod(real_fd, attr.mode);
+             break;
+         case attr_size:
++            if (current && current->familiar_execution_owner && attr.size > 128ULL * 1024 * 1024) return _EFBIG;
+             err = ftruncate(real_fd, attr.size);
+             break;
+         default: abort();
+diff --git a/kernel/task.c b/kernel/task.c
+--- a/kernel/task.c
++++ b/kernel/task.c
+@@ -59,6 +59,9 @@
+     *task = (struct task) {};
+     if (parent != NULL)
+         *task = *parent;
++    // Forked CPUs must not share the parent's wake flag/pointer.
++    task->cpu.poked_ptr = &task->cpu._poked;
++    __atomic_store_n(&task->cpu._poked, false, __ATOMIC_RELAXED);
+     task->pid = pid->id;
+     pid->task = task;
+ 
+diff --git a/kernel/task.c b/kernel/task.c
+--- a/kernel/task.c
++++ b/kernel/task.c
+@@ -175,6 +175,14 @@
+         if (self->group->doing_group_exit) {
+             do_exit(self->group->group_exit_code);
+         }
++        // Honor an uncatchable kill before re-entering a retrying JIT/syscall
++        // path. No execution may keep touching mounts with KILL pending.
++        if (self->sighand) {
++            lock(&self->sighand->lock);
++            bool killed = sigset_has(self->pending, SIGKILL_);
++            unlock(&self->sighand->lock);
++            if (killed) do_exit_group(SIGKILL_);
++        }
+         if (self->mem == NULL) {
+             pthread_exit(NULL);
+         }
+diff --git a/kernel/time.c b/kernel/time.c
+--- a/kernel/time.c
++++ b/kernel/time.c
+@@ -11,6 +11,8 @@
+ #include "kernel/errno.h"
+ #include "kernel/resource.h"
+ #include "kernel/time.h"
++#include "kernel/task.h"
++#include <limits.h>
+ #include "fs/poll.h"
+ 
+ #define TIMER_ABSTIME_ (1 << 0)
+@@ -192,6 +194,35 @@
+     return seconds;
+ }
+ 
++// Darwin host sleeps can keep restarting despite the guest's pending signal.
++// Bound each wait so cancellation reaches the guest kernel without waiting for
++// the complete requested sleep, and report the real remaining interval.
++static int guest_nanosleep(const struct timespec *request, struct timespec *remaining) {
++    if (request->tv_sec < 0 || request->tv_nsec < 0 || request->tv_nsec >= 1000000000) return _EINVAL;
++    struct timespec now;
++    clock_gettime(CLOCK_MONOTONIC, &now);
++    if (request->tv_sec > LLONG_MAX - now.tv_sec - 1) return _EINVAL;
++    struct timespec deadline = {now.tv_sec + request->tv_sec, now.tv_nsec + request->tv_nsec};
++    if (deadline.tv_nsec >= 1000000000) { deadline.tv_sec++; deadline.tv_nsec -= 1000000000; }
++    for (;;) {
++        clock_gettime(CLOCK_MONOTONIC, &now);
++        time_t seconds = deadline.tv_sec - now.tv_sec;
++        long nanos = deadline.tv_nsec - now.tv_nsec;
++        if (nanos < 0) { seconds--; nanos += 1000000000; }
++        if (seconds < 0 || (seconds == 0 && nanos == 0)) { *remaining = (struct timespec){0, 0}; return 0; }
++        *remaining = (struct timespec){seconds, nanos};
++        bool interrupted = current->group->doing_group_exit;
++        if (current->sighand) {
++            lock(&current->sighand->lock);
++            interrupted |= (current->pending & ~current->blocked) != 0 || sigset_has(current->pending, SIGKILL_);
++            unlock(&current->sighand->lock);
++        }
++        if (interrupted) return _EINTR;
++        struct timespec slice = {0, seconds > 0 ? 50000000 : (nanos < 50000000 ? nanos : 50000000)};
++        if (nanosleep(&slice, NULL) < 0 && errno != EINTR) return errno_map();
++    }
++}
++
+ dword_t sys_nanosleep(addr_t req_addr, addr_t rem_addr) {
+     struct timespec_ req_ts;
+     if (user_get(req_addr, req_ts))
+@@ -212,17 +243,16 @@
+     struct timespec req;
+     req.tv_sec = req_ts.sec;
+     req.tv_nsec = req_ts.nsec;
+-    struct timespec rem;
+-    if (nanosleep(&req, &rem) < 0)
+-        return errno_map();
+-    if (rem_addr != 0) {
++    struct timespec rem = {0, 0};
++    int sleep_error = guest_nanosleep(&req, &rem);
++    if (rem_addr != 0 && sleep_error == _EINTR) {
+         struct timespec_ rem_ts;
+         rem_ts.sec = rem.tv_sec;
+         rem_ts.nsec = rem.tv_nsec;
+         if (user_put(rem_addr, rem_ts))
+             return _EFAULT;
+     }
+-    return 0;
++    return sleep_error;
+ }
+ 
+ dword_t sys_clock_nanosleep(dword_t clock, dword_t flags, addr_t req_addr, addr_t rem_addr) {
+@@ -255,17 +285,16 @@
+             return 0; // Already past the target time
+     }
+ 
+-    struct timespec rem;
+-    if (nanosleep(&req, &rem) < 0)
+-        return errno_map();
+-    if (rem_addr != 0 && !(flags & TIMER_ABSTIME_)) {
++    struct timespec rem = {0, 0};
++    int sleep_error = guest_nanosleep(&req, &rem);
++    if (rem_addr != 0 && !(flags & TIMER_ABSTIME_) && sleep_error == _EINTR) {
+         struct timespec_ rem_ts;
+         rem_ts.sec = rem.tv_sec;
+         rem_ts.nsec = rem.tv_nsec;
+         if (user_put(rem_addr, rem_ts))
+             return _EFAULT;
+     }
+-    return 0;
++    return sleep_error;
+ }
+ 
+ dword_t sys_times(addr_t tbuf) {

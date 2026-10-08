@@ -9,6 +9,8 @@
 #import "ISHKernel.h"
 
 #include <poll.h>
+#include <stdatomic.h>
+#include "FamiliarISHExecutionOwner.h"
 #include "kernel/init.h"
 #include "kernel/calls.h"
 #include "kernel/task.h"
@@ -16,6 +18,28 @@
 #include "kernel/fs.h"
 #include "fs/devices.h"
 #include "fs/real.h"
+
+static atomic_uint_fast64_t nextExecutionOwner = 1;
+uint64_t familiar_ish_assign_execution_owner(struct task *task) {
+    uint64_t owner = atomic_fetch_add(&nextExecutionOwner, 1);
+    task->familiar_execution_owner = owner;
+    return owner;
+}
+
+// Failure cleanup must never call do_exit on a Swift/GCD executor thread.
+static void *exit_unstarted_task(void *value) {
+    current = value;
+    current->thread = pthread_self();
+    do_exit(255 << 8);
+}
+void familiar_ish_discard_unstarted_task(struct task *task) {
+    uint64_t owner = task->familiar_execution_owner;
+    pthread_t cleanup;
+    if (pthread_create(&cleanup, NULL, exit_unstarted_task, task) == 0) {
+        pthread_join(cleanup, NULL);
+        familiar_ish_reap_execution_owner(owner);
+    }
+}
 
 #pragma mark - Result Implementation
 
@@ -46,6 +70,9 @@
 @property (nonatomic) dispatch_semaphore_t waitSemaphore;
 @property (nonatomic) ISHShellExecutionResult *result;
 @property (atomic) BOOL isCompleted;
+@property (nonatomic) NSUInteger receivedBytes;
+@property (nonatomic) uint64_t executionOwner;
+@property (nonatomic) BOOL outputLimited;
 
 - (int *)stdoutPipe;
 - (int *)stderrPipe;
@@ -211,6 +238,7 @@ static dispatch_once_t _onceToken;
     }
 
     struct task *task = current;
+    ctx.executionOwner = familiar_ish_assign_execution_owner(task);
 
     // Familiar serializes Shell tasks and remounts one Workspace view before
     // each execution, so this older pinned iSH revision does not need the
@@ -223,6 +251,7 @@ static dispatch_once_t _onceToken;
         if (pipe(stdinPipe) < 0) {
             NSLog(@"ISHShellExecutor[stdin]: pipe() failed: %s", strerror(errno));
             current = saved_current;
+            familiar_ish_discard_unstarted_task(task);
             [ctx cleanup];
             return ISHShellExecutorErrorProcessCreationFailed;
         }
@@ -238,6 +267,7 @@ static dispatch_once_t _onceToken;
             NSLog(@"ISHShellExecutor[stdin]: fd creation failed: %s", strerror(errno));
             if (stdinData) { close(stdinPipe[0]); close(stdinPipe[1]); }
             current = saved_current;
+            familiar_ish_discard_unstarted_task(task);
             [ctx cleanup];
             return ISHShellExecutorErrorProcessCreationFailed;
         }
@@ -257,6 +287,7 @@ static dispatch_once_t _onceToken;
         if (real_fd < 0) {
             NSLog(@"ISHShellExecutor[stdout]: dup() failed: %s", strerror(errno));
             current = saved_current;
+            familiar_ish_discard_unstarted_task(task);
             [ctx cleanup];
             return ISHShellExecutorErrorProcessCreationFailed;
         }
@@ -271,6 +302,7 @@ static dispatch_once_t _onceToken;
         if (real_fd < 0) {
             NSLog(@"ISHShellExecutor[stderr]: dup() failed: %s", strerror(errno));
             current = saved_current;
+            familiar_ish_discard_unstarted_task(task);
             [ctx cleanup];
             return ISHShellExecutorErrorProcessCreationFailed;
         }
@@ -334,6 +366,7 @@ static dispatch_once_t _onceToken;
             size_t len = strlen(str) + 1;
             if (pos + len >= sizeof(argv_buf) - 1) {
                 current = saved_current;
+            familiar_ish_discard_unstarted_task(task);
                 [ctx cleanup];
                 NSLog(@"ISHShellExecutor: argv too long");
                 return ISHShellExecutorErrorExecFailed;
@@ -415,6 +448,7 @@ static dispatch_once_t _onceToken;
     err = do_execve(exec_path, exec_argc, argv_buf, envp);
     if (err < 0) {
         current = saved_current;
+            familiar_ish_discard_unstarted_task(task);
         [ctx cleanup];
         NSLog(@"ISHShellExecutor: do_execve failed: %d", err);
         return ISHShellExecutorErrorExecFailed;
@@ -423,13 +457,13 @@ static dispatch_once_t _onceToken;
     // Get guest PID and start task
     ctx.guestPid = task->pid;
     ctx.result.pid = ctx.guestPid;
-    task_start(task);
     current = saved_current;
 
     // Register context
     @synchronized(_activeExecutions) {
         _activeExecutions[@(ctx.guestPid)] = ctx;
     }
+    task_start(task);
 
     // Write stdinData to pipe in background, then close write end
     if (stdinData && stdinPipe[1] >= 0) {
@@ -515,6 +549,7 @@ static dispatch_once_t _onceToken;
         result.errorOutput = @"";
     }
 
+    if (waitResult == 0) [self terminateProcessTree:pid timeout:5];
     return result;
 }
 
@@ -529,127 +564,53 @@ static dispatch_once_t _onceToken;
     return task != NULL;
 }
 
-// Returns YES if `t` is `rootPid` or has `rootPid` somewhere in its parent
-// chain. The caller must hold `pids_lock`. Bounded by MAX_PID to defend
-// against a malformed parent cycle.
-static BOOL ISHTaskIsDescendantOf(struct task *t, pid_t_ rootPid) {
-    int hops = 0;
-    while (t != NULL && hops < MAX_PID) {
-        if (t->pid == rootPid) return YES;
-        t = t->parent;
-        hops++;
-    }
-    return NO;
-}
++ (void)killProcessGroup:(int)pid { [self terminateProcessTree:pid timeout:5]; }
 
-+ (void)killProcessGroup:(int)pid {
-    // Signal every task belonging to this shell_execute command — matched
-    // either by pgid OR by being a descendant of the root pid. The ancestry
-    // arm is needed because busybox ash sometimes puts subshells into a
-    // fresh process group (setpgid(0,0) for job control), which would leave
-    // `sleep` and similar grandchildren invisible to a pgid-only sweep —
-    // that is why the Stop button failed to kill `sleep`.
-    //
-    // Safety rails:
-    //   - Refuse pid <= 1: pid 1 is init; an ancestry sweep rooted at init
-    //     would match every task in iSH and tear the whole kernel down.
-    //   - Re-verify the task pointer on the deferred SIGKILL pass. If the
-    //     root has already exited and its pid was recycled to an unrelated
-    //     task, the pointer comparison fails and we abort the sweep —
-    //     otherwise we would kill an innocent command and its descendants.
-    if (pid <= 1) {
-        NSLog(@"ISHShellExecutor: refusing killProcessGroup for pid=%d", pid);
-        return;
-    }
-    struct siginfo_ info = SIGINFO_NIL;
-
++ (uint64_t)executionOwnerForProcess:(int)pid {
     lock(&pids_lock);
-    struct task *rootTask = pid_get_task((dword_t)pid);
-    pid_t_ pgid = 0;
-    if (rootTask) {
-        pgid = rootTask->group->pgid;
-        for (int i = 2; i < MAX_PID; i++) {
-            struct task *t = pid_get_task(i);
-            if (!t) continue;
-            BOOL byPgid = (pgid != 0 && t->group->pgid == pgid);
-            BOOL byAncestry = ISHTaskIsDescendantOf(t, (pid_t_)pid);
-            if (byPgid || byAncestry) {
-                send_signal(t, SIGTERM_, info);
-            }
-        }
-    }
+    struct task *task = pid_get_task_zombie((dword_t)pid);
+    uint64_t owner = task ? task->familiar_execution_owner : 0;
     unlock(&pids_lock);
-
-    if (rootTask == NULL) {
-        // Root already gone — don't schedule a delayed SIGKILL against a pid
-        // that might already have been recycled.
-        return;
-    }
-
-    // After a short delay, SIGKILL any survivors. SIGTERM may be caught
-    // or, for tasks blocked inside host nanosleep, need the pthread_kill
-    // wakeup that send_signal already issues — give the wakeup a chance
-    // to land and the signal handler to run before escalating.
-    int capturedPid = pid;
-    struct task *capturedRoot = rootTask;
-    pid_t_ capturedPgid = pgid;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(200 * NSEC_PER_MSEC)), dispatch_get_global_queue(0, 0), ^{
-        lock(&pids_lock);
-        // Verify the pid still maps to the same task struct we saw earlier.
-        // pid_get_task returns NULL once task_destroy unlinks the task, and
-        // a different pointer if the pid slot has been reused. Either way
-        // the original command is already gone — skip the sweep.
-        struct task *still = pid_get_task((dword_t)capturedPid);
-        if (still != capturedRoot) {
-            unlock(&pids_lock);
-            return;
-        }
-        for (int i = 2; i < MAX_PID; i++) {
-            struct task *t = pid_get_task(i);
-            if (!t) continue;
-            BOOL byPgid = (capturedPgid != 0 && t->group->pgid == capturedPgid);
-            BOOL byAncestry = ISHTaskIsDescendantOf(t, (pid_t_)capturedPid);
-            if (byPgid || byAncestry) {
-                send_signal(t, SIGKILL_, info);
-            }
-        }
-        unlock(&pids_lock);
-    });
+    return owner;
 }
 
 + (BOOL)terminateProcessTree:(int)pid timeout:(NSTimeInterval)timeout {
     if (pid <= 1) return NO;
-    NSMutableArray<NSNumber *> *ids = [NSMutableArray array];
-    NSMutableArray<NSValue *> *identities = [NSMutableArray array];
-    lock(&pids_lock);
-    struct task *root = pid_get_task((dword_t)pid);
-    if (root) {
-        pid_t_ group = root->group->pgid;
-        for (int i = 2; i < MAX_PID; i++) {
-            struct task *task = pid_get_task(i);
-            if (task && (ISHTaskIsDescendantOf(task, (pid_t_)pid) || (group > 1 && task->group->pgid == group) || i == pid)) {
-                [ids addObject:@(i)];
-                [identities addObject:[NSValue valueWithPointer:task]];
-            }
-        }
-        for (NSUInteger i = 0; i < ids.count; i++) {
-            struct task *task = pid_get_task(ids[i].intValue);
-            if (task == identities[i].pointerValue) send_signal(task, SIGKILL_, SIGINFO_NIL);
-        }
-    }
-    unlock(&pids_lock);
+    uint64_t owner = [self executionOwnerForProcess:pid];
+    if (!owner) return NO;
+    return [self terminateExecutionOwner:owner timeout:timeout];
+}
+
++ (BOOL)terminateExecutionOwner:(uint64_t)owner timeout:(NSTimeInterval)timeout {
+    if (!owner) return NO;
     NSTimeInterval deadline = NSProcessInfo.processInfo.systemUptime + timeout;
     do {
         BOOL alive = NO;
         lock(&pids_lock);
-        for (NSUInteger i = 0; i < ids.count; i++) {
-            struct task *task = pid_get_task(ids[i].intValue);
-            if (task && task == identities[i].pointerValue) { alive = YES; break; }
+        for (int pid = 2; pid <= MAX_PID; pid++) {
+            struct task *task = pid_get_task((dword_t)pid);
+            if (task && task->familiar_execution_owner == owner && !task->exiting) {
+                alive = YES;
+                send_signal(task, SIGKILL_, SIGINFO_NIL);
+                // Re-poke a newly started or host-sleeping thread even if KILL
+                // was already pending before its pthread became runnable.
+                pthread_kill(task->thread, SIGUSR1);
+            }
         }
         unlock(&pids_lock);
-        if (!alive) return YES;
+        if (!alive) { familiar_ish_reap_execution_owner(owner); return YES; }
         usleep(10000);
     } while (NSProcessInfo.processInfo.systemUptime < deadline);
+    lock(&pids_lock);
+    for (int pid = 2; pid <= MAX_PID; pid++) {
+        struct task *task = pid_get_task_zombie((dword_t)pid);
+        if (task && task->familiar_execution_owner == owner) {
+            NSLog(@"Guest stop timeout pid=%d zombie=%d exiting=%d pending=%llu blocked=%llu proxy=%d nativePid=%d blocking=%d",
+                pid, task->zombie, task->exiting, (unsigned long long)task->pending,
+                (unsigned long long)task->blocked, task->is_native_proxy, task->native_pid, task->blocking);
+        }
+    }
+    unlock(&pids_lock);
     return NO;
 }
 
@@ -802,7 +763,17 @@ static BOOL ISHTaskIsDescendantOf(struct task *t, pid_t_ rootPid) {
         ssize_t bytesRead = read(fd, buffer, sizeof(buffer) - 1);
 
         if (bytesRead > 0) {
-            [pendingBytes appendBytes:buffer length:bytesRead];
+            NSUInteger accepted;
+            BOOL stop = NO;
+            @synchronized(ctx) {
+                accepted = MIN((NSUInteger)bytesRead, 1048576 - ctx.receivedBytes);
+                ctx.receivedBytes += accepted;
+                if (accepted < (NSUInteger)bytesRead && !ctx.outputLimited) {
+                    ctx.outputLimited = YES;
+                    stop = YES;
+                }
+            }
+            [pendingBytes appendBytes:buffer length:accepted];
 
             NSUInteger safeLen = [self lastCompleteUTF8Length:(const uint8_t *)pendingBytes.bytes
                                                       length:pendingBytes.length];
@@ -833,6 +804,18 @@ static BOOL ISHTaskIsDescendantOf(struct task *t, pid_t_ rootPid) {
                        context:ctx
                   outputBuffer:outputBuffer
                       isStdErr:isStdErr];
+            if (stop) {
+                // Publish the bounded partial line before termination can deliver
+                // completion; otherwise the final gate drops no-newline output.
+                if (lineBuffer.length) {
+                    NSString *partial = [lineBuffer copy];
+                    @synchronized(outputBuffer) { [outputBuffer appendString:partial]; }
+                    [lineBuffer setString:@""];
+                    if (ctx.lineCallback) dispatch_async(dispatch_get_main_queue(), ^{ ctx.lineCallback(partial, isStdErr); });
+                }
+                [self terminateExecutionOwner:ctx.executionOwner timeout:5];
+                break;
+            }
 
         } else if (bytesRead == 0) {
             // EOF - pipe closed

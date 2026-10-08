@@ -123,6 +123,8 @@ typedef void (^ISHShellCompletionCallback)(ISHShellExecutionResult *result);
 
 /// Terminate captured descendants and wait until they can no longer access mounts.
 + (BOOL)terminateProcessTree:(int)pid timeout:(NSTimeInterval)timeout;
++ (uint64_t)executionOwnerForProcess:(int)pid;
++ (BOOL)terminateExecutionOwner:(uint64_t)owner timeout:(NSTimeInterval)timeout;
 
 @end
 

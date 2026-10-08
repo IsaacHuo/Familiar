@@ -233,7 +233,7 @@ struct FamiliarLazyToolTests {
         let enabled = try service.filterCapabilities(all, projectID: project.id, in: container.mainContext)
         #expect(enabled.map(\.name).contains("shell_execute"))
         #expect(!enabled.map(\.name).contains("file_publish"))
-        #expect(!enabled.map(\.name).contains("health_activity_summary"))
+        #expect(enabled.map(\.name).contains("health_activity_summary"))
         try service.setCapability("web_fetch", enabled: false, allCapabilities: all, projectID: project.id, in: container.mainContext)
         let disabled = try service.filterCapabilities(all, projectID: project.id, in: container.mainContext)
         #expect(!disabled.map(\.name).contains("web_fetch"))
@@ -296,7 +296,7 @@ private nonisolated struct FamiliarPreparationBridge: FamiliarISHBridge {
         await probe.begin()
         try await Task.sleep(for: delay)
     }
-    func execute(taskID: UUID, command: String, workingDirectory: String, mounts: [FamiliarISHMount],
+    func execute(taskID: UUID, workspaceID: FamiliarWorkspaceID, command: String, workingDirectory: String, mounts: [FamiliarISHMount],
                  networkPolicy: FamiliarShellNetworkPolicy, timeout: TimeInterval) -> AsyncThrowingStream<FamiliarISHProcessEvent, Error> {
         AsyncThrowingStream { $0.finish(throwing: FamiliarShellExecutorError.unavailable) }
     }

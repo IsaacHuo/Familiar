@@ -37,12 +37,37 @@
     ]
   },
   "build": {
-    "platforms": ["iphoneos-arm64", "iphonesimulator-arm64"],
-    "targets": ["libish", "libish_emu", "libfakefs"],
+    "platforms": [
+      "iphoneos-arm64",
+      "iphonesimulator-arm64"
+    ],
+    "targets": [
+      "libish",
+      "libish_emu",
+      "libfakefs"
+    ],
     "xcframework": ".build/ish/xcframeworks/FamiliarISHRuntime.xcframework",
     "installedXCFramework": "Vendor/ISHRuntime/FamiliarISHRuntime.xcframework",
     "preparedRootfs": ".build/ish/rootfs/alpine-3.24.0-aarch64-fakefs.tar.gz",
     "installedRootfs": "Familiar/Resources/alpine-3.24.0-aarch64-fakefs.tar.gz",
     "packageInventory": ".build/ish/rootfs/alpine-3.24.0-packages.tsv"
+  },
+  "localSourcesAndBinaries": {
+    "Vendor/ISHRuntime/Bridge/FamiliarISHExecutionOwner.h": "aeb3b24db6d3719b74166443fa56ce3c9dac48d7b6a05650b3c1946b4dbbfeb2",
+    "Vendor/ISHRuntime/Bridge/FamiliarISHFilesystemPolicy.h": "3ffd72504193f9d270e7122e4366d4905aa02f9b49d8d1f8593401778ec7fa85",
+    "Vendor/ISHRuntime/Bridge/FamiliarISHNetworkPolicy.h": "5e6e0195739f3dbc5c99fb5b315749454eb7bbacb651af5f757fa4779e5b9b12",
+    "Vendor/ISHRuntime/Bridge/FamiliarISHNetworkPolicy.m": "0974e7a066068884e1c5d6ce8977b356a756e20e1d35a7228cdc1f6a4f9f0c04",
+    "Vendor/ISHRuntime/Bridge/FamiliarISHRuntime.h": "3a794a6fcda86c525f6b69119cbdb2713536e92f8f8a7c21d6a286af65210f4e",
+    "Vendor/ISHRuntime/Bridge/ISHKernel.h": "632bd17b43bb65a19c275bda990c91e0f3eeed1c619a4929d60d63ba93ef29bf",
+    "Vendor/ISHRuntime/Bridge/ISHKernel.m": "e37e4b0b2ccc26aa3e8bd9863070eebe4ba58ad514f8eeb90348344801ef6ab0",
+    "Vendor/ISHRuntime/Bridge/ISHShellExecutor.h": "767463dda3b201fc5c04a3a23a8bde9d4fba616aaa6aa9e359b853d9dc3ff57f",
+    "Vendor/ISHRuntime/Bridge/ISHShellExecutor.m": "6803f105582e77364b53a4061744b9c929b16780206bb938eaef1c78010c8fba",
+    "Vendor/ISHRuntime/Bridge/ISHTerminalSession.h": "fd531e3933e88f16613a0c0ec963d46056f97aff35b07c7935dc7ba8915ece45",
+    "Vendor/ISHRuntime/Bridge/ISHTerminalSession.m": "aa0ad106a8ba2743844d706d170ea176e4e160804c059fbfa23dd414b1968b6a",
+    "Vendor/ISHRuntime/FamiliarISHRuntime.xcframework/ios-arm64/libFamiliarISHRuntime.a": "09124d965786b6fd113db3cb8a0be538de3355ac21bc77d89503786727f6f7c4",
+    "Vendor/ISHRuntime/FamiliarISHRuntime.xcframework/ios-arm64-simulator/libFamiliarISHRuntime.a": "853b453676fdba82e97d37a557e280010a7d6b135bf8bedced1b4adf75cf8637",
+    "Vendor/ISHRuntime/Patches/network-policy.patch": "e4ae9b0385e181f722df5195cf68975e195a1effe096c5e8f5a0441965cf0f36",
+    "Vendor/ISHRuntime/Patches/resource-limits.patch": "f633c3677149cfd78a67a44d1f5309ca4d171b7b25b7ba7cb79e8edf7f7792a4",
+    "Vendor/ISHRuntime/Patches/workspace-isolation.patch": "6be9c3aafb9b4d3c155eed80fc12c6bdf3b784fdcb80356d0455553b35643864"
   }
 }

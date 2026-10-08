@@ -294,6 +294,7 @@ struct FamiliarWorkspaceShellTests {
         let context = FamiliarToolContext(
             runID: "run",
             toolCallID: "call",
+            projectID: { if case .project(let id) = workspaceID { return id }; return nil }(),
             workspaceID: workspaceID,
             progressReporter: { await recorder.append($0) }
         )

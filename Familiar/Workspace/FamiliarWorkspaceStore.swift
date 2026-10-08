@@ -168,6 +168,7 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         taskID: UUID,
         workspaceID: FamiliarWorkspaceID,
         resources: [FamiliarToolContext.Resource],
+        files: [FamiliarFileSnapshot] = [],
         attachments: [FamiliarToolContext.Attachment],
         skills: [FamiliarSkillSnapshot] = [],
         useStagingEnvironment: Bool = false
@@ -193,12 +194,34 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
             try ensureDirectory(inputs)
             try ensureDirectory(work)
             try ensureDirectory(environment)
-            for resource in resources {
+            let canonicalVersionIDs = Set(files.map { $0.reference.versionID })
+            var inputBytes: Int64 = 0
+            for file in files {
+                guard case .project(let projectID) = workspaceID,
+                      file.reference.projectID == projectID,
+                      file.byteSize <= FamiliarShellLimits.iOS.maximumFileBytes else {
+                    throw FamiliarWorkspaceError.invalidTaskView
+                }
+                inputBytes += file.byteSize
+                guard inputBytes <= FamiliarShellLimits.iOS.maximumWorkspaceBytes else {
+                    throw FamiliarWorkspaceError.invalidTaskView
+                }
+                let bytes = try FamiliarFileByteReader.read(file, projectID: projectID)
+                guard Int64(bytes.count) == file.byteSize else { throw FamiliarWorkspaceError.invalidTaskView }
+                let directory = inputs.appendingPathComponent("Versions/" + file.reference.versionID.uuidString.lowercased(), isDirectory: true)
+                try ensureDirectory(directory)
+                let destination = directory.appendingPathComponent(safeFilename(file.filename))
+                try bytes.write(to: destination, options: [.atomic])
+                try protectFile(destination)
+            }
+            for resource in resources where !canonicalVersionIDs.contains(resource.versionID) {
                 let directory = inputs
                     .appendingPathComponent("Resources", isDirectory: true)
                     .appendingPathComponent(resource.id.uuidString.lowercased(), isDirectory: true)
                 try ensureDirectory(directory)
-                let destination = directory.appendingPathComponent(safeFilename(resource.filename), isDirectory: false)
+                let name = resource.mimeType == "text/plain" || resource.mimeType == "text/markdown"
+                    ? resource.filename : resource.filename + ".extracted.md"
+                let destination = directory.appendingPathComponent(safeFilename(name), isDirectory: false)
                 try Data(resource.extractedText.utf8).write(to: destination, options: [.atomic])
                 try protectFile(destination)
             }

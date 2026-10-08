@@ -34,6 +34,7 @@ nonisolated protocol FamiliarISHBridge: Sendable {
 
     func execute(
         taskID: UUID,
+        workspaceID: FamiliarWorkspaceID,
         command: String,
         workingDirectory: String,
         mounts: [FamiliarISHMount],
@@ -92,7 +93,13 @@ nonisolated final class FamiliarISHShellExecutor: FamiliarShellExecutor, @unchec
                           environmentIsValid,
                           (try? view.environment.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true
                     else { throw FamiliarWorkspaceError.invalidTaskView }
+                    let home = view.work.appendingPathComponent(".home", isDirectory: true)
+                    let temporary = view.work.appendingPathComponent(".tmp", isDirectory: true)
+                    try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+                    try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)
                     let mounts = [
+                        FamiliarISHMount(hostURL: home, guestPath: "/root", writable: true),
+                        FamiliarISHMount(hostURL: temporary, guestPath: "/tmp", writable: true),
                         FamiliarISHMount(
                             hostURL: view.files,
                             guestPath: "/workspace/files",
@@ -154,6 +161,7 @@ nonisolated final class FamiliarISHShellExecutor: FamiliarShellExecutor, @unchec
                     defer { resourceMonitor.cancel() }
                     let processEvents = bridge.execute(
                         taskID: request.taskID,
+                        workspaceID: request.workspaceID,
                         command: request.command,
                         workingDirectory: "/workspace/work",
                         mounts: mounts,
@@ -248,7 +256,8 @@ nonisolated final class FamiliarISHShellExecutor: FamiliarShellExecutor, @unchec
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in
+            continuation.onTermination = { @Sendable reason in
+                guard case .cancelled = reason else { return }
                 task.cancel()
                 Task { await self.bridge.cancel(taskID: request.taskID) }
             }
@@ -267,6 +276,7 @@ nonisolated struct FamiliarUnavailableISHBridge: FamiliarISHBridge {
 
     func execute(
         taskID _: UUID,
+        workspaceID _: FamiliarWorkspaceID,
         command _: String,
         workingDirectory _: String,
         mounts _: [FamiliarISHMount],
@@ -296,6 +306,7 @@ nonisolated final class FamiliarRealISHBridge: FamiliarISHBridge, @unchecked Sen
 
     func execute(
         taskID: UUID,
+        workspaceID: FamiliarWorkspaceID,
         command: String,
         workingDirectory: String,
         mounts: [FamiliarISHMount],
@@ -307,6 +318,7 @@ nonisolated final class FamiliarRealISHBridge: FamiliarISHBridge, @unchecked Sen
                 do {
                     try await state.start(
                         taskID: taskID,
+                        workspaceID: workspaceID,
                         command: command,
                         workingDirectory: workingDirectory,
                         mounts: mounts,
@@ -318,12 +330,45 @@ nonisolated final class FamiliarRealISHBridge: FamiliarISHBridge, @unchecked Sen
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in
+            continuation.onTermination = { @Sendable reason in
+                guard case .cancelled = reason else { return }
                 task.cancel()
                 Task { await self.state.cancel(taskID: taskID) }
             }
         }
     }
+
+    func openTerminal(taskID: UUID, workspaceID: FamiliarWorkspaceID,
+                      mounts: [FamiliarISHMount], command: String,
+                      networkPolicy: FamiliarShellNetworkPolicy,
+                      columns: Int = 80, rows: Int = 24) -> AsyncThrowingStream<FamiliarTerminalEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    try await prepare(configuration: .init(maximumProcessCount: FamiliarShellLimits.iOS.maximumProcessCount,
+                        maximumMemoryBytes: FamiliarShellLimits.iOS.maximumMemoryBytes))
+                    try Task.checkCancellation()
+                    try await state.startTerminal(taskID: taskID, workspaceID: workspaceID, mounts: mounts,
+                        command: command, networkPolicy: networkPolicy, columns: columns, rows: rows, continuation: continuation)
+                } catch { continuation.finish(throwing: error) }
+            }
+            continuation.onTermination = { @Sendable reason in
+                guard case .cancelled = reason else { return }
+                task.cancel()
+                Task { await self.state.closeTerminal(taskID: taskID) }
+            }
+        }
+    }
+
+    func sendTerminalInput(taskID: UUID, data: Data) async throws {
+        try await state.sendTerminalInput(taskID: taskID, data: data)
+    }
+    func resizeTerminal(taskID: UUID, columns: Int, rows: Int) async throws {
+        try await state.resizeTerminal(taskID: taskID, columns: columns, rows: rows)
+    }
+    func interruptTerminal(taskID: UUID) async { await state.interruptTerminal(taskID: taskID) }
+    func closeTerminal(taskID: UUID) async { await state.closeTerminal(taskID: taskID) }
+    func isIdle() async -> Bool { await state.isIdle }
 
     func cancel(taskID: UUID) async {
         await state.cancel(taskID: taskID)
@@ -357,8 +402,13 @@ private actor FamiliarRealISHRuntimeState {
             Task { @MainActor in FamiliarShellRuntimeStatus.shared.receive(phase, revision: revision) }
         }
     }
+    var isIdle: Bool { phase == .ready && activeTaskID == nil }
     private var activeTaskID: UUID?
     private var activePID: Int32?
+    private var activeExecutionOwner: UInt64?
+    private var activeWorkspaceID: FamiliarWorkspaceID?
+    private var activeTerminal: ISHTerminalSession?
+    private var terminalContinuation: AsyncThrowingStream<FamiliarTerminalEvent, Error>.Continuation?
     private var activeMounts: [String] = []
     private var completionGate: FamiliarISHCompletionGate?
     private var activeContinuation: AsyncThrowingStream<FamiliarISHProcessEvent, Error>.Continuation?
@@ -366,6 +416,7 @@ private actor FamiliarRealISHRuntimeState {
     func prepare(configuration _: FamiliarISHRuntimeConfiguration) async throws {
         if phase == .ready { return }
         if case .running = phase { return }
+        guard activeTaskID == nil else { throw FamiliarShellExecutorError.unavailable }
         if let preparation {
             try await preparation.value
             if phase == .booting { phase = .ready }
@@ -395,7 +446,9 @@ private actor FamiliarRealISHRuntimeState {
                 appropriateFor: nil,
                 create: true
             ).appendingPathComponent("Familiar/ShellRuntime", isDirectory: true)
-            let installed = support.appendingPathComponent("alpine-3.24.0-aarch64", isDirectory: true)
+            // Keep the prior writable guest base intact for inspection. Scoped executions
+            // start with a clean base so old root/home/temp content cannot cross Projects.
+            let installed = support.appendingPathComponent("alpine-3.24.0-aarch64-scoped-v1", isDirectory: true)
             let installationMarker = installed.appendingPathComponent("familiar-installation.json", isDirectory: false)
             let fakeFSMarker = installed.appendingPathComponent("meta.db", isDirectory: false)
             let dataDirectory = installed.appendingPathComponent("data", isDirectory: true)
@@ -453,6 +506,7 @@ private actor FamiliarRealISHRuntimeState {
 
     func start(
         taskID: UUID,
+        workspaceID: FamiliarWorkspaceID,
         command: String,
         workingDirectory: String,
         mounts: [FamiliarISHMount],
@@ -461,7 +515,9 @@ private actor FamiliarRealISHRuntimeState {
         continuation: AsyncThrowingStream<FamiliarISHProcessEvent, Error>.Continuation
     ) async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(timeout))
+        guard activeTerminal == nil else { throw FamiliarShellExecutorError.alreadyRunning }
         while activeTaskID != nil {
+            guard activeTerminal == nil else { throw FamiliarShellExecutorError.alreadyRunning }
             try Task.checkCancellation()
             guard ContinuousClock.now < deadline else { throw FamiliarShellExecutorError.alreadyRunning }
             try await Task.sleep(for: .milliseconds(25))
@@ -501,9 +557,11 @@ private actor FamiliarRealISHRuntimeState {
         completionGate = gate
         activeContinuation = continuation
         activeTaskID = taskID
+        activeWorkspaceID = workspaceID
+        ISHKernel.shared.setWorkspaceIsolationEnabled(true)
         phase = .running(taskID)
         let wrappedCommand = "ulimit -u 16; ulimit -v 524288; ulimit -f 262144; "
-            + "export VIRTUAL_ENV=/workspace/env; export PATH=/workspace/env/bin:$PATH; "
+            + "export HOME=/root TMPDIR=/tmp; export VIRTUAL_ENV=/workspace/env; export PATH=/workspace/env/bin:$PATH; "
             + "export PYTHONPATH=/workspace/env/site-packages${PYTHONPATH:+:$PYTHONPATH}; "
             + "cd -- \(Self.shellQuote(workingDirectory)) && \(command)"
         let callbacks = FamiliarISHProcessCallbackBox(
@@ -523,11 +581,12 @@ private actor FamiliarRealISHRuntimeState {
             throw FamiliarShellExecutorError.unavailable
         }
         activePID = Int32(pid)
+        activeExecutionOwner = ISHShellExecutor.executionOwner(forProcess: pid)
 
         Task {
             try? await Task.sleep(for: .seconds(timeout))
             guard gate.finish() else { return }
-            let stopped = ISHShellExecutor.terminateProcessTree(pid, timeout: 5)
+            let stopped = ISHShellExecutor.terminateExecutionOwner(self.activeExecutionOwner ?? 0, timeout: 5)
             continuation.yield(.timedOut)
             if stopped { self.finish(taskID: taskID) }
             else { self.phase = .failed("Timed-out guest processes did not terminate; restart Familiar before retrying.") }
@@ -537,9 +596,10 @@ private actor FamiliarRealISHRuntimeState {
 
     func cancel(taskID: UUID) {
         guard activeTaskID == taskID else { return }
+        if activeTerminal != nil { closeTerminal(taskID: taskID); return }
         let continuation = activeContinuation
         let shouldFinishStream = completionGate?.finish() ?? false
-        let stopped = activePID.map { ISHShellExecutor.terminateProcessTree($0, timeout: 5) } ?? true
+        let stopped = activeExecutionOwner.map { ISHShellExecutor.terminateExecutionOwner($0, timeout: 5) } ?? true
         if stopped { finish(taskID: taskID) }
         else { phase = .failed("Guest processes did not terminate; restart Familiar before retrying.") }
         if shouldFinishStream {
@@ -555,7 +615,12 @@ private actor FamiliarRealISHRuntimeState {
         }
         activeMounts = []
         activePID = nil
+        activeExecutionOwner = nil
+        activeWorkspaceID = nil
+        activeTerminal = nil
+        terminalContinuation = nil
         activeTaskID = nil
+        ISHKernel.shared.setWorkspaceIsolationEnabled(false)
         completionGate = nil
         activeContinuation = nil
         phase = .ready
@@ -568,8 +633,117 @@ private actor FamiliarRealISHRuntimeState {
         )
     }
 
-    fileprivate func finishFromCallback(taskID: UUID) {
+    fileprivate func finishFromCallback(taskID: UUID) -> Bool {
+        guard activeTaskID == taskID else { return true }
+        guard let owner = activeExecutionOwner,
+              ISHShellExecutor.terminateExecutionOwner(owner, timeout: 5) else {
+            phase = .failed("Guest descendants did not terminate; restart Familiar before retrying.")
+            return false
+        }
         finish(taskID: taskID)
+        return true
+    }
+
+    func startTerminal(taskID: UUID, workspaceID: FamiliarWorkspaceID, mounts: [FamiliarISHMount],
+                       command: String, networkPolicy: FamiliarShellNetworkPolicy,
+                       columns: Int, rows: Int,
+                       continuation: AsyncThrowingStream<FamiliarTerminalEvent, Error>.Continuation) throws {
+        try Task.checkCancellation()
+        guard case .project = workspaceID, activeTaskID == nil else { throw FamiliarShellExecutorError.alreadyRunning }
+        guard phase == .ready else { throw FamiliarShellExecutorError.unavailable }
+        guard (2...500).contains(columns), (2...300).contains(rows) else { throw FamiliarWorkspaceError.invalidTaskView }
+        if networkPolicy.enabled, !ISHKernel.shared.configureDNS() { throw FamiliarShellExecutorError.networkConfigurationFailed }
+        do {
+            for mount in mounts {
+                guard ISHKernel.shared.bindMountPath(mount.guestPath, toHostPath: mount.hostURL.path, readOnly: !mount.writable) == 0 else {
+                    throw FamiliarWorkspaceError.invalidTaskView
+                }
+                activeMounts.append(mount.guestPath)
+            }
+        } catch {
+            for path in activeMounts.reversed() { _ = ISHKernel.shared.bindUnmountPath(path) }
+            activeMounts = []
+            throw error
+        }
+        FamiliarISHNetworkController.configureEnabled(networkPolicy.enabled,
+            maximumConcurrentConnections: UInt(networkPolicy.maximumConcurrentConnections),
+            maximumTotalConnections: UInt(networkPolicy.maximumTotalConnections),
+            maximumBytesReceived: UInt64(max(0, networkPolicy.maximumBytesReceived)),
+            maximumBytesSent: UInt64(max(0, networkPolicy.maximumBytesSent)))
+        activeTaskID = taskID
+        activeWorkspaceID = workspaceID
+        terminalContinuation = continuation
+        let callbacks = FamiliarTerminalCallbackBox(state: self, taskID: taskID, continuation: continuation)
+        let session = ISHTerminalSession(maximumOutputBytes: UInt(FamiliarShellLimits.iOS.maximumOutputBytes),
+            output: callbacks.output, exited: callbacks.exited, failed: callbacks.failed)
+        activeTerminal = session
+        ISHKernel.shared.setWorkspaceIsolationEnabled(true)
+        phase = .running(taskID)
+        let wrapped = "ulimit -u 16; ulimit -v 524288; ulimit -f 262144; cd /workspace/work && " + command
+        let pid = session.start(command: wrapped, columns: UInt(columns), rows: UInt(rows))
+        guard pid > 1 else {
+            let stopped = session.close()
+            if stopped { finish(taskID: taskID) }
+            else { phase = .failed("Terminal startup could not be cleaned up; restart Familiar.") }
+            throw FamiliarShellExecutorError.unavailable
+        }
+        activePID = Int32(pid)
+        continuation.yield(.started)
+    }
+
+    func sendTerminalInput(taskID: UUID, data: Data) async throws {
+        guard data.count <= 65_536 else { throw FamiliarWorkspaceError.invalidTaskView }
+        var offset = 0
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while offset < data.count {
+            try Task.checkCancellation()
+            guard activeTaskID == taskID, let session = activeTerminal else { throw FamiliarShellExecutorError.unavailable }
+            let size = min(4096, data.count - offset)
+            let accepted = session.sendInput(data.subdata(in: offset..<(offset + size)))
+            if accepted > 0 { offset += Int(accepted) }
+            else {
+                guard accepted == -11 || accepted == 0, ContinuousClock.now < deadline else {
+                    throw FamiliarShellExecutorError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+    }
+
+    func resizeTerminal(taskID: UUID, columns: Int, rows: Int) throws {
+        guard (2...500).contains(columns), (2...300).contains(rows), activeTaskID == taskID,
+              activeTerminal?.resizeColumns(UInt(columns), rows: UInt(rows)) == true else {
+            throw FamiliarWorkspaceError.invalidTaskView
+        }
+    }
+    func interruptTerminal(taskID: UUID) {
+        guard activeTaskID == taskID else { return }
+        activeTerminal?.interrupt()
+    }
+    func closeTerminal(taskID: UUID) {
+        guard activeTaskID == taskID, let session = activeTerminal else { return }
+        let continuation = terminalContinuation
+        let stopped = session.close()
+        if stopped { finish(taskID: taskID); continuation?.yield(.cancelled) }
+        else {
+            phase = .failed("Terminal processes did not terminate; restart Familiar.")
+            continuation?.yield(.failed("Terminal processes did not terminate; restart Familiar."))
+        }
+        continuation?.finish()
+    }
+    func terminalDidExit(taskID: UUID, exitCode: Int32?, failure: String?) {
+        guard activeTaskID == taskID, let session = activeTerminal else { return }
+        let continuation = terminalContinuation
+        let stopped = session.close()
+        if stopped {
+            finish(taskID: taskID)
+            if let failure { continuation?.yield(.failed(failure)) }
+            else { continuation?.yield(.exited(exitCode ?? -1)) }
+        } else {
+            phase = .failed("Terminal descendants did not terminate; restart Familiar.")
+            continuation?.yield(.failed("Terminal descendants did not terminate; restart Familiar."))
+        }
+        continuation?.finish()
     }
 
     private static func shellQuote(_ value: String) -> String {
@@ -623,7 +797,7 @@ private nonisolated final class FamiliarISHProcessCallbackBox: @unchecked Sendab
             let taskID = taskID
             Task.detached {
                 if !report {
-                    await state.finishFromCallback(taskID: taskID)
+                    _ = await state.finishFromCallback(taskID: taskID)
                     return
                 }
                 let counters = FamiliarISHNetworkController.counters()
@@ -633,10 +807,30 @@ private nonisolated final class FamiliarISHProcessCallbackBox: @unchecked Sendab
                     bytesReceived: Int64(clamping: counters.bytesReceived),
                     bytesSent: Int64(clamping: counters.bytesSent)
                 )))
-                continuation.yield(.exited(exitCode))
-                await state.finishFromCallback(taskID: taskID)
+                let stopped = await state.finishFromCallback(taskID: taskID)
+                if stopped { continuation.yield(.exited(exitCode)) }
+                else { continuation.yield(.resourceLimitExceeded("Guest descendants did not terminate; restart Familiar before retrying.")) }
                 continuation.finish()
             }
+        }
+    }
+}
+
+private nonisolated final class FamiliarTerminalCallbackBox: @unchecked Sendable {
+    let state: FamiliarRealISHRuntimeState
+    let taskID: UUID
+    let continuation: AsyncThrowingStream<FamiliarTerminalEvent, Error>.Continuation
+    init(state: FamiliarRealISHRuntimeState, taskID: UUID, continuation: AsyncThrowingStream<FamiliarTerminalEvent, Error>.Continuation) {
+        self.state = state; self.taskID = taskID; self.continuation = continuation
+    }
+    var output: @Sendable (Data) -> Void { { [self] in continuation.yield(.output($0)) } }
+    var exited: @Sendable (Int32) -> Void {
+        { [self] code in Task.detached { await self.state.terminalDidExit(taskID: self.taskID, exitCode: code, failure: nil) } }
+    }
+    var failed: @Sendable (any Error) -> Void {
+        { [self] error in
+            let detail = error.localizedDescription
+            Task.detached { await self.state.terminalDidExit(taskID: self.taskID, exitCode: nil, failure: detail) }
         }
     }
 }

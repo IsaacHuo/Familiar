@@ -4,6 +4,7 @@
 #include <netdb.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <stdatomic.h>
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <zlib.h>
@@ -20,6 +21,12 @@
 #include "fs/path.h"
 #include "fs/tty.h"
 #include "FamiliarISHNetworkPolicy.h"
+#include "FamiliarISHFilesystemPolicy.h"
+
+static atomic_bool workspaceIsolationEnabled = false;
+bool familiar_ish_workspace_isolation_enabled(void) {
+    return atomic_load(&workspaceIsolationEnabled);
+}
 
 NSNotificationName const ISHProcessExitedNotification = @"FamiliarISHProcessExited";
 
@@ -75,6 +82,10 @@ static void FamiliarISHHandleProcessExit(struct task *task, int code) {
     @synchronized(self) {
         return _isBooted;
     }
+}
+
+- (void)setWorkspaceIsolationEnabled:(BOOL)enabled {
+    atomic_store(&workspaceIsolationEnabled, enabled);
 }
 
 - (int)bootWithRootPath:(NSString *)rootPath {
