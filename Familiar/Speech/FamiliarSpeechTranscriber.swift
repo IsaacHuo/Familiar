@@ -239,13 +239,19 @@ public final class FamiliarSpeechTranscriber {
 
     private func requestSpeechAuthorization() async -> SFSpeechRecognizerAuthorizationStatus {
         await withCheckedContinuation { continuation in
-            SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
+            SFSpeechRecognizer.requestAuthorization { status in
+                // TCC answers on a background queue; this continuation belongs to
+                // the main actor and must resume there.
+                Task { @MainActor in continuation.resume(returning: status) }
+            }
         }
     }
 
     private func requestMicrophonePermission() async -> Bool {
         await withCheckedContinuation { continuation in
-            AVAudioApplication.requestRecordPermission { continuation.resume(returning: $0) }
+            AVAudioApplication.requestRecordPermission { granted in
+                Task { @MainActor in continuation.resume(returning: granted) }
+            }
         }
     }
 
