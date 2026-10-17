@@ -50,24 +50,20 @@ private struct FamiliarComposerLayout: Layout {
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        guard subviews.count == 3 else { return }
+        guard subviews.count == 2 else { return }
         if mode == .compact {
             let y = bounds.minY + max((bounds.height - control) / 2, 0)
             let sendX = bounds.maxX - control
-            let micX = sendX - 2 - control
             let editorX = bounds.minX + control * CGFloat(leadingControlCount) + CGFloat(max(leadingControlCount - 1, 0) * 2) + 4
-            let editorWidth = max(micX - 4 - editorX, 1)
+            let editorWidth = max(sendX - 4 - editorX, 1)
             subviews[0].place(at: CGPoint(x: editorX, y: bounds.minY), anchor: .topLeading, proposal: .init(width: editorWidth, height: bounds.height))
-            subviews[1].place(at: CGPoint(x: micX, y: y), anchor: .topLeading, proposal: .init(width: control, height: control))
-            subviews[2].place(at: CGPoint(x: sendX, y: y), anchor: .topLeading, proposal: .init(width: control, height: control))
+            subviews[1].place(at: CGPoint(x: sendX, y: y), anchor: .topLeading, proposal: .init(width: control, height: control))
         } else {
             let toolbarY = bounds.maxY - control
             let textHeight = max(toolbarY - 8 - bounds.minY, 1)
             let sendX = bounds.maxX - control
-            let micX = sendX - 2 - control
             subviews[0].place(at: CGPoint(x: bounds.minX, y: bounds.minY), anchor: .topLeading, proposal: .init(width: bounds.width, height: textHeight))
-            subviews[1].place(at: CGPoint(x: micX, y: toolbarY), anchor: .topLeading, proposal: .init(width: control, height: control))
-            subviews[2].place(at: CGPoint(x: sendX, y: toolbarY), anchor: .topLeading, proposal: .init(width: control, height: control))
+            subviews[1].place(at: CGPoint(x: sendX, y: toolbarY), anchor: .topLeading, proposal: .init(width: control, height: control))
         }
     }
 
@@ -236,7 +232,6 @@ struct FamiliarComposer: View {
                 leadingControlCount: isAnsweringClarification ? 0 : (mode == .compact ? 1 : 2)
             ) {
                 editor
-                micButton
                 sendButton
             }
             .frame(height: mode == .fullscreen ? nil : controlsHeight)
