@@ -115,17 +115,14 @@ struct FamiliarReleaseToolTests {
     }
 #endif
 
-    @Test("Clipboard proposals do not read or write before commit")
+    @Test("Clipboard read returns a read result; write waits for commit")
     @MainActor
     func clipboardCommitBoundary() async throws {
         let readSpy = FamiliarClipboardSpy(value: "private")
         let readOutcome = try await FamiliarClipboardReadTool(service: readSpy).execute(.init(), context: .init(runID: "run", toolCallID: "read"))
-        guard case .action(let readProposal) = readOutcome else { Issue.record("Expected clipboard read proposal"); return }
-        #expect(readSpy.readCount == 0)
-        let readCommit = try await readProposal.commit()
+        guard case .result(let readResult) = readOutcome else { Issue.record("Expected clipboard read result"); return }
         #expect(readSpy.readCount == 1)
-        #expect(readCommit.result.modelContent.contains("private"))
-        #expect(readCommit.undo == nil)
+        #expect(readResult.modelContent.contains("private"))
 
         let writeSpy = FamiliarClipboardSpy(value: "before")
         let writeOutcome = try await FamiliarClipboardWriteTool(service: writeSpy).execute(.init(text: "after"), context: .init(runID: "run", toolCallID: "write"))
@@ -170,7 +167,7 @@ struct FamiliarReleaseToolTests {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("FamiliarReleaseWorkspace-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
         let store = FamiliarWorkspaceStore(rootURL: root, quotaBytes: 1_048_576)
-        let workspaceID = FamiliarWorkspaceID.project(UUID())
+        let workspaceID = FamiliarWorkScope.project(UUID())
         _ = try store.write(Data("keep".utf8), relativePath: "Outputs/unrelated.txt", in: workspaceID)
 
         let resourceID = UUID()

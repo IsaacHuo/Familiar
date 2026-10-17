@@ -177,7 +177,7 @@ nonisolated struct FamiliarShellLimits: Equatable, Sendable {
 nonisolated struct FamiliarShellRequest: Sendable {
     let taskID: UUID
     let command: String
-    let workspaceID: FamiliarWorkspaceID
+    let workspaceID: FamiliarWorkScope
     let workspaceView: FamiliarWorkspaceTaskView
     let timeout: TimeInterval
     let runID: String
@@ -207,7 +207,7 @@ nonisolated struct FamiliarShellResult: Equatable, Sendable {
 }
 
 extension FamiliarWorkspaceStore {
-    nonisolated func shellSettings(in id: FamiliarWorkspaceID) throws -> FamiliarShellWorkspaceSettings {
+    nonisolated func shellSettings(in id: FamiliarWorkScope) throws -> FamiliarShellWorkspaceSettings {
         let url = try shellSettingsURL(in: id)
         guard FileManager.default.fileExists(atPath: url.path) else {
             return FamiliarShellWorkspaceSettings()
@@ -221,7 +221,7 @@ extension FamiliarWorkspaceStore {
         return settings
     }
 
-    nonisolated func saveShellSettings(_ settings: FamiliarShellWorkspaceSettings, in id: FamiliarWorkspaceID) throws {
+    nonisolated func saveShellSettings(_ settings: FamiliarShellWorkspaceSettings, in id: FamiliarWorkScope) throws {
         let url = try shellSettingsURL(in: id)
         let data = try JSONEncoder().encode(settings)
         try data.write(to: url, options: [.atomic])
@@ -233,7 +233,7 @@ extension FamiliarWorkspaceStore {
 #endif
     }
 
-    nonisolated func setShellNetworkEnabled(_ enabled: Bool, in id: FamiliarWorkspaceID) throws {
+    nonisolated func setShellNetworkEnabled(_ enabled: Bool, in id: FamiliarWorkScope) throws {
         try saveShellSettings(.init(networkEnabled: enabled), in: id)
     }
 }

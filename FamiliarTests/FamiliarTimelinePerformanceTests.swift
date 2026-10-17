@@ -26,8 +26,7 @@ final class FamiliarTimelinePerformanceTests: XCTestCase {
             onInsertPrompt: { _ in }, onUndo: { _, _ in }, onEdit: { _ in },
             onRetry: { _ in }, onRetryRecovery: { _ in }, scrollSession: session)
         let host = UIHostingController(rootView: NavigationStack { timeline })
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 350, height: 800))
-        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene { window.windowScene = scene }
+        let window = familiarTestWindow(width: 350, height: 800)
         window.rootViewController = host
         let start = ProcessInfo.processInfo.systemUptime
         window.makeKeyAndVisible()

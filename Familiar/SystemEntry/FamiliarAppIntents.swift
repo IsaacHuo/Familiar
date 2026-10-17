@@ -46,10 +46,6 @@ struct AskFamiliarIntent: AppIntent {
     nonisolated static let title: LocalizedStringResource = "Ask Familiar"
     nonisolated static let description = IntentDescription("Open Familiar and run a question with the selected model provider.")
 
-    @available(iOS, introduced: 18.0, deprecated: 26.0, message: "Use supportedModes on iOS 26 and later.")
-    nonisolated static var openAppWhenRun: Bool { true }
-
-    @available(iOS 26.0, *)
     nonisolated static let supportedModes: IntentModes = .foreground
 
     @Parameter(title: "Question")
@@ -71,10 +67,6 @@ struct ProcessWithFamiliarIntent: AppIntent {
     nonisolated static let title: LocalizedStringResource = "Process with Familiar"
     nonisolated static let description = IntentDescription("Open Familiar and run provided text as a new request.")
 
-    @available(iOS, introduced: 18.0, deprecated: 26.0, message: "Use supportedModes on iOS 26 and later.")
-    nonisolated static var openAppWhenRun: Bool { true }
-
-    @available(iOS 26.0, *)
     nonisolated static let supportedModes: IntentModes = .foreground
 
     @Parameter(
@@ -99,10 +91,6 @@ nonisolated struct OpenFamiliarIntent: AppIntent {
     static let title: LocalizedStringResource = "Open Familiar"
     static let description = IntentDescription("Open Familiar without changing the current draft or conversation.")
 
-    @available(iOS, introduced: 18.0, deprecated: 26.0, message: "Use supportedModes on iOS 26 and later.")
-    static var openAppWhenRun: Bool { true }
-
-    @available(iOS 26.0, *)
     static let supportedModes: IntentModes = .foreground
 
     func perform() async throws -> some IntentResult {

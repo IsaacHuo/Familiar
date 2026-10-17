@@ -395,7 +395,7 @@ nonisolated struct FamiliarClipboardReadTool: FamiliarTool {
     let manifest = FamiliarToolManifest(
         name: "clipboard_read",
         title: "读取剪贴板",
-        description: "经用户确认后读取当前系统剪贴板中的文本。",
+        description: "读取当前系统剪贴板中的文本，服从系统粘贴权限。",
         parameters: .init(type: .object, properties: [:], required: []),
         effect: .read,
         risk: .sensitive,
@@ -406,30 +406,12 @@ nonisolated struct FamiliarClipboardReadTool: FamiliarTool {
     )
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
-        .action(FamiliarActionProposal(
-            title: "允许读取剪贴板？",
-            fields: [],
-            target: "clipboard",
-            effect: manifest.effect,
-            risk: manifest.risk,
-            consequence: "剪贴板文本会进入当前 Agent Run 的模型上下文。",
-            undoPolicy: .unavailable,
-            idempotencyKey: context.idempotencyKey,
-            commit: {
-                let text = try await service.readText() ?? ""
-                let result = FamiliarToolExecutionResult(envelope: try FamiliarToolResultEnvelope(
-                    model: Output(text: text),
-                    presentation: .document(.init(
-                        summary: text.isEmpty ? "剪贴板中没有文本。" : "已读取剪贴板文本。",
-                        title: "Clipboard",
-                        text: text,
-                        mimeType: "text/plain"
-                    ))
-                ))
-                return FamiliarCommittedAction(result: result)
-            }
-        ))
+        let text = try await service.readText() ?? ""
+        return .result(.init(envelope: try FamiliarToolResultEnvelope(model: Output(text: text),
+            presentation: .document(.init(summary: text.isEmpty ? "剪贴板中没有文本。" : "已读取剪贴板文本。",
+                                         title: "Clipboard", text: text, mimeType: "text/plain")))))
     }
+
 }
 
 nonisolated struct FamiliarClipboardWriteTool: FamiliarTool {

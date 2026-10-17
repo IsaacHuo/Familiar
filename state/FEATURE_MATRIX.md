@@ -1,10 +1,10 @@
 # Functional Feature Matrix
 
-Baseline: 2026-10-08. 54 unconditional + 2 runtime-asset tools. Source is not acceptance. Schema 4.0.0 / 37 entities; actual migration acceptance is separate.
+Baseline: 2026-10-08. 54 unconditional + 2 runtime-asset tools. Source is not acceptance. Current storage: schema 5.0.0 / 37 entities, one authorized business-generation reset; no migration chain. Earlier execution evidence below belongs to its dated baseline and does not validate the 2026-10-17 work-scope change.
 
 S/E/D/F/C/R = success/empty/denied/failure/cancelled/relaunch. Writes: A/J/X/U/I = approve/reject/duplicate/undo/interrupted. Pending means no execution evidence on the current FC baseline. N/A requires a reason. Source/fixture/compiled/executed/live-service/signed-device are distinct.
 
-Shared tool path: Chat > tools_load > exposed schema > Project/Skill scope > Policy > permission/preflight > adapter > persistence-gated ToolResult/Activity. Exact authorizations and pre-action journals protect writes; uncertain effects never replay. Default discovery is FamiliarToolGroup.isDefaultEnabled; saved Project bindings override it. This does not grant system permission or write authorization.
+Shared tool path: Chat > tools_load > exposed schema > Project/Skill scope > Policy > permission/preflight > adapter > persistence-gated ToolResult/Activity. S2a allows enabled reversible built-in File/Workspace writes and checked, checkpointed offline Shell automatically; other writes retain approval or exact authorization. Pre-action journals protect writes; uncertain effects never replay. Default discovery is FamiliarToolGroup.isDefaultEnabled; saved Project bindings override it. This does not grant system permission or write authorization.
 
 ## Current executed evidence (2026-10-08)
 
@@ -106,10 +106,14 @@ Shared tool path: Chat > tools_load > exposed schema > Project/Skill scope > Pol
 | System | DeepLink/Spotlight/notification handoff | RootView/Spotlight/Notifications | Lock/busy/existence/index deletion; WP5/PinService | Pending applicable six/write states; source-reviewed only; owning FC stage |
 | Settings | 23 routes/configuration/toggles | SettingsHub/Provider/Voice/MCP/Projects | UserDefaults/SwiftData/Keychain; FC-N01 save errors visible, default on-demand native discovery; UIFeedback | Pending applicable six/write states; source-reviewed only; owning FC stage |
 | Security | App Lock/OS permission/authorization revoke | AppLock/CapabilityProvider/AuthorizationService | OS permission differs from exact action authorization; AuthorizationBoundary/ReleaseCompliance | Pending applicable six/write states; source-reviewed only; owning FC stage |
-| Persistence | disk upgrades 1/2/3/4 | SchemaMigrationPlan/FrozenStoreSchemaV1 | IDs/bytes/audit/Undo retained; PersistenceRelease | Original-store disk upgrade/reopen/failed-open preservation executed in the 38-test Files package; real-user coverage installation pending |
+| Persistence | current schema / business generation | FamiliarReleaseSchema / FamiliarBusinessDataGeneration | One-time business reset preserves Keychain/configuration; later open failures enter recovery; WorkScope/PersistenceRelease | Build only for this slice; reset/reopen/lifecycle execution pending |
 | Persistence | recovery/process kill/DB+file compensation/Undo | RunRecovery/FileCatalog/Recorder/Undo | Uncertain commits never replay; failed open never resets; CommitBoundary/PersistenceRelease | Pending applicable six/write states; source-reviewed only; owning FC stage |
 | Renderer | Markdown/code/table/Mermaid/KaTeX/selection/copy | MarkdownWebView/Renderer/StreamingPresentation | Bundled CSP/stable identity; MarkdownWebKit/StreamingPresentation/ChatScroll/UI | Pending applicable six/write states; source-reviewed only; owning FC stage |
 | Research | CoreAI/FastVLM/FamiliarMac | unwired iOS production path | Excluded; no new research capability | Pending applicable six/write states; source-reviewed only; owning FC stage |
+
+## 2026-10-17 work-scope override
+
+Ordinary Chat has no default Project. Files/Workspace/Environment/authorization use typed Project or Conversation scope, including same-UUID isolation. Drawer previews 5 Project Chats / 20 ordinary Chats; full lists open separately. Project details lives only in ellipsis for Project Chat. Clipboard read returns read results; ready environment_prepare returns unchanged; Memory/install/MCP still require approval. This slice compiles only at the owner's request; no test execution or visual acceptance is implied. See docs/16-work-scope-convergence.md.
 
 ## Actual declared document formats
 

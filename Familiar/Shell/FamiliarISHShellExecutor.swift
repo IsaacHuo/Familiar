@@ -34,7 +34,7 @@ nonisolated protocol FamiliarISHBridge: Sendable {
 
     func execute(
         taskID: UUID,
-        workspaceID: FamiliarWorkspaceID,
+        workspaceID: FamiliarWorkScope,
         command: String,
         workingDirectory: String,
         mounts: [FamiliarISHMount],
@@ -276,7 +276,7 @@ nonisolated struct FamiliarUnavailableISHBridge: FamiliarISHBridge {
 
     func execute(
         taskID _: UUID,
-        workspaceID _: FamiliarWorkspaceID,
+        workspaceID _: FamiliarWorkScope,
         command _: String,
         workingDirectory _: String,
         mounts _: [FamiliarISHMount],
@@ -306,7 +306,7 @@ nonisolated final class FamiliarRealISHBridge: FamiliarISHBridge, @unchecked Sen
 
     func execute(
         taskID: UUID,
-        workspaceID: FamiliarWorkspaceID,
+        workspaceID: FamiliarWorkScope,
         command: String,
         workingDirectory: String,
         mounts: [FamiliarISHMount],
@@ -338,7 +338,7 @@ nonisolated final class FamiliarRealISHBridge: FamiliarISHBridge, @unchecked Sen
         }
     }
 
-    func openTerminal(taskID: UUID, workspaceID: FamiliarWorkspaceID,
+    func openTerminal(taskID: UUID, workspaceID: FamiliarWorkScope,
                       mounts: [FamiliarISHMount], command: String,
                       networkPolicy: FamiliarShellNetworkPolicy,
                       columns: Int = 80, rows: Int = 24) -> AsyncThrowingStream<FamiliarTerminalEvent, Error> {
@@ -406,7 +406,7 @@ private actor FamiliarRealISHRuntimeState {
     private var activeTaskID: UUID?
     private var activePID: Int32?
     private var activeExecutionOwner: UInt64?
-    private var activeWorkspaceID: FamiliarWorkspaceID?
+    private var activeWorkspaceID: FamiliarWorkScope?
     private var activeTerminal: ISHTerminalSession?
     private var terminalContinuation: AsyncThrowingStream<FamiliarTerminalEvent, Error>.Continuation?
     private var activeMounts: [String] = []
@@ -506,7 +506,7 @@ private actor FamiliarRealISHRuntimeState {
 
     func start(
         taskID: UUID,
-        workspaceID: FamiliarWorkspaceID,
+        workspaceID: FamiliarWorkScope,
         command: String,
         workingDirectory: String,
         mounts: [FamiliarISHMount],
@@ -644,12 +644,12 @@ private actor FamiliarRealISHRuntimeState {
         return true
     }
 
-    func startTerminal(taskID: UUID, workspaceID: FamiliarWorkspaceID, mounts: [FamiliarISHMount],
+    func startTerminal(taskID: UUID, workspaceID: FamiliarWorkScope, mounts: [FamiliarISHMount],
                        command: String, networkPolicy: FamiliarShellNetworkPolicy,
                        columns: Int, rows: Int,
                        continuation: AsyncThrowingStream<FamiliarTerminalEvent, Error>.Continuation) throws {
         try Task.checkCancellation()
-        guard case .project = workspaceID, activeTaskID == nil else { throw FamiliarShellExecutorError.alreadyRunning }
+        guard activeTaskID == nil else { throw FamiliarShellExecutorError.alreadyRunning }
         guard phase == .ready else { throw FamiliarShellExecutorError.unavailable }
         guard (2...500).contains(columns), (2...300).contains(rows) else { throw FamiliarWorkspaceError.invalidTaskView }
         if networkPolicy.enabled, !ISHKernel.shared.configureDNS() { throw FamiliarShellExecutorError.networkConfigurationFailed }

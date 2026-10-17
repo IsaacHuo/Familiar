@@ -211,9 +211,9 @@ nonisolated struct FamiliarRestrictedHTTPClient: FamiliarWebHTTPTransport {
         var lines = [
             "\(method) \(target) HTTP/1.1",
             "Host: \(host)",
-            "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1 Familiar/1",
+            "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1 Familiar/1",
             "Accept: text/html,application/xhtml+xml,text/plain;q=0.9",
-            "Accept-Encoding: identity",
+            "Accept-Encoding: gzip, deflate",
             "Connection: close"
         ]
         if let body {
@@ -380,7 +380,10 @@ nonisolated enum FamiliarHTTPParser {
             guard rawBody.count <= bodyLimit else { throw FamiliarWebError.responseTooLarge }
             body = rawBody
         }
-        return .init(statusCode: head.statusCode, headers: head.headers, body: body)
+        // Compressed bytes are bounded by bodyLimit; decoded text may be larger.
+        let decoded = try FamiliarHTTPContentDecoding.decode(body, contentEncoding: head.headers["content-encoding"],
+                                                             limit: bodyLimit * 4)
+        return .init(statusCode: head.statusCode, headers: head.headers, body: decoded)
     }
 
     private static func parseHead(_ data: Data) throws -> Head? {
@@ -412,7 +415,7 @@ nonisolated enum FamiliarHTTPParser {
     }
 
     private static func validateContentEncoding(_ headers: [String: String]) throws {
-        if let encoding = headers["content-encoding"], encoding.lowercased() != "identity" {
+        guard FamiliarHTTPContentDecoding.isSupported(headers["content-encoding"]) else {
             throw FamiliarWebError.unsupportedContentEncoding
         }
     }

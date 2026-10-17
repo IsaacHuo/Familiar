@@ -51,7 +51,7 @@ nonisolated struct FamiliarProjectResourceStore {
     ) throws -> FamiliarStoredResourceFile {
         guard version > 0 else { throw FamiliarProjectResourceStoreError.invalidRelativePath }
         let safeFilename = sanitizedFilename(filename)
-        let relativePath = "Projects/\(projectID.uuidString)/Resources/\(resourceID.uuidString)/Versions/\(version)-\(versionID.uuidString)/\(safeFilename)"
+        let relativePath = "\(FamiliarWorkScope.project(projectID).filePrefix)Resources/\(resourceID.uuidString)/Versions/\(version)-\(versionID.uuidString)/\(safeFilename)"
         let destination = try validatedURL(for: relativePath)
         let size = try regularFileSize(sourceURL)
         let sourceHash = try sha256(of: sourceURL)
@@ -99,18 +99,18 @@ nonisolated struct FamiliarProjectResourceStore {
     }
 
     func removeResource(projectID: UUID, resourceID: UUID) throws {
-        let relativePath = "Projects/\(projectID.uuidString)/Resources/\(resourceID.uuidString)"
+        let relativePath = "\(FamiliarWorkScope.project(projectID).filePrefix)Resources/\(resourceID.uuidString)"
         let url = try validatedURL(for: relativePath)
         if fileManager.fileExists(atPath: url.path) { try fileManager.removeItem(at: url) }
     }
 
     func stageProjectDirectory(projectID: UUID) throws -> FamiliarStagedResourceDirectory? {
-        try stageDirectory(relativePath: "Projects/\(projectID.uuidString)", name: projectID.uuidString)
+        try stageDirectory(relativePath: "Scopes/\(FamiliarWorkScope.project(projectID).directoryName)", name: projectID.uuidString)
     }
 
     func stageResourceDirectory(projectID: UUID, resourceID: UUID) throws -> FamiliarStagedResourceDirectory? {
         try stageDirectory(
-            relativePath: "Projects/\(projectID.uuidString)/Resources/\(resourceID.uuidString)",
+            relativePath: "\(FamiliarWorkScope.project(projectID).filePrefix)Resources/\(resourceID.uuidString)",
             name: resourceID.uuidString
         )
     }

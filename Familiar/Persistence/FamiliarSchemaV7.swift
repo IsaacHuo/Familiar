@@ -11,7 +11,8 @@ enum FamiliarSchemaV7: VersionedSchema {
     @Model
     final class FamiliarAuthorizationRuleRecord {
         @Attribute(.unique) var id: UUID
-        var projectID: UUID?
+        var scopeKey: String
+        var projectID: UUID? { FamiliarWorkScope(storageKey: scopeKey)?.projectID }
         var capabilityID: String
         var capabilityVersion: String
         var targetKey: String
@@ -24,9 +25,9 @@ enum FamiliarSchemaV7: VersionedSchema {
         var revokedAt: Date?
         var evidence: String
 
-        init(id: UUID = UUID(), projectID: UUID?, capabilityID: String, capabilityVersion: String, targetKey: String, argumentsHash: String, duration: FamiliarAuthorizationDuration, sessionID: String?, createdAt: Date = Date(), expiresAt: Date, evidence: String) {
+        init(id: UUID = UUID(), scope: FamiliarWorkScope, capabilityID: String, capabilityVersion: String, targetKey: String, argumentsHash: String, duration: FamiliarAuthorizationDuration, sessionID: String?, createdAt: Date = Date(), expiresAt: Date, evidence: String) {
             self.id = id
-            self.projectID = projectID
+            self.scopeKey = scope.storageKey
             self.capabilityID = capabilityID
             self.capabilityVersion = capabilityVersion
             self.targetKey = targetKey

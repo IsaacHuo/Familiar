@@ -30,26 +30,33 @@ nonisolated struct FamiliarExecutionPolicy: Sendable {
         }
         if case .unavailable(let reason) = availability { return denied(reason) }
         if case .denied(let reason) = assessment.disposition { return denied(reason) }
+        if manifest.requiredScopes.contains("workspace"), context.workspaceID == nil { return denied("This tool requires a work scope.") }
         if manifest.requiredScopes.contains("project"), context.projectID == nil { return denied("This tool requires a Project.") }
         if let reason = scopeViolation(toolName: call.name, exposed: true, skill: context.activeSkill) { return denied(reason) }
         guard assessment.effect == manifest.effect else { return denied("The preflight effect differs from the tool declaration.") }
         let effect = proposal?.effect ?? assessment.effect
         let risk = Self.maximumRisk(manifest.risk, assessment.risk, proposal?.risk ?? manifest.risk)
-        let offlineShell = manifest.name == "shell_execute" && manifest.source == .builtIn
-            && effect == .reversibleWrite && risk == .low && assessment.disposition == .automatic
         let ordinaryRead = manifest.effect == .read && proposal == nil && risk != .high
             && assessment.disposition == .automatic && availability == .available
-        if ordinaryRead || offlineShell {
+        if ordinaryRead {
             return .init(decision: .allow, approval: nil, authorizationScope: nil, automatic: true)
         }
         if manifest.effect != .read, proposal == nil {
             return .init(decision: .requireApproval, approval: nil, authorizationScope: nil, automatic: false)
         }
+        let localNames: Set<String> = ["file_write", "file_edit", "file_publish", "workspace_write", "shell_execute"]
+        if manifest.source == .builtIn, localNames.contains(manifest.name),
+           effect == .reversibleWrite, context.workspaceID != nil,
+           assessment.disposition == .automatic, assessment.risk != .high,
+           let proposal, proposal.undoPolicy != .unavailable,
+           proposal.risk != .high {
+            return .init(decision: .allow, approval: nil, authorizationScope: nil, automatic: true)
+        }
         let targetKey = proposal?.targetKey ?? assessment.targetKey
         let durations: [FamiliarAuthorizationDuration] = manifest.effect == .read ? [.once, .session] : (proposal?.allowedAuthorizationDurations ?? [.once])
         let mayReuse = manifest.source != .mcp && (effect == .read || (effect == .reversibleWrite && risk != .high))
         let scope = mayReuse ? try await authorization?.matchingAuthorizationScope(manifest: manifest,
-            arguments: call.arguments, projectID: context.projectID, targetKey: targetKey) : nil
+            arguments: call.arguments, scope: context.workspaceID, targetKey: targetKey) : nil
         let reused = scope.flatMap { durations.contains($0) ? $0 : nil }
         let fields = proposal?.fields ?? (assessment.fields.isEmpty
             ? [.init(id: "access_scope", label: String(localized: "approval.field.scope", defaultValue: "Scope"), type: .text, value: manifest.description)] : assessment.fields)
@@ -84,22 +91,22 @@ nonisolated struct FamiliarExecutionPolicy: Sendable {
     }
 
     func revalidateAuthorization(evaluation: FamiliarPolicyEvaluation, manifest: FamiliarToolManifest,
-                                 call: FamiliarToolCall, projectID: UUID?, targetKey: String,
+                                 call: FamiliarToolCall, scope: FamiliarWorkScope?, targetKey: String,
                                  authorization: (any FamiliarAuthorizationServicing)?) async throws {
-        guard let scope = evaluation.authorizationScope, scope != .once else { return }
+        guard let duration = evaluation.authorizationScope, duration != .once else { return }
         guard try await authorization?.matchingAuthorizationScope(manifest: manifest, arguments: call.arguments,
-            projectID: projectID, targetKey: targetKey) == scope else { throw FamiliarPolicyError.changedDuringApproval }
+            scope: scope, targetKey: targetKey) == duration else { throw FamiliarPolicyError.changedDuringApproval }
     }
 
     func recordApproval(_ decision: FamiliarToolConfirmationDecision, evaluation: FamiliarPolicyEvaluation,
-                        manifest: FamiliarToolManifest, call: FamiliarToolCall, projectID: UUID?, targetKey: String,
+                        manifest: FamiliarToolManifest, call: FamiliarToolCall, scope: FamiliarWorkScope?, targetKey: String,
                         authorization: (any FamiliarAuthorizationServicing)?) async throws {
         guard evaluation.authorizationScope == nil, !evaluation.automatic,
               let duration = decision.authorizationDuration, duration != .once,
               evaluation.approval?.allowedAuthorizationDurations.contains(duration) == true,
               let authorization else { return }
         try await authorization.issueAuthorization(duration: duration, manifest: manifest, arguments: call.arguments,
-            projectID: projectID, targetKey: targetKey, evidence: evaluation.approval?.title ?? manifest.title)
+            scope: scope, targetKey: targetKey, evidence: evaluation.approval?.title ?? manifest.title)
     }
 
     private static func maximumRisk(_ values: FamiliarToolRisk...) -> FamiliarToolRisk {

@@ -297,11 +297,7 @@ enum FamiliarSchemaV3: VersionedSchema {
     @Model
     final class FamiliarProject {
         /// Stable identity, independent of the localized name and install language.
-        static let dailyProjectID = UUID(uuidString: "FA0111A0-0000-4000-8000-000000000001")!
-        var isDefaultProject: Bool { id == Self.dailyProjectID }
-        var displayName: String {
-            isDefaultProject ? String(localized: "conversation.ordinary") : name
-        }
+        var displayName: String { name }
         var providerIDOverride: String?
         @Attribute(.unique) var id: UUID
         var name: String
@@ -471,6 +467,9 @@ enum FamiliarSchemaV3: VersionedSchema {
 
     @Model
     final class FamiliarContextSnapshotRecord {
+        var workScope: FamiliarWorkScope? {
+            projectID.map(FamiliarWorkScope.project) ?? .conversation(conversationID)
+        }
         @Attribute(.unique) var id: UUID
         var createdAt: Date
         var projectID: UUID?

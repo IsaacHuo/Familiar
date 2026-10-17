@@ -37,6 +37,44 @@ struct FamiliarWebTests {
         #expect(!FamiliarWebURLPolicy.isPublicAddress("fc00::1"))
         #expect(!FamiliarWebURLPolicy.isPublicAddress("::ffff:127.0.0.1"))
         #expect(FamiliarWebURLPolicy.isPublicAddress("2606:4700:4700::1111"))
+        // Proxy fake-IP range is reachable public traffic, not a LAN.
+        #expect(FamiliarWebURLPolicy.isPublicAddress("198.18.0.5"))
+    }
+
+    @Test("gzip and deflate bodies decode within the output bound")
+    func contentEncoding() throws {
+        let payload = Data(String(repeating: "hello web page ", count: 200).utf8)
+        let deflated = try (payload as NSData).compressed(using: .zlib) as Data
+        let gzip = Data([0x1F, 0x8B, 0x08, 0x00, 0, 0, 0, 0, 0x00, 0x03]) + deflated + Data(count: 8)
+        #expect(try FamiliarHTTPContentDecoding.decode(gzip, contentEncoding: "gzip", limit: 1_000_000) == payload)
+        #expect(try FamiliarHTTPContentDecoding.decode(deflated, contentEncoding: "deflate", limit: 1_000_000) == payload)
+        #expect(throws: FamiliarWebError.self) { try FamiliarHTTPContentDecoding.decode(gzip, contentEncoding: "gzip", limit: 100) }
+        #expect(throws: FamiliarWebError.self) { try FamiliarHTTPContentDecoding.decode(gzip, contentEncoding: "br", limit: 1_000_000) }
+        let response = Data("HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: \(gzip.count)\r\n\r\n".utf8) + gzip
+        #expect(try FamiliarHTTPParser.isComplete(response, bodyLimit: 1_000_000))
+    }
+
+    @Test("Chinese pages declared by meta charset decode without mojibake")
+    func metaCharset() throws {
+        let gb = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue)))
+        let body = try #require("<p>中文网页正文内容</p>".data(using: gb))
+        let html = Data("<html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=gbk\"></head><body>".utf8) + body
+        let text = try #require(FamiliarWebContentService.decodeText(html, contentType: "text/html"))
+        #expect(text.contains("中文网页正文内容"))
+        let header = try #require(FamiliarWebContentService.decodeText(body, contentType: "text/html; charset=GB2312"))
+        #expect(header.contains("中文网页"))
+    }
+
+    @Test("Extraction keeps content inside page-wide forms and flagged containers")
+    func extractionKeepsWrappedContent() throws {
+        let html = """
+        <html><body class="comments-enabled"><form id="aspnetForm"><div class="has-social-share">
+        <article><h1>Wrapped</h1><p>This paragraph is the real article content and must survive extraction intact.</p></article>
+        </div><input type="hidden" value="state"></form></body></html>
+        """
+        let result = try FamiliarWebContentService.extractReadableHTML(html)
+        #expect(result.text.contains("real article content"))
+        #expect(!result.text.contains("state"))
     }
 
     @Test("DNS addresses preserve resolver order while removing duplicates")

@@ -82,7 +82,7 @@ actor FamiliarRunState {
               let identifier = object["identifier"] as? String,
               let file = available.first(where: { "file_" + $0.reference.versionID.uuidString == identifier })
         else { return nil }
-        return file.reference.projectID.uuidString + "|" + file.reference.versionID.uuidString + "|" + file.contentHash
+        return file.reference.scope.storageKey + "|" + file.reference.versionID.uuidString + "|" + file.contentHash
             + "|" + FamiliarCanonicalJSON.argumentsHash(call.arguments)
     }
 

@@ -179,7 +179,7 @@ struct FamiliarRuntimePresentationTests {
         let fixture = try makeRun(project: true)
         defer { withExtendedLifetime(fixture.container) {} }
         let project = try #require(fixture.conversation.project)
-        let file = FamiliarStoredFileVersion(projectID: project.id, identifier: "output", title: "report.md", relativePath: "missing.md",
+        let file = FamiliarStoredFileVersion(scope: .project(project.id), identifier: "output", title: "report.md", relativePath: "missing.md",
             byteSize: 123, contentHash: "hash", createdByRunID: "run")
         fixture.context.insert(file)
         let envelope = try FamiliarToolResultEnvelope(canonicalModelJSON: "{}", presentation: .fileMutation(.init(summary: "Saved",

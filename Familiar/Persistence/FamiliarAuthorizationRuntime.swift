@@ -11,12 +11,13 @@ final class FamiliarAuthorizationRuntime: FamiliarAuthorizationServicing {
         self.sessionID = sessionID
     }
 
-    func matchingAuthorizationScope(manifest: FamiliarToolManifest, arguments: String, projectID: UUID?, targetKey: String) throws -> FamiliarAuthorizationDuration? {
+    func matchingAuthorizationScope(manifest: FamiliarToolManifest, arguments: String, scope: FamiliarWorkScope?, targetKey: String) throws -> FamiliarAuthorizationDuration? {
+        guard let scope else { return nil }
         let now = Date()
         let records = try context.fetch(FetchDescriptor<FamiliarAuthorizationRuleRecord>())
         let argumentHash = FamiliarCanonicalJSON.argumentsHash(arguments)
         guard let record = records.first(where: {
-            $0.revokedAt == nil && $0.expiresAt > now && $0.projectID == projectID
+            $0.revokedAt == nil && $0.expiresAt > now && $0.scopeKey == scope.storageKey
                 && FamiliarAuthorizationDuration(rawValue: $0.durationRawValue) != nil
                 && $0.capabilityID == manifest.id && $0.capabilityVersion == manifest.version
                 && $0.targetKey == targetKey
@@ -29,7 +30,8 @@ final class FamiliarAuthorizationRuntime: FamiliarAuthorizationServicing {
         return record.duration
     }
 
-    func issueAuthorization(duration: FamiliarAuthorizationDuration, manifest: FamiliarToolManifest, arguments: String, projectID: UUID?, targetKey: String, evidence: String) throws {
+    func issueAuthorization(duration: FamiliarAuthorizationDuration, manifest: FamiliarToolManifest, arguments: String, scope: FamiliarWorkScope?, targetKey: String, evidence: String) throws {
+        guard let scope else { throw FamiliarFileError.workScopeRequired }
         let now = Date()
         let lifetime: TimeInterval = switch duration {
         case .once: 10 * 60
@@ -37,7 +39,7 @@ final class FamiliarAuthorizationRuntime: FamiliarAuthorizationServicing {
         case .always: 365 * 24 * 60 * 60
         }
         context.insert(FamiliarAuthorizationRuleRecord(
-            projectID: projectID,
+            scope: scope,
             capabilityID: manifest.id,
             capabilityVersion: manifest.version,
             targetKey: targetKey,

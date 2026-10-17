@@ -66,7 +66,7 @@ full access 允许 / 拒绝 / restricted；查询时间范围与文字条件；�
 
 - 验证统一 Chat 顶栏的设置、工作区、模型和新对话入口；普通/项目工作区恢复各自最近会话，抽屉按置顶、可折叠项目和普通最近会话分区。
 - 抽屉、设置、Run timeline 与工具清单在中英文、VoiceOver 和极端 Dynamic Type 下可操作。
-- 核对冻结 37 实体 1.0.0 基线、正式 migration plan、Files 转换、Grant 历史归档与旧实体移除。磁盘升级/故障/重复打开回归必须实际执行后记录；编译与显式恢复流程不代表升级已验收。
+- 核对唯一当前 schema 5.0.0、37 实体、完整工作 scope 与业务代际重置。首次重置保留配置/凭据、重复启动保留新数据和打开失败恢复分别验收；构建不代表磁盘执行通过。
 - 创建/编辑/归档项目并拒绝重复项目名称；创建普通与项目聊天，确认项目指令只进入项目聊天；历史 Run 项目归属符合启动时快照。
 - 从 Composer 显式选择 Skill，确认只影响下一次 Run；为 Project 绑定候选 Skill，确认只暴露 metadata，`skill_read` 至多加载一个并冻结 snapshot/收窄工具，且不会自动注入或扩大 Capability。
 - 导入文本 PDF、扫描 PDF 和至少一种 Office 文档，确认进度、OCR、Quick Look、文件保护、两条项目聊天共享资料及超预算提示。
@@ -97,8 +97,8 @@ Share Extension（Notes/Safari/Files 来源、文件协调、签名环境）、D
 
 ### 2.8 SwiftData 恢复
 
-- Debug `FamiliarDevelopment.store` 与 Release `Familiar.store` 保留原地址，生产与测试容器使用同一 SchemaMigrationPlan。1.0.0 实际旧 store 是支持基线；更早开发 store 不兼容。
-- 迁移失败保留 store 与文件，进入恢复界面；不得自动重建。升级重复打开、缺失字节、存储失败、历史 Evidence/Undo 和跨 Project 隔离均需独立执行验收。
+- Debug `FamiliarDevelopment.store` 与 Release `Familiar.store` 使用同一当前 schema；不支持历史磁盘升级链。代际 5-work-scopes 按本次明确授权清空旧业务，成功后写完成标记。
+- 代际完成后的打开失败保留新 store 与文件，进入恢复页。重复打开、缺失字节、存储失败、历史 Evidence/Undo 与 project/conversation scope 隔离需独立验收。
 
 ### 2.9 Complex Task Golden Task
 
@@ -129,17 +129,17 @@ Share Extension（Notes/Safari/Files 来源、文件协调、签名环境）、D
 
 ### 构建
 
-- Debug generic iOS、Release generic iOS、iOS 18 arm64 Simulator 均通过。
+- 按切片记录具体构建 target、配置和平台；本次指定 arm64 iPhone 18 Pro Simulator，不使用 generic Simulator，不修改签名。
 - 当前 Xcode 稳定版 Swift 6 警告清零。
 - `build-for-testing` 只证明 App 与测试产物完成编译；只有实际执行 `test` 或 `test-without-building` 并记录结果，才能声明测试通过。
 - 先完成 `build-for-testing`，再运行 `Scripts/run-release-test-suites.sh <simulator-udid> <derived-data-path>`；脚本逐 suite 串行执行全部 Swift Testing 与 UI smoke，并保留每个 suite 的独立 xcresult。
 
 ### 数据
 
-- 当前 schema 与正式 migration plan 的源码/编译核对完成；新增迁移测试仅编译，磁盘执行尚未通过。
-- Chat deletion must retain committed Files; only drafts and unowned temporary bytes are removed. History/Undo/reopen behavior remains device acceptance.
-- Development 与 Release store 不相互搬迁；各自在原地址升级，失败保留数据，显式恢复保留 Keychain。
-- 后续版本保持冻结历史定义，采用增加、转换/校验、移除的迁移顺序；不自动清理历史。
+- 历史迁移方案已由本次已授权的业务重置替代。当前构建证据与待运行项见 16-work-scope-convergence.md。
+- Ordinary Chat deletion removes its owned Files and Workspace; Project Chat deletion retains shared Files. Moves copy and rebind linked versions. History/Undo/reopen remains device acceptance.
+- Development 与 Release store 不相互搬迁；业务代际完成后，普通打开失败保留新数据并进入恢复页。
+- 当前仅维护一个 schema。今后的数据保留或代际策略需单独明确；普通打开失败不能触发新一轮业务重置。
 
 ### Agent
 

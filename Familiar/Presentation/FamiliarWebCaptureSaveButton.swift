@@ -24,8 +24,9 @@ struct FamiliarWebCaptureSaveButton: View {
                 do {
                     let file = try FamiliarFileImportService().saveFetchedWebResult(
                         runtimeID: runtimeID, toolCallID: toolCallID, in: modelContext)
-                    let projectID = file.projectID
-                    savedProjectName = (try? modelContext.fetch(FetchDescriptor<FamiliarProject>(predicate: #Predicate { $0.id == projectID })))?.first?.displayName
+                    if let projectID = file.scope.projectID {
+                        savedProjectName = (try? modelContext.fetch(FetchDescriptor<FamiliarProject>(predicate: #Predicate { $0.id == projectID })))?.first?.displayName
+                    } else { savedProjectName = String(localized: "conversation.ordinary") }
                     errorMessage = nil
                     confirmation.confirm()
                     FamiliarHaptics.shared.perform(.success)
@@ -35,7 +36,7 @@ struct FamiliarWebCaptureSaveButton: View {
                     FamiliarHaptics.shared.perform(.warning)
                 }
             } label: {
-                Label(String(localized: confirmation.isConfirmed ? "common.saved" : "resource.web.save_to_project"), systemImage: confirmation.isConfirmed ? "checkmark" : "folder.badge.plus")
+                Label(String(localized: confirmation.isConfirmed ? "common.saved" : "resource.web.save_to_files"), systemImage: confirmation.isConfirmed ? "checkmark" : "folder.badge.plus")
                     .contentTransition(reduceMotion ? .opacity : .symbolEffect(.replace))
             }
             .buttonStyle(FamiliarPillButtonStyle(prominence: .secondary))

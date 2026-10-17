@@ -3,8 +3,12 @@ import SwiftData
 
 @Model
 final class FamiliarFileRecord {
+    var scope: FamiliarWorkScope {
+        get { FamiliarWorkScope(storageKey: scopeKey)! }
+        set { scopeKey = newValue.storageKey }
+    }
     @Attribute(.unique) var id: UUID
-    var projectID: UUID
+    private(set) var scopeKey: String
     var displayName: String
     var originRawValue: String
     var originKey: String?
@@ -16,10 +20,10 @@ final class FamiliarFileRecord {
     @Relationship(deleteRule: .cascade, inverse: \FamiliarFileVersionRecord.file)
     var versions: [FamiliarFileVersionRecord]
 
-    init(id: UUID = UUID(), projectID: UUID, displayName: String, origin: FamiliarFileOrigin,
+    init(id: UUID = UUID(), scope: FamiliarWorkScope, displayName: String, origin: FamiliarFileOrigin,
          isProjectContext: Bool = false, chatIDs: [UUID] = [], createdAt: Date = Date(), updatedAt: Date = Date()) {
         self.id = id
-        self.projectID = projectID
+        self.scopeKey = scope.storageKey
         self.displayName = displayName
         originRawValue = origin.rawValue
         self.isProjectContext = isProjectContext
@@ -43,10 +47,10 @@ final class FamiliarFileRecord {
     }
 
     var snapshot: FamiliarFileSnapshot? {
-        guard let version = latestVersion, version.projectID == projectID, version.fileID == id,
+        guard let version = latestVersion, version.scope == scope, version.fileID == id,
               let origin = FamiliarFileOrigin(rawValue: originRawValue),
               let kind = FamiliarFileStorageKind(rawValue: version.storageKindRawValue) else { return nil }
-        return .init(reference: .init(fileID: id, versionID: version.id, projectID: projectID),
+        return .init(reference: .init(fileID: id, versionID: version.id, scope: scope),
                      name: displayName, origin: origin, version: version.version, filename: version.filename,
                      mimeType: version.mimeType, byteSize: version.byteSize, contentHash: version.contentHash,
                      storage: .init(kind: kind, relativePath: version.storageRelativePath),
@@ -57,8 +61,12 @@ final class FamiliarFileRecord {
 /// Version payload is append-only. Changes create another row, never replace bytes.
 @Model
 final class FamiliarFileVersionRecord {
+    var scope: FamiliarWorkScope {
+        get { FamiliarWorkScope(storageKey: scopeKey)! }
+        set { scopeKey = newValue.storageKey }
+    }
     @Attribute(.unique) var id: UUID
-    var projectID: UUID
+    private(set) var scopeKey: String
     var fileID: UUID
     var identifier: String
     var version: Int
@@ -82,7 +90,7 @@ final class FamiliarFileVersionRecord {
          storage: FamiliarFileStorageReference, sourceURLString: String? = nil, provenanceJSON: String = "{}",
          createdByRunID: String? = nil, createdAt: Date = Date(), file: FamiliarFileRecord) {
         self.id = id
-        projectID = file.projectID
+        scopeKey = file.scopeKey
         fileID = file.id
         identifier = "file_" + id.uuidString
         self.version = version
@@ -106,6 +114,13 @@ final class FamiliarFileVersionRecord {
         (try? JSONDecoder().decode([String: String].self, from: Data(provenanceJSON.utf8))) ?? [:]
     }
 
+    var sourceFileVersionIDs: [UUID] {
+        guard let value = provenance["sourceFileVersionIDs"], let data = value.data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([UUID].self, from: data)) ?? []
+    }
+    func matchesFileIdentifier(_ value: String) -> Bool {
+        identifier == value || sourceFileVersionIDs.contains { "file_" + $0.uuidString == value }
+    }
     var lineageID: UUID { fileID }
     var title: String { provenance["title"] ?? file?.displayName ?? filename }
     var relativePath: String { storageRelativePath }
@@ -121,13 +136,13 @@ final class FamiliarFileVersionRecord {
     var validationReceiptJSON: String? { provenance["validationReceipt"].flatMap { $0.isEmpty ? nil : $0 } }
 
     /// Native file-delivery adapter. Version fields still have one canonical storage owner.
-    convenience init(id: UUID = UUID(), projectID: UUID, identifier: String, title: String,
+    convenience init(id: UUID = UUID(), scope: FamiliarWorkScope, identifier: String, title: String,
         lineageID: UUID? = nil, version: Int = 1, format: FamiliarFileFormat = .markdown,
         relativePath: String, byteSize: Int64, contentHash: String, source: FamiliarFileSource = .generated,
         sourceURLString: String? = nil, sourceResourceID: UUID? = nil, sourceResourceVersionID: UUID? = nil,
         sourceCaptureID: String? = nil, createdByRunID: String? = nil, utiIdentifier: String? = nil,
         mimeType: String? = nil, validationReceiptJSON: String? = nil, createdAt: Date = Date(), updatedAt: Date = Date()) {
-        let record = FamiliarFileRecord(id: lineageID ?? id, projectID: projectID, displayName: title,
+        let record = FamiliarFileRecord(id: lineageID ?? id, scope: scope, displayName: title,
             origin: source == .webCapture ? .webCapture : .generated, createdAt: createdAt, updatedAt: updatedAt)
         let fields = ["title": title, "format": format.rawValue, "source": source.rawValue,
             "sourceResourceID": sourceResourceID?.uuidString ?? "", "sourceResourceVersionID": sourceResourceVersionID?.uuidString ?? "",

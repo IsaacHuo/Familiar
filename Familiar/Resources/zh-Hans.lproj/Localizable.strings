@@ -56,7 +56,10 @@
 "settings.hub.model_service" = "模型服务";
 "settings.search.title" = "网页搜索";
 "settings.search.provider" = "搜索服务";
-"settings.search.routing" = "web_search 只使用当前选择的服务。请求失败时会直接返回错误，不会静默切换到其他服务。";
+"settings.search.routing.v2" = "所选服务无法连接时，会改用 DuckDuckGo 搜索，并在结果中注明。Key 无效、额度用尽或限流会直接提示。";
+"settings.search.key.required" = "%@ 需要 API Key，填写前搜索会失败。";
+"settings.search.key.locked" = "设备解锁后才能读取";
+"settings.search.key.failed" = "钥匙串错误 %d";
 "settings.search.key.footer" = "搜索 API 密钥 保存在独立的钥匙串服务中，不会与模型 Provider 共用。";
 "settings.search.validation.footer" = "连接验证会向当前搜索服务发送一次最小测试搜索。";
 "settings.search.privacy_cost" = "隐私与费用";
@@ -889,6 +892,7 @@
 "tool.web_fetch.result" = "已读取 %@";
 "tool.web_search" = "搜索网页";
 "tool.web_search.results" = "找到 %lld 个网页结果";
+"tool.web_search.fallback" = "%@ 无法连接，已改用 DuckDuckGo";
 "local_vision.error.archive" = "模型文件无法解压。";
 "local_vision.error.benchmark_required" = "请先完成模型性能测试。";
 "local_vision.error.device" = "此设备不支持该模型。";
@@ -1036,7 +1040,7 @@
 "file.save.consequence" = "将此文件保存到当前项目，以便预览和分享。";
 "visual.fixture.tool_results" = "工具结果";
 "common.copied" = "已复制";
-"file.error.project_required" = "请选择要保存此文件的项目。";
+"file.error.scope_required" = "请先打开对话或项目再使用此文件。";
 "file.error.invalid_path" = "此文件引用无效，请重新选择文件。";
 "file.error.missing" = "此文件已不可用。";
 "file.error.failed" = "文件操作未完成，请重试。";
@@ -1134,3 +1138,16 @@
 "terminal.scope" = "仅当前 Project · 前台运行 3 分钟 · 512 MB 内存 · 16 个进程。HOME 保存在此 Project，临时文件随会话清理。命令可修改 Project 文件，不提供自动撤销。";
 "terminal.command" = "Shell 命令";
 "terminal.send" = "发送";
+
+"runtime.ui.open_results" = "查看工具结果";
+"approval.pending" = "操作审批";
+"interaction.pending_count" = "%d 项待处理";
+"interaction.skip" = "跳过问题";
+"interaction.waiting_answer" = "等待你回答";
+"interaction.waiting_approval" = "等待你批准";
+"interaction.approval_recorded" = "已记录审批决定";
+"message.sources.title" = "来源";
+
+"resource.web.save_to_files" = "保存到文件";
+
+"conversation.delete.ordinary_detail" = "这个对话及其独有文件、工作区、会话记忆和运行记录会从此 iPhone 删除。";

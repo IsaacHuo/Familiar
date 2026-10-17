@@ -526,6 +526,11 @@ final class FamiliarRunPersistenceRecorder {
         let descriptor = FetchDescriptor<FamiliarResponseBlockRecord>(predicate: #Predicate { $0.id == id })
         if let existing = try context.fetch(descriptor).first {
             if existing.messageID == nil, let messageID {
+                // This is the final Message checkpoint, after citation aliases
+                // have been resolved. Keep the block identity and update its
+                // stored text/hash together instead of retaining streamed IDs.
+                existing.content = content
+                existing.contentHash = FamiliarHash.sha256(content)
                 existing.messageID = messageID
                 run.responseBlockID = existing.id
                 if state == .completed { run.responseMessageID = messageID }

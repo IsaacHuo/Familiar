@@ -152,7 +152,7 @@ struct FamiliarWorkspaceShellTests {
     func shellNetworkSettings() throws {
         let (root, store, workspaceID) = makeWorkspace()
         defer { try? FileManager.default.removeItem(at: root) }
-        let otherID = FamiliarWorkspaceID.project(UUID())
+        let otherID = FamiliarWorkScope.project(UUID())
 
         #expect(try !store.shellSettings(in: workspaceID).networkEnabled)
         try store.saveShellSettings(.init(networkEnabled: true), in: workspaceID)
@@ -176,7 +176,7 @@ struct FamiliarWorkspaceShellTests {
         #expect(settings.selectedSource.id == FamiliarPythonPackageSource.officialID)
     }
 
-    @Test("Project environments persist while ordinary chat environments are task scoped")
+    @Test("Project and ordinary Chat environments persist in distinct work scopes")
     func environmentLifetime() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
             "FamiliarEnvironmentLifetime-\(UUID().uuidString)",
@@ -194,7 +194,7 @@ struct FamiliarWorkspaceShellTests {
         try Data("project".utf8).write(to: projectView.environment.appendingPathComponent("marker.txt"))
         try store.removeShellTaskView(projectView)
         #expect(FileManager.default.fileExists(
-            atPath: try store.projectEnvironmentURL(projectID).appendingPathComponent("marker.txt").path
+            atPath: try store.environmentURL(.project(projectID)).appendingPathComponent("marker.txt").path
         ))
 
         let conversationView = try store.prepareShellTaskView(
@@ -203,10 +203,11 @@ struct FamiliarWorkspaceShellTests {
             resources: [],
             attachments: []
         )
-        let ephemeralEnvironment = conversationView.environment
-        try Data("temporary".utf8).write(to: ephemeralEnvironment.appendingPathComponent("marker.txt"))
+        let ownedEnvironment = conversationView.environment
+        try Data("temporary".utf8).write(to: ownedEnvironment.appendingPathComponent("marker.txt"))
         try store.removeShellTaskView(conversationView)
-        #expect(!FileManager.default.fileExists(atPath: ephemeralEnvironment.path))
+        #expect(FileManager.default.fileExists(atPath: ownedEnvironment.appendingPathComponent("marker.txt").path))
+        #expect(ownedEnvironment != projectView.environment)
     }
 
     @Test("Staged Project environment replaces the old environment atomically")
@@ -214,7 +215,7 @@ struct FamiliarWorkspaceShellTests {
         let (root, store, workspaceID) = makeWorkspace()
         defer { try? FileManager.default.removeItem(at: root) }
         guard case .project(let projectID) = workspaceID else { return }
-        let original = try store.projectEnvironmentURL(projectID)
+        let original = try store.environmentURL(.project(projectID))
         try Data("old".utf8).write(to: original.appendingPathComponent("version.txt"))
         let staging = try store.prepareShellTaskView(
             taskID: UUID(),
@@ -224,7 +225,7 @@ struct FamiliarWorkspaceShellTests {
             useStagingEnvironment: true
         )
         try Data("new".utf8).write(to: staging.environment.appendingPathComponent("version.txt"))
-        let previous = try store.commitProjectEnvironment(from: staging, projectID: projectID)
+        let previous = try store.commitEnvironment(from: staging, scope: .project(projectID))
         try store.discard(previous)
         #expect(try String(contentsOf: original.appendingPathComponent("version.txt"), encoding: .utf8) == "new")
         try store.removeShellTaskView(staging)
@@ -285,7 +286,7 @@ struct FamiliarWorkspaceShellTests {
         #expect(await registry.snapshot().map(\.name) == ["shell_execute"])
     }
 
-    @Test("Every shell call requires one-shot action approval and success reports a typed diff")
+    @Test("Offline shell produces a reversible action and reports a typed diff")
     func shellApprovalAndSuccess() async throws {
         let (root, store, workspaceID) = makeWorkspace()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -381,7 +382,7 @@ struct FamiliarWorkspaceShellTests {
         #expect(store.timeout(limits: limits) == limits.maximumTimeout)
     }
 
-    private func makeWorkspace() -> (URL, FamiliarWorkspaceStore, FamiliarWorkspaceID) {
+    private func makeWorkspace() -> (URL, FamiliarWorkspaceStore, FamiliarWorkScope) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
             "FamiliarWorkspaceShell-\(UUID().uuidString)",
             isDirectory: true

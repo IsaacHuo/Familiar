@@ -5,9 +5,9 @@ import Testing
 
 @Suite("One Agent natural tool loop")
 struct FamiliarHarnessTests {
-    @Test("Ordinary, Daily Chat and Project answers need one model request and no tool")
+    @Test("Ordinary and Project answers need one model request and no tool")
     func directAnswersDoNotRequirePlans() async throws {
-        for projectID in [nil, FamiliarProject.dailyProjectID, UUID()] {
+        for projectID in [nil, UUID()] {
             let probe = FamiliarHarnessProbe()
             let registry = try FamiliarToolRegistry(tools: [AnyFamiliarTool(FamiliarTaskPlanTool())])
             let events = try await run(provider: .init(probe: probe, mode: .direct), registry: registry, projectID: projectID)

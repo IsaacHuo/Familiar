@@ -216,11 +216,11 @@ struct FamiliarMemoryTests {
         #expect(try modelContext.fetch(FetchDescriptor<FamiliarMemoryItem>()).isEmpty)
     }
 
-    @Test("An ordinary chat remembers globally because no Project owns the memory")
-    func ordinaryChatFallsBackToGlobalScope() async throws {
+    @Test("Ordinary Chat defaults to conversation Memory without implicit global sharing")
+    func ordinaryChatDefaultsToConversationScope() async throws {
         let outcome = try await FamiliarMemoryRememberTool().execute(
-            .init(content: "Prefers dark mode", scope: "project"),
-            context: FamiliarToolContext(runID: "run-1", toolCallID: "call-1")
+            .init(content: "Prefers dark mode", scope: nil),
+            context: FamiliarToolContext(runID: "run-1", toolCallID: "call-1", conversationID: UUID())
         )
 
         guard case .action(let proposal) = outcome else {
@@ -228,7 +228,7 @@ struct FamiliarMemoryTests {
             return
         }
         let write = try #require(try await proposal.commit().result.memoryWrite)
-        #expect(write.scope == .global)
+        #expect(write.scope == .conversation)
         #expect(write.projectID == nil)
     }
 

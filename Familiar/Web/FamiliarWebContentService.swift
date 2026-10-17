@@ -13,7 +13,7 @@ nonisolated struct FamiliarWebContentService: Sendable {
         guard ["text/html", "application/xhtml+xml", "text/plain"].contains(mimeType) else {
             throw FamiliarWebError.unsupportedContentType
         }
-        guard let content = decode(response.body, contentType: response.headers["content-type"]) else {
+        guard let content = Self.decodeText(response.body, contentType: response.headers["content-type"]) else {
             throw FamiliarWebError.malformedResponse
         }
         let extracted: (title: String?, text: String)
@@ -25,7 +25,9 @@ nonisolated struct FamiliarWebContentService: Sendable {
         guard !extracted.text.isEmpty else { throw FamiliarWebError.noReadableContent }
         let truncated = extracted.text.count > 24_000
         let text = Self.truncate(extracted.text, maximum: 24_000)
-        let sourceID = FamiliarSourceIdentifier.make(for: response.finalURL)
+        // Identity follows the requested URL so a redirected fetch upgrades the
+        // search result it came from instead of appearing as a second source.
+        let sourceID = FamiliarSourceIdentifier.make(for: url)
         let source = FamiliarSource(
             id: sourceID,
             kind: .fetchedPage,
@@ -91,16 +93,22 @@ nonisolated struct FamiliarWebContentService: Sendable {
 
     static func extractReadableHTML(_ html: String) throws -> (title: String?, text: String) {
         let document = try SwiftSoup.parse(html)
-        try document.select("script,style,noscript,template,svg,canvas,iframe,form,nav,footer,aside,dialog").remove()
+        // Forms are not removed wholesale: ASP.NET WebForms wrap the entire page in one.
+        try document.select("script,style,noscript,template,svg,canvas,iframe,nav,footer,aside,dialog,input,select,button,textarea").remove()
         let openGraphTitle = try nonempty(document.select("meta[property=og:title]").first()?.attr("content"))
         let documentTitle = try nonempty(document.title())
         let headingTitle = try nonempty(document.select("h1").first()?.text())
         let title = openGraphTitle ?? documentTitle ?? headingTitle
         let noise: Set<String> = ["comment", "comments", "related", "recommended", "recommendations", "cookie", "cookies", "consent", "advertisement", "ads", "social", "copyright"]
         for element in try document.select("[class], [id]").array() {
+            guard !["html", "body"].contains(element.tagName()) else { continue }
             let labels = try (element.className() + " " + element.id()).lowercased()
                 .split { !$0.isLetter }.map(String.init)
-            if !noise.isDisjoint(with: labels) { try element.remove() }
+            guard !noise.isDisjoint(with: labels) else { continue }
+            // State flags like `comments-enabled` or `has-social` often sit on the
+            // container that holds the article; never remove real content with them.
+            if try !element.select("article, main, h1").isEmpty() { continue }
+            try element.remove()
         }
         func score(_ element: Element) throws -> Double {
             let count = try element.text().count
@@ -113,8 +121,11 @@ nonisolated struct FamiliarWebContentService: Sendable {
         }
         var selected: Element?
         for selector in ["article", "main, [role=main]", "section, div"] {
+            let elements = try document.select(selector).array()
+            // Many <article> cards means a listing page; one card is not the content.
+            if selector == "article", elements.count > 2 { continue }
             var best = 0.0
-            for element in try document.select(selector).array() {
+            for element in elements {
                 let candidate = try score(element)
                 if candidate > best { best = candidate; selected = element }
             }
@@ -233,12 +244,51 @@ nonisolated struct FamiliarWebContentService: Sendable {
         guard (200..<300).contains(response.statusCode) else { throw FamiliarWebError.httpError(response.statusCode) }
     }
 
-    private func decode(_ data: Data, contentType: String?) -> String? {
-        let lowercased = contentType?.lowercased() ?? ""
-        if lowercased.contains("charset=iso-8859-1") || lowercased.contains("charset=windows-1252") {
-            return String(data: data, encoding: .windowsCP1252) ?? String(data: data, encoding: .isoLatin1)
+    /// Charset from the Content-Type header, else from `<meta charset>` /
+    /// `<meta http-equiv>` in the first 4 KB. GB2312/GBK are decoded as their
+    /// GB18030 superset. Undeclared bytes fall back to UTF-8, then CP1252.
+    static func decodeText(_ data: Data, contentType: String?) -> String? {
+        if let label = charset(in: contentType) ?? sniffedCharset(data),
+           let encoding = encoding(forLabel: label),
+           let text = String(data: data, encoding: encoding) {
+            return text
         }
         return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .windowsCP1252)
+    }
+
+    private static func charset(in contentType: String?) -> String? {
+        guard let contentType else { return nil }
+        for part in contentType.split(separator: ";") {
+            let value = part.trimmingCharacters(in: .whitespaces)
+            if value.lowercased().hasPrefix("charset=") {
+                let label = String(value.dropFirst(8)).trimmingCharacters(in: CharacterSet(charactersIn: "\"' ")).lowercased()
+                return label.isEmpty ? nil : label
+            }
+        }
+        return nil
+    }
+
+    private static func sniffedCharset(_ data: Data) -> String? {
+        // Invalid bytes become U+FFFD; the ASCII markup we look for survives.
+        let head = String(decoding: data.prefix(4_096), as: UTF8.self).lowercased()
+        guard let regex = try? NSRegularExpression(pattern: #"<meta[^>]*charset\s*=\s*["']?\s*([a-z0-9_\-:.]+)"#),
+              let match = regex.firstMatch(in: head, range: NSRange(head.startIndex..., in: head)),
+              let range = Range(match.range(at: 1), in: head) else { return nil }
+        return String(head[range])
+    }
+
+    private static func encoding(forLabel label: String) -> String.Encoding? {
+        let cfEncoding: CFStringEncoding
+        switch label {
+        case "utf-8", "utf8": return .utf8
+        case "iso-8859-1", "latin1", "windows-1252", "cp1252", "us-ascii": return .windowsCP1252
+        case "gb2312", "gbk", "gb18030", "x-gbk", "cp936", "euc-cn":
+            cfEncoding = CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue)
+        default:
+            cfEncoding = CFStringConvertIANACharSetNameToEncoding(label as CFString)
+            guard cfEncoding != kCFStringEncodingInvalidId else { return nil }
+        }
+        return String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(cfEncoding))
     }
 
     private static func unwrapDuckDuckGoURL(_ value: String) -> URL? {

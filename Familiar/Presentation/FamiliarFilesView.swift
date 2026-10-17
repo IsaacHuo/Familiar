@@ -6,7 +6,7 @@ struct FamiliarFilesView: View {
     @Environment(\.modelContext) private var context
     @Query private var files: [FamiliarFileRecord]
     let chatID: UUID?
-    let projectID: UUID
+    let scope: FamiliarWorkScope
     @State private var query = ""
     @State private var preview: Preview?
     @State private var errorMessage: String?
@@ -17,10 +17,11 @@ struct FamiliarFilesView: View {
         let url: URL
     }
 
-    init(projectID: UUID, chatID: UUID? = nil) {
+    init(scope: FamiliarWorkScope, chatID: UUID? = nil) {
         self.chatID = chatID
-        self.projectID = projectID
-        _files = Query(filter: #Predicate<FamiliarFileRecord> { $0.projectID == projectID }, sort: \FamiliarFileRecord.updatedAt, order: .reverse)
+        self.scope = scope
+        let key = scope.storageKey
+        _files = Query(filter: #Predicate<FamiliarFileRecord> { $0.scopeKey == key }, sort: \FamiliarFileRecord.updatedAt, order: .reverse)
     }
 
     private var visibleFiles: [FamiliarFileRecord] {
@@ -35,10 +36,11 @@ struct FamiliarFilesView: View {
             ForEach(visibleFiles) { file in
                 if let snapshot = file.snapshot {
                     DisclosureGroup {
-                        Toggle(String(localized: "file.project_context"), isOn: Binding(
+                        if scope.projectID != nil { Toggle(String(localized: "file.project_context"), isOn: Binding(
                             get: { file.isProjectContext },
                             set: { enabled in perform { try FamiliarFileCatalogService().setProjectContext(enabled, file: file, in: context) } }
                         ))
+                        }
                         ForEach(file.versions.sorted { $0.version > $1.version }) { version in
                             Button("\(version.filename) · v\(version.version)") { open(version, file: file) }
                         }
@@ -78,8 +80,8 @@ struct FamiliarFilesView: View {
 
     private func open(_ version: FamiliarFileVersionRecord, file: FamiliarFileRecord) {
         perform {
-            let reference = FamiliarFileReference(fileID: file.id, versionID: version.id, projectID: file.projectID)
-            _ = try FamiliarFileCatalogService().read(reference, inProject: file.projectID, context: context)
+            let reference = FamiliarFileReference(fileID: file.id, versionID: version.id, scope: file.scope)
+            _ = try FamiliarFileCatalogService().read(reference, inScope: file.scope, context: context)
             guard let origin = FamiliarFileOrigin(rawValue: file.originRawValue),
                   let kind = FamiliarFileStorageKind(rawValue: version.storageKindRawValue) else { throw FamiliarFileError.invalidPath }
             let snapshot = FamiliarFileSnapshot(reference: reference, name: file.displayName, origin: origin,

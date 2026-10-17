@@ -85,7 +85,7 @@ nonisolated enum FamiliarRuntimeEnvironmentState: String, Codable, Equatable, Se
 }
 
 nonisolated struct FamiliarEnvironmentPlan: Codable, Equatable, Sendable {
-    let projectID: UUID
+    let scope: FamiliarWorkScope
     let packages: [String]
     let packageIndex: String
     let maximumBytes: Int64
@@ -101,7 +101,7 @@ nonisolated struct FamiliarEnvironmentReceipt: Codable, Equatable, Sendable {
     static let currentSchemaVersion = 2
 
     let schemaVersion: Int
-    let projectID: UUID
+    let scope: FamiliarWorkScope
     let revision: UUID
     let state: FamiliarRuntimeEnvironmentState
     let requestedPackages: [String]
@@ -112,7 +112,7 @@ nonisolated struct FamiliarEnvironmentReceipt: Codable, Equatable, Sendable {
 }
 
 nonisolated enum FamiliarEnvironmentError: LocalizedError, FamiliarStructuredToolError, Sendable {
-    case projectRequired
+    case workScopeRequired
     case invalidPackages
     case installationFailed(String)
     case invalidReceipt
@@ -120,7 +120,7 @@ nonisolated enum FamiliarEnvironmentError: LocalizedError, FamiliarStructuredToo
 
     var errorDescription: String? {
         switch self {
-        case .projectRequired: "Environment 只能由 Project 长期维护。"
+        case .workScopeRequired: "Environment 需要当前对话或项目工作范围。"
         case .invalidPackages: "Environment 依赖声明无效。"
         case .installationFailed(let detail): "Environment 准备失败：\(detail)"
         case .invalidReceipt: "Environment 安装结果无法验证。"
@@ -131,7 +131,7 @@ nonisolated enum FamiliarEnvironmentError: LocalizedError, FamiliarStructuredToo
     var code: String {
         switch self {
         case .dnsFailed: "environment_dns_failed"
-        case .projectRequired: "environment_project_required"
+        case .workScopeRequired: "environment_scope_required"
         case .invalidPackages: "environment_invalid_packages"
         case .installationFailed: "environment_installation_failed"
         case .invalidReceipt: "environment_invalid_receipt"
@@ -141,7 +141,7 @@ nonisolated enum FamiliarEnvironmentError: LocalizedError, FamiliarStructuredToo
     var isRetryable: Bool {
         switch self {
         case .dnsFailed, .installationFailed: true
-        case .projectRequired, .invalidPackages, .invalidReceipt: false
+        case .workScopeRequired, .invalidPackages, .invalidReceipt: false
         }
     }
 }
@@ -151,8 +151,8 @@ nonisolated struct FamiliarEnvironmentStore: Sendable {
 
     let workspaceStore: FamiliarWorkspaceStore
 
-    func receipt(projectID: UUID) throws -> FamiliarEnvironmentReceipt? {
-        let environment = try workspaceStore.projectEnvironmentURL(projectID)
+    func receipt(scope: FamiliarWorkScope) throws -> FamiliarEnvironmentReceipt? {
+        let environment = try workspaceStore.environmentURL(scope)
         let url = environment.appendingPathComponent(Self.receiptFilename, isDirectory: false)
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
@@ -305,7 +305,7 @@ nonisolated struct FamiliarShellTool: FamiliarTool {
         timeout: TimeInterval,
         networkPolicy: FamiliarShellNetworkPolicy,
         context: FamiliarToolContext,
-        workspaceID: FamiliarWorkspaceID
+        workspaceID: FamiliarWorkScope
     ) async throws -> FamiliarCommittedAction {
         let taskID = UUID()
         let checkpoint = try workspaceStore.createShellCheckpoint(for: workspaceID)
@@ -363,14 +363,14 @@ nonisolated struct FamiliarShellTool: FamiliarTool {
                 diff: diff,
                 checkpointID: checkpoint.id
             )
-            guard let projectID = context.projectID else { throw FamiliarFileError.projectRequired }
+            guard let scope = context.workspaceID else { throw FamiliarFileError.workScopeRequired }
             let managed = FamiliarManagedFileStore()
             var captured: [FamiliarProducedFile] = []
             do {
                 for path in Set(diff.added + diff.modified).sorted() where path.hasPrefix("Outputs/") {
                     let data = try workspaceStore.read(relativePath: path, in: workspaceID)
                     captured.append(try managed.capture(data, filename: URL(fileURLWithPath: path).lastPathComponent,
-                        projectID: projectID, originKey: workspaceID.directoryName + "/" + path,
+                        scope: scope, originKey: workspaceID.directoryName + "/" + path,
                         runID: context.runID, toolCallID: context.toolCallID))
                 }
             } catch {
@@ -564,7 +564,7 @@ nonisolated struct FamiliarEnvironmentStatusTool: FamiliarTool {
         dataDomains: ["project.environment"],
         privacyLabels: ["project-only", "read-only"],
         supportsParallelism: false,
-        requiredScopes: ["project"],
+        requiredScopes: ["workspace"],
         executionClass: .specializedLocal
     )
 
@@ -573,8 +573,8 @@ nonisolated struct FamiliarEnvironmentStatusTool: FamiliarTool {
     }
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
-        guard let projectID = context.projectID else { throw FamiliarEnvironmentError.projectRequired }
-        let receipt = try store.receipt(projectID: projectID)
+        guard let scope = context.workspaceID else { throw FamiliarEnvironmentError.workScopeRequired }
+        let receipt = try store.receipt(scope: scope)
         let output = Output(
             state: receipt?.state ?? .notPrepared,
             revision: receipt?.revision,
@@ -648,7 +648,7 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
         supportsCancellation: true,
         supportsRecovery: true,
         supportsParallelism: false,
-        requiredScopes: ["project"],
+        requiredScopes: ["workspace"],
         executionClass: .specializedLocal,
         maximumExecutionDuration: FamiliarShellLimits.iOS.maximumTimeout
     )
@@ -665,11 +665,9 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
     }
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
-        guard let projectID = context.projectID,
-              context.workspaceID == .project(projectID)
-        else { throw FamiliarEnvironmentError.projectRequired }
+        guard let scope = context.workspaceID else { throw FamiliarEnvironmentError.workScopeRequired }
         let requested = try normalizedPackages(input.packages)
-        let previous = try environmentStore.receipt(projectID: projectID)
+        let previous = try environmentStore.receipt(scope: scope)
         func packageName(_ value: String) -> String { value.components(separatedBy: "==")[0].lowercased().replacingOccurrences(of: "_", with: "-") }
         let changedNames = Set(requested.map(packageName))
         let packages = try normalizedPackages((previous?.requestedPackages ?? []).filter { !changedNames.contains(packageName($0)) } + requested)
@@ -678,24 +676,24 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
            existing.state == .ready, existing.packageIndex == packageSource.indexURL.absoluteString,
            Set(existing.requestedPackages) == Set(packages),
            try await verifyEnvironment(existing, context: context) {
-            return .result(try result(existing))
+            return .unchanged(try result(existing))
         }
         let plan = FamiliarEnvironmentPlan(
-            projectID: projectID,
+            scope: scope,
             packages: packages,
             packageIndex: packageSource.indexURL.absoluteString,
             maximumBytes: Self.maximumEnvironmentBytes
         )
         return .action(.init(
-            title: "准备 Project Environment",
+            title: "准备运行环境",
             fields: [
                 .init(id: "packages", label: "Packages", type: .text, value: packages.joined(separator: ", ")),
                 .init(id: "index", label: "Package Index", type: .url, value: plan.packageIndex),
                 .init(id: "network", label: "Public Network", type: .boolean, value: "true"),
                 .init(id: "maximum_size", label: "Maximum Size", type: .number, value: String(Self.maximumEnvironmentBytes))
             ],
-            target: projectID.uuidString,
-            targetKey: "environment:\(projectID.uuidString):\(FamiliarHash.sha256(packages.joined(separator: "\n")))",
+            target: scope.storageKey,
+            targetKey: "environment:\(scope.storageKey):\(FamiliarHash.sha256(packages.joined(separator: "\n")))",
             effect: manifest.effect,
             risk: manifest.risk,
             consequence: "将从设置中选择的软件源下载，并在当前 Project 的隔离 Environment 中安装这些依赖；旧 Environment 仅在新环境验证成功后替换。",
@@ -709,11 +707,11 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
     }
 
     private func verifyEnvironment(_ receipt: FamiliarEnvironmentReceipt, context: FamiliarToolContext) async throws -> Bool {
-        let root = try workspaceStore.projectEnvironmentURL(receipt.projectID)
+        let root = try workspaceStore.environmentURL(receipt.scope)
         guard let lock = try? String(contentsOf: root.appendingPathComponent("requirements.lock"), encoding: .utf8),
               FamiliarHash.sha256(lock) == receipt.lock.contentHash else { return false }
         let id = UUID()
-        let view = try workspaceStore.prepareShellTaskView(taskID: id, workspaceID: .project(receipt.projectID), resources: [], attachments: [])
+        let view = try workspaceStore.prepareShellTaskView(taskID: id, workspaceID: receipt.scope, resources: [], attachments: [])
         defer { try? workspaceStore.removeShellTaskView(view) }
         let request = FamiliarShellRequest(taskID: id, command: Self.environmentProbe,
             workspaceID: view.workspaceID, workspaceView: view, timeout: 30,
@@ -735,7 +733,7 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
         let taskID = UUID()
         let view = try workspaceStore.prepareShellTaskView(
             taskID: taskID,
-            workspaceID: .project(plan.projectID),
+            workspaceID: plan.scope,
             resources: [],
             attachments: [],
             useStagingEnvironment: true
@@ -750,7 +748,7 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
         let request = FamiliarShellRequest(
             taskID: taskID,
             command: command,
-            workspaceID: .project(plan.projectID),
+            workspaceID: plan.scope,
             workspaceView: view,
             timeout: executor.limits.maximumTimeout,
             runID: context.runID,
@@ -796,7 +794,7 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
         }
         let receipt = FamiliarEnvironmentReceipt(
             schemaVersion: FamiliarEnvironmentReceipt.currentSchemaVersion,
-            projectID: plan.projectID,
+            scope: plan.scope,
             revision: UUID(),
             state: .ready,
             requestedPackages: plan.packages,
@@ -810,9 +808,9 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
         // Build the receipt before swapping bytes, and retain the old directory until
         // authoritative metadata has been saved by the Run's persistence callback.
         let executionResult = try result(receipt)
-        let previous = try workspaceStore.commitProjectEnvironment(from: view, projectID: plan.projectID)
+        let previous = try workspaceStore.commitEnvironment(from: view, scope: plan.scope)
         return .init(result: executionResult,
-                     rollback: { try workspaceStore.rollbackProjectEnvironment(previous, revision: receipt.revision, projectID: plan.projectID) },
+                     rollback: { try workspaceStore.rollbackEnvironment(previous, revision: receipt.revision, scope: plan.scope) },
                      finalize: { try? workspaceStore.discard(previous) })
     }
 

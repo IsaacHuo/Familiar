@@ -5,7 +5,7 @@ import Testing
 
 @Suite("Lazy tool exposure")
 struct FamiliarLazyToolTests {
-    @Test("A direct answer exposes only base tools and does not discover remote groups")
+    @Test("A direct answer exposes base and web tools only and does not discover remote groups")
     func directAnswerIsLazy() async throws {
         let probe = FamiliarLazyProbe()
         let registry = try registry(probe: probe, names: ["web_fetch", "calendar_events", "shell_execute"])
@@ -13,7 +13,7 @@ struct FamiliarLazyToolTests {
         let events = try await run(registry: registry, probe: probe, steps: [.answer], sources: [source])
         let requests = await probe.requests()
         #expect(requests.count == 1)
-        #expect(Set(requests[0].tools.map(\.name)) == FamiliarToolGroup.baseToolNames)
+        #expect(Set(requests[0].tools.map(\.name)) == FamiliarToolGroup.baseToolNames.union(["web_fetch"]))
         #expect(await probe.count("discover") == 0)
         #expect(await probe.count("web_fetch") == 0)
         #expect(outcomes(events) == [.succeeded])
@@ -33,7 +33,7 @@ struct FamiliarLazyToolTests {
         let requests = await probe.requests()
         #expect(requests.count == 5)
         #expect(Set(requests[1].tools.map(\.name)) == FamiliarToolGroup.baseToolNames.union(["web_fetch"]))
-        #expect(Set(requests[3].tools.map(\.name)) == FamiliarToolGroup.baseToolNames.union(["calendar_events"]))
+        #expect(Set(requests[3].tools.map(\.name)) == FamiliarToolGroup.baseToolNames.union(["web_fetch", "calendar_events"]))
         #expect(await probe.count("web_fetch") == 1)
         #expect(await probe.count("calendar_events") == 1)
         #expect(Set(events.map(\.runID)).count == 1)
@@ -43,11 +43,11 @@ struct FamiliarLazyToolTests {
     @Test("A guessed tool, including one batched with its loader, cannot run before exposure")
     func guessedToolCannotRun() async throws {
         let probe = FamiliarLazyProbe()
-        let registry = try registry(probe: probe, names: ["web_fetch"])
+        let registry = try registry(probe: probe, names: ["calendar_events"])
         let events = try await run(registry: registry, probe: probe, steps: [
-            .calls([call("load", "tools_load", #"{"groups":["web"]}"#), call("guess", "web_fetch")]), .answer
+            .calls([call("load", "tools_load", #"{"groups":["calendar"]}"#), call("guess", "calendar_events")]), .answer
         ])
-        #expect(await probe.count("web_fetch") == 0)
+        #expect(await probe.count("calendar_events") == 0)
         #expect(events.contains { event in
             if case .activityCompleted(let activity) = event.payload { return activity.failureCode == "tool_not_exposed" }
             return false
@@ -264,7 +264,7 @@ struct FamiliarLazyToolTests {
         let coordinator = FamiliarToolConfirmationCoordinator()
         let loop = FamiliarAgentLoop(provider: FamiliarLazyProvider(probe: probe, steps: steps), registry: registry, policy: .init(),
             confirmationCoordinator: coordinator, undoStore: .init(), deferredToolGroups: sources, maximumToolCalls: toolBudget, maximumDuration: duration)
-        let seed = FamiliarProjectContextSeed(projectID: FamiliarProject.dailyProjectID, projectName: "Daily Chat", conversationID: UUID(),
+        let seed = FamiliarProjectContextSeed(projectID: nil, projectName: nil, conversationID: UUID(),
             projectInstruction: nil, resources: [], skills: skill.map { [$0] } ?? [])
         let snapshot = try FamiliarContextCompiler.assemble(seed: seed, settings: .defaultValue,
             messages: [], toolManifests: await registry.snapshot(), additionalToolGroups: sources.map(\.summary))
@@ -296,7 +296,7 @@ private nonisolated struct FamiliarPreparationBridge: FamiliarISHBridge {
         await probe.begin()
         try await Task.sleep(for: delay)
     }
-    func execute(taskID: UUID, workspaceID: FamiliarWorkspaceID, command: String, workingDirectory: String, mounts: [FamiliarISHMount],
+    func execute(taskID: UUID, workspaceID: FamiliarWorkScope, command: String, workingDirectory: String, mounts: [FamiliarISHMount],
                  networkPolicy: FamiliarShellNetworkPolicy, timeout: TimeInterval) -> AsyncThrowingStream<FamiliarISHProcessEvent, Error> {
         AsyncThrowingStream { $0.finish(throwing: FamiliarShellExecutorError.unavailable) }
     }

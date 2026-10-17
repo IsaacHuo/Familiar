@@ -6,7 +6,7 @@
 
 - 产品名称：Familiar
 - 产品形态：iPhone 原生个人 AI Agent
-- 最低系统：iOS 18
+- 最低系统：iOS 26
 - 支持设备：iPhone
 - 分发目标：个人、非商业实验产品；当前不进入 App Store 或其他公开市场
 - 账户模式：无账户
@@ -14,13 +14,15 @@
 - 模型接入：用户自备 API Key，设备直接请求 Provider
 - 数据存储：会话、附件索引和工具记录保存在本机
 
+普通对话不属于项目，不自动建立日常项目。它使用全局设置，文件、上下文、工作区、环境和会话记忆按对话隔离；只有显式全局 Memory 可以跨对话。项目由用户单独创建，提供共享资料、指令、能力配置与项目记忆。
+
 ## 2. 产品定位
 
 > **用户通过 Chat 在 Project 中工作，Files 承载长期内容。Context Compiler 决定模型看到什么，Single Agent Runtime 推进行动，Tools 提供能力，Policy 决定是否允许执行，Persistence 保证长期数据与执行安全。**
 
 Familiar 把 iPhone 的原生能力转成一个可组合、可治理的执行面：
 
-- 不以 Linux 为执行环境。
+- Apple 原生工具处理设备能力；内置 iSH/Alpine 处理受限计算、转换与复杂文档生成。
 - 不依赖 Apple Intelligence。
 - 不把每一个用户需求硬编码成 workflow。
 - 不从复杂多 Agent 开始，坚持单 Agent First，通过清晰 Tools 扩展能力。
@@ -33,7 +35,7 @@ North Star：
 
 ```text
 OpenMinis  = AI + Linux Computer + Native Bridge
-Familiar   = AI + Native iPhone Runtime + Native Workspace
+Familiar   = AI + Native iPhone Runtime + Project Files + Sandboxed iSH
 ```
 
 最核心的技术资产最终不是支持 GPT 还是 Claude，也不是 UI，而是：
@@ -53,7 +55,7 @@ Familiar 为普通 iPhone 用户提供统一的移动问答与 Agent 执行入�
 
 1. 使用用户选择的 AI Provider 完成文本问答。
 2. 读取本机日历和提醒事项，回答时间安排相关问题。
-3. 创建日历事件或提醒事项；首次授权由用户明确产生，精确授权范围内可免重复确认，每次动作仍可检查，并保存跨重启 Undo 记录。
+3. 创建日历事件或提醒事项；按后果分级授权，Project 内已批准的能力范围内可免重复确认，每次动作仍可检查，并保存跨重启 Undo 记录。
 4. 将本机文档转换为可发送的文本上下文。
 5. 将语音转换为可编辑的输入草稿。
 6. 在本机保存会话历史、Run/Step 执行记录和工具终态。
@@ -78,7 +80,7 @@ Familiar 为普通 iPhone 用户提供统一的移动问答与 Agent 执行入�
 
 ### 4.4 创建日程或提醒
 
-模型生成结构化写入请求。首次授权时，动作卡展示目标日历或列表、标题、时间、备注、优先级等字段；用户可以选择“仅这次 / 本次会话 / 始终允许”，默认“本次会话”。授权按 Project、工具和目标精确隔离，参数或作用域越界时重新确认。有效授权范围内可以直接执行，但每次动作仍展示同一张动作卡；EventKit create 保存跨重启 Undo 记录。取消、失败、成功和撤销结果都返回 Agent Loop 并保留可检查终态（见 `02-system-architecture.md` 2.4）；真机边界仍待验证。
+模型生成结构化写入请求。目标策略按操作后果分四级：只读不出 App 审批卡；可撤销本地写入自动执行并提供回执与撤销；影响 App 外部的操作首次询问，默认“始终允许此类”；不可逆或破坏性操作每次确认。外部操作的持续授权目标按完整工作 scope 与能力隔离，可在设置中撤销。Swift 负责系统权限、执行前复核、journal、防重放和撤销，模型不能自授权。此策略在 PLAN.md 的 S2 实施，当前实现事实以 state/ARCHITECTURE.md 为准。
 
 ### 4.5 使用本机文档与项目资料
 
@@ -165,15 +167,16 @@ Provider 原生能力、设备端预处理和可选本地模型是不同的数�
 ### 7.1 包含
 
 - 文本聊天与本地会话管理。
-- 当前唯一启用的 Provider descriptor 是 DeepSeek；底层 Provider/Agent 接口保持通用。
+- BYOK 模型接入与已连接的外部 Provider 登录；默认 DeepSeek，Provider/Agent 接口保持通用。
 - 通用 OpenAI-compatible Chat Completions SSE adapter。
-- 日历事件与提醒事项的查询与创建；精确授权、动作卡审计和跨重启 Undo 记录已接入，真机验收仍待完成。
+- 日历事件与提醒事项的读取、创建、修改和删除；按后果授权并保留执行回执与撤销。
 - 只读 `web_search`、`web_fetch` 与回答来源记录。
 - PDF、Office、OpenDocument、RTF、EPUB、CSV、TXT、Markdown 等文档导入；AnyDoc 本地转换、PDFKit 文本层检查与 Vision OCR。
 - 图片选择、拍照和预览；DeepSeek 实验视觉模型发送，以及文本模型的 Apple Vision 基础证据 fallback。
 - Apple Speech 转写。
 - Chat / Project / Files、Context Compiler 与 Single Agent Runtime 主链路。
-- Composer 显式选择、仅作用于下一次 Run 的 instruction-only Skill。
+- 按作用域加载的 Skills、Memory 与 HTTP MCP 客户端。
+- 内置 iSH/Alpine 与受限 Shell；复杂文档经校验后交付到 Files。
 - 简体中文和英文界面。
 
 ### 7.2 当前排除
@@ -185,14 +188,12 @@ Provider 原生能力、设备端预处理和可选本地模型是不同的数�
 - 账户、登录、云端会话同步。
 - Familiar 自建业务后端。
 - 订阅、购买、权益和托管额度。
-- Linux / iSH 执行环境。
-- Shell 或任意代码执行。
+- 超出 Project Workspace 的任意代码执行。
 - 多 Agent、Subagent、Agent Graph。
 - 复杂 RAG、向量数据库。
-- iPhone 上的 MCP Server（后期可能增加 MCP Client）。
+- iPhone 上的 MCP Server。
 - Apple Intelligence 依赖；通用本地文本 LLM 不进入当前范围。
 - 实时语音对话。
-- 修改或删除现有日历事件和提醒事项。
 - 读取学术系统或其他 App 的私有数据。
 - 通用外部操作自动化。
 - Plan / Build 模式（不照搬 Coding Agent 范式）。
@@ -216,19 +217,19 @@ Provider 原生能力、设备端预处理和可选本地模型是不同的数�
 
 ## 9. 长期路线图
 
-路线图见 `10-next-phase-execution-plan.md`。可验证内核、Project/Context/Workspace、只读 Web、能力契约与一次性显式 Skill 已形成当前基础；Remote MCP、Memory Runtime 与后台承接仍是后续目标。
+当前路线以根目录 PLAN.md 为准：S1 搜索 → S2 授权 → S4 文档交付 → S3 Chat 呈现 → S5/S6 日常管理 → S7/S8 次级能力。本阶段打磨现有能力，不增加 Router、多 Agent、后台执行或跨重启续跑。
 
 ## 10. 实验交付门槛
 
 1. Debug 和 Release 的 iPhone 构建通过。
-2. iOS 18 arm64 Simulator 构建通过。
-3. 写操作在未确认状态下零执行；可逆写入具备 Undo 路径。
+2. 使用具体 arm64 iOS Simulator destination 构建并执行相关测试。
+3. 写操作符合后果分级策略；需要确认的操作获批后才能执行，可撤销本地写入具备 Undo 路径。
 4. Provider 错误、工具错误和文件错误不显示虚假成功。
 5. 图片按当前模型能力路由：原生多模态模型直收图片，纯文本模型使用本地视觉证据；所有路径失败时明确说明能力边界并保留可恢复输入。
 6. API Key 只进入 Keychain 和对应 Provider 请求。
 7. 隐私用途说明与实际调用一致。
 8. 内置模型 ID 失效时允许用户输入有效模型 ID，界面保持可恢复。
-9. SwiftData 启动路径使用单一 `FamiliarReleaseSchema` 的当前 36 实体，不配置 migration plan；Debug/Release store 分离，测试阶段不支持旧 store。
+9. 本次明确授权重置全部旧业务数据，采用单一当前 schema 与业务代际标记；凭据和设置保留。重置完成后的打开失败进入恢复页，不重复清空；当前实现与证据见 state/ARCHITECTURE.md。
 10. EventKit、相机、Apple Vision、Speech 和安全作用域文件完成真机验收。
 11. 通知权限只在用户明确开启时请求；关闭后不再安排 Familiar 通知，并清理待处理与已投递通知。
 12. Spotlight 结果只暴露受保护的本地会话标题和 UUID，点击后能回到存在的本地会话；删除会话后对应结果被清理。

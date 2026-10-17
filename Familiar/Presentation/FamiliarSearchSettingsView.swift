@@ -1,76 +1,73 @@
+import Observation
 import SwiftUI
 
+/// iOS Settings-style commit model: every change is persisted immediately.
+/// Provider selection saves on change; the key saves on submit, on focus loss,
+/// before verification and when the page disappears.
 struct FamiliarSearchSettingsView: View {
-    @Environment(\.dismiss) private var dismiss
-
-    let searchService: FamiliarWebSearchService
-
-    @State private var providerID: String
-    @State private var apiKey = ""
-    @State private var hasAPIKey: Bool
-    @State private var isValidating = false
-    @State private var validationSucceeded = false
-    @State private var errorMessage: String?
+    @State private var state: FamiliarSearchSettingsState
+    @FocusState private var isKeyFocused: Bool
 
     init(searchService: FamiliarWebSearchService) {
-        self.searchService = searchService
-        let providerID = searchService.settingsStore.selectedProviderID
-        _providerID = State(initialValue: providerID)
-        _hasAPIKey = State(initialValue: FamiliarSearchKeychainStore.isConfigured(for: providerID))
+        _state = State(initialValue: FamiliarSearchSettingsState(service: searchService))
     }
 
     var body: some View {
+        @Bindable var state = state
         Form {
             Section {
-                Picker(String(localized: "settings.search.provider", defaultValue: "Search Provider"), selection: $providerID) {
+                Picker(String(localized: "settings.search.provider", defaultValue: "Search Provider"),
+                       selection: Binding(get: { state.providerID }, set: { state.selectProvider($0) })) {
                     ForEach(FamiliarSearchProviderCatalog.releaseVisible) { provider in
                         Text(provider.displayName).tag(provider.id)
                     }
                 }
-                .onChange(of: providerID) { _, newValue in
-                    apiKey = ""
-                    hasAPIKey = FamiliarSearchKeychainStore.isConfigured(for: newValue)
-                    validationSucceeded = false
-                }
             } footer: {
-                Text(String(localized: "settings.search.routing", defaultValue: "web_search uses only the selected provider. A failure is returned directly and never falls back to another provider."))
+                Text(String(localized: "settings.search.routing.v2", defaultValue: "If the selected service is unreachable, DuckDuckGo answers instead and the result says so. Key, quota and rate-limit problems are reported directly."))
             }
 
             if descriptor.requiresAPIKey {
                 Section {
-                    SecureField(keyPlaceholder, text: $apiKey)
+                    SecureField(keyPlaceholder, text: $state.apiKey)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                        .onChange(of: apiKey) { _, _ in validationSucceeded = false }
+                        .textContentType(.password)
+                        .submitLabel(.done)
+                        .focused($isKeyFocused)
+                        .onSubmit { state.saveKey() }
+                        .onChange(of: isKeyFocused) { _, focused in if !focused { state.saveKey() } }
 
                     HStack {
                         Label(keyStatusTitle, systemImage: keyStatusSymbol)
                             .foregroundStyle(keyStatusColor)
                         Spacer()
-                        if hasAPIKey {
-                            Button(String(localized: "common.delete"), role: .destructive) {
-                                deleteKey()
-                            }
+                        if state.keyState.key != nil {
+                            Button(String(localized: "common.delete"), role: .destructive) { state.deleteKey() }
                         }
                     }
                 } header: {
                     Text(String(format: String(localized: "settings.api_key.title"), descriptor.displayName))
                 } footer: {
-                    Text(String(localized: "settings.search.key.footer", defaultValue: "This search key is stored in a separate Keychain service and is never shared with model providers."))
+                    if state.keyState == .missing && state.normalizedEntry.isEmpty {
+                        Text(String(format: String(localized: "settings.search.key.required", defaultValue: "%@ needs an API key. Until one is added, searches fail."), descriptor.displayName))
+                            .foregroundStyle(FamiliarTheme.warning)
+                    } else {
+                        Text(String(localized: "settings.search.key.footer", defaultValue: "This search key is stored in a separate Keychain service and is never shared with model providers."))
+                    }
                 }
             }
 
             Section {
                 Button {
-                    validateConnection()
+                    state.startValidation()
                 } label: {
                     HStack {
-                        if isValidating { ProgressView() }
                         Text(String(localized: "settings.api_key.verify"))
                         Spacer()
+                        if state.isValidating { ProgressView() }
                     }
                 }
-                .disabled(isValidating || (descriptor.requiresAPIKey && effectiveKey.isEmpty))
+                .disabled(state.isValidating || (descriptor.requiresAPIKey && state.effectiveKey.isEmpty))
             } footer: {
                 Text(String(localized: "settings.search.validation.footer", defaultValue: "Validation sends one small test query to the selected search provider."))
             }
@@ -92,50 +89,44 @@ struct FamiliarSearchSettingsView: View {
         }
         .navigationTitle(String(localized: "settings.search.title", defaultValue: "Web Search"))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-                Button(String(localized: "common.save")) { save() }
-                    .fontWeight(.semibold)
-            }
-        }
+        .onDisappear { state.leave() }
         .alert(String(localized: "settings.error.title"), isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
+            get: { state.errorMessage != nil },
+            set: { if !$0 { state.errorMessage = nil } }
         )) {
             Button(String(localized: "common.ok"), role: .cancel) {}
         } message: {
-            Text(errorMessage ?? String(localized: "error.unknown"))
+            Text(state.errorMessage ?? String(localized: "error.unknown"))
         }
         .tint(FamiliarTheme.accent)
     }
 
     private var descriptor: FamiliarSearchProviderDescriptor {
-        FamiliarSearchProviderCatalog.descriptor(for: providerID)
+        FamiliarSearchProviderCatalog.descriptor(for: state.providerID)
             ?? FamiliarSearchProviderCatalog.releaseVisible[0]
     }
 
-    private var effectiveKey: String {
-        let entered = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        return entered.isEmpty ? FamiliarSearchKeychainStore.load(for: providerID) ?? "" : entered
-    }
-
     private var keyPlaceholder: String {
-        hasAPIKey ? String(localized: "settings.api_key.replace_placeholder") : descriptor.apiKeyPlaceholder
+        state.keyState.key != nil ? String(localized: "settings.api_key.replace_placeholder") : descriptor.apiKeyPlaceholder
     }
 
     private var keyStatusTitle: String {
-        if validationSucceeded { return String(localized: "settings.api_key.verified") }
-        return hasAPIKey
-            ? String(localized: "settings.api_key.saved")
-            : String(localized: "settings.api_key.missing")
+        if state.validationSucceeded { return String(localized: "settings.api_key.verified") }
+        switch state.keyState {
+        case .found: return String(localized: "settings.api_key.saved")
+        case .missing: return String(localized: "settings.api_key.missing")
+        case .locked: return String(localized: "settings.search.key.locked", defaultValue: "Unavailable until the device is unlocked")
+        case .failed(let status): return String(format: String(localized: "settings.search.key.failed", defaultValue: "Keychain error %d"), Int(status))
+        }
     }
 
     private var keyStatusSymbol: String {
-        validationSucceeded ? "checkmark.seal.fill" : (hasAPIKey ? "checkmark.circle.fill" : "exclamationmark.circle")
+        if state.validationSucceeded { return "checkmark.seal.fill" }
+        return state.keyState.key != nil ? "checkmark.circle.fill" : "exclamationmark.circle"
     }
 
     private var keyStatusColor: Color {
-        validationSucceeded || hasAPIKey ? .green : .orange
+        state.validationSucceeded || state.keyState.key != nil ? FamiliarTheme.success : FamiliarTheme.warning
     }
 
     private var costDescription: String {
@@ -151,47 +142,122 @@ struct FamiliarSearchSettingsView: View {
         )
     }
 
-    private func save() {
-        do {
-            let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            if descriptor.requiresAPIKey, !key.isEmpty {
-                try FamiliarSearchKeychainStore.save(key, for: providerID)
-                hasAPIKey = true
-                apiKey = ""
-            }
-            searchService.settingsStore.save(selectedProviderID: providerID)
-            dismiss()
-        } catch {
-            errorMessage = error.localizedDescription
+}
+
+/// Owns one settings editor. Validation is tied to a saved credential revision,
+/// so focus changes, provider switches and stale replies cannot relabel a key.
+@MainActor @Observable
+final class FamiliarSearchSettingsState {
+    private(set) var providerID: String
+    var apiKey = "" {
+        didSet { if apiKey != oldValue { invalidateValidation() } }
+    }
+    private(set) var keyState: FamiliarSearchKeyLookup
+    private(set) var isValidating = false
+    private(set) var validationSucceeded = false
+    var errorMessage: String?
+
+    private let settings: FamiliarSearchSettingsStore
+    private let keys: any FamiliarSearchAPIKeyManaging
+    private let validate: @Sendable (String, String?) async throws -> Void
+    private var validationID: UUID?
+    private var validationTask: Task<Void, Never>?
+
+    convenience init(service: FamiliarWebSearchService) {
+        self.init(settings: service.settingsStore, keys: FamiliarSearchKeychainAPIKeyStore()) {
+            try await service.validateConnection(providerID: $0, apiKey: $1)
         }
     }
 
-    private func deleteKey() {
+    init(settings: FamiliarSearchSettingsStore, keys: any FamiliarSearchAPIKeyManaging,
+         validate: @escaping @Sendable (String, String?) async throws -> Void) {
+        self.settings = settings
+        self.keys = keys
+        self.validate = validate
+        let selectedProvider = settings.selectedProviderID
+        providerID = selectedProvider
+        keyState = keys.lookup(for: selectedProvider)
+    }
+
+    var normalizedEntry: String { FamiliarSearchKeychainStore.normalized(apiKey) }
+    var effectiveKey: String { normalizedEntry.isEmpty ? keyState.key ?? "" : normalizedEntry }
+
+    func selectProvider(_ id: String) {
+        guard id != providerID, saveKey() else { return }
+        invalidateValidation()
+        providerID = FamiliarSearchProviderCatalog.resolvedProviderID(id)
+        settings.save(selectedProviderID: providerID)
+        apiKey = ""
+        keyState = keys.lookup(for: providerID)
+    }
+
+    @discardableResult func saveKey() -> Bool {
+        let key = normalizedEntry
+        guard FamiliarSearchProviderCatalog.descriptor(for: providerID)?.requiresAPIKey == true,
+              !key.isEmpty else { return true }
         do {
-            try FamiliarSearchKeychainStore.delete(for: providerID)
+            try keys.save(key, for: providerID)
+            keyState = keys.lookup(for: providerID)
+            guard keyState.key == key else { throw FamiliarWebError.searchKeyLocked }
             apiKey = ""
-            hasAPIKey = false
-            validationSucceeded = false
+            return true
         } catch {
+            invalidateValidation()
             errorMessage = error.localizedDescription
+            return false
         }
     }
 
-    private func validateConnection() {
+    func deleteKey() {
+        invalidateValidation()
+        do {
+            try keys.delete(for: providerID)
+            apiKey = ""
+            keyState = keys.lookup(for: providerID)
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    @discardableResult func startValidation() -> Task<Void, Never>? {
+        invalidateValidation()
+        guard saveKey() else { return nil }
+        let provider = providerID
+        let requiresKey = FamiliarSearchProviderCatalog.descriptor(for: provider)?.requiresAPIKey == true
+        let key = requiresKey ? keyState.key : nil
+        guard !requiresKey || key != nil else {
+            errorMessage = FamiliarWebError.missingSearchAPIKey(provider).localizedDescription
+            return nil
+        }
+        let id = UUID()
+        validationID = id
         isValidating = true
-        Task {
+        validationTask = Task { [weak self, validate] in
             do {
-                try await searchService.validateConnection(
-                    providerID: providerID,
-                    apiKey: descriptor.requiresAPIKey ? effectiveKey : nil
-                )
-                isValidating = false
-                validationSucceeded = true
+                try await validate(provider, key)
+                guard let self, self.validationID == id, !Task.isCancelled else { return }
+                // Re-read the saved value; verification never makes an unsaved key look valid.
+                let current = self.keys.lookup(for: provider)
+                self.keyState = current
+                self.isValidating = false
+                self.validationSucceeded = key == nil || current.key == key
             } catch {
-                isValidating = false
-                validationSucceeded = false
-                errorMessage = error.localizedDescription
+                guard let self, self.validationID == id, !Task.isCancelled else { return }
+                self.isValidating = false
+                self.errorMessage = error.localizedDescription
             }
         }
+        return validationTask
+    }
+
+    func leave() {
+        _ = saveKey()
+        invalidateValidation()
+    }
+
+    private func invalidateValidation() {
+        validationTask?.cancel()
+        validationTask = nil
+        validationID = nil
+        validationSucceeded = false
+        isValidating = false
     }
 }

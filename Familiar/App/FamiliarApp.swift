@@ -50,37 +50,30 @@ struct FamiliarApp: App {
 #endif
         let fileManager = FileManager.default
         let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let didReset = try FamiliarBusinessDataGeneration.prepare(in: support, fileManager: fileManager)
         let persistence = support.appendingPathComponent("Familiar/Persistence", isDirectory: true)
         try fileManager.createDirectory(at: persistence, withIntermediateDirectories: true, attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
         let storeURL = persistence.appendingPathComponent(FamiliarModelContainer.storeFilename)
-        return try FamiliarModelContainer.make(at: storeURL)
+        let container = try FamiliarModelContainer.make(at: storeURL)
+        if didReset {
+            try FamiliarSharedInbox.removeAll()
+            try FamiliarBusinessDataGeneration.finish(in: support, fileManager: fileManager)
+            Task { await FamiliarSpotlightIndexer.shared.replaceConversations([]) }
+        }
+        return container
     }
 
     static func resetStore() throws {
         let fileManager = FileManager.default
         let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         try resetStore(in: support, fileManager: fileManager)
+        try FamiliarSharedInbox.removeAll()
     }
 
     static func resetStore(in support: URL, fileManager: FileManager = .default) throws {
-        let persistence = support.appendingPathComponent("Familiar/Persistence", isDirectory: true)
-        removeStore(named: FamiliarModelContainer.storeName, in: persistence, fileManager: fileManager)
-        let attachments = support.appendingPathComponent("Familiar/Attachments", isDirectory: true)
-        if fileManager.fileExists(atPath: attachments.path) { try fileManager.removeItem(at: attachments) }
-        let projectResources = support.appendingPathComponent("Familiar/ProjectResources", isDirectory: true)
-        if fileManager.fileExists(atPath: projectResources.path) { try fileManager.removeItem(at: projectResources) }
-        let files = support.appendingPathComponent("Familiar/Artifacts", isDirectory: true)
-        if fileManager.fileExists(atPath: files.path) { try fileManager.removeItem(at: files) }
-        let managedFiles = support.appendingPathComponent("Familiar/Files", isDirectory: true)
-        if fileManager.fileExists(atPath: managedFiles.path) { try fileManager.removeItem(at: managedFiles) }
+        try FamiliarBusinessDataGeneration.reset(in: support, fileManager: fileManager)
     }
 
-    private static func removeStore(named name: String, in directory: URL, fileManager: FileManager) {
-        let base = directory.appendingPathComponent(name + ".store")
-        for url in [base, URL(fileURLWithPath: base.path + "-shm"), URL(fileURLWithPath: base.path + "-wal")] {
-            try? fileManager.removeItem(at: url)
-        }
-    }
 }
 
 private struct FamiliarStoreRecoveryView: View {

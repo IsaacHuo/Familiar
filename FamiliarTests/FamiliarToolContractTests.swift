@@ -28,15 +28,32 @@ struct FamiliarToolContractTests {
         #expect(decoded.resultContract == .init())
     }
 
-    @Test("Historical Artifact payloads decode while new payloads encode only File names")
-    func historicalFilePayload() throws {
+    @Test("Current File payloads decode without obsolete Artifact compatibility")
+    func currentFilePayload() throws {
         let payload = FamiliarToolPresentationPayload.fileMutation(.init(summary: "Saved", operation: "write",
             identifier: "file_1", title: "File", byteSize: 1, contentHash: "hash"))
         let current = String(decoding: try JSONEncoder().encode(payload), as: UTF8.self)
         let historical = current.replacingOccurrences(of: "fileMutation", with: "artifactMutation")
-        let decoded = try JSONDecoder().decode(FamiliarToolPresentationPayload.self, from: Data(historical.utf8))
+        let decoded = try JSONDecoder().decode(FamiliarToolPresentationPayload.self, from: Data(current.utf8))
         #expect(decoded == payload)
+        #expect(throws: DecodingError.self) {
+            _ = try JSONDecoder().decode(FamiliarToolPresentationPayload.self, from: Data(historical.utf8))
+        }
         #expect(!String(decoding: try JSONEncoder().encode(decoded), as: UTF8.self).contains("artifactMutation"))
+    }
+
+    @Test("Only environment_prepare may return unchanged; writes cannot masquerade as reads")
+    func unchangedResultBoundary() async throws {
+        let ready = AnyFamiliarTool(FamiliarUnchangedContractFixture(name: "environment_prepare", unchanged: true))
+        guard case .unchanged = try await ready.execute(arguments: "{}", context: .init(conversationID: UUID())) else {
+            Issue.record("Expected an unchanged environment result"); return
+        }
+        for fixture in [FamiliarUnchangedContractFixture(name: "file_write", unchanged: true),
+                        FamiliarUnchangedContractFixture(name: "environment_prepare", unchanged: false)] {
+            await #expect(throws: FamiliarToolDeclarationError.self) {
+                _ = try await AnyFamiliarTool(fixture).execute(arguments: "{}", context: .init(conversationID: UUID()))
+            }
+        }
     }
 
     @Test("Every presentation payload round-trips with a stable schema tag", arguments: payloads)
@@ -128,4 +145,18 @@ struct FamiliarToolContractTests {
         .code(.init(summary: "Example", language: "swift", filename: "Example.swift", code: "let value = 1")),
         .shareDraft(.init(summary: "Ready to share", title: "Draft", text: "Share this text"))
     ]
+}
+
+private nonisolated struct FamiliarUnchangedContractFixture: FamiliarTool {
+    struct Input: Decodable, Sendable {}
+    let name: String
+    let unchanged: Bool
+    var manifest: FamiliarToolManifest {
+        .init(name: name, title: "Fixture", description: "Fixture", parameters: .object([:]), effect: .destructiveWrite, risk: .high)
+    }
+    func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
+        let result = FamiliarToolExecutionResult(envelope: try .init(model: ["ready": true],
+            presentation: .scalar(.init(summary: "Ready", value: "ready"))))
+        return unchanged ? .unchanged(result) : .result(result)
+    }
 }

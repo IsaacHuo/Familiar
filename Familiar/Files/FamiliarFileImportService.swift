@@ -69,11 +69,40 @@ struct FamiliarFileImportService {
               activity.toolName == "web_fetch", activity.phase == .succeeded,
               let result = try context.fetch(FetchDescriptor<FamiliarToolResultRecord>(predicate: #Predicate { $0.activityID == activityID })).first,
               activity.resultRecordID == result.id,
-              let project = try context.fetch(FetchDescriptor<FamiliarAgentRun>(predicate: #Predicate { $0.runtimeID == runtimeID })).first?.conversation?.project,
+              let chat = try context.fetch(FetchDescriptor<FamiliarAgentRun>(predicate: #Predicate { $0.runtimeID == runtimeID })).first?.conversation,
               let envelope = try? JSONDecoder().decode(FamiliarToolResultEnvelope.self, from: Data(result.envelopeJSON.utf8)),
               let output = try? JSONDecoder().decode(FamiliarWebFetchOutput.self, from: Data(envelope.modelContent.utf8))
         else { throw FamiliarFileImportError.invalidWebCapture }
-        return try importFetchedWebText(output.capture, displayName: output.title, into: project, in: context)
+        if let project = chat.project { return try importFetchedWebText(output.capture, displayName: output.title, into: project, in: context) }
+        let capture = output.capture
+        guard !capture.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              Int64(capture.text.utf8.count) <= FamiliarAttachmentStore.maximumSourceBytes,
+              capture.contentHash == FamiliarHash.sha256(capture.text),
+              (try? FamiliarWebURLPolicy.normalize(capture.urlString)) != nil else { throw FamiliarFileImportError.invalidWebCapture }
+        let scope = FamiliarWorkScope.conversation(chat.id), key = FamiliarWorkScope.conversation(chat.id).storageKey
+        let originKey = output.capture.fileOriginKey
+        if let existing = try context.fetch(FetchDescriptor<FamiliarFileRecord>(predicate: #Predicate { $0.scopeKey == key && $0.originKey == originKey })).first {
+            guard let version = existing.latestVersion,
+                  version.extractedTextHash == FamiliarHash.sha256(capture.resourceText),
+                  let snapshot = existing.snapshot else { throw FamiliarFileImportError.invalidWebCapture }
+            _ = try FamiliarFileByteReader.read(snapshot, scope: scope)
+            return existing
+        }
+        let id = UUID(), filename = "Web-" + output.sourceID + ".txt"
+        let bytes = Data(output.capture.resourceText.utf8), fileStore = FamiliarFileStore()
+        let stored = try fileStore.write(bytes, scope: scope, fileID: id, filename: filename)
+        do {
+            let file = FamiliarFileRecord(id: id, scope: scope, displayName: output.title ?? output.finalURL,
+                origin: .webCapture, chatIDs: [chat.id])
+            file.originKey = originKey
+            context.insert(file)
+            context.insert(FamiliarFileVersionRecord(id: id, version: 1, filename: filename, mimeType: "text/plain",
+                byteSize: Int64(bytes.count), contentHash: stored.hash, extractedText: output.capture.resourceText,
+                extractedTextHash: FamiliarHash.sha256(output.capture.resourceText), storage: .init(kind: .file, relativePath: stored.path),
+                sourceURLString: output.finalURL, createdByRunID: runtimeID, createdAt: output.accessedAt, file: file))
+            try context.save()
+            return file
+        } catch { context.rollback(); try? fileStore.remove(scope: scope, fileID: id); throw error }
     }
 
     func importFetchedWebText(_ capture: FamiliarWebCapture, displayName: String? = nil, into project: FamiliarProject,
@@ -83,9 +112,9 @@ struct FamiliarFileImportService {
               Int64(capture.text.utf8.count) <= FamiliarAttachmentStore.maximumSourceBytes,
               capture.contentHash == FamiliarHash.sha256(capture.text),
               (try? FamiliarWebURLPolicy.normalize(capture.urlString)) != nil else { throw FamiliarFileImportError.invalidWebCapture }
-        let projectID = project.id, textHash = FamiliarHash.sha256(capture.resourceText)
+        let scopeKey = FamiliarWorkScope.project(project.id).storageKey, textHash = FamiliarHash.sha256(capture.resourceText)
         let originKey = capture.fileOriginKey
-        let candidates = try context.fetch(FetchDescriptor<FamiliarFileRecord>(predicate: #Predicate { $0.projectID == projectID && $0.originKey == originKey }))
+        let candidates = try context.fetch(FetchDescriptor<FamiliarFileRecord>(predicate: #Predicate { $0.scopeKey == scopeKey && $0.originKey == originKey }))
         if let existing = candidates.first, let version = existing.latestVersion {
             guard version.extractedTextHash == textHash, let url = store.url(for: version.storageRelativePath),
                   FamiliarHash.sha256(try Data(contentsOf: url)) == version.contentHash else { throw FamiliarProjectResourceStoreError.sourceUnavailable }
@@ -126,7 +155,7 @@ struct FamiliarFileImportService {
     private func persist(id: UUID, versionID: UUID, name: String, origin: FamiliarFileOrigin, filename: String, mimeType: String,
                          copied: FamiliarStoredResourceFile, text: String, sourceURL: String?, provenance: [String: String],
                          originKey: String? = nil, createdAt: Date = Date(), into project: FamiliarProject, in context: ModelContext) throws -> FamiliarFileRecord {
-        let file = FamiliarFileRecord(id: id, projectID: project.id, displayName: name, origin: origin,
+        let file = FamiliarFileRecord(id: id, scope: .project(project.id), displayName: name, origin: origin,
             isProjectContext: true, createdAt: createdAt, updatedAt: createdAt)
         file.originKey = originKey
         var fields = provenance

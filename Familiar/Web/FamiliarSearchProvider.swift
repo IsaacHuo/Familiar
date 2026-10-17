@@ -1,9 +1,16 @@
 import Foundation
 import NaturalLanguage
 
+nonisolated enum FamiliarSearchRecency: String, Codable, CaseIterable, Sendable {
+    case day, week, month, year
+}
+
 nonisolated struct FamiliarSearchRequest: Equatable, Sendable {
     let query: String
     let maximumResults: Int
+    var recency: FamiliarSearchRecency? = nil
+    /// One deadline for transport retries, HTML shape changes and provider fallback.
+    var deadline: ContinuousClock.Instant? = nil
     var language: String {
         let detector = NLLanguageRecognizer()
         detector.processString(query)
@@ -103,15 +110,27 @@ nonisolated final class FamiliarSearchSettingsStore: @unchecked Sendable {
     static let providerDefaultsKey = "familiar.search.provider.v1"
 
     private let defaults: UserDefaults
+    private let recoversProviderFromKeychain: Bool
 
-    init(defaults: UserDefaults = .standard) {
+    /// `recoversProviderFromKeychain`: UserDefaults is cleared on reinstall while the
+    /// Keychain survives, so an unset selection falls back to a provider that still
+    /// has a stored key instead of silently orphaning it.
+    init(defaults: UserDefaults = .standard, recoversProviderFromKeychain: Bool = false) {
         self.defaults = defaults
+        self.recoversProviderFromKeychain = recoversProviderFromKeychain
     }
 
     var selectedProviderID: String {
-        FamiliarSearchProviderCatalog.resolvedProviderID(
-            defaults.string(forKey: Self.providerDefaultsKey)
-        )
+        if let stored = defaults.string(forKey: Self.providerDefaultsKey) {
+            return FamiliarSearchProviderCatalog.resolvedProviderID(stored)
+        }
+        if recoversProviderFromKeychain,
+           let keyed = FamiliarSearchProviderCatalog.releaseVisible.first(where: {
+               $0.requiresAPIKey && FamiliarSearchKeychainStore.lookup(for: $0.id).key != nil
+           }) {
+            return keyed.id
+        }
+        return FamiliarSearchProviderCatalog.defaultProviderID
     }
 
     var settings: FamiliarSearchSettings {
@@ -132,10 +151,33 @@ nonisolated final class FamiliarSearchSettingsStore: @unchecked Sendable {
 
 nonisolated protocol FamiliarSearchAPIKeyStoring: Sendable {
     func load(for providerID: String) -> String?
+    func lookup(for providerID: String) -> FamiliarSearchKeyLookup
 }
 
-nonisolated struct FamiliarSearchKeychainAPIKeyStore: FamiliarSearchAPIKeyStoring {
+nonisolated protocol FamiliarSearchAPIKeyManaging: FamiliarSearchAPIKeyStoring {
+    func save(_ value: String, for providerID: String) throws
+    func delete(for providerID: String) throws
+}
+
+nonisolated extension FamiliarSearchAPIKeyStoring {
+    func lookup(for providerID: String) -> FamiliarSearchKeyLookup {
+        load(for: providerID).map { .found($0) } ?? .missing
+    }
+}
+
+nonisolated struct FamiliarSearchKeychainAPIKeyStore: FamiliarSearchAPIKeyManaging {
+    func save(_ value: String, for providerID: String) throws {
+        try FamiliarSearchKeychainStore.save(value, for: providerID)
+    }
+
+    func delete(for providerID: String) throws {
+        try FamiliarSearchKeychainStore.delete(for: providerID)
+    }
     func load(for providerID: String) -> String? {
         FamiliarSearchKeychainStore.load(for: providerID)
+    }
+
+    func lookup(for providerID: String) -> FamiliarSearchKeyLookup {
+        FamiliarSearchKeychainStore.lookup(for: providerID)
     }
 }

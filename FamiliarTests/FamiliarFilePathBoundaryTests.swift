@@ -13,7 +13,7 @@ struct FamiliarFilePathBoundaryTests {
         let alias = root.appendingPathComponent("Alias")
         try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: real)
         let store = FamiliarFileStore(rootURL: alias.appendingPathComponent("Store"))
-        let output = try store.write(Data("real bytes".utf8), projectID: UUID(), fileID: UUID(), filename: "valid.txt")
+        let output = try store.write(Data("real bytes".utf8), scope: .project(UUID()), fileID: UUID(), filename: "valid.txt")
         #expect(try store.read(relativePath: output.path) == Data("real bytes".utf8))
         let source = store.rootURL.appendingPathComponent(output.path)
         let link = source.deletingLastPathComponent().appendingPathComponent("alias.txt")
@@ -27,14 +27,14 @@ struct FamiliarFilePathBoundaryTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let a = UUID(), b = UUID(), fileID = UUID()
         let store = FamiliarFileStore(rootURL: root)
-        let saved = try store.write(Data("B private bytes".utf8), projectID: b, fileID: fileID, filename: "secret.txt")
-        let link = root.appendingPathComponent("Projects/" + a.uuidString)
-        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: root.appendingPathComponent("Projects/" + b.uuidString))
-        let disguised = saved.path.replacingOccurrences(of: b.uuidString, with: a.uuidString)
+        let saved = try store.write(Data("B private bytes".utf8), scope: .project(b), fileID: fileID, filename: "secret.txt")
+        let link = root.appendingPathComponent(FamiliarWorkScope.project(a).filePrefix)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: root.appendingPathComponent(FamiliarWorkScope.project(b).filePrefix))
+        let disguised = saved.path.replacingOccurrences(of: FamiliarWorkScope.project(b).directoryName, with: FamiliarWorkScope.project(a).directoryName)
         #expect(throws: (any Error).self) { _ = try store.read(relativePath: disguised) }
         #expect(store.url(relativePath: disguised) == nil)
         #expect(throws: (any Error).self) {
-            _ = try store.write(Data("A mutation".utf8), projectID: a, fileID: fileID, filename: "secret.txt")
+            _ = try store.write(Data("A mutation".utf8), scope: .project(a), fileID: fileID, filename: "secret.txt")
         }
         #expect(try store.read(relativePath: saved.path) == Data("B private bytes".utf8))
     }
@@ -45,15 +45,15 @@ struct FamiliarFilePathBoundaryTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let a = UUID(), b = UUID()
         let store = FamiliarManagedFileStore(rootURL: root)
-        let original = try store.capture(Data("B output".utf8), filename: "original.txt", projectID: b,
+        let original = try store.capture(Data("B output".utf8), filename: "original.txt", scope: .project(b),
             originKey: "B", runID: nil, toolCallID: nil)
-        try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("Projects/" + a.uuidString),
-            withDestinationURL: root.appendingPathComponent("Projects/" + b.uuidString))
+        try FileManager.default.createSymbolicLink(at: root.appendingPathComponent(FamiliarWorkScope.project(a).filePrefix),
+            withDestinationURL: root.appendingPathComponent(FamiliarWorkScope.project(b).filePrefix))
         #expect(throws: (any Error).self) {
-            _ = try store.capture(Data("A output".utf8), filename: "other.txt", projectID: a,
+            _ = try store.capture(Data("A output".utf8), filename: "other.txt", scope: .project(a),
                 originKey: "A", runID: nil, toolCallID: nil)
         }
-        #expect(throws: (any Error).self) { _ = try store.stageProjectDirectory(projectID: a) }
+        #expect(throws: (any Error).self) { _ = try store.stageScopeDirectory(scope: .project(a)) }
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(original.storage.relativePath).path))
     }
 
@@ -61,23 +61,23 @@ struct FamiliarFilePathBoundaryTests {
     func canonicalReadParentLink() throws {
         let a = UUID(), b = UUID()
         let store = FamiliarManagedFileStore()
-        let projects = store.rootURL.appendingPathComponent("Projects")
+        let projects = store.rootURL.appendingPathComponent("Scopes")
         defer {
-            try? FileManager.default.removeItem(at: projects.appendingPathComponent(a.uuidString))
-            try? FileManager.default.removeItem(at: projects.appendingPathComponent(b.uuidString))
+            try? FileManager.default.removeItem(at: projects.appendingPathComponent(FamiliarWorkScope.project(a).directoryName))
+            try? FileManager.default.removeItem(at: projects.appendingPathComponent(FamiliarWorkScope.project(b).directoryName))
         }
         let bytes = Data("B scoped secret".utf8)
-        let captured = try store.capture(bytes, filename: "private.txt", projectID: b,
+        let captured = try store.capture(bytes, filename: "private.txt", scope: .project(b),
             originKey: "B", runID: nil, toolCallID: nil)
-        try FileManager.default.createSymbolicLink(at: projects.appendingPathComponent(a.uuidString),
-            withDestinationURL: projects.appendingPathComponent(b.uuidString))
-        let snapshot = FamiliarFileSnapshot(reference: .init(fileID: UUID(), versionID: captured.versionID, projectID: a),
+        try FileManager.default.createSymbolicLink(at: projects.appendingPathComponent(FamiliarWorkScope.project(a).directoryName),
+            withDestinationURL: projects.appendingPathComponent(FamiliarWorkScope.project(b).directoryName))
+        let snapshot = FamiliarFileSnapshot(reference: .init(fileID: UUID(), versionID: captured.versionID, scope: .project(a)),
             name: "Disguised", origin: .shell, version: 1, filename: captured.filename,
             mimeType: captured.mimeType, byteSize: captured.byteSize, contentHash: captured.contentHash,
-            storage: .init(kind: .managed, relativePath: captured.storage.relativePath.replacingOccurrences(of: b.uuidString, with: a.uuidString)),
+            storage: .init(kind: .managed, relativePath: captured.storage.relativePath.replacingOccurrences(of: FamiliarWorkScope.project(b).directoryName, with: FamiliarWorkScope.project(a).directoryName)),
             isProjectContext: false, updatedAt: Date())
         #expect(FamiliarFileByteReader.url(for: snapshot) == nil)
-        #expect(throws: (any Error).self) { _ = try FamiliarFileByteReader.read(snapshot, projectID: a) }
+        #expect(throws: (any Error).self) { _ = try FamiliarFileByteReader.read(snapshot, scope: .project(a)) }
         #expect(try Data(contentsOf: store.rootURL.appendingPathComponent(captured.storage.relativePath)) == bytes)
     }
 }

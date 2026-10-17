@@ -60,19 +60,18 @@
 | App Intent 文本 | 用户在 Siri / Shortcuts / Spotlight 明确提供 | 仅作为进程内 handoff 和新草稿短暂存在，发送后进入本地消息记录 | Ask / Process 通过当前选择的 BYOK Provider 发送；Open 不发送 | 未发送草稿被拒绝覆盖；成功提交后沿用会话生命周期 |
 | 本地通知状态 | Agent Run 终态 | iOS 通知中心保存通用文案和本地 Run / 会话 UUID；开关保存在 UserDefaults | 无 Familiar 服务或远程推送目的地 | 用户关闭功能时清理 Familiar 待处理与已投递通知；系统也可按自身策略清理 |
 | Spotlight 会话索引 | 本地 SwiftData 会话 | Core Spotlight `.complete` 保护索引；最多 80 字符标题、更新时间和会话 UUID | 无 Familiar 服务或公开 Web 索引目的地 | 随当前会话集合重建；重命名更新，删除会话后清理对应结果 |
-| Shell 输入、环境与输出 | 当前 ContextSnapshot、声明依赖、Agent command 和运行结果 | task-scoped 只读 Files、Workspace Outputs、临时 Work；Project 持久 Environment 或普通 Chat 临时 Environment；command/result/diff/lock receipt 随工具记录 | 默认无；依赖方案批准后访问用户在设置中选择的 PyPI HTTPS 软件源，其他联网 Shell 仍单独审批 | Files/Work/普通 Chat Environment 随 Run view 清理；Project Environment、Outputs 与 Workspace 生命周期一致 |
+| Shell 输入、环境与输出 | 当前 ContextSnapshot、声明依赖、Agent command 和运行结果 | task-scoped 只读 Files、Workspace Outputs、临时 Work；各 Project/普通 Chat 独立持久 Environment；command/result/diff/lock receipt 随工具记录 | 默认无；依赖方案批准后访问用户在设置中选择的 PyPI HTTPS 软件源，其他联网 Shell 仍单独审批 | Files/Work 随 Run view 清理；Environment、Outputs 与所属 Workspace 生命周期一致 |
 
 ## 3. SwiftData 与 store 策略
 
-一个 SwiftData store 分别承载长期 Domain Data 与执行 Audit/Recovery。正式 SchemaMigrationPlan 冻结实际使用的 37 实体 1.0.0 基线，采用增加模型、转换/校验、移除旧模型的迁移链，保留原 store 地址和文件目录；更早开发 store 不兼容。Debug 使用 `FamiliarDevelopment.store`，Release 使用 `Familiar.store`。磁盘升级测试执行、覆盖安装与真实用户数据验收单独记录，编译不构成升级通过。数据模型设计约束：
+一个 SwiftData store 承载长期 Domain Data 与执行 Audit/Recovery，采用唯一当前 schema 5.0.0，不保留历史迁移链。用户已明确授权此次业务代际切换重置全部旧业务数据；旧 store、附件、Files、Workspace、Shell 运行目录、Skill 包、共享收件箱与派生索引清理后建立新 store，成功后写完成标记。模型/搜索配置、Keychain 凭据与外观偏好保留。Debug 使用 `FamiliarDevelopment.store`，Release 使用 `Familiar.store`。构建不代替真实重置与生命周期验收。数据模型设计约束：
 
 - 关系删除规则使用 cascade；附件 / 项目资源 / Artifact 文件由控制器显式清理。
 - Project 名称在本地 store 中全局唯一，比较时不区分大小写。
-- File identity 独立于名称、路径和 hash，FileVersion 保存不可变版本、来源、格式/抽取信息与 storage reference。已提交 Files 属于 Project；删除 Chat 只移除关联与临时数据。
+- File identity 独立于名称、路径和 hash，FileVersion 保存不可变版本、来源、格式/抽取信息与 storage reference。Files 按完整 project/conversation scope 归属。删除普通 Chat 清其独有文件和 Workspace；删除项目 Chat 保留项目文件。移动复制关联文件、重绑附件、清摘要与旧范围授权；删除项目先为保留聊天转存关联文件。
 - 每次 Run 保存不可变 ContextSnapshot 及其资源引用，不保存完整资源抽取文本进快照记录。
-- 历史 schema 的存储定义不得修改。迁移首先转换元数据和引用，不搬迁全部文件字节；删除来源实体前保留必要证据与 Undo/Recovery 身份。
-- 迁移失败保留 store 与字节并进入恢复界面，不自动重建、轮换或清空用户数据。
-- 容器打开失败不自动重置数据；只有用户在恢复界面确认后才删除当前 store、附件、项目资源和 Artifact，Keychain API Key 保留。（历史启动崩溃及当时迁移链方案见 `logs/swiftdata-store-migration-134110.md`。）
+- 业务代际完成后，普通打开失败保留新数据并进入恢复页，不能以打开失败为由再次重置。
+- 除本次已授权的一次性代际切换外，容器打开失败不自动重置数据；后续只有用户在恢复界面确认后才删除业务数据，Keychain API Key 保留。（历史启动崩溃及当时迁移链方案见 `logs/swiftdata-store-migration-134110.md`。）
 
 ## 4. 持久化时点
 
@@ -227,17 +226,14 @@ CSP 主要限制：
 
 ## 11. 权限表
 
-权限由代码控制，不靠 Prompt。系统权限按功能触发；写入由精确授权和结构化动作卡控制：
+权限由 Swift 控制，模型不能自授权。系统权限按功能触发；目标授权按操作后果分级，S2a 当前事实与后续边界见 state/ARCHITECTURE.md：
 
 | 操作 | 默认行为 |
 |---|---|
-| Read + 低风险 | 自动执行 |
-| 可逆写入 | 首次结构化授权；EventKit create/update/delete 保存跨重启 Undo 记录 |
-| 推断出的写入 | 无匹配 grant 时结构化授权 |
-| Web 敏感读取 | 受限公网请求自动执行；不授予后续工具权限 |
-| EventKit 可申请读取 | 结构化确认后请求系统权限 |
-| 破坏性操作 | 确认 |
-| 财务 / 外部重大影响 | 强确认 |
+| 只读 | 不出 App 审批卡；仍需系统权限和作用域检查 |
+| 可撤销本地写入 | 自动执行；事后回执与撤销 |
+| 影响 App 外部 | 首次询问，默认“始终允许此类”；按 Project + 能力匹配并可撤销 |
+| 不可逆或破坏性操作 | 每次询问 |
 
 | 权限 | 触发功能 | 数据用途 |
 |---|---|---|
@@ -258,7 +254,7 @@ CSP 主要限制：
 |---|---|
 | API Key 泄露到普通存储 | Keychain，ThisDeviceOnly |
 | DeepSeek 收集请求内容 | 只使用用户自己的 API Key，设置与隐私政策明确网络目的地 |
-| 模型执行未授权写入 | 精确 grant 匹配、动作卡、协调 actor、EventKit commit 分层；模型不能创建自己的授权 |
+| 模型执行未授权写入 | 后果分级策略、有效授权范围、审批协调、执行前复核与 journal；模型不能创建自己的授权 |
 | 重复工具调用 | run 内重复检测、授权消费、持久化 invocation 与 commit 幂等 |
 | 路径穿越 | 相对路径校验和根目录约束 |
 | Shell 越权读取 | task-scoped mount allowlist；Files 只读；敏感系统数据、其他 Workspace、Metadata、Checkpoint 与 Keychain 不挂载 |

@@ -4,10 +4,11 @@ final class FamiliarChatPresentationUITests: XCTestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
 
     @MainActor
-    private func chat(_ prompt: String, accessibility: Bool = false) -> XCUIApplication {
+    private func chat(_ prompt: String, accessibility: Bool = false, appearance: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-familiar.ui-testing", "1", "-familiar.chat-testing", "1", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         if accessibility { app.launchArguments += ["-familiar.accessibility-testing"] }
+        if let appearance { app.launchArguments += ["-familiar.appearance.v1", appearance] }
         app.launch()
         let input = app.textViews["composer.input"]
         XCTAssertTrue(input.waitForExistence(timeout: 15))
@@ -15,6 +16,67 @@ final class FamiliarChatPresentationUITests: XCTestCase {
         input.typeText(prompt)
         app.buttons["composer.send"].tap()
         return app
+    }
+
+    @MainActor private func verifySearchSources(appearance: String, accessibility: Bool = false) {
+        let app = chat("sources", accessibility: accessibility, appearance: appearance)
+        let sourceButton = app.buttons["message.sources.disclosure"]
+        XCTAssertTrue(sourceButton.waitForExistence(timeout: 25))
+        XCTAssertTrue(sourceButton.label.hasPrefix("1 "))
+        let heading = app.staticTexts["Verified answer"]
+        XCTAssertTrue(heading.waitForExistence(timeout: 20))
+        let citations = app.webViews.links.matching(NSPredicate(format: "label BEGINSWITH %@", "Source 1:"))
+        XCTAssertTrue(citations.firstMatch.waitForExistence(timeout: 10))
+        // The DOM regression checks both chips. WebKit accessibility may expose
+        // identical links once or clip offscreen links at large Dynamic Type.
+        if !sourceButton.isHittable { app.scrollViews["chat.timeline"].swipeUp() }
+        let original = sourceButton.frame.minY
+        func capture(_ name: String) {
+            let screenshot = XCUIScreen.main.screenshot()
+            let attachment = XCTAttachment(screenshot: screenshot)
+            let artifactName = "S1-" + appearance + (accessibility ? "-large" : "") + "-" + name
+            attachment.name = artifactName
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            // Keep reviewable images even if CoreSimulator stalls while packing xcresult.
+            do {
+                let directory = FileManager.default.temporaryDirectory.appendingPathComponent("FamiliarS1Screenshots", isDirectory: true)
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                let path = directory.appendingPathComponent(artifactName + ".png")
+                try screenshot.pngRepresentation.write(to: path)
+                print("S1 screenshot: " + path.path)
+            } catch { XCTFail("Could not preserve S1 screenshot: \(error)") }
+        }
+        capture("answer")
+        sourceButton.tap()
+        XCTAssertTrue(app.staticTexts["Verified source"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Unused search result"].exists)
+        capture("sources")
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(sourceButton.waitForExistence(timeout: 5))
+        XCTAssertEqual(sourceButton.frame.minY, original, accuracy: 3)
+        app.buttons["chat.settings"].tap()
+        capture("settings-hub")
+        let advanced = app.descendants(matching: .any)["settings.route.advanced"].firstMatch
+        if !advanced.waitForExistence(timeout: 5) { app.swipeUp() }
+        XCTAssertTrue(advanced.waitForExistence(timeout: 5))
+        advanced.tap()
+        let search = app.descendants(matching: .any)["settings.route.searchService"].firstMatch
+        if !search.waitForExistence(timeout: 5) { app.swipeUp() }
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        XCTAssertTrue(app.navigationBars["Web Search"].waitForExistence(timeout: 5))
+        capture("settings")
+    }
+
+    @MainActor func testS1SearchSourcesLight() { verifySearchSources(appearance: "light") }
+    @MainActor func testS1SearchSourcesDark() { verifySearchSources(appearance: "dark") }
+    @MainActor func testS1SearchSourcesLargeType() { verifySearchSources(appearance: "light", accessibility: true) }
+
+    @MainActor func testS1UncitedPagesHaveNoSourcesDisclosure() {
+        let app = chat("uncited sources")
+        XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 25))
+        XCTAssertFalse(app.buttons["message.sources.disclosure"].exists)
     }
 
     @MainActor
@@ -178,10 +240,10 @@ final class FamiliarChatPresentationUITests: XCTestCase {
     }
 
     @MainActor
-    func testToolActivityExpandsAndOpensTechnicalDetail() {
+    func testToolActivityOpensResultsAndTechnicalDetail() {
         let app = chat("tools")
         XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 20))
-        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "runtime.toggle.")).firstMatch
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "runtime.open.")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         row.tap()
         let detail = app.descendants(matching: .any)["runtime.details"]
@@ -195,12 +257,67 @@ final class FamiliarChatPresentationUITests: XCTestCase {
     }
 
     @MainActor
-    func testApprovalCreatesOneOpenableFileAndReceipt() {
+    func testToolSheetPreservesReadingAnchorWhileReplyStreams() {
+        let app = chat("tools long")
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "runtime.open.")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 15))
+        let heading = app.staticTexts["Tool workflow"]
+        XCTAssertTrue(heading.waitForExistence(timeout: 10))
+        let viewport = app.scrollViews["chat.timeline"].frame
+        let upper = app.coordinate(withNormalizedOffset: .init(dx: 0.5, dy: 0.3))
+        let lower = app.coordinate(withNormalizedOffset: .init(dx: 0.5, dy: 0.8))
+        for _ in 0..<10 {
+            if row.isHittable && heading.frame.minY >= viewport.minY { break }
+            upper.press(forDuration: 0.05, thenDragTo: lower, withVelocity: .fast, thenHoldForDuration: 0.1)
+        }
+        XCTAssertTrue(row.isHittable)
+        XCTAssertGreaterThanOrEqual(heading.frame.minY, viewport.minY)
+        XCTAssertEqual(app.buttons["composer.send"].label, "Stop generating")
+        let before = heading.frame.minY
+        row.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["runtime.results"].waitForExistence(timeout: 10))
+        let done = app.buttons["Done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 10))
+        done.tap()
+        XCTAssertTrue(heading.waitForExistence(timeout: 10))
+        XCTAssertLessThanOrEqual(abs(heading.frame.minY - before), 2)
+        app.buttons["composer.send"].tap()
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "K-tool-sheet-reading-anchor"; screenshot.lifetime = .keepAlways; add(screenshot)
+    }
+
+    @MainActor
+    func testClarificationUsesComposerAndLeavesOneHistoricalReceipt() {
+        let app = chat("question")
+        let dock = app.descendants(matching: .any)["interaction.dock"]
+        XCTAssertTrue(dock.waitForExistence(timeout: 15))
+        let input = app.textViews["composer.input"]
+        input.tap(); input.typeText("Use a concrete example")
+        app.buttons["composer.send"].tap()
+        XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 20))
+        XCTAssertFalse(dock.exists)
+        XCTAssertEqual(input.value as? String, "")
+        let receipt = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "interaction.receipt.")).firstMatch
+        XCTAssertTrue(receipt.exists)
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "K-question-composer-receipt"; screenshot.lifetime = .keepAlways; add(screenshot)
+    }
+
+    @MainActor
+    func testOptionsOnlyQuestionCanBeAnsweredWithoutTextInput() {
+        let app = chat("question options only")
+        let option = app.buttons["clarification.option.short"]
+        XCTAssertTrue(option.waitForExistence(timeout: 15))
+        XCTAssertFalse(app.buttons["composer.send"].isEnabled)
+        option.tap()
+        XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 20))
+        XCTAssertFalse(option.exists)
+    }
+
+    @MainActor
+    func testAutomaticLocalWriteCreatesOneOpenableFileAndReceipt() {
         let app = chat("file")
         let approve = app.buttons["approval.confirm"]
-        XCTAssertTrue(approve.waitForExistence(timeout: 20))
-        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "file.open.")).firstMatch.exists)
-        approve.tap()
         let file = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "file.open.")).firstMatch
         XCTAssertTrue(file.waitForExistence(timeout: 20))
         XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 20))
@@ -232,11 +349,17 @@ final class FamiliarChatPresentationUITests: XCTestCase {
     func testProjectChatPushReturnsToOriginalProject() {
         let app = chat("short")
         XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 20))
-        app.buttons["chat.projects"].tap()
+        app.buttons["chat.history.open"].tap()
         app.buttons["All Projects"].tap()
-        let daily = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "project.open.")).firstMatch
-        XCTAssertTrue(daily.waitForExistence(timeout: 10))
-        daily.tap()
+        app.buttons["projects.create"].tap()
+        let name = app.textFields.firstMatch
+        XCTAssertTrue(name.waitForExistence(timeout: 10))
+        name.tap()
+        name.typeText("Presentation Project")
+        app.buttons["project.editor.save"].tap()
+        let project = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "project.open.")).firstMatch
+        XCTAssertTrue(project.waitForExistence(timeout: 10))
+        project.tap()
         let newChat = app.buttons["project.newChat"]
         XCTAssertTrue(newChat.waitForExistence(timeout: 10))
         newChat.tap()

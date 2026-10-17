@@ -4,6 +4,7 @@ nonisolated struct FamiliarWebSearchTool: FamiliarTool {
     struct Input: Decodable, Sendable {
         let query: String
         let maxResults: Int?
+        let recency: String?
     }
 
     let service: FamiliarWebSearchService
@@ -14,8 +15,9 @@ nonisolated struct FamiliarWebSearchTool: FamiliarTool {
         parameters: FamiliarJSONSchema(
             type: .object,
             properties: [
-                "query": .init(type: .string, description: "简洁、非私密的网页搜索词"),
-                "maxResults": .init(type: .integer, description: "返回结果数，1 到 10")
+                "query": .init(type: .string, description: "具体、非私密的搜索词；保留主体与范围，按来源选择语言，不因中文提问自动加国家/城市"),
+                "maxResults": .init(type: .integer, description: "返回结果数，1 到 10，默认 5"),
+                "recency": .init(type: .string, description: "可选时效限制：day、week、month 或 year。用于新闻、价格、版本等近期信息")
             ],
             required: ["query"]
         ),
@@ -27,22 +29,27 @@ nonisolated struct FamiliarWebSearchTool: FamiliarTool {
     )
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
-        let request = FamiliarSearchRequest(query: input.query, maximumResults: 20)
+        let recency = input.recency.flatMap { FamiliarSearchRecency(rawValue: $0.lowercased()) }
+        let maximum = min(max(input.maxResults ?? 5, 1), 10)
+        let request = FamiliarSearchRequest(query: input.query, maximumResults: maximum, recency: recency)
         let operation: @Sendable () async throws -> FamiliarWebEvidenceState.Search = {
-            try await service.search(query: input.query, maximumResults: 20)
+            try await service.search(query: input.query, maximumResults: maximum, recency: recency)
         }
         let evidence: FamiliarWebEvidenceState.Search
         if let state = context.webEvidence {
             evidence = try await state.search(query: input.query, providerID: service.settingsStore.selectedProviderID,
-                language: request.language, operation: operation)
+                language: request.language, maximumResults: maximum, recency: recency, operation: operation)
         } else { evidence = try await operation() }
-        let maximum = min(max(input.maxResults ?? 5, 1), 10)
         let results = Array(evidence.0.results.prefix(maximum))
         let output = FamiliarWebSearchOutput(query: evidence.0.query, engine: evidence.0.engine,
-            contentTrust: evidence.0.contentTrust, results: results, truncated: evidence.0.truncated || evidence.0.results.count > maximum)
+            contentTrust: evidence.0.contentTrust, results: results, truncated: evidence.0.truncated || evidence.0.results.count > maximum,
+            fallbackFrom: evidence.0.fallbackFrom)
         let ids = Set(results.map(\.sourceID))
         let sources = evidence.1.filter { ids.contains($0.id) }
-        let summary = String(format: String(localized: "tool.web_search.results", defaultValue: "找到 %lld 个网页结果"), sources.count)
+        var summary = String(format: String(localized: "tool.web_search.results", defaultValue: "找到 %lld 个网页结果"), sources.count)
+        if let fallbackFrom = output.fallbackFrom {
+            summary += " · " + String(format: String(localized: "tool.web_search.fallback", defaultValue: "%@ 无法连接，已改用 DuckDuckGo"), fallbackFrom)
+        }
         return .result(.init(
             envelope: try FamiliarToolResultEnvelope(
                 model: output,
@@ -89,7 +96,12 @@ nonisolated struct FamiliarWebFetchTool: FamiliarTool {
                 model: output,
                 presentation: .document(.init(summary: summary, title: output.title, text: output.text, mimeType: output.mimeType, url: output.finalURL, truncated: output.truncated))
             ),
-            sources: [source]
+            // Persist observed aliases alongside the canonical capture until the
+            // answer checkpoint can rewrite all earlier citations consistently.
+            sources: Array(Set([source.id,
+                FamiliarSourceIdentifier.make(for: try FamiliarWebURLPolicy.normalize(input.url)),
+                FamiliarSourceIdentifier.make(for: try FamiliarWebURLPolicy.normalize(output.finalURL))]))
+                .sorted().map { source.identified(as: $0) }
         ))
     }
 }

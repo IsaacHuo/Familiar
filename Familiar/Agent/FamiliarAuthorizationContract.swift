@@ -7,7 +7,7 @@ nonisolated public enum FamiliarAuthorizationDuration: String, Codable, CaseIter
 }
 
 nonisolated protocol FamiliarAuthorizationServicing: Sendable {
-    func matchingAuthorizationScope(manifest: FamiliarToolManifest, arguments: String, projectID: UUID?, targetKey: String) async throws -> FamiliarAuthorizationDuration?
-    func issueAuthorization(duration: FamiliarAuthorizationDuration, manifest: FamiliarToolManifest, arguments: String, projectID: UUID?, targetKey: String, evidence: String) async throws
+    func matchingAuthorizationScope(manifest: FamiliarToolManifest, arguments: String, scope: FamiliarWorkScope?, targetKey: String) async throws -> FamiliarAuthorizationDuration?
+    func issueAuthorization(duration: FamiliarAuthorizationDuration, manifest: FamiliarToolManifest, arguments: String, scope: FamiliarWorkScope?, targetKey: String, evidence: String) async throws
 }
 

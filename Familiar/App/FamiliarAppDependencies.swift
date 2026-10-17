@@ -39,8 +39,22 @@ struct FamiliarAppDependencies {
         bluetooth = FamiliarBluetoothService()
         alarm = FamiliarAlarmService()
         clipboard = FamiliarClipboardService()
-        let web = FamiliarWebContentService()
+        let web: FamiliarWebContentService
+#if DEBUG && targetEnvironment(simulator)
+        if FamiliarChatTestScenario.isEnabled {
+            web = FamiliarWebContentService(client: FamiliarChatTestWebTransport())
+            let settings = FamiliarSearchSettingsStore(defaults: UserDefaults(suiteName: "FamiliarSearchPresentationTests")!)
+            settings.save(selectedProviderID: "duckduckgo")
+            searchService = FamiliarWebSearchService(settingsStore: settings,
+                keyStore: FamiliarSearchKeychainAPIKeyStore(), providers: [FamiliarChatTestSearchProvider()])
+        } else {
+            web = FamiliarWebContentService()
+            searchService = FamiliarWebSearchService()
+        }
+#else
+        web = FamiliarWebContentService()
         searchService = FamiliarWebSearchService()
+#endif
         pythonPackageSourceSettings = FamiliarPythonPackageSourceSettingsStore()
         workspaceStore = FamiliarWorkspaceStore()
         confirmationCoordinator = FamiliarToolConfirmationCoordinator()

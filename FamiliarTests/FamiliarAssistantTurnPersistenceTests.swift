@@ -136,6 +136,43 @@ struct FamiliarAssistantTurnPersistenceTests {
         #expect(runBlock == block)
     }
 
+    @Test("Final checkpoint replaces citation aliases in the existing block and survives reload")
+    @MainActor
+    func finalizedCitationsReload() throws {
+        let fixture = try makeRun(runtimeID: "citation-run")
+        let recorder = FamiliarRunPersistenceRecorder(), blockID = UUID(), messageID = UUID()
+        let url = URL(string: "https://example.com/final")!
+        let source = FamiliarSource(id: "original", kind: .fetchedPage, title: "Page", url: url,
+            siteName: nil, snippet: nil, retrievedAt: Date())
+        let raw = "Fact [[original]]. Redirected fact [[alias]]."
+        let resolved = FamiliarCitation.canonicalized(raw, sources: [source, source.identified(as: "alias")])
+        let first = try #require(try recorder.recordResponseBlock(id: blockID, runtimeID: "citation-run",
+            assistantTurnID: "citation-run:turn:0", messageID: nil, kind: .markdown, state: .completed,
+            content: raw, endedAt: Date(), context: fixture.context))
+        let message = FamiliarMessage(id: messageID, role: .assistant, content: resolved.text, sequence: 0,
+            runtimeID: "citation-run", assistantTurnID: "citation-run:turn:0", responseBlockID: blockID,
+            conversation: fixture.conversation)
+        fixture.context.insert(message)
+        fixture.context.insert(FamiliarSourceRecord(sourceID: source.id, kind: source.kind, title: source.title,
+            urlString: url.absoluteString, siteName: nil, snippet: nil, sequence: 0,
+            retrievedAt: source.retrievedAt, message: message))
+        let finalized = try #require(try recorder.recordResponseBlock(id: blockID, runtimeID: "citation-run",
+            assistantTurnID: "citation-run:turn:0", messageID: messageID, kind: .markdown, state: .completed,
+            content: resolved.text, endedAt: Date(), context: fixture.context))
+        #expect(first === finalized)
+        #expect(try fixture.context.fetchCount(FetchDescriptor<FamiliarResponseBlockRecord>()) == 1)
+        let reopened = ModelContext(fixture.container)
+        let controller = FamiliarChatController(dependencies: .init())
+        controller.select(fixture.conversation.id, in: reopened)
+        let saved = try #require(controller.messages.first)
+        let block = try #require(saved.responseBlocks.first)
+        #expect(block.id == blockID)
+        #expect(block.content == "Fact [[original]]. Redirected fact [[original]].")
+        #expect(block.contentHash == FamiliarHash.sha256(block.content))
+        #expect(saved.sources.count == 1)
+        #expect(saved.citedSources.map(\.id) == ["original"])
+    }
+
     @Test("Multiple assistant turns retain runtime order when attached to one message")
     @MainActor
     func orderedResponseBlockReload() throws {

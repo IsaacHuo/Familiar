@@ -140,6 +140,8 @@ struct FamiliarComposer: View {
     let focus: FocusState<Bool>.Binding
     let onSpeech: () -> Void
     let onSend: () -> Void
+    let isAnsweringClarification: Bool
+    let allowsCustomAnswer: Bool
 
     @State private var mode: FamiliarComposerMode = .compact
     @State private var measuredTextHeight: CGFloat = 0
@@ -163,8 +165,16 @@ struct FamiliarComposer: View {
     /// Scales with Dynamic Type. It must be one value shared by the font and the height
     /// math below: scaling the font while measuring against a fixed 20pt would clip the
     /// user's own text at larger sizes.
-    @ScaledMetric(relativeTo: .body) private var editorFontSize: CGFloat = 20
+    @ScaledMetric(relativeTo: .body) private var editorFontSize: CGFloat = 18
     private var lineHeight: CGFloat { UIFont.systemFont(ofSize: editorFontSize).lineHeight }
+    /// SwiftUI's TextEditor lays its first line out below this inset; the
+    /// placeholder mirrors it so both render on the same line.
+    private let textEditorTopInset: CGFloat = 8
+    /// Centers the compact text block on the control row so its line shares the
+    /// add/mic/send center instead of sitting above it.
+    private var compactTextTopPadding: CGFloat {
+        max((controlsHeight - effectiveTextHeight) / 2 - textEditorTopInset, 0)
+    }
 
     init(
         draft: Binding<String>,
@@ -178,7 +188,9 @@ struct FamiliarComposer: View {
         focus: FocusState<Bool>.Binding,
         onSpeech: @escaping () -> Void,
         onSend: @escaping () -> Void,
-        availableHeight: CGFloat = UIScreen.main.bounds.height
+        availableHeight: CGFloat,
+        isAnsweringClarification: Bool = false,
+        allowsCustomAnswer: Bool = true
     ) {
         _draft = draft
         _images = images
@@ -192,12 +204,16 @@ struct FamiliarComposer: View {
         self.onSpeech = onSpeech
         self.onSend = onSend
         self.availableHeight = availableHeight
+        self.isAnsweringClarification = isAnsweringClarification
+        self.allowsCustomAnswer = allowsCustomAnswer
     }
 
     private var hasText: Bool { !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var canSend: Bool {
-        isSending || (importingFileCount == 0 && (hasText || !documents.isEmpty || !images.isEmpty))
+        if isAnsweringClarification { return allowsCustomAnswer && hasText }
+        return isSending || (importingFileCount == 0 && (hasText || !documents.isEmpty || !images.isEmpty))
     }
+    private var showsStop: Bool { isSending && !isAnsweringClarification }
     private var hasDraftContent: Bool { selectedSkill != nil || !images.isEmpty || !documents.isEmpty || importingFileCount > 0 }
     private var effectiveTextHeight: CGFloat { max(measuredTextHeight, CGFloat(max(draft.components(separatedBy: "\n").count, 1)) * lineHeight) }
     private var isLongText: Bool { effectiveTextHeight >= lineHeight * 4 - 0.5 }
@@ -210,12 +226,14 @@ struct FamiliarComposer: View {
 
     var body: some View {
         VStack(spacing: FamiliarSpacing.small) {
-            skillPalette
-            draftPreview
+            if !isAnsweringClarification {
+                skillPalette
+                draftPreview
+            }
             FamiliarComposerLayout(
                 mode: mode,
                 editorHeight: editorHeight,
-                leadingControlCount: mode == .compact ? 1 : 2
+                leadingControlCount: isAnsweringClarification ? 0 : (mode == .compact ? 1 : 2)
             ) {
                 editor
                 micButton
@@ -224,11 +242,12 @@ struct FamiliarComposer: View {
             .frame(height: mode == .fullscreen ? nil : controlsHeight)
             .frame(maxHeight: mode == .fullscreen ? .infinity : nil)
             .overlay(alignment: .bottomLeading) {
-                HStack(spacing: -4) {
+                if !isAnsweringClarification { HStack(spacing: -4) {
                     addButton
                     if focus.wrappedValue {
                         slashButton
                     }
+                }
                 }
             }
         }
@@ -279,6 +298,11 @@ struct FamiliarComposer: View {
         .onChange(of: focus.wrappedValue) { _, focused in
             if !focused { showsSkillPalette = false }
             updateModeForFocus(focused)
+        }
+        .onChange(of: isAnsweringClarification) { _, _ in
+            measuredTextHeight = 0
+            mode = .compact
+            showsSkillPalette = false
         }
         .onChange(of: draft) { oldValue, newValue in
             if oldValue.first == "/", newValue.first != "/" {
@@ -394,12 +418,12 @@ struct FamiliarComposer: View {
     private var editor: some View {
         ZStack(alignment: .topLeading) {
             if draft.isEmpty {
-                Text(String(localized: "composer.placeholder"))
+                Text(String(localized: isAnsweringClarification ? "clarification.custom" : "composer.placeholder"))
                     .font(.system(size: editorFontSize))
                     .lineLimit(1)
                     .foregroundStyle(.tertiary)
                     .padding(.leading, mode == .compact ? 5 : 14)
-                    .padding(.top, mode == .compact ? 8 : 14)
+                    .padding(.top, mode == .compact ? compactTextTopPadding + textEditorTopInset : 14)
                     .allowsHitTesting(false)
             }
             TextEditor(text: $draft)
@@ -408,10 +432,11 @@ struct FamiliarComposer: View {
                 .scrollContentBackground(.hidden)
                 .scrollIndicators(.hidden)
                 .padding(.leading, mode == .compact ? 0 : 9)
-                .padding(.top, mode == .compact ? 0 : 6)
+                .padding(.top, mode == .compact ? compactTextTopPadding : 6)
                 .padding(.trailing, showsExpansion ? 44 : 0)
                 .scrollDismissesKeyboard(.interactively)
                 .focused(focus)
+                .disabled(isAnsweringClarification && !allowsCustomAnswer)
             if showsExpansion {
                 HStack {
                     Spacer()
@@ -499,7 +524,7 @@ struct FamiliarComposer: View {
     private var micButton: some View {
         Button(action: onSpeech) {
             Image(systemName: isListening ? "waveform" : "mic")
-                .font(.system(size: isListening ? 20 : 23, weight: isListening ? .semibold : .regular))
+                .font(.system(size: FamiliarIconSize.prominent, weight: isListening ? .semibold : .regular))
                 .foregroundStyle(isListening ? FamiliarTheme.accent : Color.primary)
                 .contentTransition(reduceMotion ? .opacity : .symbolEffect(.replace))
                 .symbolEffect(.breathe, isActive: isListening && !reduceMotion)
@@ -510,20 +535,22 @@ struct FamiliarComposer: View {
                 )
         }
         .buttonStyle(FamiliarIconButtonStyle())
+        .disabled(isAnsweringClarification)
         .accessibilityLabel(String(localized: isListening ? "speech.stop" : "speech.start"))
     }
 
     private var sendButton: some View {
         Button {
-            if isSending { FamiliarHaptics.shared.perform(.selection); onSend() }
+            if isAnsweringClarification { if canSend { onSend() } }
+            else if isSending { FamiliarHaptics.shared.perform(.selection); onSend() }
             else if importingFileCount > 0 { return }
             else if hasText || !documents.isEmpty || !images.isEmpty { onSend() }
         } label: {
-            Image(systemName: isSending ? "stop.fill" : "arrow.up")
+            Image(systemName: showsStop ? "stop.fill" : "arrow.up")
                 .contentTransition(reduceMotion ? .opacity : .symbolEffect(.replace))
-                .scaleEffect(isSending && !reduceMotion ? 0.94 : 1)
-                .animation(reduceMotion ? nil : FamiliarMotion.micro, value: isSending)
-                .font(.system(size: FamiliarIconSize.compact, weight: .bold))
+                .scaleEffect(showsStop && !reduceMotion ? 0.94 : 1)
+                .animation(reduceMotion ? nil : FamiliarMotion.micro, value: showsStop)
+                .font(.system(size: FamiliarIconSize.standard, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: FamiliarControlSize.standardVisual, height: FamiliarControlSize.standardVisual)
                 .background(canSend ? FamiliarTheme.accent : Color.secondary.opacity(0.28), in: Circle())
@@ -536,7 +563,7 @@ struct FamiliarComposer: View {
         .disabled(!canSend)
         .animation(reduceMotion ? nil : FamiliarMotion.micro, value: canSend)
         .accessibilityIdentifier("composer.send")
-        .accessibilityLabel(String(localized: isSending ? "message.stop" : "message.send"))
+        .accessibilityLabel(String(localized: isAnsweringClarification ? "clarification.submit" : (showsStop ? "message.stop" : "message.send")))
         .accessibilityHint(sendDisabledReason ?? "")
     }
 

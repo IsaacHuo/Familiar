@@ -24,7 +24,7 @@ struct FamiliarWP4Tests {
         #expect(!store.isSafeRelativePath("/private/file.txt"))
         #expect(!store.isSafeRelativePath("Projects//file.txt"))
         let copied = try store.copyVersion(from: source, projectID: projectID, resourceID: resourceID, version: 1, versionID: versionID, filename: "file.txt")
-        #expect(copied.relativePath == "Projects/\(projectID.uuidString)/Resources/\(resourceID.uuidString)/Versions/1-\(versionID.uuidString)/file.txt")
+        #expect(copied.relativePath == "\(FamiliarWorkScope.project(projectID).filePrefix)Resources/\(resourceID.uuidString)/Versions/1-\(versionID.uuidString)/file.txt")
         #expect(copied.byteSize == 13)
         #expect(copied.contentHash == "8c15f7b99b143b43c0c49d4250a8ba35e32168a9196085e0bf6e089147983cad")
         #expect(store.url(for: copied.relativePath) != nil)
@@ -182,10 +182,10 @@ struct FamiliarWP4Tests {
         try context.save()
 
         try FamiliarProjectService(resourceStore: store).permanentlyDelete(project, in: context)
-        #expect(try context.fetch(FetchDescriptor<FamiliarProject>()).allSatisfy { $0.isDefaultProject })
+        #expect(try context.fetch(FetchDescriptor<FamiliarProject>()).isEmpty)
         #expect(try context.fetch(FetchDescriptor<FamiliarResource>()).isEmpty)
         #expect(try context.fetch(FetchDescriptor<FamiliarResourceVersion>()).isEmpty)
-        #expect(try #require(context.fetch(FetchDescriptor<FamiliarConversation>()).first).project?.isDefaultProject == true)
+        #expect(try #require(context.fetch(FetchDescriptor<FamiliarConversation>()).first).project == nil)
         #expect(try #require(context.fetch(FetchDescriptor<FamiliarAgentRun>()).first).project == nil)
         #expect(store.url(for: stored.relativePath) == nil)
     }
@@ -282,7 +282,7 @@ struct FamiliarWP4Tests {
     @Test("Only exact immutable FileVersions reuse bounded reads with original observation time")
     func fileReadReuse() async throws {
         let state = FamiliarRunState(), versionID = UUID()
-        let file = FamiliarFileSnapshot(reference: .init(fileID: UUID(), versionID: versionID, projectID: fixtureProjectID),
+        let file = FamiliarFileSnapshot(reference: .init(fileID: UUID(), versionID: versionID, scope: .project(fixtureProjectID)),
             name: "same.txt", origin: .upload, version: 1, filename: "same.txt", mimeType: "text/plain", byteSize: 4,
             contentHash: "hash", storage: .init(kind: .attachment, relativePath: "frozen"), isProjectContext: false, updatedAt: Date())
         let call = FamiliarToolCall(id: "read", name: "file_read", arguments: "{\"identifier\":\"file_\(versionID)\"}")

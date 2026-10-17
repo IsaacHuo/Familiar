@@ -48,7 +48,7 @@ struct FamiliarFilePresentation: Identifiable {
         byteSize = file.byteSize
         version = nil
         format = file.format
-        url = revoked || !file.relativePath.hasPrefix("Projects/\(file.projectID.uuidString)/")
+        url = revoked || !file.relativePath.hasPrefix(file.scope.filePrefix)
             ? nil : FamiliarFileStore().url(relativePath: file.relativePath)
         isRevoked = revoked
     }
@@ -73,16 +73,16 @@ struct FamiliarFilePresentation: Identifiable {
     }
 
     func validatedURL() throws -> URL {
-        if let snapshot { _ = try FamiliarFileByteReader.read(snapshot, projectID: snapshot.reference.projectID) }
+        if let snapshot { _ = try FamiliarFileByteReader.read(snapshot, scope: snapshot.reference.scope) }
         guard let url else { throw FamiliarFileError.missingFile }
         return url
     }
 
-    func resolved(in context: ModelContext, projectID: UUID? = nil) -> Self {
-        guard !isRevoked, let versionID = UUID(uuidString: id),
-              let version = try? context.fetch(FetchDescriptor<FamiliarFileVersionRecord>(
-                predicate: #Predicate { $0.id == versionID })).first,
-              projectID == nil || version.projectID == projectID,
+    func resolved(in context: ModelContext, scope: FamiliarWorkScope? = nil) -> Self {
+        guard !isRevoked, let versionID = UUID(uuidString: id) else { return self }
+        let records = (try? context.fetch(FetchDescriptor<FamiliarFileVersionRecord>())) ?? []
+        guard let version = records.first(where: { $0.id == versionID && (scope == nil || $0.scope == scope) })
+                ?? records.first(where: { scope != nil && $0.scope == scope && $0.sourceFileVersionIDs.contains(versionID) }),
               let snapshot = FamiliarFileCatalogService().snapshot(version) else { return self }
         return .init(snapshot: snapshot)
     }

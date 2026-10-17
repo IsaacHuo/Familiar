@@ -71,12 +71,43 @@ enum FamiliarModelContainer {
             url: storeURL,
             cloudKitDatabase: .none
         )
-        return try ModelContainer(for: schema, migrationPlan: FamiliarSchemaMigrationPlan.self, configurations: [configuration])
+        return try ModelContainer(for: schema, configurations: [configuration])
     }
 
     static func makeInMemory(name: String = "FamiliarTests") throws -> ModelContainer {
         let schema = currentSchema
         let configuration = ModelConfiguration(name, schema: schema, isStoredInMemoryOnly: true)
-        return try ModelContainer(for: schema, migrationPlan: FamiliarSchemaMigrationPlan.self, configurations: [configuration])
+        return try ModelContainer(for: schema, configurations: [configuration])
+    }
+}
+
+
+@MainActor
+enum FamiliarBusinessDataGeneration {
+    static let current = "5-work-scopes"
+    static let businessDirectories = ["Persistence", "Attachments", "ProjectResources", "Artifacts", "Files", "Workspaces", "Skills", "SkillPackages", "SharedInbox", "ShellRuntime", "Verification"]
+
+    @discardableResult static func prepare(in support: URL, fileManager: FileManager = .default) throws -> Bool {
+        let root = support.appendingPathComponent("Familiar", isDirectory: true)
+        let marker = root.appendingPathComponent("business-generation")
+        if fileManager.fileExists(atPath: marker.path), try String(contentsOf: marker, encoding: .utf8) == current { return false }
+        try reset(in: support, fileManager: fileManager)
+        return true
+    }
+
+    static func finish(in support: URL, fileManager: FileManager = .default) throws {
+        let root = support.appendingPathComponent("Familiar", isDirectory: true)
+        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+        try current.write(to: root.appendingPathComponent("business-generation"), atomically: true, encoding: .utf8)
+    }
+
+    static func reset(in support: URL, fileManager: FileManager = .default) throws {
+        let root = support.appendingPathComponent("Familiar", isDirectory: true)
+        for name in businessDirectories {
+            let path = root.appendingPathComponent(name, isDirectory: true)
+            if fileManager.fileExists(atPath: path.path) { try fileManager.removeItem(at: path) }
+        }
+        let marker = root.appendingPathComponent("business-generation")
+        if fileManager.fileExists(atPath: marker.path) { try fileManager.removeItem(at: marker) }
     }
 }

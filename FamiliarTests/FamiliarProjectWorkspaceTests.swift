@@ -111,11 +111,8 @@ struct FamiliarProjectWorkspaceTests {
             serverIdentity: "fixture"
         )
         let mcpBinding = FamiliarMCPBindingRecord(serverID: server.id, projectID: project.id, enabled: true)
-        let grantRecord = FamiliarActivityRecord(activityID: "legacy-grant:fixture", runtimeID: FamiliarGrantArchiveMigration.runtimeID(projectID: project.id),
-            assistantTurnID: "legacy-grant", kind: .runtimeNotice, phase: .succeeded, summary: "archived_authorization_provenance",
-            detail: "historical audit", sequence: -1, startedAt: Date())
         let rule = FamiliarAuthorizationRuleRecord(
-            projectID: project.id,
+            scope: .project(project.id),
             capabilityID: "file_write",
             capabilityVersion: "1",
             targetKey: "target",
@@ -144,7 +141,6 @@ struct FamiliarProjectWorkspaceTests {
         context.insert(memory)
         context.insert(server)
         context.insert(mcpBinding)
-        context.insert(grantRecord)
         context.insert(rule)
         context.insert(undo)
         try context.save()
@@ -157,13 +153,13 @@ struct FamiliarProjectWorkspaceTests {
         let fileID = UUID()
         let storedFile = try fileStore.write(
             Data("Delete this artifact".utf8),
-            projectID: project.id,
+            scope: .project(project.id),
             fileID: fileID,
             filename: "artifact.txt"
         )
         context.insert(FamiliarStoredFileVersion(
             id: fileID,
-            projectID: project.id,
+            scope: .project(project.id),
             identifier: "file_\(fileID.uuidString)",
             title: "File",
             format: .plainText,
@@ -176,7 +172,7 @@ struct FamiliarProjectWorkspaceTests {
         try FamiliarProjectService(resourceStore: resourceStore, fileStore: fileStore)
             .permanentlyDelete(project, in: context)
 
-        #expect(try context.fetch(FetchDescriptor<FamiliarProject>()).allSatisfy { $0.id == FamiliarProject.dailyProjectID })
+        #expect(try context.fetch(FetchDescriptor<FamiliarProject>()).isEmpty)
         #expect(try context.fetch(FetchDescriptor<FamiliarResource>()).isEmpty)
         #expect(try context.fetch(FetchDescriptor<FamiliarStoredFileVersion>()).isEmpty)
         #expect(try context.fetch(FetchDescriptor<FamiliarMemoryItem>()).isEmpty)
@@ -186,7 +182,7 @@ struct FamiliarProjectWorkspaceTests {
 
         #expect(try context.fetch(FetchDescriptor<FamiliarSkill>()).count == 1)
         #expect(try context.fetch(FetchDescriptor<FamiliarMCPServerRecord>()).count == 1)
-        #expect(try #require(context.fetch(FetchDescriptor<FamiliarConversation>()).first).project?.id == FamiliarProject.dailyProjectID)
+        #expect(try #require(context.fetch(FetchDescriptor<FamiliarConversation>()).first).project == nil)
         #expect(try #require(context.fetch(FetchDescriptor<FamiliarAgentRun>()).first).project == nil)
         #expect(try context.fetch(FetchDescriptor<FamiliarMessage>()).count == 1)
         #expect(try context.fetch(FetchDescriptor<FamiliarAttachment>()).count == 1)
@@ -351,11 +347,11 @@ struct FamiliarProjectWorkspaceTests {
 
     private func descriptor(store: FamiliarFileStore, id: UUID, projectID: UUID, title: String, supersedes: UUID?) throws -> FamiliarFileDescriptor {
         let bytes = Data(("# Version " + id.uuidString).utf8)
-        let written = try store.write(bytes, projectID: projectID, fileID: id, filename: title + ".md")
+        let written = try store.write(bytes, scope: .project(projectID), fileID: id, filename: title + ".md")
         return FamiliarFileDescriptor(
             id: id,
             identifier: "file_" + id.uuidString,
-            projectID: projectID,
+            scope: .project(projectID),
             title: title,
             supersedesFileID: supersedes,
             format: .markdown,

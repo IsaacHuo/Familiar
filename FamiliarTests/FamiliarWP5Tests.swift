@@ -11,16 +11,16 @@ struct FamiliarWP5Tests {
         defer { try? FileManager.default.removeItem(at: root) }
         let store = FamiliarFileStore(rootURL: root)
         let projectID = UUID(); let fileID = UUID()
-        let result = try store.write(Data("# body".utf8), projectID: projectID, fileID: fileID, filename: "report.md")
-        #expect(result.path == "Projects/\(projectID.uuidString)/Artifacts/\(fileID.uuidString)/report.md")
+        let result = try store.write(Data("# body".utf8), scope: .project(projectID), fileID: fileID, filename: "report.md")
+        #expect(result.path == "\(FamiliarWorkScope.project(projectID).filePrefix)Artifacts/\(fileID.uuidString)/report.md")
         #expect(result.hash == FamiliarHash.sha256("# body"))
         #expect(try store.read(relativePath: result.path) == Data("# body".utf8))
         #expect(store.url(relativePath: "../outside") == nil)
-        try store.remove(projectID: projectID, fileID: fileID)
+        try store.remove(scope: .project(projectID), fileID: fileID)
         #expect(store.url(relativePath: result.path) == nil)
     }
 
-    @Test("File write rejects ordinary chat and returns an approved action in a project")
+    @Test("File write rejects missing scope and returns a reversible action in a scoped chat")
     func fileWriteScopeAndConfirmation() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("FamiliarFileTool-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -45,7 +45,7 @@ struct FamiliarWP5Tests {
         let projectID = UUID()
         let fileID = UUID()
         let identifier = "file_\(fileID.uuidString)"
-        let original = try store.write(Data("original body".utf8), projectID: projectID, fileID: fileID, filename: "original.md")
+        let original = try store.write(Data("original body".utf8), scope: .project(projectID), fileID: fileID, filename: "original.md")
 
         let outcome = try await tool.execute(
             .init(identifier: identifier, content: "edited body", title: "renamed"),

@@ -1,23 +1,5 @@
 import Foundation
 
-nonisolated enum FamiliarWorkspaceID: Hashable, Codable, Sendable {
-    case project(UUID)
-    case conversation(UUID)
-
-    var rawID: UUID {
-        switch self {
-        case .project(let id), .conversation(let id): id
-        }
-    }
-
-    var directoryName: String {
-        switch self {
-        case .project(let id): "project-\(id.uuidString.lowercased())"
-        case .conversation(let id): "conversation-\(id.uuidString.lowercased())"
-        }
-    }
-}
-
 nonisolated struct FamiliarWorkspacePaths: Sendable {
     let root: URL
     let metadata: URL
@@ -53,7 +35,7 @@ nonisolated struct FamiliarWorkspaceUsage: Equatable, Sendable {
 /// directory; Work is unique to one task and is removed at terminal state.
 nonisolated struct FamiliarWorkspaceTaskView: Equatable, Sendable {
     let taskID: UUID
-    let workspaceID: FamiliarWorkspaceID
+    let workspaceID: FamiliarWorkScope
     let root: URL
     let files: URL
     let outputs: URL
@@ -69,14 +51,14 @@ nonisolated enum FamiliarWorkspaceCheckpointScope: Sendable {
 
 nonisolated struct FamiliarWorkspaceCheckpoint: Sendable {
     let id: UUID
-    let workspaceID: FamiliarWorkspaceID
+    let workspaceID: FamiliarWorkScope
     let rootURL: URL
     let createdAt: Date
     let scope: FamiliarWorkspaceCheckpointScope
 }
 
 nonisolated struct FamiliarStagedWorkspaceDirectory: Sendable {
-    let workspaceID: FamiliarWorkspaceID
+    let workspaceID: FamiliarWorkScope
     let originalURL: URL
     let stagedURL: URL?
 }
@@ -132,7 +114,7 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
 #endif
     }
 
-    func prepare(_ id: FamiliarWorkspaceID) throws -> FamiliarWorkspacePaths {
+    func prepare(_ id: FamiliarWorkScope) throws -> FamiliarWorkspacePaths {
         let root = rootURL.appendingPathComponent(id.directoryName, isDirectory: true)
         let metadata = root.appendingPathComponent("Metadata", isDirectory: true)
         let files = root.appendingPathComponent("Files", isDirectory: true)
@@ -142,8 +124,7 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         let tasks = runtime.appendingPathComponent("Tasks", isDirectory: true)
         let checkpoints = runtime.appendingPathComponent("Checkpoints", isDirectory: true)
         let environment = runtime.appendingPathComponent("Environment", isDirectory: true)
-        var directories = [root, metadata, files, outputs, runtime, work, tasks, checkpoints]
-        if case .project = id { directories.append(environment) }
+        let directories = [root, metadata, files, outputs, runtime, work, tasks, checkpoints, environment]
         for directory in directories {
             try ensureDirectory(directory)
         }
@@ -160,13 +141,13 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         )
     }
 
-    func shellSettingsURL(in id: FamiliarWorkspaceID) throws -> URL {
+    func shellSettingsURL(in id: FamiliarWorkScope) throws -> URL {
         try prepare(id).metadata.appendingPathComponent("shell-settings.json", isDirectory: false)
     }
 
     func prepareShellTaskView(
         taskID: UUID,
-        workspaceID: FamiliarWorkspaceID,
+        workspaceID: FamiliarWorkScope,
         resources: [FamiliarToolContext.Resource],
         files: [FamiliarFileSnapshot] = [],
         attachments: [FamiliarToolContext.Attachment],
@@ -182,11 +163,10 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         let work = taskRoot.appendingPathComponent("Work", isDirectory: true)
         let environmentIsPersistent: Bool
         let environment: URL
-        switch workspaceID {
-        case .project where !useStagingEnvironment:
+        if !useStagingEnvironment {
             environmentIsPersistent = true
             environment = paths.environment
-        case .project, .conversation:
+        } else {
             environmentIsPersistent = false
             environment = taskRoot.appendingPathComponent("Environment", isDirectory: true)
         }
@@ -197,8 +177,7 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
             let canonicalVersionIDs = Set(files.map { $0.reference.versionID })
             var inputBytes: Int64 = 0
             for file in files {
-                guard case .project(let projectID) = workspaceID,
-                      file.reference.projectID == projectID,
+                guard file.reference.scope == workspaceID,
                       file.byteSize <= FamiliarShellLimits.iOS.maximumFileBytes else {
                     throw FamiliarWorkspaceError.invalidTaskView
                 }
@@ -206,7 +185,7 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
                 guard inputBytes <= FamiliarShellLimits.iOS.maximumWorkspaceBytes else {
                     throw FamiliarWorkspaceError.invalidTaskView
                 }
-                let bytes = try FamiliarFileByteReader.read(file, projectID: projectID)
+                let bytes = try FamiliarFileByteReader.read(file, scope: workspaceID)
                 guard Int64(bytes.count) == file.byteSize else { throw FamiliarWorkspaceError.invalidTaskView }
                 let directory = inputs.appendingPathComponent("Versions/" + file.reference.versionID.uuidString.lowercased(), isDirectory: true)
                 try ensureDirectory(directory)
@@ -285,29 +264,29 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         try fileManager.removeItem(at: view.root)
     }
 
-    func projectEnvironmentURL(_ projectID: UUID) throws -> URL {
-        let paths = try prepare(.project(projectID))
+    func environmentURL(_ scope: FamiliarWorkScope) throws -> URL {
+        let paths = try prepare(scope)
         guard isConfined(paths.environment, below: paths.runtime),
               !isSymbolicLink(paths.environment)
         else { throw FamiliarWorkspaceError.invalidTaskView }
         return paths.environment
     }
 
-    func commitProjectEnvironment(
+    func commitEnvironment(
         from view: FamiliarWorkspaceTaskView,
-        projectID: UUID
+        scope: FamiliarWorkScope
     ) throws -> FamiliarStagedWorkspaceDirectory {
-        guard view.workspaceID == .project(projectID),
+        guard view.workspaceID == scope,
               !view.environmentIsPersistent,
               isConfined(view.environment, below: view.root),
               !isSymbolicLink(view.environment)
         else { throw FamiliarWorkspaceError.invalidTaskView }
         try assertNoSymbolicLinks(below: view.environment)
-        let paths = try prepare(.project(projectID))
+        let paths = try prepare(scope)
         let trash = rootURL.appendingPathComponent(".Trash", isDirectory: true)
         try ensureDirectory(trash)
         let backup = trash.appendingPathComponent(
-            "Environment-\(projectID.uuidString)-\(UUID().uuidString.lowercased())",
+            "Environment-\(scope.storageKey)-\(UUID().uuidString.lowercased())",
             isDirectory: true
         )
         do {
@@ -315,7 +294,7 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
                 try fileManager.moveItem(at: paths.environment, to: backup)
             }
             try fileManager.moveItem(at: view.environment, to: paths.environment)
-            return .init(workspaceID: .project(projectID), originalURL: paths.environment,
+            return .init(workspaceID: scope, originalURL: paths.environment,
                          stagedURL: fileManager.fileExists(atPath: backup.path) ? backup : nil)
         } catch {
             if !fileManager.fileExists(atPath: paths.environment.path),
@@ -326,18 +305,18 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         }
     }
 
-    func rollbackProjectEnvironment(_ previous: FamiliarStagedWorkspaceDirectory, revision: UUID, projectID: UUID) throws {
-        let environment = try projectEnvironmentURL(projectID)
+    func rollbackEnvironment(_ previous: FamiliarStagedWorkspaceDirectory, revision: UUID, scope: FamiliarWorkScope) throws {
+        let environment = try environmentURL(scope)
         let receiptURL = environment.appendingPathComponent(FamiliarEnvironmentStore.receiptFilename)
         let receipt = try JSONDecoder().decode(FamiliarEnvironmentReceipt.self, from: Data(contentsOf: receiptURL))
-        guard previous.workspaceID == .project(projectID), previous.originalURL == environment, receipt.revision == revision else {
+        guard previous.workspaceID == scope, previous.originalURL == environment, receipt.revision == revision else {
             throw FamiliarWorkspaceError.invalidTaskView
         }
         try fileManager.removeItem(at: environment)
         try restore(previous)
     }
 
-    func removeWorkspace(_ id: FamiliarWorkspaceID) throws {
+    func removeWorkspace(_ id: FamiliarWorkScope) throws {
         let root = rootURL.appendingPathComponent(id.directoryName, isDirectory: true).standardizedFileURL
         guard isConfined(root, below: rootURL.standardizedFileURL) else {
             throw FamiliarWorkspaceError.invalidPath
@@ -348,7 +327,7 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         try fileManager.removeItem(at: root)
     }
 
-    func stageWorkspace(_ id: FamiliarWorkspaceID) throws -> FamiliarStagedWorkspaceDirectory {
+    func stageWorkspace(_ id: FamiliarWorkScope) throws -> FamiliarStagedWorkspaceDirectory {
         let original = rootURL.appendingPathComponent(id.directoryName, isDirectory: true).standardizedFileURL
         guard isConfined(original, below: rootURL.standardizedFileURL) else {
             throw FamiliarWorkspaceError.invalidPath
@@ -391,18 +370,18 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         try fileManager.removeItem(at: stagedURL)
     }
 
-    func read(relativePath: String, in id: FamiliarWorkspaceID) throws -> Data {
+    func read(relativePath: String, in id: FamiliarWorkScope) throws -> Data {
         let url = try validatedURL(relativePath: relativePath, in: id)
         guard isRegularFile(url) else { throw FamiliarWorkspaceError.missingFile }
         return try Data(contentsOf: url)
     }
 
-    func contains(relativePath: String, in id: FamiliarWorkspaceID) throws -> Bool {
+    func contains(relativePath: String, in id: FamiliarWorkScope) throws -> Bool {
         let url = try validatedURL(relativePath: relativePath, in: id)
         return isRegularFile(url)
     }
 
-    func remove(relativePath: String, in id: FamiliarWorkspaceID) throws {
+    func remove(relativePath: String, in id: FamiliarWorkScope) throws {
         let url = try validatedURL(relativePath: relativePath, in: id)
         guard isRegularFile(url) else { throw FamiliarWorkspaceError.missingFile }
         try fileManager.removeItem(at: url)
@@ -412,7 +391,7 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
     func write(
         _ data: Data,
         relativePath: String,
-        in id: FamiliarWorkspaceID
+        in id: FamiliarWorkScope
     ) throws -> FamiliarWorkspaceEntry {
         let url = try validatedURL(relativePath: relativePath, in: id)
         try fileManager.createDirectory(
@@ -435,14 +414,14 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         return try entry(for: url, workspaceRoot: try prepare(id).root)
     }
 
-    func entries(in id: FamiliarWorkspaceID) throws -> [FamiliarWorkspaceEntry] {
+    func entries(in id: FamiliarWorkScope) throws -> [FamiliarWorkspaceEntry] {
         let paths = try prepare(id)
         return try [paths.files, paths.outputs, paths.work]
             .flatMap { try entries(below: $0, workspaceRoot: paths.root) }
             .sorted { $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending }
     }
 
-    func workspaceSize(_ id: FamiliarWorkspaceID) throws -> Int64 {
+    func workspaceSize(_ id: FamiliarWorkScope) throws -> Int64 {
         let paths = try prepare(id)
         return try [paths.files, paths.outputs, paths.work].reduce(into: 0) { total, directory in
             total += try entries(below: directory, workspaceRoot: paths.root).reduce(0) { $0 + $1.byteSize }
@@ -487,7 +466,7 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
     }
 
     func createCheckpoint(
-        for id: FamiliarWorkspaceID,
+        for id: FamiliarWorkScope,
         checkpointID: UUID = UUID(),
         now: Date = Date()
     ) throws -> FamiliarWorkspaceCheckpoint {
@@ -518,7 +497,7 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
     }
 
     func createShellCheckpoint(
-        for id: FamiliarWorkspaceID,
+        for id: FamiliarWorkScope,
         checkpointID: UUID = UUID(),
         now: Date = Date()
     ) throws -> FamiliarWorkspaceCheckpoint {
@@ -607,7 +586,7 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
 
     private func validatedURL(
         relativePath: String,
-        in id: FamiliarWorkspaceID
+        in id: FamiliarWorkScope
     ) throws -> URL {
         let normalized = relativePath.replacingOccurrences(of: "\\", with: "/")
         let components = normalized.split(separator: "/", omittingEmptySubsequences: false)

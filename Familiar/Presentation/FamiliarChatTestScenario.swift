@@ -47,7 +47,9 @@ nonisolated struct FamiliarChatTestProvider: FamiliarModelProvider {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let prompt = request.messages.last { $0.role == .user }?.networkText ?? ""
+                    // Runtime may append user-role catalog notices after a tool boundary.
+                    // Fixtures must retain the original submitted task across those notices.
+                    let prompt = request.messages.first { $0.role == .user }?.networkText ?? ""
                     if request.messages.first?.networkText?.contains("Generate up to three useful follow-up questions") == true {
                         let word = prompt.contains("Markdown") ? "Markdown report" : "Familiar reply"
                         let questions = ["How can I apply the " + word + " to a concrete example?", "What assumptions in this " + word + " should I verify?"]
@@ -55,9 +57,38 @@ nonisolated struct FamiliarChatTestProvider: FamiliarModelProvider {
                         continuation.yield(.textDelta(String(decoding: data, as: UTF8.self)))
                         continuation.yield(.completed(.stop)); continuation.finish(); return
                     }
+                    if prompt.localizedCaseInsensitiveContains("sources") {
+                        let results = request.messages.filter { $0.role == .tool }
+                        if results.count < 2 {
+                            continuation.yield(.toolCallDelta(index: 0, id: "source-\(results.count)",
+                                name: results.isEmpty ? "web_search" : "web_fetch",
+                                arguments: results.isEmpty ? #"{"query":"verified source","maxResults":2}"#
+                                    : #"{"url":"https://example.com/start"}"#))
+                            continuation.yield(.completed(.toolCalls))
+                        } else {
+                            let startID = FamiliarSourceIdentifier.make(for: URL(string: "https://example.com/start")!)
+                            let finalID = FamiliarSourceIdentifier.make(for: URL(string: "https://example.com/final")!)
+                            let answer = prompt.localizedCaseInsensitiveContains("uncited")
+                                ? "A reply without citations."
+                                : "# Verified answer\n\nThe page contains a verified fact. [[\(startID)]]\n\nThe redirected URL is the same source. [[\(finalID)]]"
+                            continuation.yield(.textDelta(answer))
+                            continuation.yield(.completed(.stop))
+                        }
+                        continuation.finish(); return
+                    }
                     let isLong = prompt.localizedCaseInsensitiveContains("long")
                     let results = request.messages.filter { $0.role == .tool }
+                    if prompt.localizedCaseInsensitiveContains("question"), !results.contains(where: { $0.toolCallID == "presentation-question" }) {
+                        continuation.yield(.toolCallDelta(index: 0, id: "presentation-question", name: "ask_user",
+                            arguments: prompt.localizedCaseInsensitiveContains("options only")
+                                ? #"{"question":"Which version should I use?","options":[{"id":"short","label":"Short version"},{"id":"full","label":"Full version"}],"allowCustom":false}"#
+                                : #"{"question":"Which version should I use?","options":[{"id":"short","label":"Short version"},{"id":"full","label":"Full version"}],"allowCustom":true}"#))
+                        continuation.yield(.completed(.toolCalls))
+                        continuation.finish()
+                        return
+                    }
                     if prompt.localizedCaseInsensitiveContains("tools"), !results.contains(where: { $0.toolCallID?.hasPrefix("presentation-read-") == true }) {
+                        if results.isEmpty { continuation.yield(.textDelta("# Tool workflow\n\nI will inspect the files.\n\n")) }
                         if !request.tools.contains(where: { $0.name == "file_read" }) {
                             continuation.yield(.toolCallDelta(index: 0, id: "presentation-load",
                                 name: "tools_load", arguments: #"{"groups":["files"]}"#))
@@ -95,7 +126,8 @@ nonisolated struct FamiliarChatTestProvider: FamiliarModelProvider {
                         let chunk = String(remainder.prefix(isLong ? 60 : 8))
                         continuation.yield(.textDelta(chunk))
                         remainder.removeFirst(chunk.count)
-                        try await Task.sleep(for: .milliseconds(isLong ? 110 : 40))
+                        let interval = isLong ? (prompt.localizedCaseInsensitiveContains("tools") ? 350 : 110) : 40
+                        try await Task.sleep(for: .milliseconds(interval))
                         if prompt.localizedCaseInsensitiveContains("error"), remainder.count < text.count / 2 {
                             throw NSError(domain: "PresentationTest", code: 1,
                                 userInfo: [NSLocalizedDescriptionKey: "Presentation test interrupted"])
@@ -128,6 +160,26 @@ nonisolated struct FamiliarChatTestReadTool: FamiliarTool {
             presentation: .document(.init(summary: "Read presentation fixture", title: input.identifier + ".txt",
                 text: "Local test file content", mimeType: "text/plain"))
         )))
+    }
+}
+
+/// Deterministic Web adapters behind the Simulator-only presentation scenario.
+nonisolated struct FamiliarChatTestSearchProvider: FamiliarSearchProvider {
+    let id = "duckduckgo"
+    func search(request: FamiliarSearchRequest, apiKey: String?) async throws -> FamiliarSearchResponse {
+        let urls = ["https://example.com/start", "https://example.com/unused"]
+        return .init(providerID: id, results: urls.prefix(request.maximumResults).enumerated().map { index, value in
+            .init(sourceID: FamiliarSourceIdentifier.make(for: URL(string: value)!), position: index + 1,
+                title: index == 0 ? "Verified source" : "Unused search result", url: value, displayURL: "example.com", snippet: nil)
+        }, truncated: false)
+    }
+}
+
+nonisolated struct FamiliarChatTestWebTransport: FamiliarWebHTTPTransport {
+    func get(_ url: URL, bodyLimit: Int, redirectLimit: Int, timeout: Duration) async throws -> FamiliarRestrictedHTTPResponse {
+        .init(finalURL: URL(string: "https://example.com/final")!, statusCode: 200,
+            headers: ["content-type": "text/html; charset=utf-8"],
+            body: Data("<html><title>Verified source</title><article>A verified fact in the captured page. This deterministic article contains enough original body text for the production extractor to accept and cite it.</article></html>".utf8))
     }
 }
 #endif

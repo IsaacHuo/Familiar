@@ -12,13 +12,13 @@ nonisolated struct FamiliarResolvedWorkspaceOutput: Equatable, Sendable {
 }
 
 nonisolated protocol FamiliarWorkspaceOutputResolving: Sendable {
-    func resolveOutput(relativePath: String, workspaceID: FamiliarWorkspaceID) throws -> FamiliarResolvedWorkspaceOutput
+    func resolveOutput(relativePath: String, workspaceID: FamiliarWorkScope) throws -> FamiliarResolvedWorkspaceOutput
 }
 
 nonisolated struct FamiliarWorkspaceOutputResolver: FamiliarWorkspaceOutputResolving {
     let store: FamiliarWorkspaceStore
 
-    func resolveOutput(relativePath: String, workspaceID: FamiliarWorkspaceID) throws -> FamiliarResolvedWorkspaceOutput {
+    func resolveOutput(relativePath: String, workspaceID: FamiliarWorkScope) throws -> FamiliarResolvedWorkspaceOutput {
         let path = try FamiliarNativeOutputPath.normalized(relativePath)
         guard let entry = try store.entries(in: workspaceID).first(where: { $0.relativePath == path }) else {
             throw FamiliarWorkspaceError.missingFile

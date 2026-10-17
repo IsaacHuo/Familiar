@@ -5,6 +5,11 @@ nonisolated enum FamiliarToolGroup: String, CaseIterable, Sendable {
     case base, web, calendar, places, files, memory, skills, shell, device, presentation
 
     static let baseToolNames: Set<String> = ["current_date_time", "ask_user", "tools_load"]
+    /// Exposed from the first request and kept across tools_load, without leaving
+    /// their group: Project capabilities and Skill scope can still remove them.
+    /// Web is the most common external need; requiring a load step made the model
+    /// answer from memory instead of searching.
+    static let initialToolNames: Set<String> = baseToolNames.union(["web_search", "web_fetch"])
 
     var title: String {
         switch self {

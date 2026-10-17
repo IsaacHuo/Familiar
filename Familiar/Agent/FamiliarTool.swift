@@ -459,10 +459,8 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         guard schemaVersion == Self.currentSchemaVersion else {
             throw DecodingError.dataCorruptedError(forKey: .schemaVersion, in: container, debugDescription: "Unsupported tool presentation schema version: \(schemaVersion)")
         }
-        // Only persisted historical presentation payloads use the former name.
-        // New payloads always encode fileMutation; this is not a callable tool alias.
         let rawName = try container.decode(String.self, forKey: .name)
-        guard let name = Name(rawValue: rawName == "artifactMutation" ? "fileMutation" : rawName) else {
+        guard let name = Name(rawValue: rawName) else {
             throw DecodingError.dataCorruptedError(forKey: .name, in: container, debugDescription: "Unsupported tool presentation payload")
         }
         self.schemaVersion = schemaVersion
@@ -703,7 +701,7 @@ nonisolated struct FamiliarToolContext: Sendable {
     let toolCallID: String
     let projectID: UUID?
     let conversationID: UUID?
-    let workspaceID: FamiliarWorkspaceID?
+    let workspaceID: FamiliarWorkScope?
     let resources: [Resource]
     let attachments: [Attachment]
     let files: [FamiliarFileSnapshot]
@@ -723,7 +721,7 @@ nonisolated struct FamiliarToolContext: Sendable {
         toolCallID: String = UUID().uuidString,
         projectID: UUID? = nil,
         conversationID: UUID? = nil,
-        workspaceID: FamiliarWorkspaceID? = nil,
+        workspaceID: FamiliarWorkScope? = nil,
         resources: [Resource] = [],
         attachments: [Attachment] = [],
         files: [FamiliarFileSnapshot] = [],
@@ -739,7 +737,7 @@ nonisolated struct FamiliarToolContext: Sendable {
         self.toolCallID = toolCallID
         self.projectID = projectID
         self.conversationID = conversationID
-        self.workspaceID = workspaceID
+        self.workspaceID = workspaceID ?? projectID.map(FamiliarWorkScope.project) ?? conversationID.map(FamiliarWorkScope.conversation)
         self.resources = resources
         self.attachments = attachments
         self.files = files
@@ -878,6 +876,7 @@ nonisolated struct FamiliarClarificationProposal: Sendable {
 }
 
 nonisolated enum FamiliarToolOutcome: Sendable {
+    case unchanged(FamiliarToolExecutionResult)
     case result(FamiliarToolExecutionResult)
     case action(FamiliarActionProposal)
     case clarification(FamiliarClarificationProposal)
@@ -998,6 +997,11 @@ nonisolated struct AnyFamiliarTool: Sendable {
             try await executeClosure(data, context)
         }
         switch outcome {
+        case .unchanged(let result):
+            guard manifest.source == .builtIn, manifest.name == "environment_prepare", manifest.effect == .destructiveWrite else {
+                throw FamiliarToolDeclarationError.invalidOutcome
+            }
+            try manifest.resultContract.validate(result)
         case .result(let result):
             guard manifest.effect == .read else { throw FamiliarToolDeclarationError.invalidOutcome }
             try manifest.resultContract.validate(result)

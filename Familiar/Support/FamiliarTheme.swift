@@ -219,15 +219,8 @@ private struct FamiliarGlassSurface: ViewModifier {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .stroke(FamiliarTheme.separator, lineWidth: 1)
                 }
-        } else if #available(iOS 26.0, *) {
-            content.glassEffect(interactive ? .regular.interactive() : .regular, in: .rect(cornerRadius: cornerRadius))
         } else {
-            content
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(FamiliarTheme.separator, lineWidth: 1)
-                }
+            content.glassEffect(interactive ? .regular.interactive() : .regular, in: .rect(cornerRadius: cornerRadius))
         }
     }
 }
@@ -253,14 +246,8 @@ private struct FamiliarGlassCircle: ViewModifier {
                 .overlay {
                     Circle().stroke(FamiliarTheme.separator, lineWidth: 1)
                 }
-        } else if #available(iOS 26.0, *) {
-            content.glassEffect(interactive ? .regular.interactive() : .regular, in: .circle)
         } else {
-            content
-                .background(.regularMaterial, in: Circle())
-                .overlay {
-                    Circle().stroke(FamiliarTheme.separator, lineWidth: 1)
-                }
+            content.glassEffect(interactive ? .regular.interactive() : .regular, in: .circle)
         }
     }
 }

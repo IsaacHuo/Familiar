@@ -133,7 +133,7 @@ struct FamiliarSurfaceTests {
         }
     }
 
-    @Test("Assistant content uses ordered blocks and in-place disclosure")
+    @Test("Assistant content uses ordered blocks and independent result presentation")
     func structuredAccessoryStaticContracts() throws {
         let presentation = try source("Familiar/Presentation/FamiliarChatMessageViews.swift")
         let markdown = try source("Familiar/Presentation/FamiliarMarkdownWebView.swift")
@@ -142,8 +142,8 @@ struct FamiliarSurfaceTests {
         #expect(presentation.contains("private var contentBlocks: [FamiliarAssistantContentBlock]"))
         #expect(presentation.contains("ForEach(blocks)"))
         #expect(presentation.contains("FamiliarRuntimeCard("))
-        #expect(presentation.contains("disclosure.binding(for: activity.id)"))
-        #expect(presentation.contains(".transition(.opacity)"))
+        #expect(presentation.contains(".sheet(item: $destination"))
+        #expect(presentation.contains("scroll?.beginInspection()"))
         #expect(presentation.contains("surface.context.details"))
         #expect(presentation.contains("surface.records.details"))
         #expect(presentation.contains("surface.diff.details"))

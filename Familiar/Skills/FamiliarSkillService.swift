@@ -168,7 +168,7 @@ struct FamiliarSkillService {
             name: skill.name,
             contentHash: skill.contentHash,
             instructions: skill.instructions,
-            allowedTools: Array(Set(allowedTools.map(FamiliarStoredToolIdentity.currentName))).sorted(),
+            allowedTools: Array(Set(allowedTools)).sorted(),
             resources: (try? FamiliarSkillPackageStore().manifest(hash: skill.contentHash))?.files.keys.sorted(),
             description: skill.descriptionText
         )

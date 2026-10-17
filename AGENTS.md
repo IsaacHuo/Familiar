@@ -3,15 +3,17 @@
 Familiar is a native, safe, inspectable personal AI agent for iPhone. Chat / Project / Files are the product objects; Memory is system behavior and Run is execution history. Project is the long-lived work unit, Chat is the interaction entry, and the single-Agent Runtime is the execution kernel.
 
 - Core stack: SwiftUI, SwiftData, URLSession, WebKit, Keychain.
-- Minimum deployment target: iOS 18.
-- The implemented scope includes one Agent with Lazy Tools, BYOK model access, local Chat history, Project instructions, canonical File/FileVersion, frozen submission inputs and per-request Context Compiler manifests, factual Run State, scoped Skills and Memory, read-only Web evidence, native EventKit tools, controlled Shell Outputs, local document processing, image drafts and editable speech transcription. HTTP MCP discovery and approved calls are connected. Policy owns exact authorization, approval and execution-time revalidation. Historical Resource/Attachment fields remain for storage/history; new imports and outputs write canonical Files. Schema migration freezes the 37-entity 1.0.0 baseline and archives old Grant provenance before removal. Migration and runtime regressions are compiled, not executed; real-store/device/service acceptance remains separate. No Router, Planner, multi-Agent, background execution or cross-restart continuation is added in this phase. OpenMinis import is partial; see docs/13-openminis-import-matrix.md.
+- Minimum deployment target: iOS 26. Do not add fallback branches for older systems; keep only gates for newer versions (e.g. iOS 26.1, iOS 27) and the Reduce Transparency fallback.
+- The implemented scope includes one Agent with Lazy Tools, BYOK model access (default DeepSeek), local Chat history, Projects, canonical File/FileVersion, Context Compiler, scoped Skills and Memory, Web search/fetch, native Apple tools, the bundled iSH/Alpine guest for Shell and document generation, local document processing, image input and speech transcription. HTTP MCP discovery and approved calls are connected. No Router, Planner, multi-Agent, background execution or cross-restart continuation.
+- The current phase adds no new features; it makes existing features work and look native. See PLAN.md.
 - The app has no account system, login, backend database, Supabase dependency, managed quota, subscription, entitlement flow, cloud sync, arbitrary code execution, or multi-Agent orchestration.
 - Familiar never reads academic-system or other app data.
 - Providers use user-supplied API keys or the connected Kimi Code/Codex/OpenRouter external sign-in flows. Credentials remain in the device Keychain and requests go directly from iOS to the selected Provider. There is no Familiar account system.
 - The Agent Runtime only understands typed tool definitions, calls, results, policy decisions, and runtime events. Apple frameworks remain behind native tool adapters.
-- Permissions and write authorization are enforced in Swift code. Writes require an exact active authorization match or structured approval; a model cannot authorize its own action.
+- Permissions and write authorization are enforced in Swift code. Enabled built-in reversible file/workspace writes and preflight-approved offline Shell execute automatically with real receipts and session Undo; Shell must create a checkpoint before mutation. Other writes require an exact active authorization match or structured approval. A model cannot authorize its own action. Memory writes and dependency installation still require approval.
 - System entries provide input provenance only and never grant write authorization.
-- Daily Chat is a fixed default Project with the same settings and shared project context as other Projects; its identity does not depend on its localized name.
+- Ordinary Chat has no Project (`conversation.project == nil`); only explicit creation creates a Project. Ordinary Chat uses global defaults and conversation-owned Files, Workspace, Environment and Memory. `FamiliarWorkScope.project(id)` and `.conversation(id)` isolate ownership and authorization, even for the same UUID. Only explicit global Memory crosses ordinary Chats.
+- Storage uses one current schema without a historical migration chain. Business generation `5-work-scopes` performs the user-approved one-time business reset, preserving Keychain, model/search configuration and appearance preferences; subsequent store failures enter recovery without another reset.
 - Conversation history is local SwiftData. Keep transient streaming text out of broad persistence invalidation and persist only at explicit checkpoints and terminal states.
 - Markdown, code highlighting, Mermaid, and KaTeX are rendered from bundled local resources in a non-persistent WebKit view.
 - Use native iOS liquid-glass effects.
@@ -40,7 +42,10 @@ Repository knowledge is split by responsibility; read in this order:
 
 ### Verification
 
-- By default, verify code changes with an arm64 iOS Simulator build only. Do not boot or run a Simulator unless the user explicitly requests it; the user performs visual acceptance on a physical device.
+- Verify code changes with an arm64 iOS Simulator build using a concrete arm64 Simulator destination (not `generic/platform=iOS Simulator`, which fails to link iSH).
+- Run the narrowest relevant unit tests on one Simulator. UI slices may boot one Simulator to capture production-page screenshots (light/dark, large Dynamic Type). iSH slices may run signed device tests and `log stream` on a connected device; never change signing or erase data.
+- A test or Simulator command that shows no progress within 3 minutes is treated as hung: kill it, record the cause, and do not block the slice on retries.
+- A slice is complete only after executed tests, screenshots reviewed by the owner and owner sign-off on a physical device. Compilation alone is not completion.
 
 ### Git Workflow
 

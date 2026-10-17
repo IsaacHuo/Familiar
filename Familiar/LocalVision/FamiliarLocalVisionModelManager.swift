@@ -186,7 +186,6 @@ final class FamiliarLocalVisionModelManager {
     }
 
     private func checkDeviceEligibility() throws {
-        guard #available(iOS 18.2, *) else { throw FamiliarLocalVisionError.unsupportedDevice }
 #if targetEnvironment(simulator)
         throw FamiliarLocalVisionError.unsupportedDevice
 #else

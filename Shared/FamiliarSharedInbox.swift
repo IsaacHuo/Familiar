@@ -74,6 +74,12 @@ nonisolated enum FamiliarSharedInbox {
         return try pendingItems(rootURL: rootURL)
     }
 
+    static func removeAll() throws {
+        guard let root = sharedRootURL() else { return }
+        let inbox = root.appendingPathComponent(inboxDirectoryName, isDirectory: true)
+        if fileManager.fileExists(atPath: inbox.path) { try fileManager.removeItem(at: inbox) }
+    }
+
     static func remove(_ item: FamiliarSharedInboxItem) {
         try? fileManager.removeItem(at: item.directoryURL)
     }

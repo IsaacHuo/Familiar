@@ -40,12 +40,13 @@ final class FamiliarMapService: FamiliarMapServicing, @unchecked Sendable {
             FamiliarToolDefaults.MapSearch.maximumLimit
         )
         return response.mapItems.prefix(bounded).map { item in
-            let coordinate = item.placemark.coordinate
-            let name = item.name ?? item.placemark.title ?? normalized
+            let coordinate = item.location.coordinate
+            let address = item.address?.fullAddress
+            let name = item.name ?? address ?? normalized
             return FamiliarMapPlace(
                 id: "\(coordinate.latitude),\(coordinate.longitude):\(name)",
                 name: name,
-                address: item.placemark.title,
+                address: address,
                 latitude: coordinate.latitude,
                 longitude: coordinate.longitude,
                 phoneNumber: item.phoneNumber,

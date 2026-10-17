@@ -14,7 +14,7 @@ nonisolated enum FamiliarRuntimeStageKind: Equatable, Sendable {
         switch name {
         case "web_search": .search
         case "web_fetch": .sources
-        case "resource_list", "resource_read", "resource_search", "workspace_list", "workspace_read",
+        case "file_list", "file_search", "workspace_list", "workspace_read",
              "workspace_search", "file_read", "workspace_image_list", "vision_recognition": .files
         case "shell_execute", "environment_prepare", "workspace_write": .execution
         case "natural_language_analyze": .analysis

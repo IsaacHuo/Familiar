@@ -3,6 +3,7 @@ import SwiftUI
 struct FamiliarApprovalCard: View {
     let surface: FamiliarSurfaceDescriptor
     let onResolve: (UUID, FamiliarToolConfirmationDecision) -> Void
+    let isCompact: Bool
 
     @AccessibilityFocusState private var isAccessibilityFocused: Bool
     @Environment(\.familiarReduceMotion) private var reduceMotion
@@ -11,10 +12,12 @@ struct FamiliarApprovalCard: View {
 
     init(
         surface: FamiliarSurfaceDescriptor,
+        isCompact: Bool = false,
         onResolve: @escaping (UUID, FamiliarToolConfirmationDecision) -> Void
     ) {
         self.surface = surface
         self.onResolve = onResolve
+        self.isCompact = isCompact
         _selectedDecision = State(initialValue: Self.defaultDecision(for: surface))
     }
 
@@ -48,14 +51,14 @@ struct FamiliarApprovalCard: View {
     }
 
     private var approvalCard: some View {
-        VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceL) {
+        VStack(alignment: .leading, spacing: isCompact ? FamiliarSpacing.small : FamiliarAISurfaceMetric.spaceL) {
             heading
             approvalFields
             policySummary
             authorizationScope
             actions
         }
-        .padding(FamiliarAISurfaceMetric.spaceL)
+        .padding(isCompact ? FamiliarSpacing.medium : FamiliarAISurfaceMetric.spaceL)
         .background(
             FamiliarTheme.surface,
             in: RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous)
@@ -108,7 +111,8 @@ struct FamiliarApprovalCard: View {
                             .foregroundStyle(FamiliarTheme.inkSecondary)
                     }
                     .padding(.horizontal, FamiliarAISurfaceMetric.spaceM)
-                    .frame(minHeight: FamiliarControlSize.minimumHitTarget)
+                    .padding(.vertical, isCompact ? FamiliarSpacing.xSmall : 0)
+                    .frame(minHeight: isCompact ? nil : FamiliarControlSize.minimumHitTarget)
                 }
             }
             .background(
@@ -136,6 +140,27 @@ struct FamiliarApprovalCard: View {
     @ViewBuilder
     private var authorizationScope: some View {
         if authorizationOptions.count > 1 {
+            if isCompact {
+                Menu {
+                    ForEach(authorizationOptions) { option in
+                        Button { selectedDecision = option.decision } label: {
+                            if selectedDecision == option.decision { Label(option.title, systemImage: "checkmark") }
+                            else { Text(option.title) }
+                        }
+                        .accessibilityIdentifier("approval.scope.\(option.id)")
+                    }
+                } label: {
+                    HStack(spacing: FamiliarSpacing.small) {
+                        Text(authorizationOptions.first { $0.decision == selectedDecision }?.title ?? "")
+                        Spacer()
+                        Image(systemName: "chevron.up.chevron.down").font(FamiliarTypography.caption)
+                    }
+                    .font(FamiliarTypography.secondary)
+                    .frame(minHeight: FamiliarControlSize.minimumHitTarget)
+                    .contentShape(Rectangle())
+                }
+                .accessibilityLabel(String(localized: "approval.scope.question"))
+            } else {
             VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceS) {
                 Text(String(localized: "approval.scope.question", defaultValue: "How long should Familiar allow this action?"))
                     .font(FamiliarTypography.caption.weight(.semibold))
@@ -169,6 +194,7 @@ struct FamiliarApprovalCard: View {
                         .accessibilityIdentifier("approval.scope.\(option.id)")
                     }
                 }
+            }
             }
         }
     }

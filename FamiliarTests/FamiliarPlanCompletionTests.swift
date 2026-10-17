@@ -40,16 +40,17 @@ struct FamiliarPlanCompletionTests {
             name: "calendar_create", title: "Create event", description: "", parameters: .init(type: .object),
             effect: .reversibleWrite, risk: .low, requirements: []
         )
+        let scope = FamiliarWorkScope.conversation(UUID())
         let runtime = FamiliarAuthorizationRuntime(context: container.mainContext, sessionID: "session")
         try runtime.issueAuthorization(
             duration: .always,
             manifest: manifest,
             arguments: "{\"title\":\"A\"}",
-            projectID: nil,
+            scope: scope,
             targetKey: "calendar:default",
             evidence: "test"
         )
-        #expect(try runtime.matchingAuthorizationScope(manifest: manifest, arguments: "{\"title\":\"A\"}", projectID: nil, targetKey: "calendar:default") == .always)
-        #expect(try runtime.matchingAuthorizationScope(manifest: manifest, arguments: "{\"title\":\"B\"}", projectID: nil, targetKey: "calendar:default") == nil)
+        #expect(try runtime.matchingAuthorizationScope(manifest: manifest, arguments: "{\"title\":\"A\"}", scope: scope, targetKey: "calendar:default") == .always)
+        #expect(try runtime.matchingAuthorizationScope(manifest: manifest, arguments: "{\"title\":\"B\"}", scope: scope, targetKey: "calendar:default") == nil)
     }
 }

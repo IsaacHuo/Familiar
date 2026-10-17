@@ -5,7 +5,7 @@ import WebKit
 
 @MainActor @Observable
 final class FamiliarTerminalController {
-    let projectID: UUID
+    let scope: FamiliarWorkScope
     let workspaceStore: FamiliarWorkspaceStore
     private let bridge = FamiliarRealISHBridge()
     private var task: Task<Void, Never>?
@@ -22,8 +22,8 @@ final class FamiliarTerminalController {
     var columns = 80
     var rows = 24
 
-    init(projectID: UUID, workspaceStore: FamiliarWorkspaceStore) {
-        self.projectID = projectID; self.workspaceStore = workspaceStore
+    init(scope: FamiliarWorkScope, workspaceStore: FamiliarWorkspaceStore) {
+        self.scope = scope; self.workspaceStore = workspaceStore
     }
 
     func start(files: [FamiliarFileSnapshot]) {
@@ -32,7 +32,8 @@ final class FamiliarTerminalController {
         generation = token; taskID = id; active = true
         chunks = []; outputBytes = 0; outputText = ""; outputTail = Data()
         status = String(localized: "terminal.preparing", defaultValue: "Preparing Linux…")
-        let store = workspaceStore, scope = FamiliarWorkspaceID.project(projectID)
+        let store = workspaceStore
+        let scope = self.scope
         let network: FamiliarShellNetworkPolicy = networkEnabled ? .publicInternet : .disabled
         task = Task {
             var view: FamiliarWorkspaceTaskView?
@@ -142,10 +143,10 @@ struct FamiliarTerminalView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var controller: FamiliarTerminalController
     @State private var command = ""
-    let projectID: UUID
-    init(projectID: UUID, workspaceStore: FamiliarWorkspaceStore) {
-        self.projectID = projectID
-        _controller = State(initialValue: FamiliarTerminalController(projectID: projectID, workspaceStore: workspaceStore))
+    let scope: FamiliarWorkScope
+    init(scope: FamiliarWorkScope, workspaceStore: FamiliarWorkspaceStore) {
+        self.scope = scope
+        _controller = State(initialValue: FamiliarTerminalController(scope: scope, workspaceStore: workspaceStore))
     }
     var body: some View {
         NavigationStack {
@@ -156,7 +157,7 @@ struct FamiliarTerminalView: View {
                     Button(controller.active ? String(localized: "terminal.stop", defaultValue: "Stop") : String(localized: "terminal.start", defaultValue: "Start")) {
                         if controller.active { controller.stop() }
                         else {
-                            do { controller.start(files: try FamiliarFileCatalogService().snapshots(projectID: projectID, in: context)) }
+                            do { controller.start(files: try FamiliarFileCatalogService().snapshots(scope: scope, in: context)) }
                             catch { controller.statusForFailure(error) }
                         }
                     }.accessibilityIdentifier("terminal.startStop")

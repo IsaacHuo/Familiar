@@ -17,6 +17,9 @@ nonisolated enum FamiliarWebError: LocalizedError, FamiliarStructuredToolError, 
     case httpError(Int)
     case rateLimited
     case missingSearchAPIKey(String)
+    case searchKeyRejected(String)
+    case searchQuotaExceeded(String)
+    case searchKeyLocked
     case searchUnavailable
     case searchChallenge
     case searchNoProgress
@@ -40,6 +43,9 @@ nonisolated enum FamiliarWebError: LocalizedError, FamiliarStructuredToolError, 
         case .httpError: "http_error"
         case .rateLimited: "rate_limited"
         case .missingSearchAPIKey: "missing_search_api_key"
+        case .searchKeyRejected: "search_api_key_rejected"
+        case .searchQuotaExceeded: "search_quota_exceeded"
+        case .searchKeyLocked: "search_api_key_locked"
         case .searchUnavailable: "search_unavailable"
         case .searchChallenge: "search_challenge"
         case .searchNoProgress: "search_no_progress"
@@ -77,6 +83,9 @@ nonisolated enum FamiliarWebError: LocalizedError, FamiliarStructuredToolError, 
         case .rateLimited: "搜索服务暂时限制了请求。"
         case .missingSearchAPIKey(let provider):
             String(format: String(localized: "error.web.search_api_key_missing", defaultValue: "Add a %@ API key in Web Search settings first."), provider)
+        case .searchKeyRejected(let provider): "\(provider) 拒绝了当前 API Key，请在联网搜索设置中检查或更换。"
+        case .searchQuotaExceeded(let provider): "\(provider) 账户额度已用完或套餐受限。"
+        case .searchKeyLocked: "设备尚未解锁，暂时无法读取搜索 API Key。"
         case .searchUnavailable: "搜索服务当前不可用。"
         case .searchChallenge: "搜索服务要求人机验证，当前无法读取结果。"
         case .searchNoProgress: "连续搜索没有新增来源。请读取已有来源并根据已有证据回答，不要继续重复搜索。"
@@ -100,6 +109,8 @@ nonisolated struct FamiliarWebSearchOutput: Codable, Sendable {
     let contentTrust: String
     let results: [FamiliarWebSearchResult]
     let truncated: Bool
+    /// Display name of the keyed provider that failed before the keyless fallback answered.
+    var fallbackFrom: String? = nil
 }
 
 nonisolated struct FamiliarWebFetchOutput: Codable, Sendable {

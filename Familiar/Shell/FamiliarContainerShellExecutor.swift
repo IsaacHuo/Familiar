@@ -12,7 +12,7 @@ actor FamiliarContainerRuntimeSession {
     }
 
     let workspaceView: FamiliarWorkspaceTaskView
-    var workspaceID: FamiliarWorkspaceID { workspaceView.workspaceID }
+    var workspaceID: FamiliarWorkScope { workspaceView.workspaceID }
     private let container: LinuxContainer
     private(set) var state: State = .stopped
     private var activeProcess: LinuxProcess?

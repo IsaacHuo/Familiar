@@ -47,7 +47,7 @@ struct FamiliarSettingsView: View {
     let searchService: FamiliarWebSearchService
     let pythonPackageSourceSettings: FamiliarPythonPackageSourceSettingsStore
     let workspaceStore: FamiliarWorkspaceStore
-    let workspaceID: FamiliarWorkspaceID?
+    let workspaceID: FamiliarWorkScope?
     let shellRuntimeStatus: FamiliarShellRuntimeStatus
     let onSaveSettings: (FamiliarSettings) -> Void
 
@@ -66,7 +66,7 @@ struct FamiliarSettingsView: View {
         searchService: FamiliarWebSearchService,
         pythonPackageSourceSettings: FamiliarPythonPackageSourceSettingsStore,
         workspaceStore: FamiliarWorkspaceStore,
-        workspaceID: FamiliarWorkspaceID?,
+        workspaceID: FamiliarWorkScope?,
         shellRuntimeStatus: FamiliarShellRuntimeStatus,
         onSaveSettings: @escaping (FamiliarSettings) -> Void
     ) {
@@ -360,7 +360,7 @@ private struct FamiliarPythonPackageSourceSettingsView: View {
 
 private struct FamiliarShellRuntimeSettingsView: View {
     let store: FamiliarWorkspaceStore
-    let workspaceID: FamiliarWorkspaceID?
+    let workspaceID: FamiliarWorkScope?
     let runtimeStatus: FamiliarShellRuntimeStatus
 
     private let timeoutSettings = FamiliarShellTimeoutSettingsStore()

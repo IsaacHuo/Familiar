@@ -4,11 +4,11 @@ import SwiftSoup
 import SwiftData
 
 nonisolated enum FamiliarFileError: LocalizedError, Sendable {
-    case projectRequired, invalidIdentifier, missingFile, invalidPath, transactionFailed
+    case workScopeRequired, invalidIdentifier, missingFile, invalidPath, transactionFailed
     case emptyFile, unsupportedFormat, contentMismatch, validationFailed(String), fileTooLarge
     var errorDescription: String? {
         switch self {
-        case .projectRequired: String(localized: "file.error.project_required")
+        case .workScopeRequired: String(localized: "file.error.scope_required")
         case .invalidIdentifier, .invalidPath: String(localized: "file.error.invalid_path")
         case .missingFile: String(localized: "file.error.missing")
         case .transactionFailed: String(localized: "file.error.failed")
@@ -36,7 +36,7 @@ nonisolated struct FamiliarValidationReceipt: Codable, Equatable, Sendable {
 nonisolated struct FamiliarFileDescriptor: Sendable, Equatable {
     let id: UUID
     let identifier: String
-    let projectID: UUID
+    let scope: FamiliarWorkScope
     let title: String
     /// The file this one replaces, if any. Tools are `nonisolated` and cannot query
     /// the store, so they name the predecessor and the service resolves its lineage and
@@ -59,7 +59,7 @@ nonisolated struct FamiliarFileDescriptor: Sendable, Equatable {
     init(
         id: UUID,
         identifier: String,
-        projectID: UUID,
+        scope: FamiliarWorkScope,
         title: String,
         supersedesFileID: UUID? = nil,
         format: FamiliarFileFormat,
@@ -78,7 +78,7 @@ nonisolated struct FamiliarFileDescriptor: Sendable, Equatable {
     ) {
         self.id = id
         self.identifier = identifier
-        self.projectID = projectID
+        self.scope = scope
         self.title = title
         self.supersedesFileID = supersedesFileID
         self.format = format
@@ -112,9 +112,9 @@ nonisolated struct FamiliarFileStore: @unchecked Sendable {
             .appendingPathComponent("Familiar/Artifacts", isDirectory: true)
     }
 
-    func write(_ data: Data, projectID: UUID, fileID: UUID, filename: String) throws -> (path: String, hash: String) {
+    func write(_ data: Data, scope: FamiliarWorkScope, fileID: UUID, filename: String) throws -> (path: String, hash: String) {
         let safeName = sanitized(filename)
-        let relative = "Projects/\(projectID.uuidString)/Artifacts/\(fileID.uuidString)/\(safeName)"
+        let relative = "\(scope.filePrefix)Artifacts/\(fileID.uuidString)/\(safeName)"
         let destination = try validate(relative)
         try fileManager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true,
                                          attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
@@ -133,7 +133,7 @@ nonisolated struct FamiliarFileStore: @unchecked Sendable {
 
     func importFile(
         at source: URL,
-        projectID: UUID,
+        scope: FamiliarWorkScope,
         fileID: UUID,
         filename: String,
         maximumBytes: Int64
@@ -146,7 +146,7 @@ nonisolated struct FamiliarFileStore: @unchecked Sendable {
         guard byteSize > 0 else { throw FamiliarFileError.emptyFile }
         guard byteSize <= maximumBytes else { throw FamiliarFileError.fileTooLarge }
         let safeName = sanitized(filename)
-        let relative = "Projects/\(projectID.uuidString)/Artifacts/\(fileID.uuidString)/\(safeName)"
+        let relative = "\(scope.filePrefix)Artifacts/\(fileID.uuidString)/\(safeName)"
         let destination = try validate(relative)
         try fileManager.createDirectory(
             at: destination.deletingLastPathComponent(),
@@ -198,40 +198,40 @@ nonisolated struct FamiliarFileStore: @unchecked Sendable {
 
     func url(relativePath: String) -> URL? { guard let url = try? validate(relativePath), isRegular(url) else { return nil }; return url }
 
-    func isPath(_ relativePath: String, inProject projectID: UUID, fileID: UUID) -> Bool {
-        relativePath.hasPrefix("Projects/\(projectID.uuidString)/Artifacts/\(fileID.uuidString)/")
+    func isPath(_ relativePath: String, inScope scope: FamiliarWorkScope, fileID: UUID) -> Bool {
+        relativePath.hasPrefix("\(scope.filePrefix)Artifacts/\(fileID.uuidString)/")
     }
 
-    func remove(projectID: UUID, fileID: UUID) throws {
-        let url = try validate("Projects/\(projectID.uuidString)/Artifacts/\(fileID.uuidString)")
+    func remove(scope: FamiliarWorkScope, fileID: UUID) throws {
+        let url = try validate("\(scope.filePrefix)Artifacts/\(fileID.uuidString)")
         if fileManager.fileExists(atPath: url.path) { try fileManager.removeItem(at: url) }
     }
 
-    func editableFile(projectID: UUID, identifier: String) throws -> (id: UUID, filename: String, relativePath: String, data: Data) {
-        let prefix = identifier.hasPrefix("file_") ? "file_" : "artifact_"
+    func editableFile(scope: FamiliarWorkScope, identifier: String) throws -> (id: UUID, filename: String, relativePath: String, data: Data) {
+        let prefix = "file_"
         guard identifier.hasPrefix(prefix),
               let fileID = UUID(uuidString: String(identifier.dropFirst(prefix.count)))
         else { throw FamiliarFileError.invalidIdentifier }
-        let directory = try validate("Projects/\(projectID.uuidString)/Artifacts/\(fileID.uuidString)")
+        let directory = try validate("\(scope.filePrefix)Artifacts/\(fileID.uuidString)")
         guard let names = try? fileManager.contentsOfDirectory(atPath: directory.path),
               let filename = names.first(where: { isRegular(directory.appendingPathComponent($0)) })
         else { throw FamiliarFileError.missingFile }
-        let relativePath = "Projects/\(projectID.uuidString)/Artifacts/\(fileID.uuidString)/\(filename)"
+        let relativePath = "\(scope.filePrefix)Artifacts/\(fileID.uuidString)/\(filename)"
         return (fileID, filename, relativePath, try read(relativePath: relativePath))
     }
 
-    func stageProjectDirectory(projectID: UUID) throws -> FamiliarStagedFileDirectory? {
-        let originalURL = try validate("Projects/\(projectID.uuidString)")
+    func stageScopeDirectory(scope: FamiliarWorkScope) throws -> FamiliarStagedFileDirectory? {
+        let originalURL = try validate("Scopes/\(scope.directoryName)")
         guard fileManager.fileExists(atPath: originalURL.path) else { return nil }
         let trash = rootURL.appendingPathComponent("Trash", isDirectory: true)
         try fileManager.createDirectory(at: trash, withIntermediateDirectories: true)
-        let stagedURL = trash.appendingPathComponent("\(projectID.uuidString)-\(UUID().uuidString)", isDirectory: true)
+        let stagedURL = trash.appendingPathComponent("\(scope.storageKey)-\(UUID().uuidString)", isDirectory: true)
         try fileManager.moveItem(at: originalURL, to: stagedURL)
         return FamiliarStagedFileDirectory(originalURL: originalURL, stagedURL: stagedURL)
     }
 
-    func stageFileDirectory(projectID: UUID, fileID: UUID) throws -> FamiliarStagedFileDirectory {
-        let original = try validate("Projects/\(projectID.uuidString)/Artifacts/\(fileID.uuidString)")
+    func stageFileDirectory(scope: FamiliarWorkScope, fileID: UUID) throws -> FamiliarStagedFileDirectory {
+        let original = try validate("\(scope.filePrefix)Artifacts/\(fileID.uuidString)")
         guard fileManager.fileExists(atPath: original.path) else { throw FamiliarFileError.missingFile }
         let trash = rootURL.appendingPathComponent("Trash", isDirectory: true)
         try fileManager.createDirectory(at: trash, withIntermediateDirectories: true)
@@ -251,9 +251,9 @@ nonisolated struct FamiliarFileStore: @unchecked Sendable {
         }
     }
 
-    func rename(relativePath: String, projectID: UUID, fileID: UUID, filename: String) throws -> String {
+    func rename(relativePath: String, scope: FamiliarWorkScope, fileID: UUID, filename: String) throws -> String {
         let oldURL = try validate(relativePath)
-        let newRelative = "Projects/\(projectID.uuidString)/Artifacts/\(fileID.uuidString)/\(sanitized(filename))"
+        let newRelative = "\(scope.filePrefix)Artifacts/\(fileID.uuidString)/\(sanitized(filename))"
         let newURL = try validate(newRelative)
         try fileManager.moveItem(at: oldURL, to: newURL)
         return newRelative
@@ -280,7 +280,7 @@ struct FamiliarFileService {
     func persist(_ descriptor: FamiliarFileDescriptor, in context: ModelContext) throws {
         let descriptorID = descriptor.id
         if let existing = try context.fetch(FetchDescriptor<FamiliarFileVersionRecord>(predicate: #Predicate { $0.id == descriptorID })).first {
-            guard existing.projectID == descriptor.projectID, existing.contentHash == descriptor.contentHash,
+            guard existing.scope == descriptor.scope, existing.contentHash == descriptor.contentHash,
                   existing.relativePath == descriptor.relativePath, existing.byteSize == descriptor.byteSize,
                   existing.formatRawValue == descriptor.format.rawValue else { throw FamiliarFileError.contentMismatch }
             return
@@ -288,10 +288,10 @@ struct FamiliarFileService {
         let file: FamiliarFileRecord
         if let id = descriptor.supersedesFileID {
             guard let predecessor = try context.fetch(FetchDescriptor<FamiliarFileVersionRecord>(predicate: #Predicate { $0.id == id })).first,
-                  let owner = predecessor.file, owner.projectID == descriptor.projectID else { throw FamiliarFileError.missingFile }
+                  let owner = predecessor.file, owner.scope == descriptor.scope else { throw FamiliarFileError.missingFile }
             file = owner
         } else {
-            file = FamiliarFileRecord(id: descriptor.id, projectID: descriptor.projectID, displayName: descriptor.title,
+            file = FamiliarFileRecord(id: descriptor.id, scope: descriptor.scope, displayName: descriptor.title,
                 origin: descriptor.source == .webCapture ? .webCapture : .generated)
             context.insert(file)
         }
@@ -343,7 +343,7 @@ struct FamiliarFileService {
     }
 
     func delete(_ file: FamiliarStoredFileVersion, in context: ModelContext) throws {
-        let staged = try store.stageFileDirectory(projectID: file.projectID, fileID: file.id)
+        let staged = try store.stageFileDirectory(scope: file.scope, fileID: file.id)
         do {
             try FamiliarFileCatalogService().stageRemoval(versionID: file.id, in: context)
             context.delete(file)
@@ -357,12 +357,13 @@ struct FamiliarFileService {
         try? store.discard(staged)
     }
 
-    func removeProjectFiles(projectID: UUID, in context: ModelContext) throws {
+    func removeScopeFiles(scope: FamiliarWorkScope, in context: ModelContext) throws {
+        let key = scope.storageKey
         let files = try context.fetch(FetchDescriptor<FamiliarStoredFileVersion>(
-            predicate: #Predicate { $0.projectID == projectID }
+            predicate: #Predicate { $0.scopeKey == key }
         ))
         for file in files {
-            try store.remove(projectID: projectID, fileID: file.id)
+            try store.remove(scope: scope, fileID: file.id)
             try FamiliarFileCatalogService().stageRemoval(versionID: file.id, in: context)
             context.delete(file)
         }
@@ -375,12 +376,12 @@ struct FamiliarFileService {
     }
 
     func read(_ file: FamiliarStoredFileVersion) throws -> Data {
-        guard store.isPath(file.relativePath, inProject: file.projectID, fileID: file.id) else { throw FamiliarFileError.invalidPath }
+        guard store.isPath(file.relativePath, inScope: file.scope, fileID: file.id) else { throw FamiliarFileError.invalidPath }
         return try store.read(relativePath: file.relativePath)
     }
 
     func rename(_ file: FamiliarStoredFileVersion, to title: String, in context: ModelContext) throws {
-        guard store.isPath(file.relativePath, inProject: file.projectID, fileID: file.id) else { throw FamiliarFileError.invalidPath }
+        guard store.isPath(file.relativePath, inScope: file.scope, fileID: file.id) else { throw FamiliarFileError.invalidPath }
         let fileID = file.lineageID
         if let record = try context.fetch(FetchDescriptor<FamiliarFileRecord>(predicate: #Predicate { $0.id == fileID })).first {
             record.displayName = title
@@ -390,7 +391,7 @@ struct FamiliarFileService {
     }
 
     func exportURL(for file: FamiliarStoredFileVersion) -> URL? {
-        guard store.isPath(file.relativePath, inProject: file.projectID, fileID: file.id) else { return nil }
+        guard store.isPath(file.relativePath, inScope: file.scope, fileID: file.id) else { return nil }
         return store.url(relativePath: file.relativePath)
     }
 }

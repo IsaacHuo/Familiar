@@ -108,10 +108,10 @@ struct FamiliarProjectTests {
         running.status = .completed
         try context.save()
         try service.permanentlyDelete(project, in: context)
-        #expect(try context.fetch(FetchDescriptor<FamiliarProject>()).allSatisfy { $0.isDefaultProject })
+        #expect(try context.fetch(FetchDescriptor<FamiliarProject>()).isEmpty)
         #expect(try context.fetch(FetchDescriptor<FamiliarProjectInstruction>()).isEmpty)
         #expect(try #require(context.fetch(FetchDescriptor<FamiliarAgentRun>()).first).project == nil)
-        #expect(try #require(context.fetch(FetchDescriptor<FamiliarConversation>()).first).project?.isDefaultProject == true)
+        #expect(try #require(context.fetch(FetchDescriptor<FamiliarConversation>()).first).project == nil)
         #expect(try context.fetch(FetchDescriptor<FamiliarPinnedItemRecord>()).isEmpty)
     }
 
@@ -124,7 +124,7 @@ struct FamiliarProjectTests {
         let controller = FamiliarChatController(dependencies: FamiliarAppDependencies())
 
         let ordinary = try #require(controller.createConversation(in: context))
-        #expect(ordinary.project?.isDefaultProject == true)
+        #expect(ordinary.project == nil)
         let owned = try #require(controller.createConversation(project: project, in: context))
         #expect(owned.project?.id == project.id)
     }
@@ -148,7 +148,7 @@ struct FamiliarProjectTests {
         controller.select(conversation.id, in: context)
         #expect(controller.selectedProjectID == project.id)
         controller.startNewConversation(project: nil, in: context)
-        #expect(controller.selectedProjectID == FamiliarProject.dailyProjectID)
+        #expect(controller.selectedProjectID == nil)
     }
 
     @Test("A Run snapshots its Project at start and keeps it after conversation detachment")
@@ -209,10 +209,10 @@ struct FamiliarProjectTests {
         let project = try FamiliarProjectService().create(name: "File owner", in: context)
         let store = FamiliarFileStore(rootURL: root)
         let fileID = UUID()
-        let stored = try store.write(Data("result".utf8), projectID: project.id, fileID: fileID, filename: "result.md")
+        let stored = try store.write(Data("result".utf8), scope: .project(project.id), fileID: fileID, filename: "result.md")
         context.insert(FamiliarStoredFileVersion(
             id: fileID,
-            projectID: project.id,
+            scope: .project(project.id),
             identifier: "file_fixture",
             title: "Result",
             relativePath: stored.path,

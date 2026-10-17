@@ -6,7 +6,7 @@ import XCTest
 /// Opt-in actual arm64 guest execution, separate from deterministic fixtures
 /// and physical-device signing/hardware acceptance.
 final class FamiliarISHSimulatorRuntimeTests: XCTestCase {
-    private func run(_ command: String, workspaceID: FamiliarWorkspaceID, store: FamiliarWorkspaceStore) async throws -> FamiliarShellResult {
+    private func run(_ command: String, workspaceID: FamiliarWorkScope, store: FamiliarWorkspaceStore) async throws -> FamiliarShellResult {
         let id = UUID()
         let view = try store.prepareShellTaskView(taskID: id, workspaceID: workspaceID, resources: [], attachments: [])
         defer { try? store.removeShellTaskView(view) }
@@ -23,7 +23,7 @@ final class FamiliarISHSimulatorRuntimeTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("FC-scope-" + UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = FamiliarWorkspaceStore(rootURL: root)
-        let a = FamiliarWorkspaceID.project(UUID()), b = FamiliarWorkspaceID.project(UUID())
+        let a = FamiliarWorkScope.project(UUID()), b = FamiliarWorkScope.project(UUID())
         let first = try await run("printf private > /root/fc-home; printf temp > /tmp/fc-temp; if printf bad > /etc/fc-escape; then exit 99; fi; setsid sh -c 'sleep 8' & echo FC_CHILD_PID:$!", workspaceID: a, store: store)
         XCTAssertEqual(first.status, .succeeded)
         let pidLine = try XCTUnwrap(first.standardOutput.split(separator: "\n").first { $0.hasPrefix("FC_CHILD_PID:") })
@@ -37,7 +37,7 @@ final class FamiliarISHSimulatorRuntimeTests: XCTestCase {
     func testRealGuestBoundedMemoryFileProcessAndNoNewlineOutputFailuresRecover() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("FC-limits-" + UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let store = FamiliarWorkspaceStore(rootURL: root), workspace = FamiliarWorkspaceID.project(UUID())
+        let store = FamiliarWorkspaceStore(rootURL: root), workspace = FamiliarWorkScope.project(UUID())
         let script = """
         import mmap, os, time
         try:

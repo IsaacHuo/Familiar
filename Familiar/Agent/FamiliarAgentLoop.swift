@@ -619,8 +619,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
         let attachments = input.attachments.map {
             FamiliarToolContext.Attachment(id: $0.id, kind: $0.kind, filename: $0.filename, mimeType: $0.mimeType, relativePath: $0.relativePath, extractedText: $0.extractedText, byteSize: $0.byteSize)
         }
-        let workspaceID: FamiliarWorkspaceID = input.projectID.map(FamiliarWorkspaceID.project)
-            ?? .conversation(input.conversationID)
+        let workspaceID = input.workScope
         return FamiliarToolContext(
             runID: runID,
             toolCallID: callID,
@@ -741,9 +740,9 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                     let currentAvailability = await registry.availability(for: manifest)
                     try policy.revalidate(approved: authorizationAssessment, current: current, availability: currentAvailability)
                     try await policy.revalidateAuthorization(evaluation: initialEvaluation, manifest: manifest, call: call,
-                        projectID: contextSnapshot.projectID, targetKey: authorizationAssessment.targetKey, authorization: authorizationRuntime)
+                        scope: toolContext.workspaceID, targetKey: authorizationAssessment.targetKey, authorization: authorizationRuntime)
                     try await policy.recordApproval(acceptedDecision, evaluation: initialEvaluation, manifest: manifest, call: call,
-                        projectID: contextSnapshot.projectID, targetKey: authorizationAssessment.targetKey, authorization: authorizationRuntime)
+                        scope: toolContext.workspaceID, targetKey: authorizationAssessment.targetKey, authorization: authorizationRuntime)
                 }
             }
             let readKey = await toolState.fileReadKey(call: call, available: toolContext.files)
@@ -762,7 +761,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
             var undoAvailable = false
             let resolved: (FamiliarToolExecutionResult, FamiliarPersistedConfirmationResult)
             switch outcome {
-            case .result(let result):
+            case .result(let result), .unchanged(let result):
                 resolved = (result, readConfirmation)
             case .action(let proposal):
                 let evaluation = try await Self.withDeadline(deadline) {
@@ -792,10 +791,10 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                     let currentAvailability = await registry.availability(for: manifest)
                     try policy.revalidate(approved: authorizationAssessment, current: current, availability: currentAvailability)
                     try await policy.revalidateAuthorization(evaluation: evaluation, manifest: manifest, call: call,
-                        projectID: contextSnapshot.projectID, targetKey: proposal.targetKey, authorization: authorizationRuntime)
+                        scope: toolContext.workspaceID, targetKey: proposal.targetKey, authorization: authorizationRuntime)
                     try await policy.validateTarget(proposal)
                     try await policy.recordApproval(approvalDecision, evaluation: evaluation, manifest: manifest, call: call,
-                        projectID: contextSnapshot.projectID, targetKey: proposal.targetKey, authorization: authorizationRuntime)
+                        scope: toolContext.workspaceID, targetKey: proposal.targetKey, authorization: authorizationRuntime)
                 }
                 if let willCommit {
                     try await Self.withDeadline(deadline) { try await willCommit(commitContext) }
@@ -847,7 +846,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
             let finishedAt = Date()
             if let persistResult {
                 let receipt = try await Self.withDeadline(deadline) { try await persistResult(resolved.0, commitContext) }
-                await toolState.admit(files: receipt.files.filter { $0.reference.projectID == contextSnapshot.projectID })
+                await toolState.admit(files: receipt.files.filter { $0.reference.scope == contextSnapshot.workScope })
             }
             if let committedAction {
                 if let undo = committedAction.undo, !retainedUndo {
@@ -1075,7 +1074,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
     private static func mergingSources(_ current: [FamiliarSource], with additions: [FamiliarSource]) -> [FamiliarSource] {
         var result = current
         for source in additions {
-            if let index = result.firstIndex(where: { $0.url == source.url }) {
+            if let index = result.firstIndex(where: { $0.id == source.id }) {
                 if source.kind == .fetchedPage && result[index].kind == .searchResult {
                     result[index] = source
                 }

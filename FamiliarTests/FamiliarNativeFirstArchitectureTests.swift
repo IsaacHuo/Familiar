@@ -55,7 +55,7 @@ struct FamiliarNativeFirstArchitectureTests {
         )
         defer { try? FileManager.default.removeItem(at: root) }
         let store = FamiliarWorkspaceStore(rootURL: root, quotaBytes: 1_048_576)
-        let workspace = FamiliarWorkspaceID.project(UUID())
+        let workspace = FamiliarWorkScope.project(UUID())
 
         _ = try store.write(Data("one".utf8), relativePath: "Files/value.txt", in: workspace)
         let checkpoint = try store.createCheckpoint(for: workspace)

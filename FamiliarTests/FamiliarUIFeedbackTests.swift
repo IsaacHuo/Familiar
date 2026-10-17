@@ -83,7 +83,8 @@ struct FamiliarUIFeedbackTests {
         let settings = try source("Familiar/Presentation/FamiliarSettingsHubView.swift")
         let activity = try section(named: "private struct FamiliarRuntimeCard", endingAt: "private struct FamiliarRuntimeStageView", in: messages)
         #expect(!messages.contains("FamiliarThinkingState"))
-        #expect(activity.contains("disclosure.binding(for: activity.id).wrappedValue.toggle()"))
+        #expect(activity.contains(".sheet(item: $destination"))
+        #expect(!activity.contains("if expanded"))
         #expect(activity.contains("runtime.ui.technical_details"))
         #expect(chat.contains("FamiliarHaptics.shared.perform(.selection)"))
         #expect(settings.contains("NavigationLink {"))
@@ -103,7 +104,7 @@ struct FamiliarUIFeedbackTests {
     @Test("Canonical file identity owns versions and the catalog defaults to the latest")
     @MainActor
     func fileVersionGrouping() {
-        let file = FamiliarFileRecord(projectID: UUID(), displayName: "Report", origin: .generated)
+        let file = FamiliarFileRecord(scope: .project(UUID()), displayName: "Report", origin: .generated)
         let first = FamiliarFileVersionRecord(version: 1, filename: "Report.md", mimeType: "text/markdown",
             byteSize: 1, contentHash: "first", extractedText: "First", extractedTextHash: "first",
             storage: .init(kind: .managed, relativePath: "first.md"), file: file)
@@ -157,7 +158,7 @@ struct FamiliarUIFeedbackTests {
     @MainActor
     func fileReceiptCardIsTappable() {
         let projectID = UUID(), versionID = UUID()
-        let snapshot = FamiliarFileSnapshot(reference: .init(fileID: UUID(), versionID: versionID, projectID: projectID),
+        let snapshot = FamiliarFileSnapshot(reference: .init(fileID: UUID(), versionID: versionID, scope: .project(projectID)),
             name: "Report", origin: .generated, version: 3, filename: "Report.md", mimeType: "text/markdown",
             byteSize: 200, contentHash: "hash",
             storage: .init(kind: .managed, relativePath: "Projects/\(projectID.uuidString)/missing.md"),

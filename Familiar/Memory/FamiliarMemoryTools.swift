@@ -18,7 +18,7 @@ nonisolated struct FamiliarMemoryRememberTool: FamiliarTool {
         description: "在用户明确表达长期偏好或需要长期记住的事实时，提议保存一条长期记忆。需要用户确认后才会保存。不要保存一次性任务细节、可推导的内容，也不要保存密钥、口令或其他敏感信息。",
         parameters: FamiliarJSONSchema(type: .object, properties: [
             "content": .init(type: .string, description: "要记住的一句话，简洁、自足、不含敏感信息。"),
-            "scope": .init(type: .string, description: "global 表示长期通用偏好，project 表示只属于当前项目。默认 project；普通聊天默认 global。")
+            "scope": .init(type: .string, description: "global 表示长期通用偏好，project 表示只属于当前项目。默认 project；普通聊天默认 conversation；只有用户明确要求跨对话记住时选择 global。")
         ], required: ["content"]),
         effect: .reversibleWrite,
         risk: .low,
@@ -38,12 +38,13 @@ nonisolated struct FamiliarMemoryRememberTool: FamiliarTool {
             throw FamiliarMemoryError.sensitiveContent
         }
         let scope = Self.resolvedScope(requested: input.scope, projectID: context.projectID)
-        guard scope != .project || context.projectID != nil else { throw FamiliarMemoryError.invalidScope }
+        guard (scope != .project || context.projectID != nil),
+              (scope != .conversation || context.conversationID != nil) else { throw FamiliarMemoryError.invalidScope }
         let request = FamiliarMemoryWriteRequest(
             content: content,
             scope: scope,
-            projectID: scope == .project ? context.projectID : nil,
-            conversationID: nil,
+            projectID: scope != .global ? context.projectID : nil,
+            conversationID: scope == .conversation ? context.conversationID : nil,
             provenance: "run:\(context.runID)"
         )
         return .action(FamiliarActionProposal(
@@ -88,8 +89,9 @@ nonisolated struct FamiliarMemoryRememberTool: FamiliarTool {
     static func resolvedScope(requested: String?, projectID: UUID?) -> FamiliarMemoryScope {
         switch requested?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "global": .global
-        case "project": projectID == nil ? .global : .project
-        default: projectID == nil ? .global : .project
+        case "project": .project
+        case "conversation": .conversation
+        default: projectID == nil ? .conversation : .project
         }
     }
 

@@ -130,11 +130,11 @@ struct FamiliarSubmissionBoundaryTests {
         try bytes.write(to: source)
         defer { try? FileManager.default.removeItem(at: source) }
         let draft = try await FamiliarAttachmentStore.importDocument(from: source)
-        let messageID = UUID()
-        let path = FamiliarAttachmentStore.committedRelativePath(of: draft, messageID: messageID)
+        let messageID = UUID(), scope = FamiliarWorkScope.conversation(UUID())
+        let path = FamiliarAttachmentStore.committedRelativePath(of: draft, messageID: messageID, scope: scope)
         defer { FamiliarAttachmentStore.remove(relativePaths: [draft.relativePath, path]) }
-        _ = try FamiliarAttachmentStore.committedCopy(of: draft, messageID: messageID)
-        #expect(throws: FamiliarAttachmentStoreError.self) { _ = try FamiliarAttachmentStore.committedCopy(of: draft, messageID: messageID) }
+        _ = try FamiliarAttachmentStore.committedCopy(of: draft, messageID: messageID, scope: scope)
+        #expect(throws: FamiliarAttachmentStoreError.self) { _ = try FamiliarAttachmentStore.committedCopy(of: draft, messageID: messageID, scope: scope) }
         let staged = try #require(FamiliarAttachmentStore.url(for: draft.relativePath))
         #expect(try Data(contentsOf: staged) == bytes)
         #expect(try Data(contentsOf: source) == bytes)

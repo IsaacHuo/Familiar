@@ -1,27 +1,28 @@
 import AVFoundation
-import Combine
 import Foundation
+import Observation
 import Speech
 
 @MainActor
-public final class FamiliarSpeechTranscriber: ObservableObject {
-    @Published public private(set) var isListening = false
-    @Published public private(set) var latestTranscript = ""
-    @Published public var errorMessage: String?
+@Observable
+public final class FamiliarSpeechTranscriber {
+    public private(set) var isListening = false
+    public private(set) var latestTranscript = ""
+    public var errorMessage: String?
 
     public init() {}
 
-    private let audioEngine = AVAudioEngine()
-    private let audioSession = AVAudioSession.sharedInstance()
-    private var audioSessionTransition: Task<Void, Error>?
-    private var request: SFSpeechAudioBufferRecognitionRequest?
-    private var task: SFSpeechRecognitionTask?
-    private var onTranscription: ((String) -> Void)?
-    private var activeSessionID: UUID?
-    private var remoteRecorder: AVAudioRecorder?
-    private var remoteConfiguration: FamiliarVoiceConfiguration?
-    private var remoteTask: Task<Void, Never>?
-    private var remoteURL: URL?
+    @ObservationIgnored private let audioEngine = AVAudioEngine()
+    @ObservationIgnored private let audioSession = AVAudioSession.sharedInstance()
+    @ObservationIgnored private var audioSessionTransition: Task<Void, Error>?
+    @ObservationIgnored private var request: SFSpeechAudioBufferRecognitionRequest?
+    @ObservationIgnored private var task: SFSpeechRecognitionTask?
+    @ObservationIgnored private var onTranscription: ((String) -> Void)?
+    @ObservationIgnored private var activeSessionID: UUID?
+    @ObservationIgnored private var remoteRecorder: AVAudioRecorder?
+    @ObservationIgnored private var remoteConfiguration: FamiliarVoiceConfiguration?
+    @ObservationIgnored private var remoteTask: Task<Void, Never>?
+    @ObservationIgnored private var remoteURL: URL?
 
     public func toggle(onTranscription: @escaping (String) -> Void) async {
         if remoteRecorder != nil {

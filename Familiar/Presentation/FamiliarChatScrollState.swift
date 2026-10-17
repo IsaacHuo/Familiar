@@ -37,6 +37,7 @@ nonisolated struct FamiliarChatScrollState {
     }
 
     mutating func requestReturn() { mode = .returnToLatest }
+    mutating func beginInspection() { isInteracting = false; mode = .userReading }
 }
 
 /// Frequent geometry belongs to the session, not observable Timeline inputs.
@@ -47,6 +48,7 @@ final class FamiliarChatScrollSession {
     private(set) var readingRevision = 0
     @ObservationIgnored private var state = FamiliarChatScrollState()
     @ObservationIgnored private var task: Task<Void, Never>?
+    @ObservationIgnored private var inspectionCount = 0
     @ObservationIgnored private var anchor: (id: String, y: CGFloat, priority: Int)?
     @ObservationIgnored var offset: CGFloat = 0
     @ObservationIgnored var latestOffset: CGFloat = 0
@@ -85,15 +87,27 @@ final class FamiliarChatScrollSession {
     }
 
     func schedule(_ action: @escaping @MainActor () -> Void) {
-        guard mode != .userReading, task == nil else { return }
+        guard mode != .userReading, inspectionCount == 0, task == nil else { return }
         task = Task { @MainActor [weak self] in
             do { try await Task.sleep(for: .milliseconds(40)) } catch { return }
             guard let self else { return }
             self.task = nil
-            guard self.mode != .userReading else { return }
+            guard self.mode != .userReading, self.inspectionCount == 0 else { return }
             action()
         }
     }
+
+    /// Detail presentation is not a request to follow the newest text.
+    func beginInspection() {
+        inspectionCount += 1
+        cancel()
+        if mode != .userReading {
+            state.beginInspection()
+            readingRevision += 1
+            publish()
+        }
+    }
+    func endInspection() { inspectionCount = max(0, inspectionCount - 1) }
 
     func cancel() { task?.cancel(); task = nil }
     private func publish() {

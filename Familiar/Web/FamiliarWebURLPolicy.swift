@@ -61,7 +61,8 @@ nonisolated enum FamiliarWebURLPolicy {
             if value >= 0xAC100000 && value <= 0xAC1FFFFF { return false }
             if value >= 0xC0000000 && value <= 0xC00000FF { return false }
             if value >= 0xC0000200 && value <= 0xC00002FF { return false }
-            if value >= 0xC6120000 && value <= 0xC613FFFF { return false }
+            // 198.18.0.0/15 (benchmarking) is deliberately allowed: proxy apps in
+            // fake-IP mode resolve every public host into it, and it is not a LAN range.
             if value >= 0xC6336400 && value <= 0xC63364FF { return false }
             if value >= 0xCB007100 && value <= 0xCB0071FF { return false }
             return true

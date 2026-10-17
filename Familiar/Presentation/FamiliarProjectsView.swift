@@ -24,15 +24,17 @@ struct FamiliarProjectsView<ChatContent: View>: View {
     @State private var path: [FamiliarProjectRoute]
     @State private var editor: FamiliarProjectEditorDestination?
     @State private var errorMessage: String?
+    @Binding private var requestedProjectDetailsID: UUID?
 
     init(
-        initialProjectID: UUID? = nil, registry: FamiliarToolRegistry? = nil,
+        initialProjectID: UUID? = nil, requestedProjectDetailsID: Binding<UUID?>, registry: FamiliarToolRegistry? = nil,
         onConversationRequest: @escaping (FamiliarProjectConversationRequest, @escaping () -> Void) -> Void,
         onDeleteConversations: @escaping ([FamiliarConversation]) -> Void,
         onChatVisibilityChange: @escaping (Bool) -> Void,
         @ViewBuilder chatContent: @escaping () -> ChatContent
     ) {
         self.initialProjectID = initialProjectID; self.registry = registry
+        _requestedProjectDetailsID = requestedProjectDetailsID
         self.onConversationRequest = onConversationRequest; self.onDeleteConversations = onDeleteConversations
         self.onChatVisibilityChange = onChatVisibilityChange; self.chatContent = chatContent
         _path = State(initialValue: initialProjectID.map { [.project($0)] } ?? [])
@@ -43,7 +45,7 @@ struct FamiliarProjectsView<ChatContent: View>: View {
             List {
                 projectSection(
                     title: String(localized: "project.active"),
-                    projects: projects.filter { $0.status == .active }.sorted { $0.isDefaultProject && !$1.isDefaultProject }
+                    projects: projects.filter { $0.status == .active }
                 )
                 let archived = projects.filter { $0.status == .archived }
                 if !archived.isEmpty {
@@ -96,6 +98,11 @@ struct FamiliarProjectsView<ChatContent: View>: View {
         }
         .onChange(of: path) { _, path in
             onChatVisibilityChange(path.contains { route in if case .chat = route { return true }; return false })
+        }
+        .onChange(of: requestedProjectDetailsID) { _, projectID in
+            guard let projectID else { return }
+            path = [.project(projectID)]
+            requestedProjectDetailsID = nil
         }
         .onDisappear { onChatVisibilityChange(false) }
         .sheet(item: $editor) { destination in
@@ -181,12 +188,12 @@ private struct FamiliarProjectDetailView: View {
 
             Section {
                 NavigationLink {
-                    FamiliarFilesView(projectID: project.id)
+                    FamiliarFilesView(scope: .project(project.id))
                 } label: {
                     HStack {
                         Label(String(localized: "chat.files"), systemImage: "folder")
                         Spacer()
-                        Text(fileRecords.count { $0.projectID == project.id }, format: .number)
+                        Text(fileRecords.count { $0.scopeKey == FamiliarWorkScope.project(project.id).storageKey }, format: .number)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -205,7 +212,7 @@ private struct FamiliarProjectDetailView: View {
                     Button(action: onEdit) {
                         Label(String(localized: "common.edit"), systemImage: "pencil")
                     }
-                    if !project.isDefaultProject {
+
                     Button {
                         perform {
                             try FamiliarProjectService().setArchived(
@@ -228,7 +235,7 @@ private struct FamiliarProjectDetailView: View {
                         Label(String(localized: "project.delete"), systemImage: "trash")
                     }
                     .disabled(project.agentRuns.contains { $0.status == .running })
-                    }
+
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
@@ -503,13 +510,13 @@ private struct FamiliarProjectDetailView: View {
 }
 
 private struct FamiliarProjectEnvironmentView: View {
-    @Query(sort: \FamiliarProjectEnvironmentRecord.preparedAt, order: .reverse)
-    private var records: [FamiliarProjectEnvironmentRecord]
+    @Query(sort: \FamiliarEnvironmentRecord.preparedAt, order: .reverse)
+    private var records: [FamiliarEnvironmentRecord]
     let projectID: UUID
 
     var body: some View {
         List {
-            if let record = records.first(where: { $0.projectID == projectID }) {
+            if let record = records.first(where: { $0.scope == .project(projectID) }) {
                 Section(String(localized: "project.environment", defaultValue: "Environment")) {
                     LabeledContent(String(localized: "environment.state", defaultValue: "State"), value: record.state.rawValue)
                     LabeledContent(String(localized: "environment.python", defaultValue: "Python"), value: record.pythonVersion)
@@ -534,7 +541,7 @@ private struct FamiliarProjectEnvironmentView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private func decodedPackages(_ record: FamiliarProjectEnvironmentRecord) -> [String] {
+    private func decodedPackages(_ record: FamiliarEnvironmentRecord) -> [String] {
         guard let data = record.resolvedPackagesJSON.data(using: .utf8) else { return [] }
         return (try? JSONDecoder().decode([String].self, from: data)) ?? []
     }
@@ -728,10 +735,11 @@ private struct FamiliarProjectSectionHeader<Destination: View>: View {
     }
 }
 
-private struct FamiliarProjectConversationsView: View {
+struct FamiliarProjectConversationsView: View {
     let conversations: [FamiliarConversation]
     let onSelect: (FamiliarConversation) -> Void
     let onDeleteAll: (() -> Void)?
+    var title: String = String(localized: "project.conversations")
 
     @State private var confirmsDeleteAll = false
 
@@ -745,7 +753,7 @@ private struct FamiliarProjectConversationsView: View {
                 }
             }
         }
-        .navigationTitle(String(localized: "project.conversations"))
+        .navigationTitle(title)
         .toolbar {
             if let onDeleteAll {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -886,8 +894,7 @@ private struct FamiliarProjectRunDetailView: View {
                 }
                 if let finishedAt = run.finishedAt {
                     LabeledContent(String(localized: "project.run.duration", defaultValue: "Duration")) {
-                        Text(finishedAt.timeIntervalSince(run.startedAt), format: .number.precision(.fractionLength(1)))
-                        + Text(" s")
+                        Text(verbatim: "\(finishedAt.timeIntervalSince(run.startedAt).formatted(.number.precision(.fractionLength(1)))) s")
                     }
                 }
             }
@@ -1278,7 +1285,6 @@ private struct FamiliarProjectEditorView: View {
                 Section(String(localized: "project.details")) {
                     TextField(String(localized: "project.name"), text: $name)
                         .textInputAutocapitalization(.sentences)
-                        .disabled(isDefaultProject)
                     TextField(String(localized: "project.summary"), text: $summary, axis: .vertical)
                         .lineLimit(2...6)
                 }
@@ -1344,10 +1350,7 @@ private struct FamiliarProjectEditorView: View {
         }
     }
 
-    private var isDefaultProject: Bool {
-        if case .edit(let project) = destination { return project.isDefaultProject }
-        return false
-    }
+
 
     private func save() {
         let service = FamiliarProjectService()

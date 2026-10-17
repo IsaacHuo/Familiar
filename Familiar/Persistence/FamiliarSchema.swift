@@ -30,8 +30,9 @@ final class FamiliarPinnedItemRecord {
 }
 
 @Model
-final class FamiliarProjectEnvironmentRecord {
-    @Attribute(.unique) var projectID: UUID
+final class FamiliarEnvironmentRecord {
+    @Attribute(.unique) var scopeKey: String
+    var scope: FamiliarWorkScope { FamiliarWorkScope(storageKey: scopeKey)! }
     var revision: UUID
     var stateRawValue: String
     var requestedPackagesJSON: String
@@ -42,7 +43,7 @@ final class FamiliarProjectEnvironmentRecord {
     var preparedAt: Date
 
     init(receipt: FamiliarEnvironmentReceipt) throws {
-        projectID = receipt.projectID
+        scopeKey = receipt.scope.storageKey
         revision = receipt.revision
         stateRawValue = receipt.state.rawValue
         requestedPackagesJSON = String(decoding: try JSONEncoder().encode(receipt.requestedPackages), as: UTF8.self)
@@ -141,10 +142,8 @@ final class FamiliarAlarmUndoRecord {
 }
 
 nonisolated enum FamiliarModelSchema {
-    static let legacyModels: [any PersistentModel.Type] = FamiliarSchemaV3.models + [
-        FamiliarSchemaV4.FamiliarArtifact.self,
+    static let models: [any PersistentModel.Type] = FamiliarSchemaV3.models + [
         FamiliarCapabilitySnapshotRecord.self,
-        FamiliarSchemaV5.FamiliarAuthorizationGrantRecord.self,
         FamiliarRunResumeCursorRecord.self,
         FamiliarToolInvocationRecord.self,
         FamiliarAuthorizationRuleRecord.self,
@@ -163,28 +162,19 @@ nonisolated enum FamiliarModelSchema {
         FamiliarClarificationRecord.self,
         FamiliarContextAttachmentReference.self,
         FamiliarEventKitUndoMutationRecord.self,
-        FamiliarProjectEnvironmentRecord.self,
+        FamiliarEnvironmentRecord.self,
         FamiliarProjectSkillBindingRecord.self,
         FamiliarProjectCapabilityBindingRecord.self,
-        FamiliarAlarmUndoRecord.self
+        FamiliarAlarmUndoRecord.self,
+        FamiliarFileRecord.self,
+        FamiliarFileVersionRecord.self
     ]
-
-    static let filesV3Models: [any PersistentModel.Type] = legacyModels.filter {
-        ObjectIdentifier($0) != ObjectIdentifier(FamiliarSchemaV4.FamiliarArtifact.self)
-    } + [
-        FamiliarFileRecord.self, FamiliarFileVersionRecord.self
-    ]
-
-    static let models: [any PersistentModel.Type] = filesV3Models.filter {
-        ObjectIdentifier($0) != ObjectIdentifier(FamiliarSchemaV5.FamiliarAuthorizationGrantRecord.self)
-    }
 
     static var schema: Schema { Schema(models) }
 }
 
-/// Additive Files bridge. The 1.0.0 storage definitions are frozen separately in
-/// FamiliarStoreSchemaV1; V3...V11 remain source organization, not a migration chain.
+/// One current business schema. Data generations reset explicitly before opening.
 enum FamiliarReleaseSchema: VersionedSchema {
-    static let versionIdentifier = Schema.Version(4, 0, 0)
+    static let versionIdentifier = Schema.Version(5, 0, 0)
     static var models: [any PersistentModel.Type] { FamiliarModelSchema.models }
 }

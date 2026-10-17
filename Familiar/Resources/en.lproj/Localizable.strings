@@ -56,7 +56,10 @@
 "settings.hub.model_service" = "Model Service";
 "settings.search.title" = "Web Search";
 "settings.search.provider" = "Search Provider";
-"settings.search.routing" = "web_search uses only the selected provider. A failure is returned directly and never falls back to another provider.";
+"settings.search.routing.v2" = "If the selected service is unreachable, DuckDuckGo answers instead and the result says so. Key, quota and rate-limit problems are reported directly.";
+"settings.search.key.required" = "%@ needs an API key. Until one is added, searches fail.";
+"settings.search.key.locked" = "Unavailable until the device is unlocked";
+"settings.search.key.failed" = "Keychain error %d";
 "settings.search.key.footer" = "This search key is stored in a separate Keychain service and is never shared with model providers.";
 "settings.search.validation.footer" = "Validation sends one small test query to the selected search provider.";
 "settings.search.privacy_cost" = "Privacy and Cost";
@@ -889,6 +892,7 @@
 "tool.web_fetch.result" = "Read %@";
 "tool.web_search" = "Search the Web";
 "tool.web_search.results" = "Found %lld web results";
+"tool.web_search.fallback" = "%@ unreachable, used DuckDuckGo";
 "local_vision.error.archive" = "Could not unpack the model.";
 "local_vision.error.benchmark_required" = "Complete the model benchmark first.";
 "local_vision.error.device" = "This device does not support the model.";
@@ -1036,7 +1040,7 @@
 "file.save.consequence" = "Save this file in the current project for preview and sharing.";
 "visual.fixture.tool_results" = "Tool results";
 "common.copied" = "Copied";
-"file.error.project_required" = "Choose a project to save this file.";
+"file.error.scope_required" = "Open a chat or project to use this file.";
 "file.error.invalid_path" = "This file reference is invalid. Choose the file again.";
 "file.error.missing" = "This file is no longer available.";
 "file.error.failed" = "The file operation could not be completed. Try again.";
@@ -1134,3 +1138,16 @@
 "terminal.scope" = "Current Project only · 3 minute foreground session · 512 MB memory · 16 processes. HOME is saved in this Project; temporary files are cleared. Commands can change Project files and have no automatic Undo.";
 "terminal.command" = "Shell command";
 "terminal.send" = "Send";
+
+"runtime.ui.open_results" = "Open tool results";
+"approval.pending" = "Action approval";
+"interaction.pending_count" = "%d pending";
+"interaction.skip" = "Skip question";
+"interaction.waiting_answer" = "Waiting for your answer";
+"interaction.waiting_approval" = "Waiting for your approval";
+"interaction.approval_recorded" = "Approval recorded";
+"message.sources.title" = "Sources";
+
+"resource.web.save_to_files" = "Save to Files";
+
+"conversation.delete.ordinary_detail" = "This chat, its files, workspace, memories, and run history will be deleted from this iPhone.";

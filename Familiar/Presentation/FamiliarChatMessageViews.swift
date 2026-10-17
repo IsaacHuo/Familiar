@@ -410,13 +410,14 @@ private struct FamiliarAssistantTurn: View {
 
     var body: some View {
         let blocks = contentBlocks
-        VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceM) {
+        VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceS) {
             ForEach(blocks) { block in
                 Group {
                 switch block {
                 case .text(let text):
                     FamiliarMarkdownBlock(controller: liveController, text: text,
                         sources: message?.sources ?? [],
+                        citationSources: message?.citedSources ?? [],
                         onContentChange: { onLiveContentChange?(false) })
                 case .runtime(let activity):
                     FamiliarRuntimeCard(activity: activity, disclosure: disclosure, context: run?.context,
@@ -477,6 +478,7 @@ private struct FamiliarMarkdownBlock: View {
     let controller: FamiliarChatController?
     let text: FamiliarAssistantTextBlock
     let sources: [FamiliarSource]
+    let citationSources: [FamiliarSource]
     let onContentChange: () -> Void
 
     var body: some View {
@@ -484,7 +486,8 @@ private struct FamiliarMarkdownBlock: View {
         let content = live?.content ?? text.content
         let streaming = live?.isStreaming ?? false
         VStack(alignment: .leading, spacing: FamiliarSpacing.small) {
-            FamiliarMarkdownWebView(markdown: content, sources: sources, isStreaming: streaming)
+            FamiliarMarkdownWebView(markdown: FamiliarCitation.canonicalized(content, sources: sources).text,
+                                    sources: citationSources, isStreaming: streaming)
             if live == nil, text.state != .completed {
                 Label(String(localized: "runtime.ui.incomplete_text"), systemImage: "pause.circle")
                     .font(FamiliarTypography.caption).foregroundStyle(.secondary)
@@ -531,58 +534,60 @@ private struct FamiliarRuntimeCard: View {
     var context: FamiliarRunContextSummary? = nil
     var metrics: FamiliarReplyMetrics? = nil
     @Environment(\.familiarReduceMotion) private var reduceMotion
+    @Environment(\.familiarChatScrollSession) private var scroll
+    @State private var destination: FamiliarRuntimeSheetDestination?
 
     var body: some View {
-        let expanded = disclosure.expanded.contains(activity.id)
         VStack(alignment: .leading, spacing: FamiliarSpacing.small) {
             Button {
-                withAnimation(reduceMotion ? nil : FamiliarMotion.standard) {
-                    FamiliarHaptics.shared.perform(.selection)
-                    disclosure.binding(for: activity.id).wrappedValue.toggle()
-                }
+                FamiliarHaptics.shared.perform(.selection)
+                scroll?.beginInspection()
+                destination = .init(id: activity.id)
             } label: {
                 HStack(spacing: FamiliarSpacing.small) {
                     FamiliarRuntimeStatusIcon(status: activity.status)
-                    VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                        Text(activity.status.isActive ? activity.activeTitle : activity.summary)
-                            .font(activity.status.isActive ? FamiliarTypography.secondary.weight(.medium) : FamiliarTypography.caption)
-                            .contentTransition(.opacity)
-                        if activity.status.isActive, activity.activeTitle != activity.summary {
-                            Text(activity.summary).font(FamiliarTypography.caption).foregroundStyle(.tertiary)
-                        }
-                    }
+                    Text(activity.status.isActive ? activity.activeTitle : activity.summary)
+                        .font(FamiliarTypography.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: FamiliarSpacing.small)
                     Image(systemName: "chevron.right").font(FamiliarTypography.caption)
-                        .rotationEffect(.degrees(expanded ? 90 : 0))
                 }
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, minHeight: FamiliarControlSize.minimumHitTarget, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityIdentifier("runtime.toggle.\(activity.id)")
-            .accessibilityValue(String(localized: expanded ? "common.expanded" : "common.collapsed",
-                                       defaultValue: expanded ? "Expanded" : "Collapsed"))
-            if expanded {
-                VStack(alignment: .leading, spacing: FamiliarSpacing.medium) {
-                    ForEach(activity.stages) { stage in
-                        FamiliarRuntimeStageView(stage: stage, disclosure: disclosure)
-                    }
-                    NavigationLink {
-                        FamiliarRuntimeDetail(activity: activity, context: context, metrics: metrics)
-                    } label: {
-                        Label(String(localized: "runtime.ui.technical_details"), systemImage: "info.circle")
-                            .font(FamiliarTypography.caption)
-                            .frame(minHeight: FamiliarControlSize.minimumHitTarget, alignment: .leading)
-                    }
-                    .accessibilityIdentifier("runtime.details")
-                }
-                .transition(.opacity)
-            }
+            .accessibilityIdentifier("runtime.open.\(activity.id)")
+            .accessibilityHint(String(localized: "runtime.ui.open_results", defaultValue: "Open tool results"))
         }
         .tint(.secondary)
-        .animation(reduceMotion ? nil : FamiliarMotion.standard, value: activity.status)
+        .sheet(item: $destination, onDismiss: { scroll?.endInspection() }) { _ in
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: FamiliarSpacing.large) {
+                        ForEach(activity.stages) { stage in
+                            FamiliarRuntimeStageView(stage: stage, disclosure: disclosure)
+                        }
+                        NavigationLink {
+                            FamiliarRuntimeDetail(activity: activity, context: context, metrics: metrics)
+                        } label: {
+                            Label(String(localized: "runtime.ui.technical_details"), systemImage: "info.circle")
+                                .font(FamiliarTypography.secondary)
+                                .frame(minHeight: FamiliarControlSize.minimumHitTarget)
+                        }
+                        .accessibilityIdentifier("runtime.details")
+                    }
+                    .padding(FamiliarSpacing.large)
+                }
+                .navigationTitle(String(localized: "runtime.ui.results"))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { FamiliarDismissButton() } }
+                .accessibilityIdentifier("runtime.results")
+            }
+            .modifier(FamiliarSheetBrowser())
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
         .transaction { if reduceMotion { $0.animation = nil } }
         .onChange(of: activity.status) { old, new in
             guard old.isActive, !new.isActive else { return }
@@ -591,6 +596,8 @@ private struct FamiliarRuntimeCard: View {
         }
     }
 }
+
+private struct FamiliarRuntimeSheetDestination: Identifiable { let id: String }
 
 private struct FamiliarRuntimeDetail: View {
     let activity: FamiliarRuntimeActivityGroup
@@ -781,7 +788,7 @@ private struct FamiliarTurnSurface: View {
         Group {
             switch surface.kind {
             case .approval:
-                FamiliarApprovalCard(surface: surface, onResolve: onResolveApproval)
+                FamiliarInteractionReceipt(surface: surface)
             case .mutationReceipt, .file:
                 FamiliarWriteReceipt(surface: surface, canUndo: canUndo, onUndo: onUndo)
             case .failure:
@@ -793,7 +800,7 @@ private struct FamiliarTurnSurface: View {
             case .insight:
                 FamiliarInsightSurface(surface: surface)
             case .clarification:
-                FamiliarClarificationSurface(surface: surface, onResolve: onResolveClarification)
+                FamiliarInteractionReceipt(surface: surface)
             case .code:
                 FamiliarCodeSurface(surface: surface)
             case .share:
@@ -1147,89 +1154,6 @@ private struct FamiliarInsightSurface: View {
         let value = metric.value.formatted(.number.precision(.fractionLength(0...2)))
         guard let unit = metric.unit, !unit.isEmpty else { return value }
         return value + " " + unit
-    }
-}
-
-private struct FamiliarClarificationSurface: View {
-    let surface: FamiliarSurfaceDescriptor
-    let onResolve: (UUID, FamiliarClarificationResolution) -> Void
-    @State private var customResponse = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceM) {
-            HStack(alignment: .top, spacing: FamiliarAISurfaceMetric.spaceS) {
-                Image(systemName: surface.phase == .failed ? "questionmark.circle" : "bubble.left.and.bubble.right.fill")
-                    .foregroundStyle(surface.phase == .failed ? FamiliarTheme.inkTertiary : FamiliarTheme.accent)
-                VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceXS) {
-                    Text(String(localized: "clarification.title", defaultValue: "One question"))
-                        .font(FamiliarTypography.caption.weight(.semibold))
-                        .foregroundStyle(FamiliarTheme.inkSecondary)
-                    Text(surface.title)
-                        .font(FamiliarTypography.sectionTitle)
-                        .foregroundStyle(FamiliarTheme.ink)
-                }
-            }
-
-            if surface.phase == .awaitingClarification, let requestID = surface.clarificationRequestID {
-                ForEach(surface.clarificationOptions) { option in
-                    Button {
-                        onResolve(requestID, .selectedOption(id: option.id, label: option.label))
-                    } label: {
-                        HStack {
-                            Text(option.label)
-                                .font(FamiliarTypography.secondary.weight(.medium))
-                                .multilineTextAlignment(.leading)
-                            Spacer(minLength: 0)
-                            Image(systemName: "chevron.right")
-                                .font(FamiliarTypography.caption.weight(.semibold))
-                                .foregroundStyle(FamiliarTheme.inkTertiary)
-                        }
-                        .foregroundStyle(FamiliarTheme.ink)
-                        .padding(.horizontal, FamiliarAISurfaceMetric.spaceXS)
-                        .frame(minHeight: FamiliarAISurfaceMetric.rowHeight)
-                        .overlay(alignment: .bottom) {
-                            Rectangle().fill(FamiliarTheme.line).frame(height: FamiliarAISurfaceMetric.hairline)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                if surface.clarificationAllowsCustom {
-                    HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
-                        TextField(String(localized: "clarification.custom", defaultValue: "Write another answer"), text: $customResponse, axis: .vertical)
-                            .textFieldStyle(.plain)
-                            .lineLimit(1...4)
-                        Button {
-                            let answer = customResponse.trimmingCharacters(in: .whitespacesAndNewlines)
-                            if !answer.isEmpty { onResolve(requestID, .custom(answer)) }
-                        } label: {
-                            Image(systemName: "arrow.up.circle.fill")
-                                .font(.title2)
-                                .frame(width: FamiliarControlSize.minimumHitTarget, height: FamiliarControlSize.minimumHitTarget)
-                                .contentShape(Rectangle())
-                                .foregroundStyle(customResponse.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? FamiliarTheme.inkTertiary : FamiliarTheme.accent)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(customResponse.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .accessibilityLabel(String(localized: "clarification.submit", defaultValue: "Submit answer"))
-                    }
-                    .padding(.horizontal, FamiliarAISurfaceMetric.spaceM)
-                    .frame(minHeight: FamiliarAISurfaceMetric.rowHeight)
-                    .background(FamiliarTheme.field, in: RoundedRectangle(cornerRadius: FamiliarRadius.control, style: .continuous))
-                }
-            } else if let answer = surface.clarificationResolution?.answer {
-                Label(answer, systemImage: "checkmark.circle.fill")
-                    .font(FamiliarTypography.secondary)
-                    .foregroundStyle(FamiliarTheme.success)
-            } else if let detail = surface.detail {
-                Text(detail)
-                    .font(FamiliarTypography.caption)
-                    .foregroundStyle(FamiliarTheme.inkSecondary)
-            }
-        }
-        .padding(FamiliarAISurfaceMetric.spaceL)
-        .background(FamiliarTheme.inset, in: RoundedRectangle(cornerRadius: FamiliarRadius.overlay, style: .continuous))
-        .accessibilityElement(children: .contain)
     }
 }
 
@@ -1813,7 +1737,7 @@ private struct FamiliarWriteReceipt: View {
             if let file = surface.file {
                 VStack(alignment: .leading, spacing: FamiliarSpacing.small) {
                     let presentation = FamiliarFilePresentation(file: file, revoked: surface.phase == .undone)
-                        .resolved(in: context, projectID: file.projectID)
+                        .resolved(in: context, scope: file.scope)
                     FamiliarFileTile(file: presentation) {
                         do { previewFile = .init(url: try presentation.validatedURL(), format: file.format) }
                         catch { previewError = error.localizedDescription }
@@ -2173,6 +2097,7 @@ private struct FamiliarShellExecutionSurface: View {
 
 private struct FamiliarAssistantFooter: View {
     @Environment(\.familiarReduceMotion) private var reduceMotion
+    @Environment(\.familiarChatScrollSession) private var scroll
     let message: FamiliarMessageSnapshot
     let onRetryMessage: (() -> Void)?
     let onInsertPrompt: (String) -> Void
@@ -2196,15 +2121,14 @@ private struct FamiliarAssistantFooter: View {
                 if let onRetryMessage {
                     FamiliarMessageAction(symbol: "arrow.clockwise", label: String(localized: "message.retry"), action: onRetryMessage)
                 }
-                if !message.sources.isEmpty {
+                if !message.citedSources.isEmpty {
                     Button {
-                        withAnimation(reduceMotion ? nil : FamiliarMotion.standard) {
-                            sourcesOpen.toggle()
-                        }
+                        scroll?.beginInspection()
+                        sourcesOpen = true
                     } label: {
                         HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
-                            FamiliarSourceCluster(sources: message.sources)
-                            Text(String(format: String(localized: "message.sources.count", defaultValue: "%lld sources"), message.sources.count))
+                            FamiliarSourceCluster(sources: message.citedSources)
+                            Text(String(format: String(localized: "message.sources.count", defaultValue: "%lld sources"), message.citedSources.count))
                                 .font(FamiliarTypography.caption)
                                 .foregroundStyle(FamiliarTheme.inkSecondary)
                         }
@@ -2214,23 +2138,26 @@ private struct FamiliarAssistantFooter: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("message.sources.disclosure")
-                    .accessibilityLabel(String(format: String(localized: "message.sources.count", defaultValue: "%lld sources"), message.sources.count))
-                    .accessibilityValue(sourcesOpen
-                                        ? String(localized: "common.expanded", defaultValue: "Expanded")
-                                        : String(localized: "common.collapsed", defaultValue: "Collapsed"))
+                    .accessibilityLabel(String(format: String(localized: "message.sources.count", defaultValue: "%lld sources"), message.citedSources.count))
                 }
             }
             .foregroundStyle(FamiliarTheme.inkSecondary)
-
-            if sourcesOpen {
-                FamiliarInlineSources(sources: message.sources)
-                    .transition(.opacity)
-            }
 
             if !message.followUpQuestions.isEmpty {
                 FamiliarFollowUps(questions: message.followUpQuestions, onInsertPrompt: onInsertPrompt)
                     .padding(.top, FamiliarAISurfaceMetric.spaceXS)
             }
+        }
+        .sheet(isPresented: $sourcesOpen, onDismiss: { scroll?.endInspection() }) {
+            NavigationStack {
+                ScrollView { FamiliarInlineSources(sources: message.citedSources).padding(FamiliarSpacing.large) }
+                    .navigationTitle(String(localized: "message.sources.title"))
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { FamiliarDismissButton() } }
+            }
+            .modifier(FamiliarSheetBrowser())
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
     }
 }

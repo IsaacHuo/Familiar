@@ -56,7 +56,7 @@ struct FamiliarWebEvidenceTests {
         #expect(values.1.0.contentHash == final.0.contentHash)
     }
 
-    @Test("Different URLs run concurrently; failed pages are not fetched again")
+    @Test("Different URLs run concurrently; failed pages may be retried, successes are reused")
     func parallelAndFailure() async throws {
         let state = FamiliarWebEvidenceState(), probe = WebProbe()
         let operation: @Sendable (String) async throws -> FamiliarWebEvidenceState.Page = { url in
@@ -71,9 +71,9 @@ struct FamiliarWebEvidenceTests {
         for _ in 0..<2 {
             await #expect(throws: FamiliarWebError.self) { try await state.fetch(url: "https://example.com/bad", operation: operation) }
         }
-        #expect(await probe.counts().0 == 3)
+        #expect(await probe.counts().0 == 4)
         _ = try await state.fetch(url: "https://example.com/first", operation: operation)
-        #expect(await probe.counts().0 == 3)
+        #expect(await probe.counts().0 == 4)
     }
 
     @Test("Two searches without new sources stop the loop but known evidence remains usable")
@@ -89,7 +89,75 @@ struct FamiliarWebEvidenceTests {
         #expect(reused.0.results.count == 1)
     }
 
-    @Test("Canonicalization preserves business parameters and diverse search selection")
+    @Test("A failed search is not cached and does not count as no progress")
+    func failedSearchRetries() async throws {
+        let state = FamiliarWebEvidenceState(), result = search()
+        for _ in 0..<3 {
+            await #expect(throws: FamiliarWebError.self) {
+                try await state.search(query: "q", providerID: "fixture", language: "en") { throw FamiliarWebError.timeout }
+            }
+        }
+        let recovered = try await state.search(query: "q", providerID: "fixture", language: "en") { result }
+        #expect(recovered.0.results.count == 1)
+    }
+
+    @Test("Search reuse separates result count, language, provider and recency")
+    func searchRequestIdentity() async throws {
+        let state = FamiliarWebEvidenceState(), probe = WebProbe()
+        let operation: @Sendable () async throws -> FamiliarWebEvidenceState.Search = {
+            await probe.begin()
+            let count = await probe.counts().0
+            await probe.end()
+            return search("https://example.com/article/\(count)")
+        }
+        for (provider, language, maximum, recency) in [
+            ("tavily", "en", 2, nil as FamiliarSearchRecency?),
+            ("tavily", "en", 5, nil), ("tavily", "zh", 5, nil),
+            ("tavily", "zh", 5, .week), ("bing", "zh", 5, .week)
+        ] {
+            _ = try await state.search(query: "q", providerID: provider, language: language,
+                maximumResults: maximum, recency: recency, operation: operation)
+        }
+        #expect(await probe.counts().0 == 5)
+        _ = try await state.search(query: "q", providerID: "bing", language: "zh",
+            maximumResults: 5, recency: .week, operation: operation)
+        #expect(await probe.counts().0 == 5)
+    }
+
+    @Test("Concurrent redirects choose one capture; aliases and citations survive final persistence")
+    func redirectedCitationAliases() async throws {
+        let state = FamiliarWebEvidenceState(), probe = WebProbe()
+        let finalURL = "https://example.com/final"
+        let operation: @Sendable (String) async throws -> FamiliarWebEvidenceState.Page = { requested in
+            await probe.begin()
+            try await Task.sleep(for: .milliseconds(30))
+            await probe.end()
+            let result = page(finalURL)
+            let id = FamiliarSourceIdentifier.make(for: URL(string: requested)!)
+            return (.init(sourceID: id, finalURL: finalURL, title: result.0.title,
+                mimeType: result.0.mimeType, contentTrust: result.0.contentTrust,
+                text: result.0.text, truncated: false, accessedAt: result.0.accessedAt,
+                contentHash: result.0.contentHash), result.1.identified(as: id))
+        }
+        async let first = state.fetch(url: "https://example.com/start", operation: operation)
+        async let second = state.fetch(url: finalURL, operation: operation)
+        let (one, two) = try await (first, second)
+        #expect(one.0.sourceID == two.0.sourceID)
+        #expect(one.0.accessedAt == two.0.accessedAt)
+        let reused = try await state.fetch(url: "https://example.com/start", operation: operation)
+        #expect(reused.0.sourceID == one.0.sourceID)
+        #expect(await probe.counts().0 == 2)
+        let old = one.1.identified(as: "old"), alias = one.1.identified(as: "alias")
+        let response = FamiliarCitation.canonicalized("中文 [[alias]] and [[old]]. Unknown [[missing]].", sources: [old, alias])
+        #expect(response.text == "中文 [[old]] and [[old]]. Unknown [[missing]].")
+        #expect(response.sources.map(\.id) == ["old"])
+        #expect(FamiliarCitation.cited(in: "[[alias]] [[old]]", sources: [old, alias]).map(\.id) == ["old"])
+        let restored = try JSONDecoder().decode([FamiliarSource].self, from: JSONEncoder().encode(response.sources))
+        #expect(FamiliarCitation.cited(in: response.text, sources: restored).map(\.id) == ["old"])
+        #expect(FamiliarCitation.cited(in: "[[missing]]", sources: restored).isEmpty)
+    }
+
+    @Test("Canonicalization preserves business parameters and engine ranking")
     func canonicalDiversity() throws {
         #expect(try FamiliarWebURLPolicy.normalize("https://example.com/a?id=2&utm_campaign=x#section").absoluteString == "https://example.com/a?id=2")
         #expect(try FamiliarWebURLPolicy.normalize("https://example.com/a?id=3").absoluteString != FamiliarWebURLPolicy.normalize("https://example.com/a?id=2").absoluteString)
@@ -97,9 +165,9 @@ struct FamiliarWebEvidenceTests {
         let input = urls.enumerated().map { index, url in
             FamiliarWebSearchResult(sourceID: "old-\(index)", position: index + 1, title: "Result", url: url, displayURL: "", snippet: nil)
         }
-        let selected = FamiliarWebSearchService.diverseResults(input, maximum: 4)
+        let selected = FamiliarWebSearchService.rankedResults(input, maximum: 4)
         #expect(selected.count == 4)
-        #expect(selected.map(\.displayURL).prefix(3) == ["example.com", "swift.org", "developer.apple.com"])
+        #expect(selected.map(\.displayURL) == ["example.com", "example.com", "swift.org", "developer.apple.com"])
         #expect(selected.map(\.position) == [1, 2, 3, 4])
     }
 
@@ -161,7 +229,7 @@ private nonisolated struct EvidenceLoopProvider: FamiliarModelProvider {
 }
 
 extension FamiliarWebEvidenceTests {
-    @Test("Production Loop reuses searches and failed pages and still finishes an answer")
+    @Test("Production Loop reuses searches, retries failed pages and still finishes an answer")
     func loopUsesExistingEvidence() async throws {
         let defaults = try #require(UserDefaults(suiteName: "EvidenceLoop-" + UUID().uuidString))
         let searchProvider = EvidenceSearchProvider(), pageProvider = EvidenceFailedPage()
@@ -177,10 +245,23 @@ extension FamiliarWebEvidenceTests {
             if case .responseCompleted(let value) = event.payload { answer = value }
         }
         #expect(await searchProvider.count() == 1)
-        #expect(await pageProvider.count() == 1)
+        // Failures are not cached: the repeated fetch is a real retry.
+        #expect(await pageProvider.count() == 2)
         #expect(finish.count == 1)
         #expect(finish.first?.status == .succeeded)
         #expect(answer?.sources.count == 1)
         #expect(answer?.text.contains("already obtained") == true)
+    }
+
+    @Test("Answer sources list only cited sources in citation order")
+    func citedSourcesOrder() throws {
+        func source(_ id: String, _ kind: FamiliarSourceKind) throws -> FamiliarSource {
+            .init(id: id, kind: kind, title: id, url: try #require(URL(string: "https://example.com/" + id)),
+                  siteName: nil, snippet: nil, retrievedAt: Date())
+        }
+        let sources = [try source("a", .searchResult), try source("b", .fetchedPage), try source("c", .searchResult)]
+        let cited = FamiliarCitation.cited(in: "Fact one [[c]]. Fact two [[b]] and again [[c]]. Unknown [[zz]].", sources: sources)
+        #expect(cited.map(\.id) == ["c", "b"])
+        #expect(FamiliarCitation.cited(in: "No citations.", sources: sources).isEmpty)
     }
 }

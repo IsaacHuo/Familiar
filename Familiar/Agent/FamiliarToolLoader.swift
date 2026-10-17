@@ -69,8 +69,14 @@ actor FamiliarToolLoader {
             if let selected { return selected.contains(manifest.name) }
             return !remoteNames.contains(manifest.name)
         }
-        let base = catalog.filter { FamiliarToolGroup.baseToolNames.contains($0.name) }
-        let active = (base + extensions).sorted { $0.name < $1.name }
+        var base: [FamiliarToolManifest] = []
+        for manifest in scopedCatalog where FamiliarToolGroup.initialToolNames.contains(manifest.name) {
+            if !FamiliarToolGroup.baseToolNames.contains(manifest.name),
+               case .unavailable = await registry.availability(for: manifest) { continue }
+            base.append(manifest)
+        }
+        let active = (base + extensions.filter { !FamiliarToolGroup.initialToolNames.contains($0.name) })
+            .sorted { $0.name < $1.name }
         let page = available.dropFirst(offset).prefix(32).map {
             FamiliarToolLoadResult.ToolSummary(name: $0.name, title: String($0.title.prefix(160)), description: String($0.description.prefix(160)))
         }

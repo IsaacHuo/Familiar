@@ -6,14 +6,14 @@ nonisolated struct FamiliarFileWriteTool: FamiliarTool {
     private struct UndoOutput: Encodable { let undone: Bool; let fileIdentifier: String }
     let store: FamiliarFileStore
     let manifest = FamiliarToolManifest(
-        name: "file_write", title: String(localized: "tool.file_write", defaultValue: "Save file"), description: "Save Markdown or plain text as an output in the current Project, including Daily Chat. Other formats require creating a real file and validating it with file_publish when that capability is enabled.",
+        name: "file_write", title: String(localized: "tool.file_write", defaultValue: "Save file"), description: "Save Markdown or plain text as an output in the current conversation or Project. Other formats require creating a real file and validating it with file_publish when that capability is enabled.",
         parameters: FamiliarJSONSchema(type: .object, properties: [
             "title": .init(type: .string, description: "文件标题"), "content": .init(type: .string, description: "Markdown 或纯文本正文"),
             "format": .init(type: .string, description: "markdown 或 plainText", enumValues: ["markdown", "plainText"])
         ], required: ["title", "content"]), effect: .reversibleWrite, risk: .low, requirements: [])
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
-        guard let projectID = context.projectID else { throw FamiliarFileError.projectRequired }
+        guard let scope = context.workspaceID else { throw FamiliarFileError.workScopeRequired }
         let format = input.format ?? .markdown
         guard format == .markdown || format == .plainText else { throw FamiliarFileError.unsupportedFormat }
         let id = UUID()
@@ -26,8 +26,8 @@ nonisolated struct FamiliarFileWriteTool: FamiliarTool {
             .init(id: "size", label: String(localized: "file.field.size"), type: .text, value: ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file))
         ], target: filename, targetKey: identifier, effect: manifest.effect, risk: manifest.risk, consequence: String(localized: "file.save.consequence"), undoPolicy: .currentSession,
             idempotencyKey: context.idempotencyKey, commit: {
-                let stored = try store.write(data, projectID: projectID, fileID: id, filename: filename)
-                let descriptor = FamiliarFileDescriptor(id: id, identifier: identifier, projectID: projectID, title: input.title,
+                let stored = try store.write(data, scope: scope, fileID: id, filename: filename)
+                let descriptor = FamiliarFileDescriptor(id: id, identifier: identifier, scope: scope, title: input.title,
                     format: format, relativePath: stored.path, byteSize: Int64(data.count), contentHash: stored.hash, source: .generated,
                     sourceURLString: nil, sourceResourceID: nil, sourceResourceVersionID: nil, sourceCaptureID: nil, createdByRunID: context.runID)
                 let result = FamiliarToolExecutionResult(
@@ -43,7 +43,7 @@ nonisolated struct FamiliarFileWriteTool: FamiliarTool {
                         model: UndoOutput(undone: true, fileIdentifier: identifier),
                         presentation: .mutationReceipt(.init(summary: String(format: String(localized: "file.removed"), input.title), operation: "undoFileWrite", targetIdentifier: identifier, succeeded: true, undoAvailable: false))
                     ))
-                }, rollback: { try store.remove(projectID: projectID, fileID: id) })
+                }, rollback: { try store.remove(scope: scope, fileID: id) })
             }))
     }
 }
@@ -62,15 +62,15 @@ nonisolated struct FamiliarFileEditTool: FamiliarTool {
         ], required: ["identifier", "content"]), effect: .reversibleWrite, risk: .low, requirements: [])
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
-        guard let projectID = context.projectID else { throw FamiliarFileError.projectRequired }
+        guard let scope = context.workspaceID else { throw FamiliarFileError.workScopeRequired }
         let known = context.files.first { "file_" + $0.reference.versionID.uuidString == input.identifier }
         let original: (id: UUID, filename: String, relativePath: String, data: Data)
         if let known {
-            guard known.reference.projectID == projectID else { throw FamiliarFileError.invalidPath }
+            guard known.reference.scope == scope else { throw FamiliarFileError.invalidPath }
             original = (known.reference.versionID, known.filename, known.storage.relativePath,
-                try FamiliarFileByteReader.read(known, projectID: projectID))
+                try FamiliarFileByteReader.read(known, scope: scope))
         } else {
-            original = try store.editableFile(projectID: projectID, identifier: input.identifier)
+            original = try store.editableFile(scope: scope, identifier: input.identifier)
         }
         guard ["md", "markdown", "txt"].contains(URL(fileURLWithPath: original.filename).pathExtension.lowercased()) else {
             throw FamiliarFileError.unsupportedFormat
@@ -91,14 +91,14 @@ nonisolated struct FamiliarFileEditTool: FamiliarTool {
         ], target: filename, targetKey: input.identifier, effect: manifest.effect, risk: manifest.risk,
             consequence: String(localized: "file.revision.consequence", defaultValue: "Save a new version and keep the previous file."),
             undoPolicy: .currentSession, idempotencyKey: context.idempotencyKey, validateBeforeCommit: {
-                let current = try known.map { try FamiliarFileByteReader.read($0, projectID: projectID) }
+                let current = try known.map { try FamiliarFileByteReader.read($0, scope: scope) }
                     ?? store.read(relativePath: original.relativePath)
                 guard FamiliarHash.sha256(current) == originalHash else {
                     throw FamiliarFileError.contentMismatch
                 }
             }, commit: {
-                let stored = try store.write(data, projectID: projectID, fileID: fileID, filename: filename)
-                let descriptor = FamiliarFileDescriptor(id: fileID, identifier: identifier, projectID: projectID, title: title,
+                let stored = try store.write(data, scope: scope, fileID: fileID, filename: filename)
+                let descriptor = FamiliarFileDescriptor(id: fileID, identifier: identifier, scope: scope, title: title,
                     supersedesFileID: original.id, format: format, relativePath: stored.path, byteSize: Int64(data.count),
                     contentHash: stored.hash, source: .generated, sourceURLString: nil, sourceResourceID: nil,
                     sourceResourceVersionID: nil, sourceCaptureID: nil, createdByRunID: context.runID)
@@ -109,7 +109,7 @@ nonisolated struct FamiliarFileEditTool: FamiliarTool {
                     .init(envelope: try .init(model: UndoOutput(undone: true, fileIdentifier: identifier),
                         presentation: .mutationReceipt(.init(summary: String(format: String(localized: "file.removed"), title), operation: "undoFileEdit",
                             targetIdentifier: identifier, succeeded: true, undoAvailable: false))))
-                }, rollback: { try store.remove(projectID: projectID, fileID: fileID) })
+                }, rollback: { try store.remove(scope: scope, fileID: fileID) })
             }))
     }
 }
@@ -134,31 +134,31 @@ nonisolated struct FamiliarFileReadTool: FamiliarTool {
     let manifest = FamiliarToolManifest(
         name: "file_read",
         title: String(localized: "tool.file_read", defaultValue: "Read file"),
-        description: "Read a frozen FileVersion available in this Project, including uploads, Project documents and generated results. DOCX, PDF and XLSX are parsed into Markdown; Markdown, text and HTML are returned as stored. Use this to check or revise a file you produced instead of assuming its contents.",
+        description: "Read a frozen FileVersion available in this conversation or Project, including uploads, Project documents and generated results. DOCX, PDF and XLSX are parsed into Markdown; Markdown, text and HTML are returned as stored. Use this to check or revise a file you produced instead of assuming its contents.",
         parameters: .object(
             ["identifier": .string("File identifier beginning with file_.")],
             required: ["identifier"]
         ),
         effect: .read,
         risk: .low,
-        dataDomains: ["project.files"],
-        privacyLabels: ["project-only", "read-only"],
+        dataDomains: ["scope.files"],
+        privacyLabels: ["scope-only", "read-only"],
         supportsParallelism: true,
-        requiredScopes: ["project"],
+        requiredScopes: ["workspace"],
         executionClass: .specializedLocal
     )
 
     init(store: FamiliarFileStore = FamiliarFileStore()) { self.store = store }
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
-        guard let projectID = context.projectID else { throw FamiliarFileError.projectRequired }
-        let currentIdentifier = FamiliarStoredToolIdentity.currentFileIdentifier(input.identifier)
+        guard let scope = context.workspaceID else { throw FamiliarFileError.workScopeRequired }
+        let currentIdentifier = input.identifier
         let known = context.files.first { "file_" + $0.reference.versionID.uuidString == currentIdentifier }
         let filename: String
         let data: Data
         if let known {
             filename = known.filename
-            data = try FamiliarFileByteReader.read(known, projectID: projectID)
+            data = try FamiliarFileByteReader.read(known, scope: scope)
         } else if let attachment = context.attachments.first(where: { "file_" + $0.id.uuidString == currentIdentifier }) {
             guard let url = FamiliarAttachmentStore.url(for: attachment.relativePath) else { throw FamiliarFileError.missingFile }
             filename = attachment.filename
@@ -167,8 +167,8 @@ nonisolated struct FamiliarFileReadTool: FamiliarTool {
             filename = resource.filename + ".txt"
             data = Data(resource.extractedText.utf8)
         } else {
-            // Standalone storage adapters and historical byte references remain Project-scoped.
-            let stored = try store.editableFile(projectID: projectID, identifier: input.identifier)
+            // Standalone storage adapters and historical byte references remain work-scope confined.
+            let stored = try store.editableFile(scope: scope, identifier: input.identifier)
             filename = stored.filename
             data = stored.data
         }
@@ -250,7 +250,7 @@ nonisolated struct FamiliarFilePublishTool: FamiliarTool {
     let manifest = FamiliarToolManifest(
         name: "file_publish",
         title: String(localized: "tool.file_publish", defaultValue: "Save generated file"),
-        description: "Validate a real file already created in the current Workspace Outputs and publish it as a Project File. Supports DOCX, PDF, XLSX, HTML, Markdown, and plain text. Never claim delivery before this tool succeeds.",
+        description: "Validate a real file already created in the current Workspace Outputs and publish it as a File in the current conversation or Project. Supports DOCX, PDF, XLSX, HTML, Markdown, and plain text. Never claim delivery before this tool succeeds.",
         parameters: .object(
             [
                 "path": .string("Relative Outputs path such as Outputs/北京资料.docx."),
@@ -267,10 +267,10 @@ nonisolated struct FamiliarFilePublishTool: FamiliarTool {
         ),
         effect: .reversibleWrite,
         risk: .low,
-        dataDomains: ["workspace.outputs", "project.files"],
-        privacyLabels: ["project-only", "validated-file", "content-hash"],
+        dataDomains: ["workspace.outputs", "scope.files"],
+        privacyLabels: ["scope-only", "validated-file", "content-hash"],
         supportsRecovery: true,
-        requiredScopes: ["project", "workspace"],
+        requiredScopes: ["workspace"],
         executionClass: .specializedLocal
     )
 
@@ -280,13 +280,10 @@ nonisolated struct FamiliarFilePublishTool: FamiliarTool {
     }
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
-        guard let projectID = context.projectID,
-              let workspaceID = context.workspaceID,
-              workspaceID == .project(projectID)
-        else { throw FamiliarFileError.projectRequired }
+        guard let scope = context.workspaceID else { throw FamiliarFileError.workScopeRequired }
         let title = input.title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { throw FamiliarFileError.invalidPath }
-        let output = try resolver.resolveOutput(relativePath: input.path, workspaceID: workspaceID)
+        let output = try resolver.resolveOutput(relativePath: input.path, workspaceID: scope)
         let fetched = context.fetchedSources.filter { $0.kind == .fetchedPage }
         let sourceURLs = Array(Set(fetched.map { $0.url.absoluteString })).sorted()
         let minimumSources = input.minimumSources ?? 0
@@ -331,24 +328,24 @@ nonisolated struct FamiliarFilePublishTool: FamiliarTool {
             commit: {
                 let imported = try store.importFile(
                     at: output.fileURL,
-                    projectID: projectID,
+                    scope: scope,
                     fileID: id,
                     filename: filename,
                     maximumBytes: FamiliarFileValidator.maximumFileBytes
                 )
                 guard imported.hash == output.contentHash else {
-                    try? store.remove(projectID: projectID, fileID: id)
+                    try? store.remove(scope: scope, fileID: id)
                     throw FamiliarFileError.transactionFailed
                 }
                 let finalValidation = try FamiliarFileValidator.validate(fileURL: store.url(relativePath: imported.path)!, format: input.format, requiredText: required)
                 guard finalValidation.extractedTextHash == validation.extractedTextHash else {
-                    try? store.remove(projectID: projectID, fileID: id)
+                    try? store.remove(scope: scope, fileID: id)
                     throw FamiliarFileError.transactionFailed
                 }
                 let descriptor = FamiliarFileDescriptor(
                     id: id,
                     identifier: identifier,
-                    projectID: projectID,
+                    scope: scope,
                     title: title,
                     supersedesFileID: supersedesFileID,
                     format: input.format,
@@ -397,7 +394,7 @@ nonisolated struct FamiliarFilePublishTool: FamiliarTool {
                             undoAvailable: false
                         ))
                     ))
-                }, rollback: { try store.remove(projectID: projectID, fileID: id) })
+                }, rollback: { try store.remove(scope: scope, fileID: id) })
             }
         ))
     }

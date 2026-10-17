@@ -101,18 +101,18 @@ struct FamiliarCommitBoundaryTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let store = FamiliarWorkspaceStore(rootURL: root)
         let projectID = UUID()
-        let original = try store.projectEnvironmentURL(projectID)
+        let original = try store.environmentURL(.project(projectID))
         try Data("old".utf8).write(to: original.appendingPathComponent("version.txt"))
         let view = try store.prepareShellTaskView(taskID: UUID(), workspaceID: .project(projectID), resources: [], attachments: [], useStagingEnvironment: true)
         let revision = UUID()
-        let receipt = FamiliarEnvironmentReceipt(schemaVersion: 2, projectID: projectID, revision: revision, state: .ready,
+        let receipt = FamiliarEnvironmentReceipt(schemaVersion: 2, scope: .project(projectID), revision: revision, state: .ready,
             requestedPackages: ["fixture"], packageIndex: "https://pypi.org/simple",
             lock: .init(pythonVersion: "3", resolvedPackages: ["fixture==1"], contentHash: "hash"), byteSize: 3, preparedAt: Date())
         try JSONEncoder().encode(receipt).write(to: view.environment.appendingPathComponent(FamiliarEnvironmentStore.receiptFilename))
         try Data("new".utf8).write(to: view.environment.appendingPathComponent("version.txt"))
-        let previous = try store.commitProjectEnvironment(from: view, projectID: projectID)
+        let previous = try store.commitEnvironment(from: view, scope: .project(projectID))
         #expect(try String(contentsOf: original.appendingPathComponent("version.txt"), encoding: .utf8) == "new")
-        try store.rollbackProjectEnvironment(previous, revision: revision, projectID: projectID)
+        try store.rollbackEnvironment(previous, revision: revision, scope: .project(projectID))
         #expect(try String(contentsOf: original.appendingPathComponent("version.txt"), encoding: .utf8) == "old")
     }
 
@@ -151,7 +151,7 @@ struct FamiliarCommitBoundaryTests {
             }
         }
         #expect(failures(events) == ["tool_commit_rolled_back"])
-        let folder = root.appendingPathComponent("Projects/\(projectID.uuidString)/Artifacts")
+        let folder = root.appendingPathComponent("\(FamiliarWorkScope.project(projectID).filePrefix)Artifacts")
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).isEmpty)
     }
 

@@ -195,14 +195,14 @@ nonisolated enum FamiliarAttachmentStore {
         )
     }
 
-    static func committedCopy(of draft: FamiliarAttachmentDraft, messageID: UUID) throws -> String {
+    static func committedCopy(of draft: FamiliarAttachmentDraft, messageID: UUID, scope: FamiliarWorkScope) throws -> String {
         let sourceURL = try validatedStoreURL(for: draft.relativePath)
         guard fileManager.fileExists(atPath: sourceURL.path) else { throw FamiliarAttachmentStoreError.sourceUnavailable }
         let size = try fileSize(of: sourceURL)
         guard size <= maximumSourceBytes else { throw FamiliarAttachmentStoreError.fileTooLarge }
-        let directory = messagesURL(for: messageID)
+        let directory = try validatedStoreURL(for: scope.filePrefix + "Messages/" + messageID.uuidString)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
-        let destinationURL = try validatedStoreURL(for: committedRelativePath(of: draft, messageID: messageID))
+        let destinationURL = try validatedStoreURL(for: committedRelativePath(of: draft, messageID: messageID, scope: scope))
         guard !fileManager.fileExists(atPath: destinationURL.path) else { throw FamiliarAttachmentStoreError.copyFailed }
         do {
             try fileManager.copyItem(at: sourceURL, to: destinationURL)
@@ -220,9 +220,8 @@ nonisolated enum FamiliarAttachmentStore {
     }
 
     /// The final identity can be frozen before copying or committing any bytes.
-    static func committedRelativePath(of draft: FamiliarAttachmentDraft, messageID: UUID) -> String {
-        relativePath(for: messagesURL(for: messageID).appendingPathComponent(
-            draft.id.uuidString + "-" + sanitizedFilename(draft.filename), isDirectory: false))
+    static func committedRelativePath(of draft: FamiliarAttachmentDraft, messageID: UUID, scope: FamiliarWorkScope) -> String {
+        scope.filePrefix + "Messages/" + messageID.uuidString + "/" + draft.id.uuidString + "-" + sanitizedFilename(draft.filename)
     }
 
     static func url(for relativePath: String) -> URL? {
@@ -233,9 +232,9 @@ nonisolated enum FamiliarAttachmentStore {
     }
 
     /// Project-owned copies are independent of message directories and survive Chat deletion.
-    static func copyFileData(_ data: Data, projectID: UUID, fileID: UUID, versionID: UUID, filename: String) throws -> String {
+    static func copyFileData(_ data: Data, scope: FamiliarWorkScope, fileID: UUID, versionID: UUID, filename: String) throws -> String {
         let name = sanitizedFilename(filename)
-        let path = "Projects/\(projectID.uuidString)/Files/\(fileID.uuidString)/Versions/\(versionID.uuidString)/\(name)"
+        let path = "\(scope.filePrefix)Files/\(fileID.uuidString)/Versions/\(versionID.uuidString)/\(name)"
         let destination = try validatedStoreURL(for: path)
         guard !fileManager.fileExists(atPath: destination.path) else { throw FamiliarAttachmentStoreError.copyFailed }
         try fileManager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true,
@@ -245,6 +244,10 @@ nonisolated enum FamiliarAttachmentStore {
             try fileManager.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: destination.path)
             return path
         } catch { try? fileManager.removeItem(at: destination); throw error }
+    }
+
+    static func stageScopeDirectory(_ scope: FamiliarWorkScope) throws -> FamiliarStagedFileDirectory? {
+        try FamiliarFileStore(rootURL: attachmentsURL).stageScopeDirectory(scope: scope)
     }
 
     static func remove(relativePath: String) {

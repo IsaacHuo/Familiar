@@ -26,8 +26,10 @@ git     → 普通代码改动历史
 | [07-decision-log.md](07-decision-log.md) | 关键产品和工程决策、依据、影响、复审条件 |
 | [08-reference-repositories.md](08-reference-repositories.md) | 实现代码时的参考仓库、视觉能力参考、许可证与使用规则 |
 | [09-ui-component-reference.md](09-ui-component-reference.md) | 聊天页模型回复 UI 的 Beautiful UI 组件源码摘录、CSS 令牌与 Familiar 适配建议 |
-| [10-next-phase-execution-plan.md](10-next-phase-execution-plan.md) | 当前 DeepSeek-only enablement 的 API/视觉/Tool 闭环收尾顺序，以及 iOS 27 后恢复 Core AI 的门槛 |
-| [11-verification-and-release-checklist.md](11-verification-and-release-checklist.md) | 静态/构建验证基线、真机验收、正式 schema 升级与磁盘迁移执行门槛 |
+| [10-next-phase-execution-plan.md](10-next-phase-execution-plan.md) | 历史 DeepSeek-only 阶段执行方案；当前切片以根目录 PLAN.md 为准 |
+| [11-verification-and-release-checklist.md](11-verification-and-release-checklist.md) | 静态/构建验证基线、真机验收、当前存储与运行验证门槛 |
+| [15-s1-search-acceptance.md](15-s1-search-acceptance.md) | S1 搜索收口的构建、定向测试、截图和真实服务验收证据；所有者验收独立列出 |
+| [16-work-scope-convergence.md](16-work-scope-convergence.md) | 普通对话/项目分离、抽屉顶栏与 S2a 构建证据及待验收项 |
 | [research/](research/) | 阶段性专题研究材料（2026-08-13 产品/架构评估、UI 壁垒、原生运行时后端、项目 Workspace 流程） |
 
 > 04（Agent/Provider/内容链路）与 06（工程状态与验证）已按职责拆分：当前实现细节并入 `../state/ARCHITECTURE.md`，验证清单并入 `11-verification-and-release-checklist.md`，调试经验并入 `../logs/`。对应的旧文件已删除，不再维护。

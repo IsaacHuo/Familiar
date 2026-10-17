@@ -85,6 +85,69 @@ nonisolated struct FamiliarMessageSnapshot: Identifiable, Equatable, Sendable {
     }
 }
 
+nonisolated extension FamiliarMessageSnapshot {
+    /// Sources shown with the answer: the ones it cites, in first-citation order.
+    /// The renderer numbers chips from this same list, so chip N is row N in the
+    /// sources Sheet. Uncited pages and unknown citation IDs are never listed.
+    var citedSources: [FamiliarSource] {
+        let text = responseBlocks.isEmpty ? content
+            : responseBlocks.filter { $0.kind == .markdown }.map(\.content).joined(separator: "\n")
+        return FamiliarCitation.cited(in: text, sources: sources)
+    }
+}
+
+nonisolated enum FamiliarCitation {
+    private static let pattern = try? NSRegularExpression(pattern: #"\[\[([^\]\n]+)\]\]"#)
+
+    static func identifiers(in text: String) -> [String] {
+        guard let pattern else { return [] }
+        var seen = Set<String>(), ordered: [String] = []
+        for match in pattern.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            guard let range = Range(match.range(at: 1), in: text) else { continue }
+            let id = text[range].trimmingCharacters(in: .whitespaces)
+            if seen.insert(id).inserted { ordered.append(id) }
+        }
+        return ordered
+    }
+
+    static func cited(in text: String, sources: [FamiliarSource]) -> [FamiliarSource] {
+        let resolved = canonicalized(text, sources: sources)
+        let byID = Dictionary(resolved.sources.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return identifiers(in: resolved.text).compactMap { byID[$0] }
+    }
+
+    /// Only URLs observed by tools establish aliases. Keep the first ID stable,
+    /// prefer captured page metadata, and rewrite aliases at the final checkpoint.
+    static func canonicalized(_ text: String, sources: [FamiliarSource]) -> FamiliarCompletedResponse {
+        var canonical: [FamiliarSource] = []
+        var indexes: [URL: Int] = [:]
+        var aliases: [String: String] = [:]
+        for source in sources {
+            if let index = indexes[source.url] {
+                let id = canonical[index].id
+                aliases[source.id] = id
+                if source.kind == .fetchedPage && canonical[index].kind != .fetchedPage {
+                    canonical[index] = source.identified(as: id)
+                }
+            } else {
+                indexes[source.url] = canonical.count
+                canonical.append(source)
+                aliases[source.id] = source.id
+            }
+        }
+        var resolved = text
+        if let pattern {
+            for match in pattern.matches(in: text, range: NSRange(text.startIndex..., in: text)).reversed() {
+                guard let idRange = Range(match.range(at: 1), in: text),
+                      let id = aliases[String(text[idRange]).trimmingCharacters(in: .whitespaces)],
+                      let range = Range(match.range, in: resolved) else { continue }
+                resolved.replaceSubrange(range, with: "[[\(id)]]")
+            }
+        }
+        return .init(text: resolved, sources: canonical)
+    }
+}
+
 nonisolated enum FamiliarSourceKind: String, Codable, Sendable {
     case searchResult
     case fetchedPage
@@ -102,6 +165,12 @@ nonisolated struct FamiliarSource: Identifiable, Codable, Equatable, Sendable {
     let responseBlockID: UUID?
     let retrievalActivityID: String?
     let citationOrdinal: Int?
+
+    func identified(as identifier: String) -> Self {
+        .init(id: identifier, kind: kind, title: title, url: url, siteName: siteName,
+              snippet: snippet, retrievedAt: retrievedAt, responseBlockID: responseBlockID,
+              retrievalActivityID: retrievalActivityID, citationOrdinal: citationOrdinal)
+    }
 
     init(
         id: String,

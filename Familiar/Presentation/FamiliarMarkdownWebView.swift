@@ -38,14 +38,15 @@ struct FamiliarMarkdownWebView: View {
         allowsMermaidPreview: Bool = true,
         onSelectionChange: @escaping (String?) -> Void = { _ in }
     ) {
-        self.markdown = FamiliarMarkdownNormalizer.normalize(markdown)
-        self.sources = sources
+        let resolved = FamiliarCitation.canonicalized(markdown, sources: sources)
+        self.markdown = FamiliarMarkdownNormalizer.normalize(resolved.text)
+        self.sources = resolved.sources
         self.mode = mode
         self.isStreaming = isStreaming
         self.allowsMermaidPreview = allowsMermaidPreview
         self.onSelectionChange = onSelectionChange
         _presentation = State(initialValue: FamiliarStreamingPresentation(
-            text: FamiliarMarkdownNormalizer.normalize(markdown), streaming: isStreaming
+            text: FamiliarMarkdownNormalizer.normalize(resolved.text), streaming: isStreaming
         ))
     }
 

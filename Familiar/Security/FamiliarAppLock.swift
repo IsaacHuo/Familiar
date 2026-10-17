@@ -44,7 +44,7 @@ final class FamiliarAppLock {
     private func show() {
         guard let scene, window == nil else { return }
         let shield = UIWindow(windowScene: scene)
-        shield.frame = scene.coordinateSpace.bounds
+        shield.frame = scene.effectiveGeometry.coordinateSpace.bounds
         shield.windowLevel = .alert + 1
         shield.rootViewController = UIHostingController(rootView: FamiliarAppLockScreen(lock: self))
         shield.isHidden = false

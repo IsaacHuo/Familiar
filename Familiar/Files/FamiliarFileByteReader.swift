@@ -3,10 +3,8 @@ import Foundation
 /// Shared byte access for Tools and native Files UI; storage implementations never reach Domain.
 nonisolated enum FamiliarFileByteReader {
     static func url(for snapshot: FamiliarFileSnapshot) -> URL? {
-        let prefix = "Projects/\(snapshot.reference.projectID.uuidString)/"
-        if snapshot.storage.kind != .attachment || snapshot.storage.relativePath.hasPrefix("Projects/") {
-            guard snapshot.storage.relativePath.hasPrefix(prefix) else { return nil }
-        }
+        let prefix = "\(snapshot.reference.scope.filePrefix)"
+        guard snapshot.storage.relativePath.hasPrefix(prefix) else { return nil }
         let url: URL?
         switch snapshot.storage.kind {
         case .attachment: url = FamiliarAttachmentStore.url(for: snapshot.storage.relativePath)
@@ -20,8 +18,8 @@ nonisolated enum FamiliarFileByteReader {
         return url
     }
 
-    static func read(_ snapshot: FamiliarFileSnapshot, projectID: UUID) throws -> Data {
-        guard snapshot.reference.projectID == projectID else { throw FamiliarFileError.invalidPath }
+    static func read(_ snapshot: FamiliarFileSnapshot, scope: FamiliarWorkScope) throws -> Data {
+        guard snapshot.reference.scope == scope else { throw FamiliarFileError.invalidPath }
         guard let url = url(for: snapshot) else { throw FamiliarFileError.missingFile }
         let data = try Data(contentsOf: url, options: [.mappedIfSafe])
         guard snapshot.contentHash.isEmpty || FamiliarHash.sha256(data) == snapshot.contentHash else { throw FamiliarFileError.contentMismatch }

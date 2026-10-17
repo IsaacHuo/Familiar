@@ -49,8 +49,8 @@ struct FamiliarWebRetentionTests {
         let resource = try FamiliarFileImportService(store: store).saveFetchedWebResult(
             runtimeID: fixture.runtimeID, toolCallID: "fetch", in: context)
         let version = try #require(resource.versions.first)
-        #expect(resource.projectID == fixture.project.id)
-        #expect(try FamiliarFileCatalogService().snapshots(projectID: other.id, in: context).isEmpty)
+        #expect(resource.scope == .project(fixture.project.id))
+        #expect(try FamiliarFileCatalogService().snapshots(scope: .project(other.id), in: context).isEmpty)
         #expect(resource.displayName == fixture.output.title)
         #expect(resource.originRawValue == FamiliarFileOrigin.webCapture.rawValue)
         #expect(version.sourceURLString == fixture.output.finalURL)

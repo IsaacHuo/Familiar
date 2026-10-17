@@ -5,6 +5,7 @@ import Testing
 
 @Suite("Current authorization boundary")
 struct FamiliarAuthorizationBoundaryTests {
+    private var fixtureScope: FamiliarWorkScope { .conversation(UUID(uuidString: "88B20785-8586-4A9D-89B1-8DC3D40BFA47")!) }
     @Test("Policy rejects changed preflight and permission before action")
     func policyRecheck() throws {
         let policy = FamiliarExecutionPolicy()
@@ -40,20 +41,20 @@ struct FamiliarAuthorizationBoundaryTests {
         let runtime = FamiliarAuthorizationRuntime(context: context, sessionID: "session-a")
         let manifest = manifest()
         try runtime.issueAuthorization(duration: .session, manifest: manifest, arguments: #"{"title":"A","count":2}"#,
-            projectID: project, targetKey: "calendar:a", evidence: "User approved")
+            scope: .project(project), targetKey: "calendar:a", evidence: "User approved")
         #expect(try runtime.matchingAuthorizationScope(manifest: manifest, arguments: #"{ "count":2, "title":"A" }"#,
-            projectID: project, targetKey: "calendar:a") == .session)
+            scope: .project(project), targetKey: "calendar:a") == .session)
         #expect(try runtime.matchingAuthorizationScope(manifest: manifest, arguments: #"{"title":"B","count":2}"#,
-            projectID: project, targetKey: "calendar:a") == nil)
+            scope: .project(project), targetKey: "calendar:a") == nil)
         #expect(try runtime.matchingAuthorizationScope(manifest: manifest, arguments: #"{"title":"A","count":2}"#,
-            projectID: UUID(), targetKey: "calendar:a") == nil)
+            scope: .project(UUID()), targetKey: "calendar:a") == nil)
         #expect(try runtime.matchingAuthorizationScope(manifest: manifest, arguments: #"{"title":"A","count":2}"#,
-            projectID: project, targetKey: "calendar:b") == nil)
+            scope: .project(project), targetKey: "calendar:b") == nil)
         #expect(try runtime.matchingAuthorizationScope(manifest: self.manifest(version: "2"), arguments: #"{"title":"A","count":2}"#,
-            projectID: project, targetKey: "calendar:a") == nil)
+            scope: .project(project), targetKey: "calendar:a") == nil)
         let otherSession = FamiliarAuthorizationRuntime(context: context, sessionID: "session-b")
         #expect(try otherSession.matchingAuthorizationScope(manifest: manifest, arguments: #"{"title":"A","count":2}"#,
-            projectID: project, targetKey: "calendar:a") == nil)
+            scope: .project(project), targetKey: "calendar:a") == nil)
     }
 
     @Test("Expired, revoked or malformed rules grant nothing", arguments: ["expired", "revoked", "malformed"])
@@ -61,7 +62,7 @@ struct FamiliarAuthorizationBoundaryTests {
     func invalidRules(kind: String) throws {
         let container = try FamiliarTestStore.make(name: "InvalidAuthorization")
         let context = container.mainContext
-        let rule = FamiliarAuthorizationRuleRecord(projectID: nil, capabilityID: manifest().id, capabilityVersion: "1",
+        let rule = FamiliarAuthorizationRuleRecord(scope: fixtureScope, capabilityID: manifest().id, capabilityVersion: "1",
             targetKey: "target", argumentsHash: FamiliarCanonicalJSON.argumentsHash("{}"), duration: .always,
             sessionID: nil, expiresAt: kind == "expired" ? .distantPast : .distantFuture, evidence: "fixture")
         if kind == "revoked" { rule.revokedAt = Date() }
@@ -69,7 +70,7 @@ struct FamiliarAuthorizationBoundaryTests {
         context.insert(rule)
         try context.save()
         let runtime = FamiliarAuthorizationRuntime(context: context, sessionID: "session")
-        #expect(try runtime.matchingAuthorizationScope(manifest: manifest(), arguments: "{}", projectID: nil, targetKey: "target") == nil)
+        #expect(try runtime.matchingAuthorizationScope(manifest: manifest(), arguments: "{}", scope: fixtureScope, targetKey: "target") == nil)
         #expect(rule.lastUsedAt == nil)
     }
 
@@ -78,11 +79,11 @@ struct FamiliarAuthorizationBoundaryTests {
     func onceIsConsumed() throws {
         let container = try FamiliarTestStore.make(name: "OnceAuthorization")
         let runtime = FamiliarAuthorizationRuntime(context: container.mainContext, sessionID: "session")
-        try runtime.issueAuthorization(duration: .once, manifest: manifest(), arguments: "{}", projectID: nil, targetKey: "target", evidence: "User approved")
-        #expect(try runtime.matchingAuthorizationScope(manifest: manifest(), arguments: "{}", projectID: nil, targetKey: "target") == .once)
+        try runtime.issueAuthorization(duration: .once, manifest: manifest(), arguments: "{}", scope: fixtureScope, targetKey: "target", evidence: "User approved")
+        #expect(try runtime.matchingAuthorizationScope(manifest: manifest(), arguments: "{}", scope: fixtureScope, targetKey: "target") == .once)
         let reopened = ModelContext(container)
         let next = FamiliarAuthorizationRuntime(context: reopened, sessionID: "session")
-        #expect(try next.matchingAuthorizationScope(manifest: manifest(), arguments: "{}", projectID: nil, targetKey: "target") == nil)
+        #expect(try next.matchingAuthorizationScope(manifest: manifest(), arguments: "{}", scope: fixtureScope, targetKey: "target") == nil)
         #expect(try reopened.fetch(FetchDescriptor<FamiliarAuthorizationRuleRecord>()).first?.revokedAt != nil)
     }
 
@@ -96,9 +97,9 @@ struct FamiliarAuthorizationBoundaryTests {
             detail: source, sequence: -1, startedAt: Date()))
         try context.save()
         let runtime = FamiliarAuthorizationRuntime(context: context, sessionID: "session")
-        #expect(try runtime.matchingAuthorizationScope(manifest: manifest(), arguments: "{}", projectID: nil, targetKey: "target") == nil)
-        try runtime.issueAuthorization(duration: .always, manifest: manifest(), arguments: "{}", projectID: nil, targetKey: "target", evidence: "User approved now")
-        #expect(try runtime.matchingAuthorizationScope(manifest: manifest(), arguments: "{}", projectID: nil, targetKey: "target") == .always)
+        #expect(try runtime.matchingAuthorizationScope(manifest: manifest(), arguments: "{}", scope: fixtureScope, targetKey: "target") == nil)
+        try runtime.issueAuthorization(duration: .always, manifest: manifest(), arguments: "{}", scope: fixtureScope, targetKey: "target", evidence: "User approved now")
+        #expect(try runtime.matchingAuthorizationScope(manifest: manifest(), arguments: "{}", scope: fixtureScope, targetKey: "target") == .always)
     }
 
     @Test("Authorization store failure prevents sensitive reads and external effects", arguments: FamiliarAuthorizationFailureCase.allCases)
@@ -175,11 +176,11 @@ private nonisolated struct FamiliarAuthorizationFixtureError: Error {}
 
 private nonisolated struct FamiliarFailingAuthorizationStore: FamiliarAuthorizationServicing {
     let failMatch: Bool
-    func matchingAuthorizationScope(manifest: FamiliarToolManifest, arguments: String, projectID: UUID?, targetKey: String) async throws -> FamiliarAuthorizationDuration? {
+    func matchingAuthorizationScope(manifest: FamiliarToolManifest, arguments: String, scope: FamiliarWorkScope?, targetKey: String) async throws -> FamiliarAuthorizationDuration? {
         if failMatch { throw FamiliarAuthorizationFixtureError() }
         return nil
     }
-    func issueAuthorization(duration: FamiliarAuthorizationDuration, manifest: FamiliarToolManifest, arguments: String, projectID: UUID?, targetKey: String, evidence: String) async throws {
+    func issueAuthorization(duration: FamiliarAuthorizationDuration, manifest: FamiliarToolManifest, arguments: String, scope: FamiliarWorkScope?, targetKey: String, evidence: String) async throws {
         throw FamiliarAuthorizationFixtureError()
     }
 }

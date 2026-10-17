@@ -1,11 +1,11 @@
 @preconcurrency import AVFoundation
-import Combine
+import Observation
 import SwiftUI
 import UIKit
 
 struct FamiliarCameraView: View {
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var camera = FamiliarCameraController()
+    @State private var camera = FamiliarCameraController()
     let onCapture: (UIImage) -> Void
 
     var body: some View {
@@ -112,18 +112,19 @@ private struct FamiliarCameraPreview: UIViewRepresentable {
 }
 
 @MainActor
-private final class FamiliarCameraController: NSObject, ObservableObject {
+@Observable
+private final class FamiliarCameraController: NSObject {
     enum State: Equatable { case loading, ready, denied, unavailable(String) }
 
-    let session: AVCaptureSession
-    @Published var state: State = .loading
-    @Published var isCapturing = false
-    @Published var isFlashAvailable = false
-    @Published var isFlashEnabled = false
-    @Published var canSwitchCamera = false
-    @Published var errorMessage: String?
+    @ObservationIgnored let session: AVCaptureSession
+    var state: State = .loading
+    var isCapturing = false
+    var isFlashAvailable = false
+    var isFlashEnabled = false
+    var canSwitchCamera = false
+    var errorMessage: String?
 
-    private let worker: FamiliarCameraSessionWorker
+    @ObservationIgnored private let worker: FamiliarCameraSessionWorker
 
     override init() {
         let worker = FamiliarCameraSessionWorker()
@@ -158,7 +159,7 @@ private final class FamiliarCameraController: NSObject, ObservableObject {
         }
     }
 
-    private var captureCompletion: ((UIImage) -> Void)?
+    @ObservationIgnored private var captureCompletion: ((UIImage) -> Void)?
 
     func start() {
         state = .loading

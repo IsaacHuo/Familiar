@@ -29,13 +29,13 @@ struct FamiliarFunctionalFilesTests {
         let file = try await service.importDocument(from: input, into: project, in: context)
         let version = try #require(file.latestVersion)
         #expect(version.extractedText.localizedCaseInsensitiveContains("PROBE"))
-        #expect(version.projectID == project.id)
+        #expect(version.scope == .project(project.id))
         let bytes = try Data(contentsOf: input)
         let saved = try Data(contentsOf: #require(service.quickLookURL(for: version)))
         #expect(saved == bytes)
         #expect(version.contentHash == FamiliarHash.sha256(bytes))
         #expect(version.extractedTextHash == FamiliarHash.sha256(version.extractedText))
-        #expect(try FamiliarFileCatalogService().snapshots(projectID: UUID(), in: context).isEmpty)
+        #expect(try FamiliarFileCatalogService().snapshots(scope: .project(UUID()), in: context).isEmpty)
         #expect(try context.fetchCount(FetchDescriptor<FamiliarResource>()) == 0)
     }
 
@@ -75,7 +75,7 @@ struct FamiliarFunctionalFilesTests {
         let resources = FamiliarProjectResourceStore()
         let generated = FamiliarFileStore(rootURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
         defer {
-            try? FileManager.default.removeItem(at: resources.rootURL.appendingPathComponent("Projects/" + project.id.uuidString))
+            try? FileManager.default.removeItem(at: resources.rootURL.appendingPathComponent(FamiliarWorkScope.project(project.id).filePrefix))
             try? FileManager.default.removeItem(at: generated.rootURL)
         }
         let file = try FamiliarFileImportService(store: resources).importPastedText("Original imported text", title: "Note", into: project, in: context)
@@ -91,7 +91,7 @@ struct FamiliarFunctionalFilesTests {
         try FamiliarFileService(store: generated).persist(descriptor, in: context)
         #expect(file.versions.count == 2)
         #expect(file.latestVersion?.version == 2)
-        #expect(try FamiliarFileByteReader.read(snapshot, projectID: project.id) == Data("Original imported text".utf8))
+        #expect(try FamiliarFileByteReader.read(snapshot, scope: .project(project.id)) == Data("Original imported text".utf8))
         #expect(try generated.read(relativePath: descriptor.relativePath) == Data("Revised imported text".utf8))
         await #expect(throws: FamiliarFileError.self) {
             try await tool.execute(input, context: .init(projectID: UUID(), files: [snapshot]))

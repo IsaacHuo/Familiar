@@ -25,6 +25,7 @@ simulator_suites=(
     FamiliarMarkdownWebKitTests
     FamiliarTimelinePerformanceTests
     FamiliarChatScrollTests
+    FamiliarChatInputDockTests
     FamiliarChatTestProviderTests
     FamiliarImportContractsTests
     FamiliarFunctionalFilesTests
@@ -38,12 +39,14 @@ simulator_suites=(
     FamiliarPinServiceTests
     FamiliarPlanCompletionTests
     FamiliarProjectTests
+    FamiliarWorkScopeTests
     FamiliarProjectWorkspaceTests
     FamiliarReleaseComplianceTests
     FamiliarReleaseToolTests
     FamiliarRuntimeTests
     FamiliarRuntimePresentationTests
     FamiliarSearchProviderTests
+    FamiliarSearchReliabilityTests
     FamiliarSelectionPresentationTests
     FamiliarSkillsTests
     FamiliarSurfaceTests
@@ -90,7 +93,7 @@ missing=source-set(listed)
 obsolete=set(listed)-source
 if missing or obsolete or len(listed)!=len(set(listed)):
     raise SystemExit(f'Test list mismatch: missing={sorted(missing)}, obsolete={sorted(obsolete)}, duplicates={len(listed)-len(set(listed))}')
-print(f'Test inventory: {len(sim)} Simulator suites, {len(device)} signed-device suites, {len(live)} explicit live-service suites, plus the complete FamiliarUITests target.')
+print(f'Test inventory: {len(sim)} Simulator suites, {len(device)} signed-device suites, {len(live)} explicit live-service suites, plus FamiliarUITests.')
 PYLIST
 }
 

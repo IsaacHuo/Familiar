@@ -5,7 +5,7 @@ import Testing
 private struct FamiliarOutputResolverFixture: FamiliarWorkspaceOutputResolving {
     let output: FamiliarResolvedWorkspaceOutput
 
-    func resolveOutput(relativePath: String, workspaceID: FamiliarWorkspaceID) throws -> FamiliarResolvedWorkspaceOutput {
+    func resolveOutput(relativePath: String, workspaceID: FamiliarWorkScope) throws -> FamiliarResolvedWorkspaceOutput {
         guard relativePath == output.relativePath else { throw FamiliarWorkspaceError.missingFile }
         return output
     }

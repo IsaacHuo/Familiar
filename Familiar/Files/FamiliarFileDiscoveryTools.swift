@@ -18,15 +18,15 @@ nonisolated struct FamiliarFileListTool: FamiliarTool {
     }
     private struct Output: Encodable { let files: [Item]; let totalCount: Int; let nextOffset: Int? }
     let manifest = FamiliarToolManifest(name: "file_list", title: "列出文件",
-        description: "List the frozen Project file directory, including uploads, saved web pages and generated files. Use the returned identifier with file_read. File contents are loaded only when requested.",
+        description: "List the frozen file directory of the current conversation or Project, including uploads, saved web pages and generated files. Use the returned identifier with file_read. File contents are loaded only when requested.",
         parameters: .object(["offset": .integer("Page offset", minimum: 0, defaultValue: 0),
                              "limit": .integer("Maximum files", minimum: 1, maximum: 100, defaultValue: 50)]),
-        effect: .read, risk: .low, supportsParallelism: true, requiredScopes: ["project"])
+        effect: .read, risk: .low, supportsParallelism: true, requiredScopes: ["workspace"])
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
-        guard let projectID = context.projectID else { throw FamiliarFileError.projectRequired }
+        guard let scope = context.workspaceID else { throw FamiliarFileError.workScopeRequired }
         var latest: [UUID: Item] = [:]
-        for file in context.files where file.reference.projectID == projectID {
+        for file in context.files where file.reference.scope == scope {
             let item = Item(fileID: file.reference.fileID, versionID: file.reference.versionID,
                 identifier: "file_" + file.reference.versionID.uuidString, version: file.version,
                 name: file.name, filename: file.filename, mimeType: file.mimeType, byteSize: file.byteSize)
@@ -61,16 +61,16 @@ nonisolated struct FamiliarFileSearchTool: FamiliarTool {
     struct Input: Decodable, Sendable { let query: String }
     private struct Match: Encodable { let fileID: UUID; let versionID: UUID; let identifier: String; let name: String; let matchedField: String }
     let manifest = FamiliarToolManifest(name: "file_search", title: "搜索文件",
-        description: "Search Project filenames and the already-selected text in this frozen Run. This does not read every file body; use file_read for content.",
+        description: "Search filenames in the current conversation or Project and the already-selected text in this frozen Run. This does not read every file body; use file_read for content.",
         parameters: .object(["query": .string("Search text")], required: ["query"]),
-        effect: .read, risk: .low, supportsParallelism: true, requiredScopes: ["project"])
+        effect: .read, risk: .low, supportsParallelism: true, requiredScopes: ["workspace"])
 
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
-        guard let projectID = context.projectID else { throw FamiliarFileError.projectRequired }
+        guard let scope = context.workspaceID else { throw FamiliarFileError.workScopeRequired }
         let query = input.query.trimmingCharacters(in: .whitespacesAndNewlines)
         var matches: [Match] = []
         if !query.isEmpty {
-            for file in context.files where file.reference.projectID == projectID &&
+            for file in context.files where file.reference.scope == scope &&
                 (file.name.localizedCaseInsensitiveContains(query) || file.filename.localizedCaseInsensitiveContains(query)) {
                 matches.append(.init(fileID: file.reference.fileID, versionID: file.reference.versionID,
                     identifier: "file_" + file.reference.versionID.uuidString, name: file.name, matchedField: "filename"))

@@ -4,6 +4,16 @@ import Testing
 
 @Suite("Deterministic Chat test provider")
 struct FamiliarChatTestProviderTests {
+    @Test("Catalog notices after an answered question cannot start an unrelated file workflow")
+    func answeredQuestionKeepsOriginalTask() async throws {
+        let response = try await FamiliarChatTestProvider().generate(request: .init(model: "test", messages: [
+            .user("question"),
+            .tool(#"{"answer":"Short version"}"#, toolCallID: "presentation-question", name: "ask_user"),
+            .user("Loaded tools: files")
+        ], tools: []))
+        #expect(response.toolCalls.isEmpty)
+        #expect(response.text.contains("Reply complete."))
+    }
     @Test("Tool-result pairing completes the fixture even when optional tool names are omitted")
     func toolResultPairing() async throws {
         let provider = FamiliarChatTestProvider()

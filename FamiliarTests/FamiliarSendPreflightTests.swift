@@ -66,8 +66,8 @@ struct FamiliarSendPreflightTests {
         try Data("Draft bytes".utf8).write(to: source)
         defer { try? FileManager.default.removeItem(at: source) }
         let draft = try await FamiliarAttachmentStore.importDocument(from: source)
-        let messageID = UUID()
-        let path = FamiliarAttachmentStore.committedRelativePath(of: draft, messageID: messageID)
+        let messageID = UUID(), scope = FamiliarWorkScope.conversation(UUID())
+        let path = FamiliarAttachmentStore.committedRelativePath(of: draft, messageID: messageID, scope: scope)
         defer { FamiliarAttachmentStore.remove(relativePaths: [draft.relativePath, path]) }
         #expect(FamiliarAttachmentStore.url(for: path) == nil)
         let input = FamiliarAttachmentSnapshot(id: draft.id, kind: draft.kind, filename: draft.filename, mimeType: draft.mimeType,
@@ -76,7 +76,7 @@ struct FamiliarSendPreflightTests {
         let snapshot = try assemble(messages: [message("Read", attachments: [input])])
         try FamiliarContextCompiler.validateSubmission(snapshot)
         #expect(snapshot.attachments.first?.relativePath == path)
-        #expect(try FamiliarAttachmentStore.committedCopy(of: draft, messageID: messageID) == path)
+        #expect(try FamiliarAttachmentStore.committedCopy(of: draft, messageID: messageID, scope: scope) == path)
         let committedURL = try #require(FamiliarAttachmentStore.url(for: path))
         #expect(try Data(contentsOf: committedURL) == Data("Draft bytes".utf8))
     }
@@ -103,7 +103,7 @@ struct FamiliarSendPreflightTests {
         }
         let draft = try await FamiliarAttachmentStore.importImage(image)
         defer { FamiliarAttachmentStore.remove(relativePath: draft.relativePath) }
-        let path = FamiliarAttachmentStore.committedRelativePath(of: draft, messageID: UUID())
+        let path = FamiliarAttachmentStore.committedRelativePath(of: draft, messageID: UUID(), scope: .conversation(UUID()))
         let input = FamiliarAttachmentSnapshot(id: draft.id, kind: draft.kind, filename: draft.filename, mimeType: draft.mimeType,
             relativePath: path, extractedText: "", byteSize: draft.byteSize, extractionEngine: draft.extractionEngine,
             extractionVersion: draft.extractionVersion, detectedFormat: draft.detectedFormat, usedOCR: draft.usedOCR)

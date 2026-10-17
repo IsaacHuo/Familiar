@@ -50,8 +50,7 @@ final class FamiliarMarkdownWebKitTests: XCTestCase {
         content.controller.streamingResponseBlocks = [live]
         content.controller.runtimeContentBlocks = [.text(.init(live))]
         let host = UIHostingController(rootView: TimelineHost(content: content))
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 350, height: 800))
-        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene { window.windowScene = scene }
+        let window = familiarTestWindow(width: 350, height: 800)
         window.rootViewController = host
         window.makeKeyAndVisible()
         defer { window.isHidden = true }
@@ -83,8 +82,7 @@ final class FamiliarMarkdownWebKitTests: XCTestCase {
     func testNativeStreamingToFinalKeepsWebViewAndReportsMeasuredHeight() async throws {
         let content = Content()
         let host = UIHostingController(rootView: Host(content: content))
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 350, height: 800))
-        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene { window.windowScene = scene }
+        let window = familiarTestWindow(width: 350, height: 800)
         window.rootViewController = host
         window.makeKeyAndVisible()
         defer { window.isHidden = true }
@@ -121,8 +119,7 @@ final class FamiliarMarkdownWebKitTests: XCTestCase {
         let web = try await renderer()
         let host = UIViewController()
         host.view.addSubview(web)
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 350, height: 800))
-        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene { window.windowScene = scene }
+        let window = familiarTestWindow(width: 350, height: 800)
         window.rootViewController = host
         window.makeKeyAndVisible()
         defer { window.isHidden = true }
@@ -167,6 +164,22 @@ final class FamiliarMarkdownWebKitTests: XCTestCase {
     private func render(_ markdown: String, streaming: Bool, in web: WKWebView) async throws {
         let literal = FamiliarMarkdownHTML.javascriptStringLiteral(markdown)
         _ = try await evaluate("window.FamiliarMarkdown.render(\(literal), {streaming: \(streaming), reduceMotion: false}); 'ok'", in: web)
+    }
+
+    @MainActor
+    func testRedirectAliasesRenderTwoChipsWithOneSourceNumber() async throws {
+        let web = try await renderer()
+        let source = FamiliarSource(id: "original", kind: .fetchedPage, title: "Verified page",
+            url: URL(string: "https://example.com/final")!, siteName: nil, snippet: nil, retrievedAt: Date())
+        let resolved = FamiliarCitation.canonicalized("First fact [[original]].\n\nSecond fact [[alias]].",
+            sources: [source, source.identified(as: "alias")])
+        let literal = FamiliarMarkdownHTML.javascriptStringLiteral(resolved.text)
+        let sources = FamiliarMarkdownHTML.sourcesJSONString(FamiliarCitation.cited(in: resolved.text, sources: resolved.sources))
+        _ = try await evaluate("window.FamiliarMarkdown.render(\(literal), {sources: \(sources), streaming: false}); 'ok'", in: web)
+        let chips = try await evaluate("JSON.stringify(Array.from(document.querySelectorAll('.citation-chip')).map(a => [a.textContent, a.href]))", in: web)
+        XCTAssertEqual(chips, #"[["1","https://example.com/final"],["1","https://example.com/final"]]"#)
+        let text = try await evaluate("document.body.innerText", in: web)
+        XCTAssertFalse(text.contains("[[alias]]"))
     }
 
     @MainActor

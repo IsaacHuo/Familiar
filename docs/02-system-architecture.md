@@ -6,7 +6,7 @@
 
 Familiar 是一个 iPhone 原生、安全、可检查的个人 AI 工作台。顶层产品模型是 Chat、Project 与单 Agent：Chat 是主要交互和执行界面，Project 是长期 Context Workspace，单 Agent Runtime 是执行内核。网络请求从 App 直接发送到用户选择的 AI Provider；只读 Web 请求直接发送到 DuckDuckGo 或用户选择的公共 HTTPS 站点。图片优先由当前 Provider 原生处理；纯文本模型使用设备端 Vision 或用户安装的本地视觉模型生成证据。项目没有 Familiar 业务后端。
 
-它不以 Linux 为执行环境，不依赖 Apple Intelligence，不把用户需求硬编码成 workflow，也不从复杂多 Agent 开始。
+设备能力使用原生工具；受限计算与复杂文档生成使用内置 iSH/Alpine。产品不依赖 Apple Intelligence，不把用户需求硬编码成 workflow，坚持单 Agent。
 
 ## 2. Architecture boundaries
 
@@ -21,7 +21,7 @@ Product UI -> Domain -> Context / Runtime -> Tools / Policy -> Services -> Persi
 - Single Agent Runtime performs model calls, tool calls, state transitions and results. One Agent + One Loop + Lazy Tools remains the execution model. There is no Router, Planner or multi-Agent orchestration.
 - Run State records discovered and exposed tools, reads and observations, loaded Skills, write status and produced versions. It records facts rather than scheduling a plan. Known immutable FileVersions may reuse bounded read results; Web, Native and MCP observations remain refreshable.
 - Tools are the only external capability boundary. Web, Files, Memory, Apple adapters, MCP and Shell share typed inputs, manifest declarations, output envelopes, structured errors, preflight, policy, approval, execution and persistence.
-- Policy returns allow / requireApproval / deny. It owns scope and availability checks, exact authorization lookup/issuance and execution-time revalidation. System entries, Skills and model output never create authorization. Controlled offline Shell remains the only explicit automatic write exception; MCP remains approved on every call.
+- Policy returns allow / requireApproval / deny. It owns scope and availability checks, exact authorization lookup/issuance and execution-time revalidation. System entries, Skills and model output never create authorization. Enabled reversible built-in File/Workspace writes and checked, checkpointed offline Shell execute automatically with receipts and session Undo. Memory, actual dependency installation and MCP remain approved; external persistent capability grants are a later S2 slice.
 - Services implement Provider, Apple, MCP, iSH and storage adapters, injected at composition. Core Runtime does not consume SwiftData entities or concrete Views.
 - Persistence keeps long-term Domain data separate in responsibility from Audit/Recovery and rebuildable caches, within one store. Project/Chat/Files/Memory are user data; Run/Invocation/Approval/Undo/Recovery are execution records.
 
@@ -29,7 +29,7 @@ Product UI -> Domain -> Context / Runtime -> Tools / Policy -> Services -> Persi
 
 File identity is independent of name, path and hash. Each immutable FileVersion records its content hash, format/extraction, storage reference and provenance. Explicit relationships may share identity within a Project. Same names or bytes never merge Files across Projects.
 
-Project owns committed Files. Deleting Chat removes associations and temporary data; deleting Project removes its long-term files. Moving Chat copies linked Files into the destination Project with new identities, clears the old conversation summary and preserves the original Run evidence. Global Memory is explicit; another Project's files, Memory or bound Skill cannot enter a new Run.
+A File belongs to FamiliarWorkScope.project(id) or .conversation(id), including type in its storage and authorization identity. Ordinary Chat has no Project and uses global defaults with its own Files, Workspace, Environment and conversation Memory. Deleting ordinary Chat removes those owned bytes; deleting Project Chat retains shared Project Files. Moving Chat copies and rebinds linked versions into the destination scope, clears its summary and does not carry old authorization. Deleting Project first transfers Chat-linked files into individual conversation scopes, then retains those Chats as ordinary history. Only explicitly global Memory crosses ordinary Chats.
 
 Uploads, Project imports, saved web captures, generated results and Shell Outputs use the same Files experience. Fetching is Evidence until a user explicitly saves its captured bytes. Work/Environment/checkpoints remain internal. Shell output capture, metadata, result receipt and compensating Undo share a success boundary.
 
@@ -41,11 +41,11 @@ Each request saves its compilation identity, references, hashes, source scope/tr
 
 ### Migration and recovery
 
-Freeze the actual 37-entity 1.0.0 definitions. Add canonical Files before removing old generated-file metadata; archive historical Grant provenance before removing its unused entity. Keep the store address and byte directories. Migration failure preserves user data and enters recovery; never automatically rebuild the store. Historical Resource/Attachment storage fields remain only where relationships/history need them; new imports write canonical Files directly. Cursor/journal records detect interruption and uncertain external writes; this phase does not resume across restarts or execute in the background.
+Use one current 37-entity schema, without historical migration chains or migration-only models. The explicitly authorized business generation change clears old stores, file bytes, Workspaces, business records and derived indexes once; credentials, provider/search settings and appearance survive. Mark the generation only after successful current-store creation. Later open failures enter recovery and preserve new data. Cursor/journal records still detect interrupted or uncertain writes; no background execution or cross-restart continuation.
 
 ## 3. 目标能力设计与当前边界
 
-### 3.1 可恢复 Run 与后台
+### 3.1 可恢复 Run 与后台（后续候选，当前阶段排除）
 
 Agent Run 的目标是可中断、可恢复，不是常驻 daemon。
 
@@ -57,7 +57,6 @@ Agent Run 的目标是可中断、可恢复，不是常驻 daemon。
 ```
 
 - iOS 26+：可条件使用 `BGContinuedProcessingTask` 承接用户在前台启动的长任务，仍需保存恢复游标并处理 expiration。
-- iOS 18–25：`BGProcessingTask` 由系统择机执行，不能保证精确时间；适合的网络传输可使用 background `URLSession`。
 - 无后端时不承诺可靠 cron。"已计划"必须标明精确、尽力或需用户继续的保证等级。
 - 数据契约先行：先完成 snapshot、ResumeCursor 与持久化幂等状态，再接后台承接能力。
 

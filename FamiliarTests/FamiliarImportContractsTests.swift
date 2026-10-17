@@ -5,28 +5,13 @@ import Testing
 
 @Suite("Familiar imported workspace contracts")
 struct FamiliarImportContractsTests {
-    @Test @MainActor func defaultProjectAdoptionPreservesHistory() throws {
-        let container = try FamiliarTestStore.make()
-        let context = container.mainContext
-        let chat = FamiliarConversation(title: "Existing conversation")
-        let message = FamiliarMessage(role: .user, content: "Keep this", sequence: 0, conversation: chat)
-        let run = FamiliarAgentRun(runtimeID: UUID().uuidString, conversation: chat)
-        context.insert(chat); context.insert(message); context.insert(run)
-        try context.save()
-        let service = FamiliarProjectService()
-        let first = try service.ensureDefaultProject(in: context)
-        let second = try service.ensureDefaultProject(in: context)
-        #expect(first.id == FamiliarProject.dailyProjectID)
-        #expect(first.id == second.id)
-        #expect(chat.project?.id == first.id)
-        #expect(chat.messages.first?.content == "Keep this")
-        #expect(run.project == nil)
-        #expect(try context.fetch(FetchDescriptor<FamiliarProject>()).count == 1)
-        #expect(throws: FamiliarProjectServiceError.protectedProject) { try service.setArchived(true, for: first, in: context) }
-        #expect(throws: FamiliarProjectServiceError.protectedProject) { try service.permanentlyDelete(first, in: context) }
-        try service.update(first, name: "Not the default name", summary: "Updated context", in: context)
-        #expect(first.name == "Daily Chat")
-        #expect(first.summary == "Updated context")
+    @Test @MainActor func ordinaryChatsDoNotCreateProjects() throws {
+        let container = try FamiliarTestStore.make(), context = container.mainContext
+        let controller = FamiliarChatController(dependencies: .init())
+        let chat = try #require(controller.createConversation(in: context))
+        #expect(chat.project == nil)
+        #expect(controller.selectedProjectID == nil)
+        #expect(try context.fetchCount(FetchDescriptor<FamiliarProject>()) == 0)
     }
 
     @Test func foreignModelIDsAreNotRewrittenToDeepSeek() {

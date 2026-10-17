@@ -75,8 +75,8 @@ extension FamiliarContextCompiler {
                     factsText += evidence
                 }
             }
-            for file in facts.files where file.reference.projectID == input.projectID {
-                factsText += "file_\(file.reference.versionID) file=\(file.reference.fileID) v\(file.version) hash=\(file.contentHash) project=\(file.reference.projectID)\n"
+            for file in facts.files where file.reference.scope == input.workScope {
+                factsText += "file_\(file.reference.versionID) file=\(file.reference.fileID) v\(file.version) hash=\(file.contentHash) project=\(file.reference.scope)\n"
             }
             factsText += "</run_facts>"
             messages.append(.user(factsText))
@@ -109,7 +109,7 @@ extension FamiliarContextCompiler {
         encoder.outputFormatting = .sortedKeys
         let schemas = tools.map { $0.name + $0.description + String(decoding: (try? encoder.encode($0.parameters)) ?? Data(), as: UTF8.self) }.joined(separator: "\n")
         let projectScope = input?.projectID.map { "project:" + $0.uuidString } ?? "chat:" + (input?.conversationID.uuidString ?? "-")
-        let files = (input?.files ?? []) + generatedFiles.filter { $0.reference.projectID == input?.projectID }
+        let files = (input?.files ?? []) + generatedFiles.filter { $0.reference.scope == input?.workScope }
         var references = files.map { FamiliarContextProvenance(identity: $0.reference.fileID.uuidString,
             version: $0.reference.versionID.uuidString, hash: $0.contentHash, scope: projectScope,
             observedAt: $0.updatedAt, trust: "file_data", truncated: false) }

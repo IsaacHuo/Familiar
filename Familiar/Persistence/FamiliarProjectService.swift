@@ -2,7 +2,6 @@ import Foundation
 import SwiftData
 
 enum FamiliarProjectServiceError: LocalizedError, Equatable {
-    case protectedProject
     case emptyName
     case duplicateName
     case projectHasRunningRun
@@ -10,7 +9,6 @@ enum FamiliarProjectServiceError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .protectedProject: String(localized: "project.error.protected")
         case .emptyName: String(localized: "project.error.empty_name")
         case .duplicateName: String(localized: "project.error.duplicate_name")
         case .projectHasRunningRun: String(localized: "project.error.running")
@@ -38,26 +36,6 @@ struct FamiliarProjectService {
         self.workspaceStore = workspaceStore
     }
 
-    /// Adopt existing unassigned chats without moving files or rewriting historical runs.
-    @discardableResult
-    func ensureDefaultProject(in context: ModelContext) throws -> FamiliarProject {
-        let id = FamiliarProject.dailyProjectID
-        let project: FamiliarProject
-        if let existing = try context.fetch(FetchDescriptor<FamiliarProject>(
-            predicate: #Predicate { $0.id == id }
-        )).first {
-            project = existing
-        } else {
-            project = FamiliarProject(id: id, name: "Daily Chat")
-            context.insert(project)
-        }
-        let unassigned = try context.fetch(FetchDescriptor<FamiliarConversation>())
-            .filter { $0.project == nil }
-        for conversation in unassigned { conversation.project = project }
-        if context.hasChanges { try save(context) }
-        return project
-    }
-
     @discardableResult
     func create(name: String, summary: String = "", in context: ModelContext) throws -> FamiliarProject {
         let normalizedName = try normalizedName(name)
@@ -75,7 +53,7 @@ struct FamiliarProjectService {
     }
 
     func update(_ project: FamiliarProject, name: String, summary: String, in context: ModelContext) throws {
-        if !project.isDefaultProject {
+        do {
             let normalizedName = try normalizedName(name)
             try ensureNameAvailable(normalizedName, excluding: project.id, in: context)
             project.name = normalizedName
@@ -122,16 +100,15 @@ struct FamiliarProjectService {
     }
 
     func setArchived(_ archived: Bool, for project: FamiliarProject, in context: ModelContext) throws {
-        guard !project.isDefaultProject else { throw FamiliarProjectServiceError.protectedProject }
         project.status = archived ? .archived : .active
         project.updatedAt = Date()
         try save(context)
     }
 
     func persistEnvironment(_ receipt: FamiliarEnvironmentReceipt, in context: ModelContext) throws {
-        let projectID = receipt.projectID
-        if let existing = try context.fetch(FetchDescriptor<FamiliarProjectEnvironmentRecord>(
-            predicate: #Predicate { $0.projectID == projectID }
+        let key = receipt.scope.storageKey
+        if let existing = try context.fetch(FetchDescriptor<FamiliarEnvironmentRecord>(
+            predicate: #Predicate { $0.scopeKey == key }
         )).first {
             existing.revision = receipt.revision
             existing.stateRawValue = receipt.state.rawValue
@@ -142,7 +119,7 @@ struct FamiliarProjectService {
             existing.byteSize = receipt.byteSize
             existing.preparedAt = receipt.preparedAt
         } else {
-            context.insert(try FamiliarProjectEnvironmentRecord(receipt: receipt))
+            context.insert(try FamiliarEnvironmentRecord(receipt: receipt))
         }
         try save(context)
     }
@@ -231,7 +208,6 @@ struct FamiliarProjectService {
     }
 
     func permanentlyDelete(_ project: FamiliarProject, in context: ModelContext) throws {
-        guard !project.isDefaultProject else { throw FamiliarProjectServiceError.protectedProject }
         guard !project.agentRuns.contains(where: { $0.status == .running }) else {
             throw FamiliarProjectServiceError.projectHasRunningRun
         }
@@ -241,24 +217,24 @@ struct FamiliarProjectService {
         var stagedManagedFiles: FamiliarStagedFileDirectory?
         let managedFiles = FamiliarManagedFileStore()
         let projectID = project.id
-        let defaultProject = try ensureDefaultProject(in: context)
+        let scopeKey = FamiliarWorkScope.project(projectID).storageKey
         var copiedPaths: [String] = []
         var removedAttachmentPaths: [String] = []
         do {
             for chat in Array(project.conversations) {
-                try FamiliarFileCatalogService().stageMove(chat, to: defaultProject, copiedPaths: &copiedPaths, in: context)
+                try FamiliarFileCatalogService().stageMove(chat, to: .conversation(chat.id), copiedPaths: &copiedPaths, in: context)
             }
-            let ownedFiles = try context.fetch(FetchDescriptor<FamiliarFileRecord>(predicate: #Predicate { $0.projectID == projectID }))
+            let ownedFiles = try context.fetch(FetchDescriptor<FamiliarFileRecord>(predicate: #Predicate { $0.scopeKey == scopeKey }))
             removedAttachmentPaths = ownedFiles.flatMap(\.versions)
                 .filter { $0.storageKindRawValue == FamiliarFileStorageKind.attachment.rawValue }.map(\.storageRelativePath)
             staged = try resourceStore.stageProjectDirectory(projectID: projectID)
-            stagedFiles = try fileStore.stageProjectDirectory(projectID: projectID)
-            stagedManagedFiles = try managedFiles.stageProjectDirectory(projectID: projectID)
+            stagedFiles = try fileStore.stageScopeDirectory(scope: .project(projectID))
+            stagedManagedFiles = try managedFiles.stageScopeDirectory(scope: .project(projectID))
             stagedWorkspace = try workspaceStore.stageWorkspace(.project(projectID))
-            Array(project.conversations).forEach { $0.project = defaultProject }
+            Array(project.conversations).forEach { $0.project = nil }
             project.agentRuns.forEach { $0.project = nil }
             let files = try context.fetch(FetchDescriptor<FamiliarStoredFileVersion>(
-                predicate: #Predicate { $0.projectID == projectID }
+                predicate: #Predicate { $0.scopeKey == scopeKey }
             ))
             let mcpBindings = try context.fetch(FetchDescriptor<FamiliarMCPBindingRecord>(
                 predicate: #Predicate { $0.projectID == projectID }
@@ -266,15 +242,11 @@ struct FamiliarProjectService {
             let memoryItems = try context.fetch(FetchDescriptor<FamiliarMemoryItem>(
                 predicate: #Predicate { $0.projectID == projectID }
             ))
-            let archivedGrantRuntimeID = FamiliarGrantArchiveMigration.runtimeID(projectID: projectID)
-            let archivedGrants = try context.fetch(FetchDescriptor<FamiliarActivityRecord>(
-                predicate: #Predicate { $0.runtimeID == archivedGrantRuntimeID }
-            ))
             let authorizationRules = try context.fetch(FetchDescriptor<FamiliarAuthorizationRuleRecord>(
-                predicate: #Predicate { $0.projectID == projectID }
+                predicate: #Predicate { $0.scopeKey == scopeKey }
             ))
-            let environments = try context.fetch(FetchDescriptor<FamiliarProjectEnvironmentRecord>(
-                predicate: #Predicate { $0.projectID == projectID }
+            let environments = try context.fetch(FetchDescriptor<FamiliarEnvironmentRecord>(
+                predicate: #Predicate { $0.scopeKey == scopeKey }
             ))
             let skillBindings = try context.fetch(FetchDescriptor<FamiliarProjectSkillBindingRecord>(
                 predicate: #Predicate { $0.projectID == projectID }
@@ -286,7 +258,6 @@ struct FamiliarProjectService {
             ownedFiles.forEach { context.delete($0) }
             mcpBindings.forEach { context.delete($0) }
             memoryItems.forEach { context.delete($0) }
-            archivedGrants.forEach { context.delete($0) }
             authorizationRules.forEach { context.delete($0) }
             environments.forEach { context.delete($0) }
             skillBindings.forEach { context.delete($0) }

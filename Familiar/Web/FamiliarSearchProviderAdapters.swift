@@ -7,7 +7,7 @@ nonisolated struct FamiliarSearchHTTPResponse: Sendable {
 }
 
 nonisolated protocol FamiliarSearchHTTPTransport: Sendable {
-    func send(_ request: URLRequest, responseLimit: Int) async throws -> FamiliarSearchHTTPResponse
+    func send(_ request: URLRequest, responseLimit: Int, deadline: ContinuousClock.Instant?) async throws -> FamiliarSearchHTTPResponse
 }
 
 nonisolated final class FamiliarSearchURLSessionTransport: FamiliarSearchHTTPTransport, @unchecked Sendable {
@@ -35,17 +35,20 @@ nonisolated final class FamiliarSearchURLSessionTransport: FamiliarSearchHTTPTra
         session = URLSession(configuration: configuration)
     }
 
-    func send(_ request: URLRequest, responseLimit: Int) async throws -> FamiliarSearchHTTPResponse {
+    func send(_ request: URLRequest, responseLimit: Int, deadline: ContinuousClock.Instant?) async throws -> FamiliarSearchHTTPResponse {
         guard let url = request.url,
               url.scheme == "https",
               let host = url.host?.lowercased(),
               Self.allowedHosts.contains(host)
         else { throw FamiliarWebError.invalidURL }
 
+        let deadline = deadline ?? ContinuousClock.now.advanced(by: .seconds(24))
         var lastError: (any Error)?
         for attempt in 0..<2 {
             do {
-                return try await sendOnce(request, responseLimit: responseLimit)
+                try Task.checkCancellation()
+                guard ContinuousClock.now < deadline else { throw FamiliarWebError.timeout }
+                return try await sendOnce(request, responseLimit: responseLimit, deadline: deadline)
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
@@ -57,11 +60,15 @@ nonisolated final class FamiliarSearchURLSessionTransport: FamiliarSearchHTTPTra
         throw Self.mapped(lastError ?? FamiliarWebError.searchUnavailable)
     }
 
-    private func sendOnce(_ original: URLRequest, responseLimit: Int) async throws -> FamiliarSearchHTTPResponse {
+    private func sendOnce(_ original: URLRequest, responseLimit: Int, deadline: ContinuousClock.Instant) async throws -> FamiliarSearchHTTPResponse {
         var request = original
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.httpShouldHandleCookies = false
-        request.timeoutInterval = 12
+        let remaining = ContinuousClock.now.duration(to: deadline)
+        let parts = remaining.components
+        let seconds = Double(parts.seconds) + Double(parts.attoseconds) / 1e18
+        guard seconds > 0 else { throw FamiliarWebError.timeout }
+        request.timeoutInterval = min(12, seconds)
         let delegate = FamiliarSearchRedirectDelegate()
         let (body, response) = try await session.data(for: request, delegate: delegate)
         guard let response = response as? HTTPURLResponse else { throw FamiliarWebError.malformedResponse }
@@ -145,11 +152,13 @@ nonisolated struct FamiliarDuckDuckGoSearchProvider: FamiliarSearchProvider {
     func search(request: FamiliarSearchRequest, apiKey: String?) async throws -> FamiliarSearchResponse {
         do {
             var components = URLComponents(string: "https://lite.duckduckgo.com/lite/")!
-            components.queryItems = [.init(name: "q", value: request.query)]
+            components.queryItems = [.init(name: "q", value: request.query), .init(name: "kl", value: "wt-wt")]
+                + (Self.dateFilter(request.recency).map { [.init(name: "df", value: $0)] } ?? [])
             var liteRequest = URLRequest(url: components.url!)
             liteRequest.setValue("text/html", forHTTPHeaderField: "Accept")
             liteRequest.setValue(request.acceptLanguage, forHTTPHeaderField: "Accept-Language")
-            let liteResponse = try await transport.send(liteRequest, responseLimit: 512_000)
+            liteRequest.setValue(FamiliarSearchAdapterSupport.browserUserAgent, forHTTPHeaderField: "User-Agent")
+            let liteResponse = try await transport.send(liteRequest, responseLimit: 512_000, deadline: request.deadline)
             try FamiliarSearchAdapterSupport.validate(liteResponse)
             return .init(
                 providerID: id,
@@ -172,8 +181,11 @@ nonisolated struct FamiliarDuckDuckGoSearchProvider: FamiliarSearchProvider {
         htmlRequest.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         htmlRequest.setValue("text/html", forHTTPHeaderField: "Accept")
         htmlRequest.setValue(request.acceptLanguage, forHTTPHeaderField: "Accept-Language")
-        htmlRequest.httpBody = Data("q=\(Self.formEncode(request.query))".utf8)
-        let htmlResponse = try await transport.send(htmlRequest, responseLimit: 512_000)
+        htmlRequest.setValue(FamiliarSearchAdapterSupport.browserUserAgent, forHTTPHeaderField: "User-Agent")
+        var form = "q=\(Self.formEncode(request.query))&kl=wt-wt"
+        if let df = Self.dateFilter(request.recency) { form += "&df=" + df }
+        htmlRequest.httpBody = Data(form.utf8)
+        let htmlResponse = try await transport.send(htmlRequest, responseLimit: 512_000, deadline: request.deadline)
         try FamiliarSearchAdapterSupport.validate(htmlResponse)
         let html = try FamiliarSearchAdapterSupport.decodeText(htmlResponse)
 
@@ -185,6 +197,16 @@ nonisolated struct FamiliarDuckDuckGoSearchProvider: FamiliarSearchProvider {
             ),
             truncated: false
         )
+    }
+
+    private static func dateFilter(_ recency: FamiliarSearchRecency?) -> String? {
+        switch recency {
+        case .day: "d"
+        case .week: "w"
+        case .month: "m"
+        case .year: "y"
+        case nil: nil
+        }
     }
 
     private static func formEncode(_ value: String) -> String {
@@ -211,14 +233,14 @@ nonisolated struct FamiliarBingSearchProvider: FamiliarSearchProvider {
             .init(name: "setlang", value: request.language),
             .init(name: "safesearch", value: "moderate")
         ]
+        if let freshness = Self.freshness(request.recency) {
+            components.queryItems?.append(.init(name: "filters", value: "ex1:\"ez\(freshness)\""))
+        }
         var urlRequest = URLRequest(url: components.url!)
         urlRequest.setValue("text/html", forHTTPHeaderField: "Accept")
         urlRequest.setValue(request.acceptLanguage, forHTTPHeaderField: "Accept-Language")
-        urlRequest.setValue(
-            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1",
-            forHTTPHeaderField: "User-Agent"
-        )
-        let response = try await transport.send(urlRequest, responseLimit: 750_000)
+        urlRequest.setValue(FamiliarSearchAdapterSupport.browserUserAgent, forHTTPHeaderField: "User-Agent")
+        let response = try await transport.send(urlRequest, responseLimit: 750_000, deadline: request.deadline)
         try FamiliarSearchAdapterSupport.validate(response)
         return .init(
             providerID: id,
@@ -228,6 +250,16 @@ nonisolated struct FamiliarBingSearchProvider: FamiliarSearchProvider {
             ),
             truncated: false
         )
+    }
+
+    /// Bing's freshness filter: ez1 day, ez2 week, ez3 month. No year bucket.
+    private static func freshness(_ recency: FamiliarSearchRecency?) -> Int? {
+        switch recency {
+        case .day: 1
+        case .week: 2
+        case .month: 3
+        case .year, nil: nil
+        }
     }
 }
 
@@ -247,7 +279,7 @@ nonisolated struct FamiliarBraveSearchProvider: FamiliarSearchProvider {
         var urlRequest = URLRequest(url: components.url!)
         urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
         urlRequest.setValue(apiKey, forHTTPHeaderField: "X-Subscription-Token")
-        let response = try await transport.send(urlRequest, responseLimit: 1_000_000)
+        let response = try await transport.send(urlRequest, responseLimit: 1_000_000, deadline: request.deadline)
         try FamiliarSearchAdapterSupport.validate(response)
         let fixture = try FamiliarSearchAdapterSupport.decode(BraveResponse.self, from: response.body)
         let results = (fixture.web?.results ?? []).prefix(request.maximumResults).enumerated().compactMap {
@@ -279,31 +311,44 @@ nonisolated struct FamiliarTavilySearchProvider: FamiliarSearchProvider {
         urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+        var body: [String: Any] = [
             "query": request.query,
             "max_results": request.maximumResults,
             "search_depth": "basic",
+            "topic": "general",
             "include_answer": false,
             "include_raw_content": false,
             "include_images": false
-        ], options: [.sortedKeys])
-        let response = try await transport.send(urlRequest, responseLimit: 1_000_000)
-        try FamiliarSearchAdapterSupport.validate(response)
+        ]
+        if let recency = request.recency { body["time_range"] = recency.rawValue }
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+        let response = try await transport.send(urlRequest, responseLimit: 1_000_000, deadline: request.deadline)
+        // Tavily documents 401 invalid key and 432/433 plan or pay-as-you-go limits.
+        switch response.statusCode {
+        case 401, 403: throw FamiliarWebError.searchKeyRejected("Tavily")
+        case 432, 433: throw FamiliarWebError.searchQuotaExceeded("Tavily")
+        default: try FamiliarSearchAdapterSupport.validate(response)
+        }
         let fixture = try FamiliarSearchAdapterSupport.decode(TavilyResponse.self, from: response.body)
-        let results = fixture.results.prefix(request.maximumResults).enumerated().compactMap {
+        let results = (fixture.results ?? []).compactMap { item -> (String, String, String?)? in
+            guard let url = item.url, !url.isEmpty else { return nil }
+            let title = item.title.flatMap { $0.isEmpty ? nil : $0 } ?? URL(string: url)?.host ?? url
+            return (title, url, item.content)
+        }.prefix(request.maximumResults).enumerated().compactMap {
             FamiliarSearchAdapterSupport.result(
                 position: $0.offset + 1,
-                title: $0.element.title,
-                url: $0.element.url,
-                snippet: $0.element.content
+                title: $0.element.0,
+                url: $0.element.1,
+                snippet: $0.element.2
             )
         }
         return .init(providerID: id, results: results, truncated: false)
     }
 
+    /// Every field is optional: one malformed result must not discard the whole response.
     private struct TavilyResponse: Decodable {
-        let results: [Result]
-        struct Result: Decodable { let title: String; let url: String; let content: String? }
+        let results: [Result]?
+        struct Result: Decodable { let title: String?; let url: String?; let content: String? }
     }
 }
 
@@ -326,7 +371,7 @@ nonisolated struct FamiliarExaSearchProvider: FamiliarSearchProvider {
                 "highlights": ["maxCharacters": 600]
             ]
         ], options: [.sortedKeys])
-        let response = try await transport.send(urlRequest, responseLimit: 1_000_000)
+        let response = try await transport.send(urlRequest, responseLimit: 1_000_000, deadline: request.deadline)
         try FamiliarSearchAdapterSupport.validate(response)
         let fixture = try FamiliarSearchAdapterSupport.decode(ExaResponse.self, from: response.body)
         let results = fixture.results.prefix(request.maximumResults).enumerated().compactMap {
@@ -347,6 +392,8 @@ nonisolated struct FamiliarExaSearchProvider: FamiliarSearchProvider {
 }
 
 private nonisolated enum FamiliarSearchAdapterSupport {
+    static let browserUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1"
+
     static func validate(_ response: FamiliarSearchHTTPResponse) throws {
         if response.statusCode == 429 { throw FamiliarWebError.rateLimited }
         guard (200..<300).contains(response.statusCode) else {
