@@ -44,8 +44,8 @@ nonisolated struct FamiliarExecutionPolicy: Sendable {
         if manifest.effect != .read, proposal == nil {
             return .init(decision: .requireApproval, approval: nil, authorizationScope: nil, automatic: false)
         }
-        let localNames: Set<String> = ["file_write", "file_edit", "file_publish", "workspace_write", "shell_execute"]
-        if manifest.source == .builtIn, localNames.contains(manifest.name),
+        let automaticNames: Set<String> = ["file_write", "file_edit", "file_publish", "workspace_write", "shell_execute", "memory_remember", "environment_prepare"]
+        if manifest.source == .builtIn, automaticNames.contains(manifest.name),
            effect == .reversibleWrite, context.workspaceID != nil,
            assessment.disposition == .automatic, assessment.risk != .high,
            let proposal, proposal.undoPolicy != .unavailable,
@@ -54,7 +54,11 @@ nonisolated struct FamiliarExecutionPolicy: Sendable {
         }
         let targetKey = proposal?.targetKey ?? assessment.targetKey
         let durations: [FamiliarAuthorizationDuration] = manifest.effect == .read ? [.once, .session] : (proposal?.allowedAuthorizationDurations ?? [.once])
-        let mayReuse = manifest.source != .mcp && (effect == .read || (effect == .reversibleWrite && risk != .high))
+        // A tool that offers `.always` declares itself level 3: its capability-level
+        // reuse is intended even for high-risk or external tools. Everything else
+        // keeps the old limits (MCP excluded unless trusted, high risk never reused).
+        let mayReuse = durations.contains(.always)
+            || (manifest.source != .mcp && (effect == .read || (effect == .reversibleWrite && risk != .high)))
         let scope = mayReuse ? try await authorization?.matchingAuthorizationScope(manifest: manifest,
             arguments: call.arguments, scope: context.workspaceID, targetKey: targetKey) : nil
         let reused = scope.flatMap { durations.contains($0) ? $0 : nil }

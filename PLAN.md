@@ -57,7 +57,7 @@
 - [x] S2a：clipboard_read 只读；environment_prepare 已就绪无变更结果；可撤销 file/workspace 与 checkpoint 保护的离线 Shell 自动执行，保留回执、Undo、journal、复核、补偿、防重放。
 - [x] 构建：指定 arm64 iPhone 18 Pro 的 build-for-testing 成功，App 与两类测试目标编译通过，最终日志无 warning/error；静态检查和双语文案校验通过。
 - [ ] 验收：按所有者最新要求不执行测试或截图。真机视觉由所有者验收；生命周期、重置与运行授权不得记作已运行通过。详见 docs/16-work-scope-convergence.md。
-- 下一步：所有者真机检查普通/项目生命周期和视觉；S2b 外部持续授权、Memory 自动写入、依赖安装与 MCP 信任另切片，完整 S2 不标完成。
+- 下一步：所有者真机检查普通/项目生命周期和视觉；S2b 已实现并通过指定 arm64 构建（能力级持续授权、Memory 自动写入、依赖安装自动边界、MCP 信任），真机行为验收另列，完整 S2 不标完成。
 
 ### S2 授权按后果分级 `[~]`
 
@@ -72,6 +72,12 @@
 - 保留：模型不能自授权、执行前复核、写入 journal、防重放。
 - 修 `clipboard_read` 与 `environment_prepare` 已就绪路径的 `invalidOutcome`；修正 ContextCompiler 中与策略矛盾的 Shell 提示。
 - 表驱动测试锁定“工具 → 级别”。完成后更新 AGENTS.md 的授权规则。
+- [x] S2b：`.always` 重定义为能力级匹配（scopeKey + capabilityID + capabilityVersion，忽略参数与目标）；第 3 级工具（EventKit 创建/更新、通知、剪贴板、相册、alarm_schedule、skill_install、已信任 MCP）申请 `[.once, .always]` 并在卡片默认“始终允许此类”；删除类、alarm_cancel、未信任 MCP 保持每次询问。
+- [x] S2b：`memory_remember` 走第 2 级自动写入（开关开启时），回执可撤销，控制器按 provenance 删除对应行；契约文档同步更新。
+- [x] S2b：`environment_prepare` 改为 `reversibleWrite`，来自配置软件源时自动执行；保留旧环境目录作为会话 Undo 目标，撤销回滚目录与 receipt 元数据。
+- [x] S2b：MCP 信任为按服务器的用户设置（UserDefaults，默认未信任；设置页开关，删除服务器清除），已信任按第 3 级、未信任每次询问。
+- [x] S2b 构建：arm64 iPhone 18 Pro Simulator `build-for-testing` 成功（exit 0，无源码 warning/error）；新增/更新能力级匹配、EventKit 级别、MCP 信任、Memory 二级写入等用例，全部只编译不执行。见 docs/17-s2b-authorization-design.md。
+- [ ] S2b 验收：所有者真机行为验收（清单见 docs/17 §5）；完整 S2 不标完成。
 
 ### S3 Chat 呈现收敛 `[ ]`
 
@@ -118,6 +124,8 @@
 
 ## 当前切片
 
-普通对话/项目分离、抽屉顶栏与 S2a 已实现并通过指定 arm64 iPhone 18 Pro 构建。按所有者要求，本切片不执行测试或截图；真机视觉由所有者负责，运行生命周期和业务重置验收待记录。完整 S2 不标完成。
+普通对话/项目分离、抽屉顶栏与 S2a 已实现并通过指定 arm64 iPhone 18 Pro 构建。按所有者要求，本切片不执行测试或截图；真机视觉由所有者负责，运行生命周期和业务重置验收待记录。
 
-S1 的 79 项定向单测、WebKit 引用回归与 3 项生产 UI 证据仅属于之前的 S1 基线；DeepSeek + Tavily 20 条真实查询与所有者签字仍待完成。后续进入 S2b 或 S4 前，单列真实验收结果，不把本次编译等同于运行通过。
+S2b（能力级持续授权、Memory 自动写入、environment_prepare 自动边界、MCP 信任）已实现：arm64 iPhone 18 Pro Simulator `build-for-testing` 成功，测试只编译不执行；真机行为验收清单见 docs/17-s2b-authorization-design.md §5，验收前完整 S2 不标完成。
+
+S1 的 79 项定向单测、WebKit 引用回归与 3 项生产 UI 证据仅属于之前的 S1 基线；DeepSeek + Tavily 20 条真实查询与所有者签字仍待完成。后续切片同样单列真实验收结果，不把编译等同于运行通过。

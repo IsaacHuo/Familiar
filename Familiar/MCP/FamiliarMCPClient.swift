@@ -149,8 +149,10 @@ nonisolated enum FamiliarMCPValue: Codable, Sendable {
     }
 }
 
-/// Remote annotations cannot grant authorization. Every call is an explicit,
-/// one-time proposal bound to the selected server, arguments and active run.
+/// Remote annotations cannot grant authorization. Untrusted servers are level 4:
+/// every call is an explicit, one-time proposal bound to the selected server,
+/// arguments and active run. Trusted servers (a user setting) are level 3: the card
+/// may offer "always allow this kind" for this capability.
 nonisolated struct FamiliarMCPTool: FamiliarTool {
     typealias Input = FamiliarMCPValue
     let manifest: FamiliarToolManifest
@@ -172,6 +174,9 @@ nonisolated struct FamiliarMCPTool: FamiliarTool {
     }
     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
         let arguments = try JSONEncoder().encode(input)
+        let durations: [FamiliarAuthorizationDuration] = FamiliarMCPTrustStore().isTrusted(serverID: configuration.id)
+            ? [.once, .always]
+            : [.once]
         return .action(.init(
             title: manifest.title,
             fields: [.init(id: "server", label: String(localized: "mcp.server"), type: .text, value: configuration.endpoint.absoluteString),
@@ -180,7 +185,7 @@ nonisolated struct FamiliarMCPTool: FamiliarTool {
             target: configuration.endpoint.absoluteString, targetKey: configuration.id.uuidString + ":" + definition.name,
             effect: .destructiveWrite, risk: .high,
             consequence: String(localized: "mcp.consequence"), undoPolicy: .unavailable,
-            idempotencyKey: context.idempotencyKey, allowedAuthorizationDurations: [.once],
+            idempotencyKey: context.idempotencyKey, allowedAuthorizationDurations: durations,
             commit: {
                 let data = try await client.call(name: definition.name, arguments: arguments)
                 let raw = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]

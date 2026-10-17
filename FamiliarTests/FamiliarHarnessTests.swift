@@ -63,11 +63,13 @@ struct FamiliarHarnessTests {
         #expect(!events.contains { if case .toolResultProduced = $0.payload { true } else { false } })
         #expect(events.contains { event in
             if case .activityCompleted(let activity) = event.payload {
-                return activity.toolName == "memory_remember" && activity.status == .failed && activity.failureCode == "tool_persistence_failed"
+                // The level-2 write compensates through its rollback closure, so a
+                // failed save reports the rolled-back state, never a success.
+                return activity.toolName == "memory_remember" && activity.status == .failed && activity.failureCode == "tool_commit_rolled_back"
             }
             return false
         })
-        #expect(await probe.lastToolContent().contains("tool_persistence_failed"))
+        #expect(await probe.lastToolContent().contains("tool_commit_rolled_back"))
         #expect(outcomes(events) == [.succeeded])
     }
 

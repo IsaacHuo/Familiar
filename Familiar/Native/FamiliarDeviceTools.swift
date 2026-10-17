@@ -445,6 +445,7 @@ nonisolated struct FamiliarClipboardWriteTool: FamiliarTool {
             consequence: "将替换当前剪贴板内容。为当前会话的撤销临时保留原内容；原内容不会发送给模型。无法读取原内容时不执行替换。",
             undoPolicy: .currentSession,
             idempotencyKey: context.idempotencyKey,
+            allowedAuthorizationDurations: [.once, .always],
             validateBeforeCommit: {
                 guard await service.revision() == expectedRevision else { throw FamiliarClipboardError.changed }
             },

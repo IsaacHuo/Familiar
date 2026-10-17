@@ -61,6 +61,7 @@ Registry 与 iSH bridge 之间没有就绪协调：`prepareRuntime()` 在游离 
 三层 scope 的枚举已存在（`global` / `project` / `conversation`），但整条运行时链缺失。契约：
 
 1. 写入必须经用户确认。`FamiliarMemoryCreator` 已区分 `user` 与 `agentConfirmed`。模型不得直接写入 confirmed memory；自动提议必须落为待确认状态，由用户接受后才生效。
+   **决策更新（2026-10-17，PLAN S2b）**：所有者确认按 PLAN 级别表执行——`memory_remember` 属于第 2 级，记忆开关开启时自动执行并返回可撤销回执（撤销由控制器按 provenance 删除该行），不再逐条弹卡片；开关关闭时不写入也不读取。原「自动提议必须落为待确认状态」条款被本决策取代；「模型不能自授权、记忆不能授予工具权限」不变量不变。见 `docs/17-s2b-authorization-design.md`。
 2. 去重必须按 scope。当前 `insert` 用 `normalizedKey` 做全局匹配且该字段无唯一约束，不同 Project 的同名记忆会互相覆盖。去重键必须是 `(scope, projectID, conversationID, normalizedKey)`。
 3. `lastUsedAt` 必须在实际被 Context Compiler 选中时写入。当前从不赋值却被用于排序，排序永久退化为 `updatedAt`。
 4. 禁止把完整历史放入 Prompt。Context Compiler 只选与当前任务相关的记忆，并受显式字符预算约束；预算超限必须明确拒绝或截断可见，不得静默丢弃。

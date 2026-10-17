@@ -124,6 +124,18 @@ struct FamiliarProjectService {
         try save(context)
     }
 
+    /// Follows an undone environment replacement: the restored directory may carry an
+    /// older receipt, and a first install leaves no environment at all.
+    func removeEnvironment(scope: FamiliarWorkScope, in context: ModelContext) throws {
+        let key = scope.storageKey
+        if let existing = try context.fetch(FetchDescriptor<FamiliarEnvironmentRecord>(
+            predicate: #Predicate { $0.scopeKey == key }
+        )).first {
+            context.delete(existing)
+            try save(context)
+        }
+    }
+
     func boundSkillSnapshots(projectID: UUID, in context: ModelContext) throws -> [FamiliarSkillSnapshot] {
         let bindings = try context.fetch(FetchDescriptor<FamiliarProjectSkillBindingRecord>(
             predicate: #Predicate { $0.projectID == projectID && $0.enabled }

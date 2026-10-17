@@ -1,14 +1,20 @@
 import Foundation
 
-/// Proposes a long-term memory. The model cannot store memory on its own: this returns
-/// an action proposal, and the row is only written after the user approves and the
-/// controller persists the request through the runtime's success-boundary callback.
+/// Records a long-term memory. The model cannot store memory on its own: this returns
+/// a level-2 action proposal, which the runtime executes automatically (receipt + Undo)
+/// while the user's "remember across conversations" switch is on. The row is persisted
+/// through the runtime's success-boundary callback, and Undo removes it again.
 nonisolated struct FamiliarMemoryRememberTool: FamiliarTool {
     struct Input: Decodable, Sendable { let content: String; let scope: String? }
 
     private struct Output: Encodable {
         let remembered: Bool
         let scope: String
+        let content: String
+    }
+
+    private struct UndoOutput: Encodable {
+        let forgotten: Bool
         let content: String
     }
 
@@ -45,7 +51,7 @@ nonisolated struct FamiliarMemoryRememberTool: FamiliarTool {
             scope: scope,
             projectID: scope != .global ? context.projectID : nil,
             conversationID: scope == .conversation ? context.conversationID : nil,
-            provenance: "run:\(context.runID)"
+            provenance: "run:\(context.idempotencyKey)"
         )
         return .action(FamiliarActionProposal(
             title: "记住这条信息",
@@ -56,30 +62,46 @@ nonisolated struct FamiliarMemoryRememberTool: FamiliarTool {
             target: Self.scopeLabel(scope),
             effect: manifest.effect,
             risk: manifest.risk,
-            consequence: "Familiar 会在以后的对话中记住这条信息。可以随时在设置中查看或删除。",
-            // No runtime undo closure exists: the tool is nonisolated and cannot delete
-            // the row. Claiming .durable here would promise an undo the runtime cannot
-            // perform. Removal is the Settings path named in the consequence.
-            undoPolicy: .unavailable,
+            consequence: "Familiar 会在以后的对话中记住这条信息。可以随时撤销，或在设置中查看或删除。",
+            // Undo runs through the controller, which deletes the row by this run's
+            // provenance; the tool itself has no database access.
+            undoPolicy: .currentSession,
             idempotencyKey: context.idempotencyKey,
-            // Only .once: a session or long-term grant would let the Agent keep writing
-            // memory without asking, and the contract requires every remembered item to
-            // be user-confirmed.
+            // Only .once as a fallback: the level-2 automatic path does not ask, and a
+            // reusable grant would let the Agent keep writing memory without receipts.
             allowedAuthorizationDurations: [.once],
             commit: {
-                FamiliarCommittedAction(result: .init(
-                    envelope: try FamiliarToolResultEnvelope(
-                        model: Output(remembered: true, scope: scope.rawValue, content: content),
-                        presentation: .mutationReceipt(.init(
-                            summary: "已记住：\(content)",
-                            operation: "memoryRemember",
-                            targetIdentifier: nil,
-                            succeeded: true,
-                            undoAvailable: false
-                        ))
+                FamiliarCommittedAction(
+                    result: .init(
+                        envelope: try FamiliarToolResultEnvelope(
+                            model: Output(remembered: true, scope: scope.rawValue, content: content),
+                            presentation: .mutationReceipt(.init(
+                                summary: "已记住：\(content)",
+                                operation: "memoryRemember",
+                                targetIdentifier: nil,
+                                succeeded: true,
+                                undoAvailable: true
+                            ))
+                        ),
+                        memoryWrite: request
                     ),
-                    memoryWrite: request
-                ))
+                    undo: {
+                        .init(envelope: try FamiliarToolResultEnvelope(
+                            model: UndoOutput(forgotten: true, content: content),
+                            presentation: .mutationReceipt(.init(
+                                summary: "已忘记：\(content)",
+                                operation: "memoryForget",
+                                targetIdentifier: nil,
+                                succeeded: true,
+                                undoAvailable: false
+                            ))
+                        ))
+                    },
+                    // The row is inserted in the same SwiftData transaction as this
+                    // result's persistence, so a failed save rolls it back and there
+                    // is nothing to compensate here.
+                    rollback: {}
+                )
             }
         ))
     }

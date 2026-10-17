@@ -288,6 +288,11 @@ struct FamiliarApprovalCard: View {
     }
 
     private static func defaultDecision(for surface: FamiliarSurfaceDescriptor) -> FamiliarToolConfirmationDecision {
+        // Any card that offers a capability-level grant is level 3, and its intended
+        // default is "always allow this kind"; the user can still choose once.
+        if surface.approvalAllowedAuthorizationDurations.contains(.always) {
+            return .confirmedAlways
+        }
         if surface.approvalAllowedAuthorizationDurations.contains(.once) {
             return .confirmedOnce
         }

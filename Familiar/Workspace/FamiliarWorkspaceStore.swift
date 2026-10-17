@@ -285,10 +285,10 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         let paths = try prepare(scope)
         let trash = rootURL.appendingPathComponent(".Trash", isDirectory: true)
         try ensureDirectory(trash)
-        let backup = trash.appendingPathComponent(
-            "Environment-\(scope.storageKey)-\(UUID().uuidString.lowercased())",
-            isDirectory: true
-        )
+        // One deterministic backup per scope: it is the session Undo target for the
+        // latest environment replacement, so anything else with this prefix is stale.
+        let backup = trash.appendingPathComponent("Environment-\(scope.storageKey)", isDirectory: true)
+        purgeEnvironmentBackups(for: scope, keeping: backup)
         do {
             if fileManager.fileExists(atPath: paths.environment.path) {
                 try fileManager.moveItem(at: paths.environment, to: backup)
@@ -321,10 +321,28 @@ nonisolated struct FamiliarWorkspaceStore: @unchecked Sendable {
         guard isConfined(root, below: rootURL.standardizedFileURL) else {
             throw FamiliarWorkspaceError.invalidPath
         }
+        purgeEnvironmentBackups(for: id)
         guard fileManager.fileExists(atPath: root.path) else { return }
         guard !isSymbolicLink(root) else { throw FamiliarWorkspaceError.symbolicLinkNotAllowed }
         try makeTreeWritable(root)
         try fileManager.removeItem(at: root)
+    }
+
+    /// Removes environment backups for one scope, optionally keeping the single live
+    /// Undo target. Stale backups are dead weight (the receipt revision guard makes
+    /// them unrestorable) and can be hundreds of megabytes.
+    private func purgeEnvironmentBackups(for scope: FamiliarWorkScope, keeping: URL? = nil) {
+        let trash = rootURL.appendingPathComponent(".Trash", isDirectory: true)
+        guard let entries = try? fileManager.contentsOfDirectory(at: trash, includingPropertiesForKeys: nil) else { return }
+        let name = "Environment-\(scope.storageKey)"
+        let kept = keeping?.standardizedFileURL
+        for entry in entries {
+            let entryName = entry.lastPathComponent
+            guard entryName == name || entryName.hasPrefix(name + "-") else { continue }
+            guard entry.standardizedFileURL != kept, !isSymbolicLink(entry) else { continue }
+            try? makeTreeWritable(entry)
+            try? fileManager.removeItem(at: entry)
+        }
     }
 
     func stageWorkspace(_ id: FamiliarWorkScope) throws -> FamiliarStagedWorkspaceDirectory {

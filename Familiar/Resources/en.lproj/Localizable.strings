@@ -610,7 +610,7 @@
 "spotlight.conversation.keyword" = "conversation";
 "authorization.once" = "Only Once";
 "authorization.session" = "Allow This Session";
-"authorization.always" = "Always Allow";
+"authorization.always" = "Always Allow This Kind";
 "authorization.more_options" = "More approval options";
 "approval.scope.question" = "How long should Familiar allow this action?";
 "approval.skip" = "Skip";
@@ -625,7 +625,7 @@
 "settings.authorizations.empty" = "No remembered authorizations";
 "settings.authorizations.revoke" = "Revoke";
 "settings.authorizations.revoke_all" = "Revoke All";
-"settings.authorizations.footer" = "Authorizations are scoped to a project, tool, and target. Destructive actions still require confirmation.";
+"settings.authorizations.footer" = "“Always allow this kind” remembers the scope and the action type without binding to one set of arguments. Destructive actions still require confirmation.";
 
 "agent.status.thought_for" = "Thought for %.1f s";
 "agent.status.searched_web" = "Searched the web";
@@ -857,6 +857,8 @@
 "mcp.arguments" = "Arguments";
 "mcp.consequence" = "These arguments will be sent to the remote server. The tool may change remote data and Familiar cannot undo the operation.";
 "mcp.scope.footer" = "Chat settings override project settings, which override global settings. Changes apply to the next run.";
+"mcp.trust.title" = "Trust This Server";
+"mcp.trust.detail" = "Trusted servers can be remembered after one confirmation. Untrusted servers ask on every call.";
 "mcp.add" = "Add MCP Server";
 "mcp.import" = "Import MCP JSON";
 "mcp.title" = "MCP Integrations";

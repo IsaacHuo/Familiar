@@ -32,10 +32,10 @@ struct FamiliarPlanCompletionTests {
         #expect(evidence.renderedText.contains("untrusted, read-only"))
     }
 
-    @Test("Remembered authorization remains scoped to exact arguments")
+    @Test("`.always` remembers the capability; exact arguments no longer matter")
     @MainActor
-    func authorizationArgumentScope() throws {
-        let container = try FamiliarTestStore.make(name: "AuthorizationArgumentScope")
+    func authorizationCapabilityScope() throws {
+        let container = try FamiliarTestStore.make(name: "AuthorizationCapabilityScope")
         let manifest = FamiliarToolManifest(
             name: "calendar_create", title: "Create event", description: "", parameters: .init(type: .object),
             effect: .reversibleWrite, risk: .low, requirements: []
@@ -51,6 +51,13 @@ struct FamiliarPlanCompletionTests {
             evidence: "test"
         )
         #expect(try runtime.matchingAuthorizationScope(manifest: manifest, arguments: "{\"title\":\"A\"}", scope: scope, targetKey: "calendar:default") == .always)
-        #expect(try runtime.matchingAuthorizationScope(manifest: manifest, arguments: "{\"title\":\"B\"}", scope: scope, targetKey: "calendar:default") == nil)
+        // Level 3 grants are capability-level: a different title or target in the same
+        // scope still matches. Only scope and capability version gate reuse.
+        #expect(try runtime.matchingAuthorizationScope(manifest: manifest, arguments: "{\"title\":\"B\"}", scope: scope, targetKey: "calendar:other") == .always)
+        #expect(try runtime.matchingAuthorizationScope(manifest: manifest, arguments: "{\"title\":\"B\"}", scope: .conversation(UUID()), targetKey: "calendar:default") == nil)
+        #expect(try runtime.matchingAuthorizationScope(manifest: FamiliarToolManifest(
+            version: "2", name: "calendar_create", title: "Create event", description: "", parameters: .init(type: .object),
+            effect: .reversibleWrite, risk: .low, requirements: []
+        ), arguments: "{\"title\":\"B\"}", scope: scope, targetKey: "calendar:default") == nil)
     }
 }

@@ -208,7 +208,7 @@ nonisolated struct FamiliarSkillInstallTool: FamiliarTool {
             .init(id: "tools", label: "Tool scope", type: .text, value: prepared.manifest.document.allowedTools.joined(separator: ", "))
         ], target: projectID.uuidString, targetKey: "skill:\(projectID):\(prepared.hash)", effect: .reversibleWrite, risk: .sensitive,
            consequence: "将安装已检查的技能包并绑定当前项目。安装不会执行脚本或授予额外权限。", undoPolicy: .unavailable,
-           idempotencyKey: context.idempotencyKey, allowedAuthorizationDurations: [.once], commit: {
+           idempotencyKey: context.idempotencyKey, allowedAuthorizationDurations: [.once, .always], commit: {
             let snapshot = try store.commit(prepared)
             return .init(result: .init(envelope: try .init(model: snapshot,
                 presentation: .scalar(.init(summary: "已安装项目技能", label: "Skill", value: snapshot.name))), installedSkill: snapshot))

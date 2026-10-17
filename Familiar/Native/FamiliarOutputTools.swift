@@ -204,7 +204,7 @@ nonisolated struct FamiliarPhotosSaveOutputTool: FamiliarTool {
             consequence: "会向系统照片图库新增一张图片；Familiar 不会读取图库，也无法用 add-only 权限自动撤销。",
             undoPolicy: .unavailable,
             idempotencyKey: context.idempotencyKey,
-            allowedAuthorizationDurations: [.once],
+            allowedAuthorizationDurations: [.once, .always],
             commit: {
                 try Task.checkCancellation()
                 var status = await photos.addAuthorization()

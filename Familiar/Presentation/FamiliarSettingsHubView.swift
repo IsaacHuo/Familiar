@@ -795,14 +795,14 @@ private struct FamiliarAuthorizationSettingsView: View {
                 Section {
                     ForEach(activeRecords) { record in
                         VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                            Text(record.capabilityID)
+                            Text(record.evidence.isEmpty ? record.capabilityID : record.evidence)
                                 .font(FamiliarTypography.body.weight(.medium))
-                            Text(record.targetKey)
-                                .font(FamiliarTypography.caption)
-                                .foregroundStyle(.secondary)
-                            Text(record.duration == .session
-                                 ? String(localized: "authorization.session", defaultValue: "This Session")
-                                 : String(localized: "authorization.always", defaultValue: "Always Allow"))
+                            if record.duration != .always {
+                                Text(record.targetKey)
+                                    .font(FamiliarTypography.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text(durationLabel(record.duration))
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
                         }
@@ -828,6 +828,14 @@ private struct FamiliarAuthorizationSettingsView: View {
         }
         .navigationTitle(String(localized: "settings.hub.authorizations", defaultValue: "Approved Actions"))
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func durationLabel(_ duration: FamiliarAuthorizationDuration) -> String {
+        switch duration {
+        case .once: String(localized: "authorization.once", defaultValue: "Only Once")
+        case .session: String(localized: "authorization.session", defaultValue: "Allow This Session")
+        case .always: String(localized: "authorization.always", defaultValue: "Always Allow")
+        }
     }
 }
 

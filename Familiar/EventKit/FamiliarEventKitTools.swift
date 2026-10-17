@@ -109,6 +109,7 @@ nonisolated struct FamiliarCreateCalendarEventTool: FamiliarTool {
             consequence: "将在 \(target) 中创建日历事件。",
             undoPolicy: .durable,
             idempotencyKey: context.idempotencyKey,
+            allowedAuthorizationDurations: [.once, .always],
             validateBeforeCommit: {
                 guard try await service.targetRevision(for: request) == targetRevision else { throw FamiliarPolicyError.changedDuringApproval }
             },
@@ -151,6 +152,7 @@ nonisolated struct FamiliarCreateReminderTool: FamiliarTool {
             consequence: "将在 \(target) 中创建提醒事项。",
             undoPolicy: .durable,
             idempotencyKey: context.idempotencyKey,
+            allowedAuthorizationDurations: [.once, .always],
             validateBeforeCommit: {
                 guard try await service.targetRevision(for: request) == targetRevision else { throw FamiliarPolicyError.changedDuringApproval }
             },
@@ -205,6 +207,7 @@ nonisolated struct FamiliarUpdateCalendarEventTool: FamiliarTool {
             consequence: "将替换 \(target) 中这一条日历事件；若为重复事件，只修改当前 occurrence。",
             undoPolicy: .durable,
             idempotencyKey: context.idempotencyKey,
+            allowedAuthorizationDurations: [.once, .always],
             validateBeforeCommit: {
                 guard try await service.targetRevision(for: request) == targetRevision else { throw FamiliarPolicyError.changedDuringApproval }
             },
@@ -286,6 +289,7 @@ nonisolated struct FamiliarUpdateReminderTool: FamiliarTool {
             consequence: "将替换 \(target) 中这一条提醒事项，包括完成状态。",
             undoPolicy: .durable,
             idempotencyKey: context.idempotencyKey,
+            allowedAuthorizationDurations: [.once, .always],
             validateBeforeCommit: {
                 guard try await service.targetRevision(for: request) == targetRevision else { throw FamiliarPolicyError.changedDuringApproval }
             },

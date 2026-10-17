@@ -17,23 +17,35 @@ struct FamiliarMCPSettingsView: View {
         List {
             Section {
                 ForEach(servers) { server in
-                    HStack {
-                        Button { editing = .init(id: server.id, server: server) } label: {
-                            HStack(spacing: FamiliarSpacing.small) {
-                                VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                                    Text(server.displayName)
-                                    Text(server.endpointString).font(FamiliarTypography.caption).foregroundStyle(.secondary).lineLimit(1)
+                    VStack(alignment: .leading, spacing: FamiliarSpacing.small) {
+                        HStack {
+                            Button { editing = .init(id: server.id, server: server) } label: {
+                                HStack(spacing: FamiliarSpacing.small) {
+                                    VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
+                                        Text(server.displayName)
+                                        Text(server.endpointString).font(FamiliarTypography.caption).foregroundStyle(.secondary).lineLimit(1)
+                                    }
+                                    Spacer(minLength: FamiliarSpacing.small)
+                                    Image(systemName: "chevron.right")
+                                        .font(FamiliarTypography.caption.weight(.semibold))
+                                        .foregroundStyle(.tertiary)
+                                        .accessibilityHidden(true)
                                 }
-                                Spacer(minLength: FamiliarSpacing.small)
-                                Image(systemName: "chevron.right")
-                                    .font(FamiliarTypography.caption.weight(.semibold))
-                                    .foregroundStyle(.tertiary)
-                                    .accessibilityHidden(true)
+                                .frame(maxWidth: .infinity, minHeight: FamiliarControlSize.minimumHitTarget, alignment: .leading)
                             }
-                            .frame(maxWidth: .infinity, minHeight: FamiliarControlSize.minimumHitTarget, alignment: .leading)
+                            Toggle(server.displayName, isOn: enabledBinding(server)).labelsHidden()
                         }
-                        Toggle(server.displayName, isOn: enabledBinding(server)).labelsHidden()
+                        Toggle(isOn: trustBinding(server)) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(String(localized: "mcp.trust.title", defaultValue: "信任此服务器"))
+                                Text(String(localized: "mcp.trust.detail", defaultValue: "信任后，此服务器的调用可以在确认一次后记住；未信任时每次调用都会询问。"))
+                                    .font(FamiliarTypography.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .accessibilityIdentifier("mcp.trust." + server.id.uuidString)
                     }
+                    .padding(.vertical, FamiliarSpacing.xSmall)
                 }
             } footer: { Text(String(localized: "mcp.scope.footer")) }
             Button { editing = .init(id: UUID(), server: nil) } label: { Text(String(localized: "mcp.add")) }
@@ -56,6 +68,10 @@ struct FamiliarMCPSettingsView: View {
         .alert(String(localized: "settings.error.title"), isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button(String(localized: "common.ok"), role: .cancel) {}
         } message: { Text(errorMessage ?? "") }
+    }
+    private func trustBinding(_ server: FamiliarMCPServerRecord) -> Binding<Bool> {
+        Binding(get: { FamiliarMCPTrustStore().isTrusted(serverID: server.id) },
+                set: { FamiliarMCPTrustStore().setTrusted($0, serverID: server.id) })
     }
     private func enabledBinding(_ server: FamiliarMCPServerRecord) -> Binding<Bool> {
         let binding = bindings.first { $0.serverID == server.id && $0.projectID == projectID && $0.conversationID == conversationID }
@@ -129,6 +145,7 @@ private struct FamiliarMCPServerEditor: View {
                         let id = server.id
                         for binding in try context.fetch(FetchDescriptor<FamiliarMCPBindingRecord>(predicate: #Predicate { $0.serverID == id })) { context.delete(binding) }
                         context.delete(server); try context.save()
+                        FamiliarMCPTrustStore().removeTrust(serverID: id)
                         try FamiliarKeychainStore.delete(for: "mcp." + identifier.uuidString)
                         dismiss()
                     } catch { context.rollback(); errorMessage = error.localizedDescription }

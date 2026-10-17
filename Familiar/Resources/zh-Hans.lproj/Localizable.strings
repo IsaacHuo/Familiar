@@ -610,7 +610,7 @@
 "spotlight.conversation.keyword" = "会话";
 "authorization.once" = "仅这次";
 "authorization.session" = "本次会话允许";
-"authorization.always" = "始终允许";
+"authorization.always" = "始终允许此类";
 "authorization.more_options" = "更多批准选项";
 "approval.scope.question" = "这次授权应当持续多久？";
 "approval.skip" = "跳过";
@@ -625,7 +625,7 @@
 "settings.authorizations.empty" = "没有已记住的授权";
 "settings.authorizations.revoke" = "撤销";
 "settings.authorizations.revoke_all" = "撤销全部";
-"settings.authorizations.footer" = "授权按项目、工具和目标隔离。破坏性动作仍然需要确认。";
+"settings.authorizations.footer" = "「始终允许此类」按范围与操作类型记忆，不绑定单次参数。破坏性动作仍然需要确认。";
 
 "agent.status.thought_for" = "思考 %.1f 秒";
 "agent.status.searched_web" = "已搜索网页";
@@ -857,6 +857,8 @@
 "mcp.arguments" = "调用参数";
 "mcp.consequence" = "这些参数会发送给远程服务器。该工具可能修改远程数据，Familiar 无法撤销此操作。";
 "mcp.scope.footer" = "会话设置优先于项目设置，项目设置优先于全局设置。更改从下一次运行生效。";
+"mcp.trust.title" = "信任此服务器";
+"mcp.trust.detail" = "信任后，此服务器的调用可以在确认一次后记住；未信任时每次调用都会询问。";
 "mcp.add" = "添加 MCP 服务器";
 "mcp.import" = "导入 MCP JSON";
 "mcp.title" = "MCP 集成";

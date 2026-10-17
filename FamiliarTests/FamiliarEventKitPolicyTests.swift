@@ -102,6 +102,32 @@ struct FamiliarEventKitPolicyTests {
         await #expect(throws: Error.self) { _ = try await proposal.commit() }
     }
 
+    @Test("Create and update are level 3; deletes stay level 4 with one-shot approval")
+    func authorizationLevels() async throws {
+        let service = FamiliarFakeEventKitService()
+        let context = FamiliarToolContext(runID: "run", toolCallID: "call")
+        guard case .action(let create) = try await FamiliarCreateCalendarEventTool(service: service).execute(event, context: context)
+        else { Issue.record("Expected a create proposal"); return }
+        #expect(create.allowedAuthorizationDurations == [.once, .always])
+
+        guard case .action(let createReminder) = try await FamiliarCreateReminderTool(service: service).execute(
+            .init(title: "Walk", dueISO8601: "2026-08-30T15:00:00Z", listIdentifier: nil, priority: 1, notes: nil),
+            context: context
+        ) else { Issue.record("Expected a reminder proposal"); return }
+        #expect(createReminder.allowedAuthorizationDurations == [.once, .always])
+
+        guard case .action(let update) = try await FamiliarUpdateReminderTool(service: service).execute(
+            .init(identifier: "reminder-1", title: "Review", dueISO8601: "2026-08-30T15:00:00Z", listIdentifier: nil, priority: 3, notes: nil, isCompleted: true),
+            context: context
+        ) else { Issue.record("Expected an update proposal"); return }
+        #expect(update.allowedAuthorizationDurations == [.once, .always])
+
+        guard case .action(let delete) = try await FamiliarDeleteReminderTool(service: service).execute(
+            .init(identifier: "reminder-1"), context: context
+        ) else { Issue.record("Expected a delete proposal"); return }
+        #expect(delete.allowedAuthorizationDurations == [.once])
+    }
+
     @Test("Update and delete writes remain pure proposals until commit")
     func updateAndDeleteProposalBoundary() async throws {
         let service = FamiliarFakeEventKitService()

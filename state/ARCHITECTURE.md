@@ -66,9 +66,9 @@
 
 ## 6. 授权现状
 
-`FamiliarExecutionPolicy.evaluate` 拒绝不可用、preflight deny、缺少必要 scope、Skill 越界或 effect 不一致的调用。普通只读自动执行。已启用的内置 file_write/edit/publish、workspace_write 在确定可撤销且 preflight 非高风险时自动执行；离线 shell_execute 还需 Swift 命令检查、当前 Workspace 限制和写入前 checkpoint。网络/危险 Shell 仍审批或拒绝。执行前复核、journal、防重放、保存失败补偿和真实回执保留。撤销仅在当前聊天和其当前 scope 与原 Run scope 一致时显示/执行。
+`FamiliarExecutionPolicy.evaluate` 拒绝不可用、preflight deny、缺少必要 scope、Skill 越界或 effect 不一致的调用。普通只读自动执行。第 2 级本地写入在撤销真实存在时自动执行并保留回执与撤销：内置 file_write/edit/publish、workspace_write、memory_remember（记忆开关开启时，控制器按 provenance 删除对应行）、从配置软件源发起的 environment_prepare（保留旧环境目录作为会话 Undo 目标，撤销回滚目录与 receipt 元数据）、经 Swift 命令检查与写入前 checkpoint 的离线 shell_execute。第 3 级外部影响（EventKit 创建/更新、通知、剪贴板写入、保存相册、alarm_schedule、skill_install、已信任 MCP）首次询问，卡片默认「始终允许此类」；`.always` 规则按 scopeKey + capabilityID + capabilityVersion 匹配，不绑定参数 hash 或 targetKey。删除、alarm_cancel 与未信任 MCP 每次询问且不产生持久授权。MCP 信任是按服务器的用户设置（UserDefaults，默认未信任，设置页可撤销，删除服务器清除）。执行前复核、journal、防重放、保存失败补偿和真实回执保留。撤销仅在当前聊天和其当前 scope 与原 Run scope 一致时显示/执行。
 
-AuthorizationRuleRecord 使用完整 scopeKey，匹配能力、版本、targetKey、参数 hash、时长与会话。nil scope 不能持久授权。同 UUID 的 Project/Conversation 互不匹配；移动聊天不会携带旧授权。外部持续授权和 MCP 信任分级尚未实施。Memory 写入、实际依赖安装继续审批。
+AuthorizationRuleRecord 使用完整 scopeKey，`.once` 10 分钟、`.session` 绑定会话且要求精确参数、`.always` 为能力级并 365 天有效。nil scope 不能持久授权。同 UUID 的 Project/Conversation 互不匹配；移动聊天不会携带旧授权。
 
 `clipboard_read` 返回只读结果，只触发系统粘贴许可。`environment_prepare` 的已就绪路径返回专用 `.unchanged`，不走写审批、journal 或 Undo；普通写工具仍不得返回只读 `.result`。
 

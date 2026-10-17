@@ -79,9 +79,11 @@ struct FamiliarMemoryService {
         return lhs.id.uuidString < rhs.id.uuidString
     }
 
-    /// Persists a memory the user approved. `agentConfirmed` records that the Agent
-    /// proposed the text and the user accepted it; the model can never write memory on
-    /// its own, because this is only reachable after an approval commit.
+    /// Persists a memory write from the runtime's success boundary. The Agent can never
+    /// write memory on its own: `memory_remember` only reaches this through the level-2
+    /// execution path (receipt + Undo) while the user's memory switch is on, or through
+    /// an approved fallback card. `agentConfirmed` records that the Agent proposed the
+    /// text rather than the user typing it in Settings.
     @discardableResult
     func persist(_ request: FamiliarMemoryWriteRequest, in context: ModelContext) throws -> FamiliarMemoryItem {
         try insert(

@@ -174,20 +174,20 @@ struct FamiliarMemoryTests {
         #expect(selected.reduce(0) { $0 + $1.content.count } <= FamiliarContextCompiler.maximumMemoryCharacters)
     }
 
-    @Test("memory_remember proposes rather than writes, and only persists after approval")
-    func rememberRequiresApproval() async throws {
+    @Test("memory_remember is a level-2 automatic write with a real session Undo")
+    func rememberIsLevelTwo() async throws {
         let project = UUID()
         let context = FamiliarToolContext(runID: "run-1", toolCallID: "call-1", projectID: project)
         let outcome = try await FamiliarMemoryRememberTool().execute(.init(content: "Prefers metric units", scope: nil), context: context)
 
         guard case .action(let proposal) = outcome else {
-            Issue.record("memory_remember must return an approval proposal, never write directly")
+            Issue.record("memory_remember must return an action proposal")
             return
         }
-        // A session or long-term grant would let the Agent keep writing memory silently.
+        // `.once` is only the fallback if the call ever needs a card; the level-2 path
+        // executes without asking while the memory switch is on.
         #expect(proposal.allowedAuthorizationDurations == [.once])
-        // No undo closure exists, so the card must not promise one.
-        #expect(proposal.undoPolicy == .unavailable)
+        #expect(proposal.undoPolicy == .currentSession)
 
         let committed = try await proposal.commit()
         let write = try #require(committed.result.memoryWrite)
@@ -196,6 +196,33 @@ struct FamiliarMemoryTests {
         // into unrelated work.
         #expect(write.scope == .project)
         #expect(write.projectID == project)
+        // The provenance carries the run's idempotency key, which is how the
+        // controller finds exactly this row when Undo runs.
+        #expect(write.provenance == "run:run-1:call-1")
+        #expect(committed.undo != nil)
+    }
+
+    @Test("The policy executes memory and environment writes automatically in a work scope")
+    func levelTwoWritesAreAutomatic() async throws {
+        let policy = FamiliarExecutionPolicy()
+        let memory = FamiliarMemoryRememberTool()
+        let context = FamiliarToolContext(runID: "run-1", toolCallID: "call-1", projectID: UUID())
+        guard case .action(let memoryProposal) = try await memory.execute(.init(content: "Prefers metric units", scope: nil), context: context) else {
+            Issue.record("Expected a memory proposal")
+            return
+        }
+        let memoryEvaluation = try await policy.evaluate(
+            manifest: memory.manifest,
+            call: .init(id: "call-1", name: memory.manifest.name, arguments: "{}"),
+            context: context,
+            availability: .available,
+            assessment: .manifestDefault(memory.manifest),
+            proposal: memoryProposal,
+            authorization: nil
+        )
+        #expect(memoryEvaluation.decision == .allow)
+        #expect(memoryEvaluation.automatic)
+        #expect(memoryEvaluation.approval == nil)
     }
 
     @Test("Secrets are refused before the approval card and never reach the store")

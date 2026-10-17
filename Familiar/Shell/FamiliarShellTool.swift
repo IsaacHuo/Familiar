@@ -639,11 +639,11 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
             ],
             required: ["packages"]
         ),
-        effect: .destructiveWrite,
-        risk: .high,
+        effect: .reversibleWrite,
+        risk: .sensitive,
         dataDomains: ["project.environment"],
         networkDomains: ["pypi.org", "files.pythonhosted.org", "mirrors.tuna.tsinghua.edu.cn"],
-        privacyLabels: ["project-only", "explicit-package-plan", "one-shot-approval"],
+        privacyLabels: ["project-only", "explicit-package-plan", "configured-package-source"],
         supportsIdempotency: true,
         supportsCancellation: true,
         supportsRecovery: true,
@@ -696,10 +696,12 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
             targetKey: "environment:\(scope.storageKey):\(FamiliarHash.sha256(packages.joined(separator: "\n")))",
             effect: manifest.effect,
             risk: manifest.risk,
-            consequence: "将从设置中选择的软件源下载，并在当前 Project 的隔离 Environment 中安装这些依赖；旧 Environment 仅在新环境验证成功后替换。",
-            undoPolicy: .unavailable,
+            consequence: "将从设置中选择的软件源下载，并在当前 Project 的隔离 Environment 中安装这些依赖；旧 Environment 仅在新环境验证成功后替换，并可在本次会话中撤销。",
+            undoPolicy: .currentSession,
             idempotencyKey: context.idempotencyKey,
-            allowedAuthorizationDurations: [.once],
+            // Automatic under the configured source; `.always` is only a fallback
+            // option if the call ever needs a card.
+            allowedAuthorizationDurations: [.once, .always],
             commit: {
                 try await prepare(plan: plan, context: context)
             }
@@ -809,9 +811,39 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
         // authoritative metadata has been saved by the Run's persistence callback.
         let executionResult = try result(receipt)
         let previous = try workspaceStore.commitEnvironment(from: view, scope: plan.scope)
+        // The previous environment stays in the store's Trash as the session Undo
+        // target; it is replaced by the next commit and purged when the scope is removed.
         return .init(result: executionResult,
-                     rollback: { try workspaceStore.rollbackEnvironment(previous, revision: receipt.revision, scope: plan.scope) },
-                     finalize: { try? workspaceStore.discard(previous) })
+                     undo: {
+                         try workspaceStore.rollbackEnvironment(previous, revision: receipt.revision, scope: plan.scope)
+                         let restored = try environmentStore.receipt(scope: plan.scope)
+                         return try undoResult(scope: plan.scope, restored: restored)
+                     },
+                     rollback: { try workspaceStore.rollbackEnvironment(previous, revision: receipt.revision, scope: plan.scope) })
+    }
+
+    private struct UndoOutput: Encodable {
+        let undone: Bool
+        let packages: [String]
+    }
+
+    private func undoResult(scope: FamiliarWorkScope, restored: FamiliarEnvironmentReceipt?) throws -> FamiliarToolExecutionResult {
+        let summary = restored == nil
+            ? "已撤销环境准备：安装的依赖已移除。"
+            : "已撤销环境准备：已恢复此前的环境。"
+        return .init(
+            envelope: try .init(
+                model: UndoOutput(undone: true, packages: restored?.lock.resolvedPackages ?? []),
+                presentation: .mutationReceipt(.init(
+                    summary: summary,
+                    operation: "environmentUndo",
+                    targetIdentifier: scope.storageKey,
+                    succeeded: true,
+                    undoAvailable: false
+                ))
+            ),
+            environmentReceipt: restored
+        )
     }
 
     private func result(_ receipt: FamiliarEnvironmentReceipt) throws -> FamiliarToolExecutionResult {

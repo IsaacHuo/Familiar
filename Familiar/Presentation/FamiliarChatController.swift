@@ -1550,6 +1550,24 @@ final class FamiliarChatController {
                    let identifier = fileIdentifier(activityID: activityID, context: context),
                    let file = try context.fetch(FetchDescriptor<FamiliarStoredFileVersion>(predicate: #Predicate { $0.identifier == identifier })).first {
                     try FamiliarFileService().delete(file, in: context)
+                } else if activity?.toolName == "memory_remember" {
+                    // Undo of a level-2 memory write removes exactly the row this run
+                    // created, identified by the provenance minted at write time.
+                    let provenance = "run:" + key
+                    if let item = try context.fetch(FetchDescriptor<FamiliarMemoryItem>(
+                        predicate: #Predicate { $0.provenance == provenance }
+                    )).first {
+                        context.delete(item)
+                    }
+                    try context.save()
+                } else if activity?.toolName == "environment_prepare" {
+                    // The undo action already rolled the environment directory back;
+                    // the persisted receipt must follow the restored bytes.
+                    if let restored = result.environmentReceipt {
+                        try FamiliarProjectService().persistEnvironment(restored, in: context)
+                    } else {
+                        try FamiliarProjectService().removeEnvironment(scope: scope, in: context)
+                    }
                 } else {
                     try context.save()
                 }

@@ -132,9 +132,22 @@ struct FamiliarGroupBoundaryTests {
         #expect(assessment.disposition == .requiresApproval)
         let result = try await tool.execute(.object([:]), context: context)
         guard case .action(let proposal) = result else { Issue.record("Expected a proposal"); return }
+        // Untrusted servers are level 4: every call asks, with no reusable grant.
         #expect(proposal.allowedAuthorizationDurations == [.once])
         #expect(proposal.undoPolicy == .unavailable)
         #expect(proposal.idempotencyKey == context.idempotencyKey)
         #expect(proposal.fields.first(where: { $0.id == "method" })?.value == "update")
+    }
+
+    @Test func trustedServerOffersCapabilityLevelGrant() async throws {
+        let config = FamiliarMCPConfiguration(id: UUID(), name: "Trusted", endpoint: URL(string: "https://example.com/mcp")!, token: nil)
+        let definition = FamiliarMCPToolDefinition(name: "update", description: "Update external data", inputSchema: .init(type: .object))
+        let tool = FamiliarMCPTool(definition: definition, configuration: config, client: FamiliarMCPClient(configuration: config))
+        FamiliarMCPTrustStore().setTrusted(true, serverID: config.id)
+        defer { FamiliarMCPTrustStore().removeTrust(serverID: config.id) }
+        let result = try await tool.execute(.object([:]), context: FamiliarToolContext(runID: "test", toolCallID: "call"))
+        guard case .action(let proposal) = result else { Issue.record("Expected a proposal"); return }
+        // Trusted servers are level 3: the card may remember this capability once.
+        #expect(proposal.allowedAuthorizationDurations == [.once, .always])
     }
 }

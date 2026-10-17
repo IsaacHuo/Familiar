@@ -16,12 +16,16 @@ final class FamiliarAuthorizationRuntime: FamiliarAuthorizationServicing {
         let now = Date()
         let records = try context.fetch(FetchDescriptor<FamiliarAuthorizationRuleRecord>())
         let argumentHash = FamiliarCanonicalJSON.argumentsHash(arguments)
+        // `.always` is a capability-level grant: it matches the work scope and the
+        // exact capability version regardless of arguments or target, so "always
+        // allow this kind" survives changing times, titles and identifiers.
+        // `.once` and `.session` stay bound to the exact call they were issued for.
         guard let record = records.first(where: {
             $0.revokedAt == nil && $0.expiresAt > now && $0.scopeKey == scope.storageKey
                 && FamiliarAuthorizationDuration(rawValue: $0.durationRawValue) != nil
                 && $0.capabilityID == manifest.id && $0.capabilityVersion == manifest.version
-                && $0.targetKey == targetKey
-                && $0.argumentsHash == argumentHash
+                && ($0.duration == .always
+                    || ($0.targetKey == targetKey && $0.argumentsHash == argumentHash))
                 && ($0.duration != .session || $0.sessionID == sessionID)
         }) else { return nil }
         record.lastUsedAt = now

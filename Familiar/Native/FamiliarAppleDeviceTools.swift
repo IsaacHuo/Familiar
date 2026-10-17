@@ -370,6 +370,7 @@ nonisolated struct FamiliarScheduleNotificationTool: FamiliarTool {
             consequence: "系统会在指定时间显示并可能播放这条本地通知。",
             undoPolicy: .currentSession,
             idempotencyKey: context.idempotencyKey,
+            allowedAuthorizationDurations: [.once, .always],
             commit: {
                 let scheduled = try await FamiliarNotificationService.scheduleAgentNotification(
                     identifier: identifier,

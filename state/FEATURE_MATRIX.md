@@ -115,6 +115,10 @@ Shared tool path: Chat > tools_load > exposed schema > Project/Skill scope > Pol
 
 Ordinary Chat has no default Project. Files/Workspace/Environment/authorization use typed Project or Conversation scope, including same-UUID isolation. Drawer previews 5 Project Chats / 20 ordinary Chats; full lists open separately. Project details lives only in ellipsis for Project Chat. Clipboard read returns read results; ready environment_prepare returns unchanged; Memory/install/MCP still require approval. This slice compiles only at the owner's request; no test execution or visual acceptance is implied. See docs/16-work-scope-convergence.md.
 
+## 2026-10-17 S2b override
+
+The rows above predate S2b. Since S2b: `.always` grants match scope + capability version (not argument hash); level-3 tools (EventKit create/update, notification, clipboard write, photos save, alarm schedule, skill install, trusted MCP) propose `[.once, .always]` with the capability grant preselected; deletes, alarm cancel and untrusted MCP stay one-shot. `memory_remember` executes automatically while the memory switch is on, with a receipt and a session Undo the controller performs by provenance. `environment_prepare` is a `reversibleWrite` that runs automatically from the configured source and keeps the previous environment as its session Undo target. MCP trust is a per-server user setting (UserDefaults, default off). Compiled only (`build-for-testing`, arm64 iPhone 18 Pro Simulator, no source warnings); no test execution or device acceptance implied. See docs/17-s2b-authorization-design.md.
+
 ## Actual declared document formats
 
 | Format | Entry/implementation | Real-file cases | Storage/relaunch/tests |

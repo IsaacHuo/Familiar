@@ -265,9 +265,9 @@ nonisolated struct FamiliarAlarmScheduleTool: FamiliarTool {
             // would promise a reversal that no longer exists when the user wants it.
             undoPolicy: .durable,
             idempotencyKey: context.idempotencyKey,
-            // A new alarm identity is minted per call, so a reusable authorization
-            // would never match anyway. Keep it explicit: every alarm is confirmed once.
-            allowedAuthorizationDurations: [.once],
+            // Scheduling is level 3: the card offers "always allow this kind", which
+            // matches the capability instead of the per-call alarm identity.
+            allowedAuthorizationDurations: [.once, .always],
             commit: {
                 let scheduled = try await service.schedule(id: alarmID, label: label, fireAt: fireAt)
                 return FamiliarCommittedAction(
