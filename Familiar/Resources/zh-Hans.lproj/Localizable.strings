@@ -859,6 +859,7 @@
 "mcp.scope.footer" = "会话设置优先于项目设置，项目设置优先于全局设置。更改从下一次运行生效。";
 "mcp.trust.title" = "信任此服务器";
 "mcp.trust.detail" = "信任后，此服务器的调用可以在确认一次后记住；未信任时每次调用都会询问。";
+"shell.preparing_runtime" = "正在准备运行环境…";
 "mcp.add" = "添加 MCP 服务器";
 "mcp.import" = "导入 MCP JSON";
 "mcp.title" = "MCP 集成";
@@ -1004,7 +1005,7 @@
 "tool.group.artifact" = "输出文件";
 "tool.group.memory" = "记忆";
 "tool.group.skills" = "技能";
-"tool.group.shell" = "环境与 Shell";
+"tool.group.documents" = "环境与文档";
 "tool.group.device" = "原生工具";
 "tool.group.presentation" = "内容展示";
 "tool.tools_load" = "准备工具";

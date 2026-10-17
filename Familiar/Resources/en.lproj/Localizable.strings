@@ -859,6 +859,7 @@
 "mcp.scope.footer" = "Chat settings override project settings, which override global settings. Changes apply to the next run.";
 "mcp.trust.title" = "Trust This Server";
 "mcp.trust.detail" = "Trusted servers can be remembered after one confirmation. Untrusted servers ask on every call.";
+"shell.preparing_runtime" = "Preparing the runtime environment…";
 "mcp.add" = "Add MCP Server";
 "mcp.import" = "Import MCP JSON";
 "mcp.title" = "MCP Integrations";
@@ -1004,7 +1005,7 @@
 "tool.group.artifact" = "Outputs";
 "tool.group.memory" = "Memory";
 "tool.group.skills" = "Skills";
-"tool.group.shell" = "Environment & Shell";
+"tool.group.documents" = "Documents & Environment";
 "tool.group.device" = "Native Tools";
 "tool.group.presentation" = "Presentation";
 "tool.tools_load" = "Prepare tools";

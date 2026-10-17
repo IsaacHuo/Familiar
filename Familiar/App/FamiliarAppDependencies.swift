@@ -23,6 +23,7 @@ struct FamiliarAppDependencies {
     let pythonPackageSourceSettings: FamiliarPythonPackageSourceSettingsStore
     let workspaceStore: FamiliarWorkspaceStore
     let shellRuntimeStatus: FamiliarShellRuntimeStatus
+    private var prepareShellRuntime: (@MainActor @Sendable () -> Void)? = nil
     let visionProcessor = FamiliarVisionProcessor()
     let sessionID = UUID().uuidString
 
@@ -160,7 +161,15 @@ struct FamiliarAppDependencies {
                 }
             }
             status.configureRetry(prepareRuntime)
+            prepareShellRuntime = prepareRuntime
         }
+    }
+
+    /// Starts the shared runtime-preparation flight in the background after the
+    /// interface exists. Repeated calls join the same flight; failures stay silent
+    /// here because Settings shows the phase and the next real call retries.
+    func prewarmShellRuntime() {
+        prepareShellRuntime?()
     }
 
     private static func makeShellRuntime(

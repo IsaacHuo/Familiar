@@ -119,6 +119,10 @@ Ordinary Chat has no default Project. Files/Workspace/Environment/authorization 
 
 The rows above predate S2b. Since S2b: `.always` grants match scope + capability version (not argument hash); level-3 tools (EventKit create/update, notification, clipboard write, photos save, alarm schedule, skill install, trusted MCP) propose `[.once, .always]` with the capability grant preselected; deletes, alarm cancel and untrusted MCP stay one-shot. `memory_remember` executes automatically while the memory switch is on, with a receipt and a session Undo the controller performs by provenance. `environment_prepare` is a `reversibleWrite` that runs automatically from the configured source and keeps the previous environment as its session Undo target. MCP trust is a per-server user setting (UserDefaults, default off). Compiled only (`build-for-testing`, arm64 iPhone 18 Pro Simulator, no source warnings); no test execution or device acceptance implied. See docs/17-s2b-authorization-design.md.
 
+## 2026-10-17 S4 override
+
+Since S4: the `.documents` group (shell_execute, environment_prepare, environment_status, file_publish) replaces `.shell` and is enabled by default; Project capability bindings follow defaults for capabilities never toggled. The app prewarms the iSH runtime in the background after launch and reports "preparing the runtime environment" in the activity row; the terminal watchdog excludes preparation time. The bundled rootfs (55.0 MiB, 57,601,472 bytes) ships python-docx, openpyxl, python-pptx, fpdf2, pypdf, markdown, py3-lxml, py3-pillow and a Noto Sans SC subset (OFL-1.1). Shell Outputs register with best-effort validation and a recorded failure state; PPTX is a first-class `FamiliarFileFormat` validated through AnyDoc. A bundled `documents` Skill template installs alongside research-document. Guest smoke (Chinese PDF/DOCX/XLSX/PPTX) passed during image rebuild; Simulator tests and signed-device runtime tests remain unexecuted. See docs/18-s4-shell-documents-design.md.
+
 ## Actual declared document formats
 
 | Format | Entry/implementation | Real-file cases | Storage/relaunch/tests |

@@ -62,7 +62,7 @@ struct FamiliarLazyToolTests {
         let skill = FamiliarSkillSnapshot(stableID: "calendar-only", version: "1", name: "Calendar",
             contentHash: String(repeating: "a", count: 64), instructions: "Only query calendars.", allowedTools: ["calendar_events"])
         let events = try await run(registry: registry, probe: probe, steps: [
-            .calls([call("load", "tools_load", #"{"groups":["shell"]}"#)]), .answer
+            .calls([call("load", "tools_load", #"{"groups":["documents"]}"#)]), .answer
         ], skill: skill)
         #expect(await probe.count("shell_execute") == 0)
         let requests = await probe.requests()
@@ -217,7 +217,19 @@ struct FamiliarLazyToolTests {
         #expect(await probe.count() == 1)
     }
 
-    @Test("Defaults are core-only and explicit Project selections remain authoritative")
+    @Test("Document tools default on inside the documents group")
+    func documentGroupDefaults() {
+        for name in ["shell_execute", "environment_prepare", "environment_status", "file_publish"] {
+            #expect(FamiliarToolGroup.group(for: name) == .documents)
+            #expect(FamiliarToolGroup.isDefaultEnabled(name))
+        }
+        #expect(FamiliarToolGroup.isDefaultEnabled("file_write"))
+        #expect(!FamiliarToolGroup.isDefaultEnabled("workspace_write"))
+        #expect(!FamiliarToolGroup.isDefaultEnabled("task_plan"))
+        #expect(!FamiliarToolGroup.isDefaultEnabled("skill_install"))
+    }
+
+    @Test("Documents default on; explicit Project selections remain authoritative")
     @MainActor
     func projectDefaultScope() async throws {
         let container = try FamiliarTestStore.make(name: "LazyProjectDefaults")
@@ -228,15 +240,24 @@ struct FamiliarLazyToolTests {
         let all = await registry.snapshot()
         let initial = try service.filterCapabilities(all, projectID: project.id, in: container.mainContext)
         #expect(initial.map(\.name).contains("web_fetch"))
-        #expect(!initial.map(\.name).contains("shell_execute"))
-        try service.setCapability("shell_execute", enabled: true, allCapabilities: all, projectID: project.id, in: container.mainContext)
-        let enabled = try service.filterCapabilities(all, projectID: project.id, in: container.mainContext)
-        #expect(enabled.map(\.name).contains("shell_execute"))
-        #expect(!enabled.map(\.name).contains("file_publish"))
-        #expect(enabled.map(\.name).contains("health_activity_summary"))
+        // Shell and document delivery are level-P0 defaults now.
+        #expect(initial.map(\.name).contains("shell_execute"))
+        #expect(initial.map(\.name).contains("file_publish"))
+        // The first explicit toggle snapshots the current defaults, and the toggled
+        // capability itself is authoritative afterwards.
+        try service.setCapability("file_publish", enabled: false, allCapabilities: all, projectID: project.id, in: container.mainContext)
+        let toggled = try service.filterCapabilities(all, projectID: project.id, in: container.mainContext)
+        #expect(!toggled.map(\.name).contains("file_publish"))
+        #expect(toggled.map(\.name).contains("shell_execute"))
+        #expect(toggled.map(\.name).contains("health_activity_summary"))
         try service.setCapability("web_fetch", enabled: false, allCapabilities: all, projectID: project.id, in: container.mainContext)
         let disabled = try service.filterCapabilities(all, projectID: project.id, in: container.mainContext)
         #expect(!disabled.map(\.name).contains("web_fetch"))
+        // A capability added after the snapshot and never toggled follows the product
+        // default instead of staying silently off.
+        let lateManifest = FamiliarToolManifest(name: "environment_status", title: "Late", description: "Fixture", parameters: .object([:]), effect: .read, risk: .low)
+        let late = try service.filterCapabilities(all + [lateManifest], projectID: project.id, in: container.mainContext)
+        #expect(late.map(\.name).contains("environment_status"))
     }
 
     private func baseTools() -> [AnyFamiliarTool] {

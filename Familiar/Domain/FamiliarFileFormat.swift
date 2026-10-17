@@ -6,6 +6,7 @@ nonisolated enum FamiliarFileFormat: String, Codable, CaseIterable, Hashable, Se
     case docx
     case pdf
     case xlsx
+    case pptx
     case html
 
     var filenameExtension: String {
@@ -15,6 +16,7 @@ nonisolated enum FamiliarFileFormat: String, Codable, CaseIterable, Hashable, Se
         case .docx: "docx"
         case .pdf: "pdf"
         case .xlsx: "xlsx"
+        case .pptx: "pptx"
         case .html: "html"
         }
     }
@@ -26,6 +28,7 @@ nonisolated enum FamiliarFileFormat: String, Codable, CaseIterable, Hashable, Se
         case .docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         case .pdf: "application/pdf"
         case .xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        case .pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
         case .html: "text/html"
         }
     }
@@ -37,6 +40,7 @@ nonisolated enum FamiliarFileFormat: String, Codable, CaseIterable, Hashable, Se
         case .docx: "org.openxmlformats.wordprocessingml.document"
         case .pdf: "com.adobe.pdf"
         case .xlsx: "org.openxmlformats.spreadsheetml.sheet"
+        case .pptx: "org.openxmlformats.presentationml.presentation"
         case .html: "public.html"
         }
     }

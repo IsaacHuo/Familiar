@@ -38,14 +38,49 @@ nonisolated struct FamiliarFileCatalogService {
                 context.insert(file)
             }
             if let chatID, !file.chatIDs.contains(chatID) { file.chatIDs += [chatID] }
+            // Shell bytes always register. Known formats are parsed best-effort so the
+            // Files content is checkable; a parse failure is recorded, never faked.
+            let parsed = Self.parseProducedFile(output)
+            var provenance: [String: String] = ["workspaceOrigin": key]
+            for (name, value) in parsed.note { provenance["validation." + name] = value }
             let row = FamiliarFileVersionRecord(id: output.versionID, version: file.lastVersionNumber + 1,
                 filename: output.filename, mimeType: output.mimeType, byteSize: output.byteSize,
-                contentHash: output.contentHash, extractedText: "", extractedTextHash: "", storage: output.storage,
-                provenanceJSON: String(decoding: try JSONEncoder().encode(["workspaceOrigin": key]), as: UTF8.self),
+                contentHash: output.contentHash, extractedText: parsed.text,
+                extractedTextHash: parsed.text.isEmpty ? "" : FamiliarHash.sha256(parsed.text), storage: output.storage,
+                provenanceJSON: String(decoding: try JSONEncoder().encode(provenance), as: UTF8.self),
                 createdByRunID: output.createdByRunID, createdAt: output.capturedAt, file: file)
             row.createdByToolCallID = output.toolCallID
             context.insert(row)
             file.updatedAt = output.capturedAt
+        }
+    }
+
+    private static let maximumExtractedCharacters = 48_000
+    private static let maximumValidatedBytes: Int64 = 16 * 1_024 * 1_024
+
+    private static func parseProducedFile(_ output: FamiliarProducedFile) -> (text: String, note: [String: String]) {
+        let fileExtension = URL(fileURLWithPath: output.filename).pathExtension.lowercased()
+        guard let format = FamiliarFileFormat.allCases.first(where: { $0.filenameExtension == fileExtension }) else {
+            return ("", ["state": "unvalidated", "reason": "unknown-format"])
+        }
+        guard output.byteSize <= maximumValidatedBytes else {
+            return ("", ["state": "unvalidated", "reason": "too-large"])
+        }
+        guard output.storage.kind == .managed,
+              let url = try? FamiliarManagedFileStore().url(for: output.storage.relativePath) else {
+            return ("", ["state": "unvalidated", "reason": "missing-bytes"])
+        }
+        do {
+            let extraction = try FamiliarFileValidator.extract(fileURL: url, format: format)
+            let text = String(extraction.text.prefix(maximumExtractedCharacters))
+            return (text, [
+                "state": "verified",
+                "validator": extraction.validator,
+                "validatorVersion": extraction.validatorVersion,
+                "checks": extraction.checks.joined(separator: ",")
+            ])
+        } catch {
+            return ("", ["state": "failed", "reason": error.localizedDescription])
         }
     }
 

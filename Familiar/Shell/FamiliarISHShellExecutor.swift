@@ -429,7 +429,7 @@ private actor FamiliarRealISHRuntimeState {
                 forResource: "alpine-3.24.0-aarch64-fakefs",
                 withExtension: "tar.gz"
             ) else {
-                throw FamiliarShellExecutorError.unavailable
+                throw FamiliarShellExecutorError.preparationFailed("内置 Alpine 根文件系统缺失。")
             }
             let archiveHash = try Self.sha256(of: archive)
             let expectedMarker = InstallationMarker(
@@ -464,10 +464,14 @@ private actor FamiliarRealISHRuntimeState {
                 let staging = support.appendingPathComponent("staging-\(UUID().uuidString)", isDirectory: true)
                 defer { try? fileManager.removeItem(at: staging) }
                 try fileManager.createDirectory(at: support, withIntermediateDirectories: true)
-                try ISHKernel.shared.installRootfsArchive(
-                    archive.path,
-                    destination: staging.path
-                )
+                do {
+                    try ISHKernel.shared.installRootfsArchive(
+                        archive.path,
+                        destination: staging.path
+                    )
+                } catch {
+                    throw FamiliarShellExecutorError.preparationFailed("解包 Alpine 根文件系统失败：\(error.localizedDescription)")
+                }
                 let markerData = try JSONEncoder().encode(expectedMarker)
                 try markerData.write(
                     to: staging.appendingPathComponent("familiar-installation.json", isDirectory: false),
@@ -484,8 +488,9 @@ private actor FamiliarRealISHRuntimeState {
                 FamiliarShellRuntimeReset.clear()
             }
             phase = .booting
-            guard ISHKernel.shared.boot(withRootPath: installed.path) == 0 else {
-                throw FamiliarShellExecutorError.unavailable
+            let bootStatus = ISHKernel.shared.boot(withRootPath: installed.path)
+            guard bootStatus == 0 else {
+                throw FamiliarShellExecutorError.preparationFailed("iSH 内核启动失败（boot 状态码 \(bootStatus)）。")
             }
             let probe = Task.detached {
                 let result = ISHShellExecutor.executeCommandSync("python3 -c 'import ssl, sys; print(\"FAMILIAR_READY\")'", timeout: 30, lineCallback: nil)

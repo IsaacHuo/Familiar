@@ -66,26 +66,32 @@ final class FamiliarTerminalController {
                     .init(hostURL: home, guestPath: "/root", writable: true),
                     .init(hostURL: temporary, guestPath: "/tmp", writable: true)
                 ]
-                watchdog = Task {
-                    let deadline = ContinuousClock.now.advanced(by: .seconds(180))
-                    do {
-                        while !Task.isCancelled {
-                            try await Task.sleep(for: .seconds(1))
-                            let usage = try await Task.detached { try store.shellWritableUsage(for: prepared) }.value
-                            let total = try await Task.detached { try store.workspaceSize(scope) }.value
-                            if ContinuousClock.now >= deadline || total + usage.totalBytes > store.quotaBytes || usage.largestFileBytes > 128 * 1_024 * 1_024 {
-                                status = String(localized: "terminal.limit", defaultValue: "Stopped: session time or storage limit reached")
-                                await bridge.closeTerminal(taskID: id)
-                                break
-                            }
-                        }
-                    } catch {
-                        if !Task.isCancelled { status = error.localizedDescription; await bridge.closeTerminal(taskID: id) }
-                    }
-                }
+                // The session watchdog starts with the live session, not with
+                // preparation: a cold rootfs install must not consume session time.
+                var didStartWatchdog = false
                 for try await event in bridge.openTerminal(taskID: id, workspaceID: scope, mounts: mounts,
                     command: "exec /bin/sh -i", networkPolicy: network, columns: columns, rows: rows) {
                     guard generation == token else { break }
+                    if !didStartWatchdog {
+                        didStartWatchdog = true
+                        watchdog = Task {
+                            let deadline = ContinuousClock.now.advanced(by: .seconds(180))
+                            do {
+                                while !Task.isCancelled {
+                                    try await Task.sleep(for: .seconds(1))
+                                    let usage = try await Task.detached { try store.shellWritableUsage(for: prepared) }.value
+                                    let total = try await Task.detached { try store.workspaceSize(scope) }.value
+                                    if ContinuousClock.now >= deadline || total + usage.totalBytes > store.quotaBytes || usage.largestFileBytes > 128 * 1_024 * 1_024 {
+                                        status = String(localized: "terminal.limit", defaultValue: "Stopped: session time or storage limit reached")
+                                        await bridge.closeTerminal(taskID: id)
+                                        break
+                                    }
+                                }
+                            } catch {
+                                if !Task.isCancelled { status = error.localizedDescription; await bridge.closeTerminal(taskID: id) }
+                            }
+                        }
+                    }
                     switch event {
                     case .started: status = String(localized: "terminal.running", defaultValue: "Running")
                     case .output(let bytes):

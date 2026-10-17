@@ -131,7 +131,7 @@ struct FamiliarModelSelectionTests {
         #expect(Set(events.map(\.runID)).count == 1)
     }
 
-    @Test("Default delivery scopes allow text output but exclude advanced execution")
+    @Test("Document delivery defaults on while workspace_write stays off")
     @MainActor
     func defaultOutputScope() throws {
         let container = try FamiliarTestStore.make(name: "DefaultOutputScope")
@@ -140,14 +140,16 @@ struct FamiliarModelSelectionTests {
         let names = ["file_write", "file_edit", "file_read", "file_publish", "workspace_write", "shell_execute", "environment_prepare"]
         let manifests = names.map { FamiliarToolManifest(name: $0, title: $0, description: "Fixture", parameters: .object([:]), effect: .read, risk: .low) }
         let defaults = try service.filterCapabilities(manifests, projectID: project.id, in: container.mainContext)
-        #expect(Set(defaults.map(\.name)) == ["file_write", "file_edit", "file_read"])
-        try service.setCapability("shell_execute", enabled: true, allCapabilities: manifests, projectID: project.id, in: container.mainContext)
-        let enabled = try service.filterCapabilities(manifests, projectID: project.id, in: container.mainContext)
-        #expect(enabled.map(\.name).contains("shell_execute"))
-        #expect(!enabled.map(\.name).contains("file_publish"))
+        // Shell and document delivery are default-on level-P0 capabilities; the raw
+        // workspace write tool stays off.
+        #expect(Set(defaults.map(\.name)) == ["file_write", "file_edit", "file_read", "file_publish", "shell_execute", "environment_prepare"])
+        try service.setCapability("shell_execute", enabled: false, allCapabilities: manifests, projectID: project.id, in: container.mainContext)
+        let disabled = try service.filterCapabilities(manifests, projectID: project.id, in: container.mainContext)
+        #expect(!disabled.map(\.name).contains("shell_execute"))
+        #expect(disabled.map(\.name).contains("file_publish"))
     }
 
-    @Test("Text output cannot accept a complex format before approval or file writes", arguments: [FamiliarFileFormat.docx, .pdf, .xlsx])
+    @Test("Text output cannot accept a complex format before approval or file writes", arguments: [FamiliarFileFormat.docx, .pdf, .xlsx, .pptx])
     func unsupportedTextFormats(format: FamiliarFileFormat) async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("TextFormat-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }

@@ -399,12 +399,17 @@ struct FamiliarFileService {
 nonisolated enum FamiliarFileValidator {
     static let maximumFileBytes: Int64 = 128 * 1_024 * 1_024
 
-    static func validate(
-        fileURL: URL,
-        format: FamiliarFileFormat,
-        requiredText: [String] = [],
-        now: Date = Date()
-    ) throws -> FamiliarValidationReceipt {
+    nonisolated struct Extraction: Sendable {
+        let text: String
+        let validator: String
+        let validatorVersion: String
+        let checks: [String]
+    }
+
+    /// Format checks and content extraction without a required-text gate. Shell
+    /// outputs use this to register extracted text best-effort; `validate` layers
+    /// the required-content contract on top for deliveries.
+    static func extract(fileURL: URL, format: FamiliarFileFormat) throws -> Extraction {
         let values = try fileURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
         guard values.isRegularFile == true, values.isSymbolicLink != true else { throw FamiliarFileError.invalidPath }
         let byteSize = Int64(values.fileSize ?? 0)
@@ -419,7 +424,7 @@ nonisolated enum FamiliarFileValidator {
         let validatorVersion: String
         var checks = ["regular-file", "non-empty", "extension-matches"]
         switch format {
-        case .docx, .xlsx:
+        case .docx, .xlsx, .pptx:
             guard data.count >= 4, data[0] == 0x50, data[1] == 0x4B else {
                 throw FamiliarFileError.contentMismatch
             }
@@ -449,7 +454,18 @@ nonisolated enum FamiliarFileValidator {
             validatorVersion = "1"
             checks += ["utf8", "text-non-empty"]
         }
-        let normalized = extracted.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Extraction(text: extracted, validator: validator, validatorVersion: validatorVersion, checks: checks)
+    }
+
+    static func validate(
+        fileURL: URL,
+        format: FamiliarFileFormat,
+        requiredText: [String] = [],
+        now: Date = Date()
+    ) throws -> FamiliarValidationReceipt {
+        let extraction = try extract(fileURL: fileURL, format: format)
+        var checks = extraction.checks
+        let normalized = extraction.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { throw FamiliarFileError.validationFailed("未提取到可检查的正文。") }
         let required = Array(Set(requiredText.map {
             $0.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -461,8 +477,8 @@ nonisolated enum FamiliarFileValidator {
         if !required.isEmpty { checks.append("required-content") }
         return FamiliarValidationReceipt(
             schemaVersion: FamiliarValidationReceipt.currentSchemaVersion,
-            validator: validator,
-            validatorVersion: validatorVersion,
+            validator: extraction.validator,
+            validatorVersion: extraction.validatorVersion,
             format: format,
             extractedTextHash: FamiliarHash.sha256(normalized),
             checks: checks,

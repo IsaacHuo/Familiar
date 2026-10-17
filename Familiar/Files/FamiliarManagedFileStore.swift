@@ -30,6 +30,10 @@ nonisolated struct FamiliarManagedFileStore: Sendable {
             toolCallID: toolCallID, capturedAt: Date())
     }
 
+    func url(for relativePath: String) throws -> URL {
+        try FamiliarFilePath.confined(relativePath, to: rootURL)
+    }
+
     func remove(_ captured: FamiliarProducedFile) throws {
         let prefix = "\(captured.scope.filePrefix)Versions/\(captured.versionID.uuidString)/"
         guard captured.storage.relativePath.hasPrefix(prefix), !captured.storage.relativePath.split(separator: "/").contains("..") else {

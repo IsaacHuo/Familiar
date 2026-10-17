@@ -82,6 +82,7 @@ enum FamiliarSkillServiceError: LocalizedError, Sendable {
 @MainActor
 struct FamiliarSkillService {
     private static let exampleSeedKey = "familiar.skills.example.seeded.v1"
+    static let bundledSkillIDs = ["research-document", "documents"]
 
     static var exampleDocument: FamiliarSkillDocument {
         FamiliarSkillDocument(
@@ -101,12 +102,12 @@ struct FamiliarSkillService {
     }
 
     func installExampleIfNeeded(in context: ModelContext) throws {
-        if let root = Bundle.main.resourceURL?.appendingPathComponent("Skills/research-document"),
-           FileManager.default.fileExists(atPath: root.appendingPathComponent("SKILL.md").path) {
-            let id = "research-document"
+        for id in Self.bundledSkillIDs {
+            guard let root = Bundle.main.resourceURL?.appendingPathComponent("Skills/" + id),
+                  FileManager.default.fileExists(atPath: root.appendingPathComponent("SKILL.md").path) else { continue }
             if try context.fetch(FetchDescriptor<FamiliarSkill>(predicate: #Predicate { $0.stableID == id })).isEmpty {
                 let packages = FamiliarSkillPackageStore()
-                let prepared = try packages.prepare(url: root, source: "bundled:research-document")
+                let prepared = try packages.prepare(url: root, source: "bundled:" + id)
                 try packages.persistInstallation(packages.commit(prepared), context: context)
             }
         }

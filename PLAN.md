@@ -87,15 +87,15 @@
 - 拆分 FamiliarChatMessageViews.swift；hash/ID/rawValue 只在技术详情中出现。
 - 验收：假 Provider 截图（深/浅色、大字体、小屏）+ VoiceOver 标签检查 + 真机签字。
 
-### S4 iSH 小主机与文档交付 `[ ]`
+### S4 iSH 小主机与文档交付 `[~]`
 
-- Shell 与文档工具默认启用；新增“文档”工具组；Project 首次切换能力时未设置项跟随默认。
-- 首次启动后后台低优先级预热 rootfs，可断点续做；未就绪时活动行显示“正在准备运行环境”。
-- rootfs 预装 python-docx、openpyxl、python-pptx、fpdf2、pypdf、markdown、py3-lxml、py3-pillow 与中文字体子集；实测镜像体积。
-- 内置文档 Skill 模板；Shell Outputs 自动校验后进入 Files；补 PPTX 校验；产物用统一文件卡。Markdown/TXT/CSV 仍由 Swift 直写。
-- boot/安装错误带真实 errno；完成回调不依赖主队列；失败可不重启恢复；终端 watchdog 不计准备时间。
-- guest 默认不能出站，pip 只访问配置的软件源。
-- 验收：真机 `FamiliarDeviceRuntimeTests` + `log stream`；生成中文 Word/Excel/PPT/PDF；记录冷热启动耗时与内存峰值。
+- [x] Shell 与文档工具默认启用（`.documents` 组取代 `.shell`，成员 shell_execute/environment_prepare/environment_status/file_publish）；Project 绑定中未显式切换过的工具跟随默认。
+- [x] 主界面出现后后台低优先级预热 rootfs（幂等共享 flight）；标记级安全重试；未就绪时活动行显示“正在准备运行环境”。
+- [x] rootfs 预装 python-docx、openpyxl、python-pptx、fpdf2、pypdf、markdown、py3-lxml、py3-pillow 与 Noto Sans SC 子集（OFL-1.1）；实测 33.3 MiB → 55.0 MiB（57,601,472 字节）。
+- [x] 内置 `documents` Skill 模板；Shell Outputs 自动 best-effort 校验后进入 Files（失败仍登记并标注）；补 PPTX（`FamiliarFileFormat.pptx` + validator + file_publish）；文件卡沿用产出文件路径。
+- [x] boot/解包/探测错误带具体原因（含 boot 状态码）；staging 失败清理且 Retry 不需重启；终端 watchdog 不再计入准备时间；guest 默认不出站、pip 只走配置源（保持）。
+- [x] 构建：arm64 iPhone 18 Pro Simulator `build-for-testing` 成功（exit 0，无源码 warning/error）；guest 冒烟（中文 PDF/DOCX/XLSX/PPTX）在重建镜像时通过；新增/更新测试只编译不执行。见 docs/18-s4-shell-documents-design.md。
+- [ ] 验收：真机 `FamiliarDeviceRuntimeTests` + `log stream`；生成中文 Word/Excel/PPT/PDF；记录冷热启动耗时与内存峰值；所有者签字。
 
 ### S5 设置重组 `[ ]`
 
@@ -127,5 +127,7 @@
 普通对话/项目分离、抽屉顶栏与 S2a 已实现并通过指定 arm64 iPhone 18 Pro 构建。按所有者要求，本切片不执行测试或截图；真机视觉由所有者负责，运行生命周期和业务重置验收待记录。
 
 S2b（能力级持续授权、Memory 自动写入、environment_prepare 自动边界、MCP 信任）已实现：arm64 iPhone 18 Pro Simulator `build-for-testing` 成功，测试只编译不执行；真机行为验收清单见 docs/17-s2b-authorization-design.md §5，验收前完整 S2 不标完成。
+
+S4（文档工具组默认启用、后台预热、rootfs 预装文档库与中文字体、Outputs 自动校验、PPTX、documents Skill 模板、watchdog/错误恢复）已实现：`build-for-testing` 成功，guest 冒烟在重建镜像时通过；真机验收清单见 docs/18-s4-shell-documents-design.md §5，验收前 S4 不标完成。
 
 S1 的 79 项定向单测、WebKit 引用回归与 3 项生产 UI 证据仅属于之前的 S1 基线；DeepSeek + Tavily 20 条真实查询与所有者签字仍待完成。后续切片同样单列真实验收结果，不把编译等同于运行通过。

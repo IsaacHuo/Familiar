@@ -200,6 +200,11 @@ struct FamiliarProjectWorkspaceTests {
         #expect(receipt.format == .docx)
         #expect(receipt.checks.contains("office-package-readable"))
 
+        let pptx = repository.appendingPathComponent("FamiliarTests/Fixtures/FunctionalFiles/fc.pptx")
+        let pptxReceipt = try FamiliarFileValidator.validate(fileURL: pptx, format: .pptx)
+        #expect(pptxReceipt.format == .pptx)
+        #expect(pptxReceipt.checks.contains("office-package-readable"))
+
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
             "FamiliarFileValidation-\(UUID().uuidString)",
             isDirectory: true
@@ -210,6 +215,11 @@ struct FamiliarProjectWorkspaceTests {
         try Data("not a document".utf8).write(to: fake)
         #expect(throws: FamiliarFileError.self) {
             _ = try FamiliarFileValidator.validate(fileURL: fake, format: .docx)
+        }
+        let fakePresentation = root.appendingPathComponent("fake.pptx")
+        try Data("not a presentation".utf8).write(to: fakePresentation)
+        #expect(throws: FamiliarFileError.self) {
+            _ = try FamiliarFileValidator.validate(fileURL: fakePresentation, format: .pptx)
         }
 
         let html = root.appendingPathComponent("report.html")
@@ -255,6 +265,40 @@ struct FamiliarProjectWorkspaceTests {
         #expect(descriptor.format == .docx)
         #expect(descriptor.validationReceipt?.checks.contains("office-package-readable") == true)
         #expect(fileStore.url(relativePath: descriptor.relativePath) != nil)
+    }
+
+    @Test("file_publish delivers a validated real PPTX")
+    func publishValidatedPresentation() async throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = repository.appendingPathComponent("FamiliarTests/Fixtures/FunctionalFiles/fc.pptx")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "FamiliarFilePublishPPTX-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        let workspace = FamiliarWorkspaceStore(rootURL: root.appendingPathComponent("Workspaces"))
+        let fileStore = FamiliarFileStore(rootURL: root.appendingPathComponent("Files"))
+        let projectID = UUID()
+        _ = try workspace.write(
+            Data(contentsOf: source),
+            relativePath: "Outputs/deck.pptx",
+            in: .project(projectID)
+        )
+        let tool = FamiliarFilePublishTool(workspaceStore: workspace, fileStore: fileStore)
+        let outcome = try await tool.execute(
+            .init(path: "Outputs/deck.pptx", title: "Deck", format: .pptx, requiredText: nil),
+            context: .init(runID: "run", projectID: projectID, workspaceID: .project(projectID))
+        )
+        guard case .action(let proposal) = outcome else {
+            Issue.record("Expected a reversible publish proposal")
+            return
+        }
+        let committed = try await proposal.commit()
+        let descriptor = try #require(committed.result.file)
+        #expect(descriptor.format == .pptx)
+        #expect(descriptor.validationReceipt?.checks.contains("office-package-readable") == true)
     }
 
     @Test("file_read returns the text of a published DOCX so the Agent can verify it")

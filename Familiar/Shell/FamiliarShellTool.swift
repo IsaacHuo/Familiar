@@ -412,6 +412,10 @@ nonisolated struct FamiliarShellTool: FamiliarTool {
         taskView: FamiliarWorkspaceTaskView,
         context: FamiliarToolContext
     ) async throws -> FamiliarShellResult {
+        let runtimeIsReady = await FamiliarShellRuntimeStatus.shared.isReady
+        if !runtimeIsReady {
+            await context.reportProgress(.status(String(localized: "shell.preparing_runtime", defaultValue: "Preparing the runtime environment")))
+        }
         let request = FamiliarShellRequest(
             taskID: taskView.taskID,
             command: command,
@@ -732,6 +736,10 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
         plan: FamiliarEnvironmentPlan,
         context: FamiliarToolContext
     ) async throws -> FamiliarCommittedAction {
+        let runtimeIsReady = await FamiliarShellRuntimeStatus.shared.isReady
+        if !runtimeIsReady {
+            await context.reportProgress(.status(String(localized: "shell.preparing_runtime", defaultValue: "Preparing the runtime environment")))
+        }
         let taskID = UUID()
         let view = try workspaceStore.prepareShellTaskView(
             taskID: taskID,

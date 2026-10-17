@@ -250,7 +250,7 @@ nonisolated struct FamiliarFilePublishTool: FamiliarTool {
     let manifest = FamiliarToolManifest(
         name: "file_publish",
         title: String(localized: "tool.file_publish", defaultValue: "Save generated file"),
-        description: "Validate a real file already created in the current Workspace Outputs and publish it as a File in the current conversation or Project. Supports DOCX, PDF, XLSX, HTML, Markdown, and plain text. Never claim delivery before this tool succeeds.",
+        description: "Validate a real file already created in the current Workspace Outputs and publish it as a File in the current conversation or Project. Supports DOCX, PDF, XLSX, PPTX, HTML, Markdown, and plain text. Never claim delivery before this tool succeeds.",
         parameters: .object(
             [
                 "path": .string("Relative Outputs path such as Outputs/北京资料.docx."),

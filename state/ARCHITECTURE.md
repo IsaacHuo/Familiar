@@ -18,7 +18,7 @@
 | Keychain | `FamiliarKeychainStore`、`FamiliarSearchKeychainStore`、`FamiliarOAuthCredentialStore` |
 | 原生框架 | EventKit、Contacts、CoreLocation、MapKit、WeatherKit、HealthKit、MusicKit、Photos、CoreBluetooth、NaturalLanguage、UserNotifications、AlarmKit（26.1 门控）、CoreSpotlight、AppIntents、LocalAuthentication、Speech、AVFoundation、Vision、PDFKit、QuickLook、Charts |
 | 文档转换 | AnyDoc Rust 引擎 `Vendor/AnyDocBridge.xcframework` |
-| iSH guest | `Vendor/ISHRuntime/FamiliarISHRuntime.xcframework`（arm64 device + arm64 simulator）；内置 `alpine-3.24.0-aarch64-fakefs.tar.gz`；`#if canImport(FamiliarISHRuntime)` 门控 |
+| iSH guest | `Vendor/ISHRuntime/FamiliarISHRuntime.xcframework`（arm64 device + arm64 simulator）；内置 `alpine-3.24.0-aarch64-fakefs.tar.gz`（55.0 MiB，预装 python3/py3-pip/py3-lxml/py3-pillow、python-docx/openpyxl/python-pptx/fpdf2/pypdf/markdown 与 Noto Sans SC 子集）；`#if canImport(FamiliarISHRuntime)` 门控 |
 | SPM | SwiftSoup 2.13.7（Familiar）、containerization 0.33.4（仅 FamiliarMac）；本地 ZIPFoundation、Yams |
 | Entitlements | WeatherKit、HealthKit、App Group `group.com.isaachuo.familiar` |
 
@@ -33,7 +33,7 @@
 ## 3. App 入口与依赖注入
 
 - `FamiliarApp`（`@main`）创建依赖；首次检测到业务代际非 `5-work-scopes`，清理旧 store、附件、资料、Files、Workspace、ShellRuntime、Skill 包、共享收件箱和派生索引，当前容器打开成功后写代际标记。Keychain、模型/搜索设置和外观偏好不清理。已完成代际的普通打开失败进入恢复页，不再次清空。
-- `FamiliarAppDependencies`（`@MainActor`）持有 ToolRegistry、ExecutionPolicy、确认/澄清 coordinator、UndoStore、原生服务、`FamiliarWebSearchService`、`FamiliarWorkspaceStore`、Python 包源设置、`FamiliarShellRuntimeStatus`、`FamiliarVisionProcessor`。registry 在 init 中一次构建；iSH 资源存在时追加 `shell_execute`/`environment_prepare`。iSH 不在启动时准备。
+- `FamiliarAppDependencies`（`@MainActor`）持有 ToolRegistry、ExecutionPolicy、确认/澄清 coordinator、UndoStore、原生服务、`FamiliarWebSearchService`、`FamiliarWorkspaceStore`、Python 包源设置、`FamiliarShellRuntimeStatus`、`FamiliarVisionProcessor`。registry 在 init 中一次构建；iSH 资源存在时追加 `shell_execute`/`environment_prepare`。主界面出现后 `FamiliarRootView` 触发 `prewarmShellRuntime()`：后台低优先级、共享 flight、幂等，失败静默由下次调用或设置页 Retry 重试。
 - `makeRuntime(for:...)` 把 `FamiliarProviderFactory.makeProvider` 结果与 registry、policy、coordinator、授权、persist/willCommit 回调注入唯一的 `FamiliarAgentLoop`。
 
 ## 4. 模块清单
@@ -61,8 +61,8 @@
 4. 懒加载：首轮基础为 `current_date_time`、`ask_user`、`tools_load`，另有经 Project/Skill/availability 过滤的 `web_search`、`web_fetch`；一次最多 2 组，替换下一轮扩展集合。默认启用 web、calendar、places、files、memory、device；`workspace_write`、`file_publish`、shell、presentation 默认关闭。
 5. Web：搜索保留引擎排名并去 URL 重复；查询文本不做国家拼接，DDG 固定全球区域，Bing 不按语言设置 market，Tavily 不发送 country/language 限定；Context 提示按来源选择语言、不得从中文/时区/Provider 所在地推断地域；工具按实际结果数量请求，Run 缓存按 Provider/语言/时效/数量/规范化 query 隔离。搜索重试、DDG 形态切换与网络/5xx 降级共用 24 秒预算（工具上限 25 秒），有 Key 首选阶段最多 12 秒；认证/额度/限流/解析错误直接报告。抓取经 URL 策略、DNS、受限 HTTP、压缩/字符解码和 SwiftSoup 抽取。Run 缓存只保留成功证据；已观测请求 URL 与最终 URL 共享首份捕获。工具事件保留引用别名，最终 Message/Markdown blocks 保存时统一引用并去重来源；Sheet 只列实际引用来源。二者 read/sensitive，不自动创建长期 File。
 5a. 搜索设置：feature-local `@Observable` 编辑状态以原 Provider 保存草稿；写入与重读成功后才能验证，验证绑定服务与凭据版本。编辑、切换、删除、离开均使旧验证失效；保存失败保留草稿并阻止切换。
-6. Shell/iSH：`shell_execute` manifest 为 reversibleWrite/high；`FamiliarShellPolicy` 决定 deny/确认/风险；首次使用经 `FamiliarISHPreparation` 共享准备，限定 Workspace。依赖安装仅 `environment_prepare`。
-7. 文件输出：file_write/edit 只写 Markdown/文本，每次新 FileVersion；复杂格式先写 Workspace `Outputs/`，经 `file_publish` 校验后登记（无 PPTX）。Shell 成功后 Outputs 变更会被捕获登记，但不经校验器。
+6. Shell/iSH：`.documents` 组（shell_execute/environment_prepare/environment_status/file_publish）默认启用，取代原 shell 组；`shell_execute` manifest 为 reversibleWrite/high；`FamiliarShellPolicy` 决定 deny/确认/风险；首次使用经 `FamiliarISHPreparation` 共享准备（可被启动后预热提前完成），限定 Workspace；未就绪时工具活动行报告“正在准备运行环境”。依赖安装仅 `environment_prepare`（配置软件源、Swift 构造的声明式命令）。
+7. 文件输出：file_write/edit 只写 Markdown/文本，每次新 FileVersion；复杂格式（DOCX/XLSX/PPTX/PDF）先写 Workspace `Outputs/`，经 `file_publish` 校验后登记。Shell 成功后的 Outputs 变更会被捕获登记并 best-effort 解析（已知格式经 `FamiliarFileValidator.extract` 存 extractedText；失败仍登记并在 provenance 标注 `validation.state=failed`）。
 
 ## 6. 授权现状
 

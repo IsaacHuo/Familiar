@@ -2,7 +2,7 @@ import Foundation
 
 /// One product catalog for discovery, default capability selection and core exceptions.
 nonisolated enum FamiliarToolGroup: String, CaseIterable, Sendable {
-    case base, web, calendar, places, files, memory, skills, shell, device, presentation
+    case base, web, calendar, places, files, memory, skills, documents, device, presentation
 
     static let baseToolNames: Set<String> = ["current_date_time", "ask_user", "tools_load"]
     /// Exposed from the first request and kept across tools_load, without leaving
@@ -20,7 +20,7 @@ nonisolated enum FamiliarToolGroup: String, CaseIterable, Sendable {
         case .files: String(localized: "tool.group.files", defaultValue: "Files")
         case .memory: String(localized: "tool.group.memory", defaultValue: "Memory")
         case .skills: String(localized: "tool.group.skills", defaultValue: "Skills")
-        case .shell: String(localized: "tool.group.shell", defaultValue: "Environment & Shell")
+        case .documents: String(localized: "tool.group.documents", defaultValue: "Documents & Environment")
         case .device: String(localized: "tool.group.device", defaultValue: "Other Device Tools")
         case .presentation: String(localized: "tool.group.presentation", defaultValue: "Presentation")
         }
@@ -35,7 +35,7 @@ nonisolated enum FamiliarToolGroup: String, CaseIterable, Sendable {
         case .files: "Read, save, revise and share files in the current Project."
         case .memory: "Read frozen memories or propose a confirmed memory."
         case .skills: "Read explicitly attached guidance; installation requires approval."
-        case .shell: "Read environment status, prepare dependencies and run controlled computation."
+        case .documents: "Prepare the isolated environment, run controlled computation and deliver validated documents such as DOCX, XLSX, PPTX or PDF."
         case .device: "Native contacts, photos, health activity, music catalog, Bluetooth, notifications, alarms, clipboard and Familiar search. System access and sensitive actions still require permission or approval."
         case .presentation: "Optional checklists, recommendations and charts."
         }
@@ -50,10 +50,10 @@ nonisolated enum FamiliarToolGroup: String, CaseIterable, Sendable {
         case "map_search", "weather_forecast", "weather_history", "current_location": return .places
         case "file_list", "file_search", "workspace_list", "workspace_read",
              "workspace_search", "workspace_write", "workspace_image_list", "prepare_share", "prepare_file_export": return .files
-        case "file_write", "file_edit", "file_read", "file_publish": return .files
+        case "file_write", "file_edit", "file_read": return .files
         case "memory_search", "memory_remember": return .memory
         case "skill_list", "skill_read", "skill_install": return .skills
-        case "environment_status", "environment_prepare", "shell_execute": return .shell
+        case "environment_status", "environment_prepare", "shell_execute", "file_publish": return .documents
         case "task_plan", "present_recommendation", "present_insight": return .presentation
         default: return .device
         }
@@ -62,9 +62,9 @@ nonisolated enum FamiliarToolGroup: String, CaseIterable, Sendable {
     static func isDefaultEnabled(_ name: String) -> Bool {
         if baseToolNames.contains(name) { return true }
         if ["skill_list", "skill_read"].contains(name) { return true }
-        if ["workspace_write", "file_publish"].contains(name) { return false }
+        if name == "workspace_write" { return false }
         switch group(for: name) {
-        case .web, .calendar, .places, .files, .memory, .device: return true
+        case .web, .calendar, .places, .files, .memory, .device, .documents: return true
         default: return false
         }
     }

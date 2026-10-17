@@ -157,9 +157,15 @@ struct FamiliarProjectService {
             bindings = try context.fetch(FetchDescriptor<FamiliarProjectCapabilityBindingRecord>(predicate: #Predicate { $0.projectID == projectID }))
         } else { bindings = [] }
         let enabled = Set(bindings.filter(\.enabled).map(\.capabilityID))
-        return manifests.filter {
-            FamiliarToolGroup.baseToolNames.contains($0.name)
-                || (bindings.isEmpty ? FamiliarToolGroup.isDefaultEnabled($0.name) : enabled.contains($0.id))
+        let toggled = Set(bindings.map(\.capabilityID))
+        // A binding row only records a capability the user explicitly switched.
+        // Capabilities never toggled (including ones added after the snapshot) follow
+        // the product defaults, so enabling Shell and document tools reaches
+        // existing Projects instead of leaving them silently off.
+        return manifests.filter { manifest in
+            FamiliarToolGroup.baseToolNames.contains(manifest.name)
+                || enabled.contains(manifest.id)
+                || (!toggled.contains(manifest.id) && FamiliarToolGroup.isDefaultEnabled(manifest.name))
         }
     }
 
