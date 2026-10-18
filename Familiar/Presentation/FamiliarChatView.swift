@@ -91,6 +91,11 @@ struct FamiliarChatView: View {
                         pinnedItems: pinnedItems,
                         selectedConversationID: controller.selectedConversationID,
                         safeAreaInsets: safeAreaInsets,
+                        onNewChat: {
+                            guard !isInNewConversation else { return }
+                            requestNewConversation(project: selectedProject)
+                        },
+                        onSettings: { present(.settings(nil)) },
                         onSelect: { conversation in
                             requestConversationSelection(conversation)
                         },
@@ -683,12 +688,6 @@ struct FamiliarChatView: View {
                 liveController: controller,
                 availableUndoKeys: controller.availableUndoKeys,
                 completedUndoKeys: controller.completedUndoKeys,
-                onResolveConfirmation: { requestID, decision in
-                    controller.resolveConfirmation(requestID: requestID, decision: decision)
-                },
-                onResolveClarification: { requestID, resolution in
-                    controller.resolveClarification(requestID: requestID, resolution: resolution)
-                },
                 onInsertPrompt: { prompt in
                     controller.draft = prompt
                     isComposerFocused = true
@@ -728,7 +727,6 @@ struct FamiliarChatView: View {
             onClear: { confirmsClearChat = true },
             onFiles: { present(.files) },
             onTerminal: { present(.terminal(controller.currentScope)) },
-            onMemory: { present(.settings(.memory)) },
             onUsage: { present(.usage) },
             onFork: {
                 let navigation = FamiliarPendingDraftNavigation.fork
@@ -1102,7 +1100,6 @@ private struct FamiliarChatTopBar: View {
     let onClear: () -> Void
     let onFiles: () -> Void
     let onTerminal: () -> Void
-    let onMemory: () -> Void
     let onUsage: () -> Void
     let onFork: () -> Void
     let onMove: () -> Void
@@ -1189,7 +1186,6 @@ private struct FamiliarChatTopBar: View {
                         Label(String(localized: "terminal.title", defaultValue: "Terminal"), systemImage: "terminal")
                     }.disabled(isSending).accessibilityIdentifier("chat.terminal")
                     Button(action: onFiles) { Label(String(localized: "chat.files"), systemImage: "folder") }
-                    Button(action: onMemory) { Label(String(localized: "settings.memory.title"), systemImage: "brain.head.profile") }
                     Button(action: onSpeak) { Label(String(localized: isSpeaking ? "chat.speech.stop" : "chat.speech"), systemImage: "speaker.wave.2") }.disabled(isNewConversation)
                     Divider()
                     Button(action: onUsage) { Label(String(localized: "usage.title"), systemImage: "number") }
@@ -1343,6 +1339,8 @@ private struct FamiliarConversationDrawer: View {
     let pinnedItems: [FamiliarPinnedItemRecord]
     let selectedConversationID: UUID?
     let safeAreaInsets: EdgeInsets
+    let onNewChat: () -> Void
+    let onSettings: () -> Void
     let onSelect: (FamiliarConversation) -> Void
     let onRename: (FamiliarConversation) -> Void
     let onDelete: (FamiliarConversation) -> Void
@@ -1358,10 +1356,27 @@ private struct FamiliarConversationDrawer: View {
         let projectID: UUID?
         var id: String { projectID?.uuidString ?? "ordinary" }
     }
+
+    private enum DrawerRow: Identifiable {
+        case project(FamiliarProject, pinned: Bool)
+        case conversation(FamiliarConversation, pinned: Bool, nested: Bool)
+        case showMore(UUID?)
+
+        var id: String {
+            switch self {
+            case .project(let project, _): "project:\(project.id)"
+            case .conversation(let conversation, _, _): "chat:\(conversation.id.uuidString)"
+            case .showMore(let projectID): "more:\(projectID?.uuidString ?? "ordinary")"
+            }
+        }
+    }
+
+    private let projectChatPreviewLimit = 5
+    private let ordinaryChatLimit = 20
+
     private func ordered(_ chats: [FamiliarConversation]) -> [FamiliarConversation] {
         chats.sorted { $0.updatedAt == $1.updatedAt ? $0.id.uuidString < $1.id.uuidString : $0.updatedAt > $1.updatedAt }
     }
-
 
     private var pinnedConversationIDs: Set<UUID> {
         Set(pinnedItems.filter { $0.targetType == .conversation }.map(\.targetID))
@@ -1389,63 +1404,65 @@ private struct FamiliarConversationDrawer: View {
         projects.filter { !pinnedProjectIDs.contains($0.id) }
     }
 
+    private func projectRows(_ project: FamiliarProject, pinned: Bool) -> [DrawerRow] {
+        var rows: [DrawerRow] = [.project(project, pinned: pinned)]
+        guard expandedProjectIDs.contains(project.id) else { return rows }
+        let chats = ordered(conversations.filter { $0.project?.id == project.id && !pinnedConversationIDs.contains($0.id) })
+        rows += chats.prefix(projectChatPreviewLimit).map { DrawerRow.conversation($0, pinned: false, nested: true) }
+        if chats.count > projectChatPreviewLimit { rows.append(.showMore(project.id)) }
+        return rows
+    }
+
+    private var pinnedRows: [DrawerRow] {
+        pinnedProjects.flatMap { projectRows($0, pinned: true) }
+            + pinnedConversations.map { DrawerRow.conversation($0, pinned: true, nested: false) }
+    }
+
+    private var ordinaryRows: [DrawerRow] {
+        let ordinary = ordered(conversations.filter { $0.project == nil && !pinnedConversationIDs.contains($0.id) })
+        var rows = ordinary.prefix(ordinaryChatLimit).map { DrawerRow.conversation($0, pinned: false, nested: false) }
+        if ordinary.count > ordinaryChatLimit { rows.append(.showMore(nil)) }
+        return rows
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                    if !pinnedConversations.isEmpty || !pinnedProjects.isEmpty {
-                        sectionTitle(String(localized: "drawer.pinned", defaultValue: "Pinned"))
-                        ForEach(pinnedProjects) { project in
-                            projectSection(project, isPinned: true)
-                        }
-                        ForEach(pinnedConversations) { conversation in
-                            conversationRow(conversation, isPinned: true)
-                        }
-                    }
-
-                    sectionTitle(String(localized: "project.projects"))
-                    ForEach(unpinnedProjects) { project in
-                        projectSection(project, isPinned: false)
-                    }
-                    Button(action: onAllProjects) {
-                        HStack(spacing: 0) {
-                            HStack(spacing: FamiliarSpacing.small) {
-                                Image(systemName: "tray.full")
-                                Text(String(localized: "project.all"))
-                                Spacer(minLength: 4)
-                                Text("\(projects.count)")
-                                    .font(FamiliarTypography.caption)
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .padding(.leading, FamiliarSpacing.large)
-                            .frame(maxWidth: .infinity, minHeight: FamiliarControlSize.minimumHitTarget)
-                            Image(systemName: "chevron.right")
-                                .font(FamiliarTypography.caption.weight(.bold))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 34, height: FamiliarControlSize.minimumHitTarget)
-                        }
-                        .font(FamiliarTypography.body)
-                        .frame(height: FamiliarControlSize.minimumHitTarget)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.horizontal, FamiliarSpacing.small)
-
-                    sectionTitle(String(localized: "conversation.ordinary"))
-                    let ordinary = ordered(conversations.filter { $0.project == nil && !pinnedConversationIDs.contains($0.id) })
-                    ForEach(Array(ordinary.prefix(20))) { conversation in
-                        conversationRow(conversation, isPinned: false)
-                    }
-                    if ordinary.count > 20 { showMoreButton { conversationList = .init(projectID: nil) } }
-
-
+            List {
+                Section {
+                    actionRow(String(localized: "conversation.new"), systemImage: "square.and.pencil", identifier: "drawer.newChat", action: onNewChat)
+                    actionRow(String(localized: "drawer.search"), systemImage: "magnifyingglass", identifier: "drawer.search", action: { isSearchPresented = true })
                 }
-                .padding(.top, drawerHeaderHeight + FamiliarSpacing.small)
-                .padding(.bottom, FamiliarSpacing.medium)
+
+                if !pinnedRows.isEmpty {
+                    Section(String(localized: "drawer.pinned", defaultValue: "Pinned")) {
+                        ForEach(pinnedRows) { row in drawerRow(row) }
+                    }
+                }
+
+                Section(String(localized: "project.projects")) {
+                    ForEach(unpinnedProjects.flatMap { projectRows($0, pinned: false) }) { row in drawerRow(row) }
+                    actionRow(String(localized: "project.all"), systemImage: "tray.full", identifier: "drawer.allProjects",
+                              detail: "\(projects.count)", action: onAllProjects)
+                }
+
+                Section(String(localized: "conversation.ordinary")) {
+                    ForEach(ordinaryRows) { row in drawerRow(row) }
+                }
+
+                Section {
+                    actionRow(String(localized: "drawer.settings"), systemImage: "gearshape", identifier: "drawer.settings", action: onSettings)
+                }
             }
+            .listStyle(.plain)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 1, leading: FamiliarSpacing.small, bottom: 1, trailing: FamiliarSpacing.small))
+            .scrollContentBackground(.hidden)
+            .contentMargins(.top, drawerHeaderHeight + FamiliarSpacing.small, for: .scrollContent)
+            .contentMargins(.bottom, FamiliarSpacing.medium, for: .scrollContent)
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
+            .environment(\.defaultMinListRowHeight, FamiliarControlSize.minimumHitTarget)
 
             drawerHeader
         }
@@ -1480,22 +1497,44 @@ private struct FamiliarConversationDrawer: View {
         }
     }
 
-    private func sectionTitle(_ title: String) -> some View {
-        Text(title)
-            .font(FamiliarTypography.sectionTitle.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, FamiliarSpacing.xLarge)
-            .padding(.top, FamiliarSpacing.medium)
-            .padding(.bottom, FamiliarSpacing.xSmall)
+    @ViewBuilder
+    private func drawerRow(_ row: DrawerRow) -> some View {
+        switch row {
+        case .project(let project, let pinned):
+            projectRow(project, isPinned: pinned)
+        case .conversation(let conversation, let pinned, let nested):
+            conversationRow(conversation, isPinned: pinned, isNested: nested)
+        case .showMore(let projectID):
+            showMoreButton { conversationList = .init(projectID: projectID) }
+        }
     }
 
-    @ViewBuilder
-    private func projectSection(_ project: FamiliarProject, isPinned: Bool) -> some View {
+    private func actionRow(_ title: String, systemImage: String, identifier: String,
+                           detail: String? = nil, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: FamiliarSpacing.small) {
+                Image(systemName: systemImage)
+                    .frame(width: FamiliarSpacing.xLarge, alignment: .leading)
+                Text(title)
+                Spacer(minLength: 4)
+                if let detail {
+                    Text(detail).font(FamiliarTypography.caption).foregroundStyle(.tertiary)
+                }
+            }
+            .font(FamiliarTypography.body)
+            .frame(minHeight: FamiliarControlSize.minimumHitTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(identifier)
+    }
+
+    private func projectRow(_ project: FamiliarProject, isPinned: Bool) -> some View {
         let projectConversations = ordered(conversations.filter {
             $0.project?.id == project.id && !pinnedConversationIDs.contains($0.id)
         })
         let isExpanded = expandedProjectIDs.contains(project.id)
-        HStack(spacing: 0) {
+        return HStack(spacing: 0) {
             Button {
                 setProjectExpanded(project.id, expanded: !isExpanded)
             } label: {
@@ -1509,8 +1548,7 @@ private struct FamiliarConversationDrawer: View {
                         .foregroundStyle(.tertiary)
                 }
                 .font(FamiliarTypography.body)
-                .padding(.leading, FamiliarSpacing.large)
-                .frame(maxWidth: .infinity, minHeight: FamiliarControlSize.minimumHitTarget)
+                .frame(maxWidth: .infinity, minHeight: FamiliarControlSize.minimumHitTarget, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -1529,7 +1567,6 @@ private struct FamiliarConversationDrawer: View {
                 String(localized: isExpanded ? "project.collapse" : "project.expand", defaultValue: isExpanded ? "Collapse Project" : "Expand Project")
             )
         }
-        .padding(.horizontal, FamiliarSpacing.small)
         .contextMenu {
             Button { onToggleProjectPin(project) } label: {
                 Label(
@@ -1540,22 +1577,6 @@ private struct FamiliarConversationDrawer: View {
             Button { onSelectProject(project) } label: {
                 Label(String(localized: "project.details"), systemImage: "folder.badge.gearshape")
             }
-        }
-
-        if isExpanded {
-            let limit = 5
-            VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                ForEach(Array(projectConversations.prefix(limit))) { conversation in
-                    conversationRow(conversation, isPinned: false, isNested: true)
-                }
-                if projectConversations.count > limit {
-                    showMoreButton {
-                        conversationList = .init(projectID: project.id)
-                    }
-                    .padding(.leading, FamiliarSpacing.large)
-                }
-            }
-            .transition(reduceMotion ? .opacity : FamiliarMotion.softRise)
         }
     }
 
@@ -1593,21 +1614,18 @@ private struct FamiliarConversationDrawer: View {
                     .lineLimit(1)
                 Spacer(minLength: 4)
             }
-            .padding(.leading, isNested ? FamiliarSpacing.xLarge + FamiliarSpacing.large : FamiliarSpacing.large)
-            .padding(.trailing, FamiliarSpacing.large)
-            .frame(height: FamiliarControlSize.minimumHitTarget)
+            .padding(.leading, isNested ? FamiliarSpacing.large : 0)
+            .frame(minHeight: FamiliarControlSize.minimumHitTarget)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("chat.history.row.\(conversation.id.uuidString)")
         .accessibilityAddTraits(conversation.id == selectedConversationID ? .isSelected : [])
-        .background(
+        .listRowBackground(
             conversation.id == selectedConversationID
                 ? Color.primary.opacity(0.075)
-                : .clear,
-            in: RoundedRectangle(cornerRadius: FamiliarRadius.control, style: .continuous)
+                : .clear
         )
-        .padding(.horizontal, FamiliarSpacing.small)
         .contextMenu {
             Button {
                 onToggleConversationPin(conversation)
@@ -1636,11 +1654,9 @@ private struct FamiliarConversationDrawer: View {
                 .font(FamiliarTypography.secondary.weight(.medium))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, minHeight: FamiliarControlSize.minimumHitTarget, alignment: .leading)
-                .padding(.horizontal, FamiliarSpacing.large)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, FamiliarSpacing.small)
     }
 
     private var drawerHeader: some View {
@@ -1648,19 +1664,6 @@ private struct FamiliarConversationDrawer: View {
             Text(String(localized: "app.name"))
                 .font(.title2.bold())
             Spacer()
-            Button {
-                isSearchPresented = true
-            } label: {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: FamiliarIconSize.prominent, weight: .regular))
-                    .frame(
-                        width: FamiliarControlSize.minimumHitTarget,
-                        height: FamiliarControlSize.minimumHitTarget
-                    )
-            }
-            .buttonStyle(.plain)
-            .familiarGlassCircle(interactive: true)
-            .accessibilityLabel(String(localized: "drawer.search"))
         }
         .padding(.horizontal, FamiliarSpacing.xLarge)
         .padding(.top, safeAreaInsets.top + FamiliarSpacing.small)

@@ -79,13 +79,15 @@
 - [x] S2b 构建：arm64 iPhone 18 Pro Simulator `build-for-testing` 成功（exit 0，无源码 warning/error）；新增/更新能力级匹配、EventKit 级别、MCP 信任、Memory 二级写入等用例，全部只编译不执行。见 docs/17-s2b-authorization-design.md。
 - [ ] S2b 验收：所有者真机行为验收（清单见 docs/17 §5）；完整 S2 不标完成。
 
-### S3 Chat 呈现收敛 `[ ]`
+### S3 Chat 呈现收敛 `[~]`
 
-- 工具结果只保留 4 种呈现：活动行（点开 Sheet）、行内引用 + 来源 Sheet、统一文件卡、输入区审批/澄清。Recommendation/Insight/TaskList/ShareDraft 改由模型写 Markdown；capsule 合并为 1 种；审批卡一套控件。
-- 侧边栏保留推开手势，内容改原生 List：新对话、搜索、Projects、最近对话，设置在底部。
-- 顶栏文件夹已移除，项目详情合并进省略号；后续继续“更多”菜单精简；Composer 添加菜单改原生 Menu，去掉 180ms sleep，字号走 Typography。
-- 拆分 FamiliarChatMessageViews.swift；hash/ID/rawValue 只在技术详情中出现。
-- 验收：假 Provider 截图（深/浅色、大字体、小屏）+ VoiceOver 标签检查 + 真机签字。
+- [x] 工具结果只保留 4 种呈现：活动行（点开 Sheet 承载 receipt/records/shell/技术详情）、行内引用 + 来源 Sheet、统一文件卡（含 prepare_file_export）、输入区审批/澄清。Recommendation/Insight/TaskList/ShareDraft 呈现与 `task_plan`/`present_recommendation`/`present_insight`/`prepare_share` 工具整体移除（内容改由模型写 Markdown）；payload 收敛为 scalar/searchResults/document/recordCollection/mutationReceipt/fileMutation/shellExecution（schemaVersion 4）；死代码 diff/code/contextMatches 同步删除。
+- [x] 侧边栏保留推开手势，内容改为原生 List：新对话、搜索、Pinned、Projects（可展开）、最近普通对话、底部设置；顶部标题保留，搜索改为行内入口。
+- [x] 顶栏省略号精简（移除与设置重复的 Memory 入口，保留 New/项目详情/分支/移动/导出/压缩/清除/终端/Files/朗读/用量）；Composer 添加菜单改原生 Menu，删除 180ms sleep 与 popover 路径。
+- [x] 拆分 FamiliarChatMessageViews.swift（2765 → 0）：Chat/Timeline、Chat/Row、Chat/Turn、Chat/Runtime、Chat/Records、Chat/VisualFixture 六个文件。
+- [x] hash/ID/rawValue 清理（记录行不再回退原始 record.id；上下文匹配呈现删除后 `v%lld` 一并消失）。
+- [x] 构建：arm64 iPhone 18 Pro Simulator `build-for-testing` 成功（exit 0，无源码 warning/error）；测试只编译不执行；双语 strings 1045 键、键集合一致。
+- [ ] 验收：假 Provider 截图（深/浅色、大字体、小屏）+ VoiceOver 标签检查 + 真机签字。
 
 ### S4 iSH 小主机与文档交付 `[~]`
 
@@ -129,5 +131,7 @@
 S2b（能力级持续授权、Memory 自动写入、environment_prepare 自动边界、MCP 信任）已实现：arm64 iPhone 18 Pro Simulator `build-for-testing` 成功，测试只编译不执行；真机行为验收清单见 docs/17-s2b-authorization-design.md §5，验收前完整 S2 不标完成。
 
 S4（文档工具组默认启用、后台预热、rootfs 预装文档库与中文字体、Outputs 自动校验、PPTX、documents Skill 模板、watchdog/错误恢复）已实现：`build-for-testing` 成功，guest 冒烟在重建镜像时通过；真机验收清单见 docs/18-s4-shell-documents-design.md §5，验收前 S4 不标完成。
+
+S3（工具结果四种呈现、presentation 工具与 payload 收敛、侧栏原生 List、省略号精简、Composer 原生 Menu、消息视图拆分）已实现：`build-for-testing` 成功，测试只编译不执行；验收（假 Provider 三态截图 + VoiceOver + 真机签字）待所有者执行，验收前 S3 不标完成。
 
 S1 的 79 项定向单测、WebKit 引用回归与 3 项生产 UI 证据仅属于之前的 S1 基线；DeepSeek + Tavily 20 条真实查询与所有者签字仍待完成。后续切片同样单列真实验收结果，不把编译等同于运行通过。

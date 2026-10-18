@@ -134,16 +134,10 @@ struct FamiliarToolContractTests {
         .scalar(.init(summary: "Scalar", value: "42")),
         .searchResults(.init(summary: "One result", query: "familiar", results: [.init(id: "1", title: "Familiar", url: "https://example.com", snippet: "Result")])),
         .document(.init(summary: "Document", title: "Doc", text: "Body", mimeType: "text/plain", url: nil, truncated: false)),
-        .contextMatches(.init(summary: "One match", query: "body", matches: [.init(resourceID: UUID(), versionID: UUID(), version: 3, title: "Doc", excerpt: "Body")])),
         .recordCollection(.init(summary: "One record", recordType: "fixture", records: [.init(id: "1", fields: [.init(name: "title", value: "Record")])])),
         .mutationReceipt(.init(summary: "Created", operation: "create", targetIdentifier: "1", succeeded: true, undoAvailable: true)),
         .fileMutation(.init(summary: "Written", operation: "write", identifier: "file_1", title: "Draft", byteSize: 4, contentHash: "hash")),
-        .diff(.init(summary: "Changed", before: "old", after: "new")),
-        .taskList(.init(planID: "release", title: "Release", tasks: [.init(id: "verify", title: "Verify", status: .running, detail: "Build", progress: 0.5)])),
-        .recommendation(.init(title: "Next step", explanation: "Verify first.", nextPrompt: "Verify the build", alternatives: [.init(id: "review", title: "Review", prompt: "Review the diff")], confidenceLevel: .needsReview)),
-        .insight(.init(title: "Latency", explanation: "Latency improved.", metrics: [.init(label: "P95", value: 120, unit: "ms", change: -18)])),
-        .code(.init(summary: "Example", language: "swift", filename: "Example.swift", code: "let value = 1")),
-        .shareDraft(.init(summary: "Ready to share", title: "Draft", text: "Share this text"))
+        .shellExecution(.init(summary: "Ran", taskID: UUID(), command: "ls", workingDirectory: "/workspace", runtime: "ish", status: "succeeded", exitCode: 0, standardOutput: "ok", standardError: "", outputWasTruncated: false, networkEnabled: false))
     ]
 }
 

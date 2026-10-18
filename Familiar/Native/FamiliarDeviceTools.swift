@@ -481,37 +481,6 @@ nonisolated struct FamiliarClipboardWriteTool: FamiliarTool {
     }
 }
 
-nonisolated struct FamiliarPrepareShareTool: FamiliarTool {
-    struct Input: Decodable, Sendable { let title: String?; let text: String }
-    private struct Output: Encodable { let title: String?; let text: String; let requiresUserAction: Bool }
-    let manifest = FamiliarToolManifest(
-        name: "prepare_share",
-        title: "准备系统分享",
-        description: "准备要分享的文本。Familiar 不会自动发送；用户仍需点击回答下方的系统分享按钮并选择目标。",
-        parameters: .init(type: .object, properties: [
-            "title": .init(type: .string, description: "可选标题"),
-            "text": .init(type: .string, description: "要分享的文本")
-        ], required: ["text"]),
-        effect: .read,
-        risk: .low,
-        requirements: [],
-        dataDomains: ["share.payload"],
-        executionClass: .native
-    )
-
-    func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
-        let output = Output(title: input.title, text: input.text, requiresUserAction: true)
-        return .result(.init(envelope: try FamiliarToolResultEnvelope(
-            model: output,
-            presentation: .shareDraft(.init(
-                summary: "分享内容已准备好，仍需用户主动打开系统分享。",
-                title: input.title ?? "Share",
-                text: input.text
-            ))
-        )))
-    }
-}
-
 nonisolated struct FamiliarDeviceCapabilityProvider: FamiliarCapabilityProviding {
     let eventKit: any FamiliarEventKitServicing
     let contacts: any FamiliarContactsServicing

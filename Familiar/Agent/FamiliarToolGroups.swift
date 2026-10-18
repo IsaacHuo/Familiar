@@ -2,7 +2,7 @@ import Foundation
 
 /// One product catalog for discovery, default capability selection and core exceptions.
 nonisolated enum FamiliarToolGroup: String, CaseIterable, Sendable {
-    case base, web, calendar, places, files, memory, skills, documents, device, presentation
+    case base, web, calendar, places, files, memory, skills, documents, device
 
     static let baseToolNames: Set<String> = ["current_date_time", "ask_user", "tools_load"]
     /// Exposed from the first request and kept across tools_load, without leaving
@@ -22,7 +22,6 @@ nonisolated enum FamiliarToolGroup: String, CaseIterable, Sendable {
         case .skills: String(localized: "tool.group.skills", defaultValue: "Skills")
         case .documents: String(localized: "tool.group.documents", defaultValue: "Documents & Environment")
         case .device: String(localized: "tool.group.device", defaultValue: "Other Device Tools")
-        case .presentation: String(localized: "tool.group.presentation", defaultValue: "Presentation")
         }
     }
 
@@ -37,7 +36,6 @@ nonisolated enum FamiliarToolGroup: String, CaseIterable, Sendable {
         case .skills: "Read explicitly attached guidance; installation requires approval."
         case .documents: "Prepare the isolated environment, run controlled computation and deliver validated documents such as DOCX, XLSX, PPTX or PDF."
         case .device: "Native contacts, photos, health activity, music catalog, Bluetooth, notifications, alarms, clipboard and Familiar search. System access and sensitive actions still require permission or approval."
-        case .presentation: "Optional checklists, recommendations and charts."
         }
     }
 
@@ -49,12 +47,11 @@ nonisolated enum FamiliarToolGroup: String, CaseIterable, Sendable {
              "reminders", "create_reminder", "update_reminder", "delete_reminder": return .calendar
         case "map_search", "weather_forecast", "weather_history", "current_location": return .places
         case "file_list", "file_search", "workspace_list", "workspace_read",
-             "workspace_search", "workspace_write", "workspace_image_list", "prepare_share", "prepare_file_export": return .files
+             "workspace_search", "workspace_write", "workspace_image_list", "prepare_file_export": return .files
         case "file_write", "file_edit", "file_read": return .files
         case "memory_search", "memory_remember": return .memory
         case "skill_list", "skill_read", "skill_install": return .skills
         case "environment_status", "environment_prepare", "shell_execute", "file_publish": return .documents
-        case "task_plan", "present_recommendation", "present_insight": return .presentation
         default: return .device
         }
     }

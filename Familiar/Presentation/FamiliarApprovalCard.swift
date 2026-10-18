@@ -3,7 +3,6 @@ import SwiftUI
 struct FamiliarApprovalCard: View {
     let surface: FamiliarSurfaceDescriptor
     let onResolve: (UUID, FamiliarToolConfirmationDecision) -> Void
-    let isCompact: Bool
 
     @AccessibilityFocusState private var isAccessibilityFocused: Bool
     @Environment(\.familiarReduceMotion) private var reduceMotion
@@ -12,12 +11,10 @@ struct FamiliarApprovalCard: View {
 
     init(
         surface: FamiliarSurfaceDescriptor,
-        isCompact: Bool = false,
         onResolve: @escaping (UUID, FamiliarToolConfirmationDecision) -> Void
     ) {
         self.surface = surface
         self.onResolve = onResolve
-        self.isCompact = isCompact
         _selectedDecision = State(initialValue: Self.defaultDecision(for: surface))
     }
 
@@ -51,14 +48,14 @@ struct FamiliarApprovalCard: View {
     }
 
     private var approvalCard: some View {
-        VStack(alignment: .leading, spacing: isCompact ? FamiliarSpacing.small : FamiliarAISurfaceMetric.spaceL) {
+        VStack(alignment: .leading, spacing: FamiliarSpacing.small) {
             heading
             approvalFields
             policySummary
             authorizationScope
             actions
         }
-        .padding(isCompact ? FamiliarSpacing.medium : FamiliarAISurfaceMetric.spaceL)
+        .padding(FamiliarSpacing.medium)
         .background(
             FamiliarTheme.surface,
             in: RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous)
@@ -111,8 +108,8 @@ struct FamiliarApprovalCard: View {
                             .foregroundStyle(FamiliarTheme.inkSecondary)
                     }
                     .padding(.horizontal, FamiliarAISurfaceMetric.spaceM)
-                    .padding(.vertical, isCompact ? FamiliarSpacing.xSmall : 0)
-                    .frame(minHeight: isCompact ? nil : FamiliarControlSize.minimumHitTarget)
+                    .padding(.vertical, FamiliarSpacing.xSmall)
+                    .frame(minHeight: FamiliarControlSize.minimumHitTarget)
                 }
             }
             .background(
@@ -140,62 +137,25 @@ struct FamiliarApprovalCard: View {
     @ViewBuilder
     private var authorizationScope: some View {
         if authorizationOptions.count > 1 {
-            if isCompact {
-                Menu {
-                    ForEach(authorizationOptions) { option in
-                        Button { selectedDecision = option.decision } label: {
-                            if selectedDecision == option.decision { Label(option.title, systemImage: "checkmark") }
-                            else { Text(option.title) }
-                        }
-                        .accessibilityIdentifier("approval.scope.\(option.id)")
+            Menu {
+                ForEach(authorizationOptions) { option in
+                    Button { selectedDecision = option.decision } label: {
+                        if selectedDecision == option.decision { Label(option.title, systemImage: "checkmark") }
+                        else { Text(option.title) }
                     }
-                } label: {
-                    HStack(spacing: FamiliarSpacing.small) {
-                        Text(authorizationOptions.first { $0.decision == selectedDecision }?.title ?? "")
-                        Spacer()
-                        Image(systemName: "chevron.up.chevron.down").font(FamiliarTypography.caption)
-                    }
-                    .font(FamiliarTypography.secondary)
-                    .frame(minHeight: FamiliarControlSize.minimumHitTarget)
-                    .contentShape(Rectangle())
+                    .accessibilityIdentifier("approval.scope.\(option.id)")
                 }
-                .accessibilityLabel(String(localized: "approval.scope.question"))
-            } else {
-            VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceS) {
-                Text(String(localized: "approval.scope.question", defaultValue: "How long should Familiar allow this action?"))
-                    .font(FamiliarTypography.caption.weight(.semibold))
-                    .foregroundStyle(FamiliarTheme.inkSecondary)
-                VStack(spacing: FamiliarAISurfaceMetric.spaceXS) {
-                    ForEach(authorizationOptions) { option in
-                        Button {
-                            withAnimation(reduceMotion ? nil : FamiliarMotion.micro) {
-                                if selectedDecision != option.decision { FamiliarHaptics.shared.perform(.selection) }
-                                selectedDecision = option.decision
-                            }
-                        } label: {
-                            HStack(spacing: FamiliarAISurfaceMetric.spaceM) {
-                                Image(systemName: selectedDecision == option.decision ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(selectedDecision == option.decision ? FamiliarTheme.accent : FamiliarTheme.inkTertiary)
-                                Text(option.title)
-                                    .font(FamiliarTypography.secondary)
-                                    .foregroundStyle(FamiliarTheme.ink)
-                                Spacer(minLength: 0)
-                            }
-                            .padding(.horizontal, FamiliarAISurfaceMetric.spaceM)
-                            .frame(minHeight: FamiliarControlSize.minimumHitTarget)
-                            .contentShape(Rectangle())
-                            .background(
-                                selectedDecision == option.decision ? FamiliarTheme.accentTint : Color.clear,
-                                in: RoundedRectangle(cornerRadius: FamiliarRadius.control, style: .continuous)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(selectedDecision == option.decision ? .isSelected : [])
-                        .accessibilityIdentifier("approval.scope.\(option.id)")
-                    }
+            } label: {
+                HStack(spacing: FamiliarSpacing.small) {
+                    Text(authorizationOptions.first { $0.decision == selectedDecision }?.title ?? "")
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down").font(FamiliarTypography.caption)
                 }
+                .font(FamiliarTypography.secondary)
+                .frame(minHeight: FamiliarControlSize.minimumHitTarget)
+                .contentShape(Rectangle())
             }
-            }
+            .accessibilityLabel(String(localized: "approval.scope.question"))
         }
     }
 

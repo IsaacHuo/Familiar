@@ -113,11 +113,8 @@ struct FamiliarSurfaceTests {
             ("app_information", .scalar(.init(summary: "App", label: "Version", value: "1.0")), .context, .trace),
             ("web_search", .searchResults(.init(summary: "Search", query: "query", results: [])), .search, .trace),
             ("web_fetch", .document(.init(summary: "Page", title: "Page", text: "Body", url: "https://example.com")), .context, .trace),
-            ("file_search", .contextMatches(.init(summary: "Match", query: "body", matches: [.init(resourceID: UUID(), versionID: UUID(), version: 2, title: "Source", excerpt: "Body")])), .context, .topLevel),
-            ("calendar_events", .recordCollection(.init(summary: "Events", recordType: "calendarEvent", records: [.init(id: "1", fields: [.init(name: "title", value: "Review")])])), .records, .topLevel),
-            ("file_edit", .diff(.init(summary: "Changed", before: "old", after: "new")), .diff, .topLevel),
-            ("typed_code", .code(.init(summary: "Example", language: "swift", filename: "Example.swift", code: "let value = 1")), .code, .topLevel),
-            ("share_draft", .shareDraft(.init(summary: "Ready", title: "Draft", text: "Share this")), .share, .topLevel)
+            ("file_search", .recordCollection(.init(summary: "Match", recordType: "workspaceMatch", records: [.init(id: "Source", fields: [.init(name: "file", value: "Notes/Source.md")])])), .records, .topLevel),
+            ("calendar_events", .recordCollection(.init(summary: "Events", recordType: "calendarEvent", records: [.init(id: "1", fields: [.init(name: "title", value: "Review")])])), .records, .topLevel)
         ]
 
         var store = FamiliarSurfaceStore()
@@ -204,39 +201,6 @@ struct FamiliarSurfaceTests {
         let failure = FamiliarSurfaceStore.projectedSurfaces(for: run).first { $0.kind == .failure }
         #expect(failure?.placement == .topLevel)
         #expect(failure?.detail == "Provider unavailable")
-    }
-
-    @Test("Task revisions replace one stable top-level surface")
-    func taskRevisionProjection() throws {
-        var store = FamiliarSurfaceStore()
-        for (index, status) in [FamiliarToolPresentationPayload.TaskStatus.pending, .completed].enumerated() {
-            let envelope = try FamiliarToolResultEnvelope(
-                canonicalModelJSON: #"{"planID":"release"}"#,
-                presentation: .taskList(.init(planID: "release", title: "Release", tasks: [.init(id: "build", title: "Build", status: status)]))
-            )
-            store.apply(event(index, .toolResultProduced(result(toolName: "task_plan", effect: .read, envelope: envelope, callID: "call-\(index)"))))
-        }
-
-        let plans = store.orderedSurfaces.filter { $0.kind == .taskList }
-        #expect(plans.count == 1)
-        #expect(plans.first?.id == "task-plan:run-1:release")
-        if case .taskList(let plan) = plans.first?.resultEnvelope?.presentation.content {
-            #expect(plan.tasks.first?.status == .completed)
-        } else {
-            Issue.record("Expected latest task plan")
-        }
-    }
-
-    @Test("Recommendation and insight project as top-level typed surfaces")
-    func beautifulResultProjection() throws {
-        let recommendation = try FamiliarToolResultEnvelope(canonicalModelJSON: #"{"title":"Next"}"#, presentation: .recommendation(.init(title: "Next", explanation: "Verify", nextPrompt: "Verify", alternatives: [], confidenceLevel: .high)))
-        let insight = try FamiliarToolResultEnvelope(canonicalModelJSON: #"{"title":"Latency"}"#, presentation: .insight(.init(title: "Latency", explanation: "Improved", metrics: [.init(label: "P95", value: 120, unit: "ms")])))
-        var store = FamiliarSurfaceStore()
-        store.apply(event(0, .toolResultProduced(result(toolName: "present_recommendation", effect: .read, envelope: recommendation, callID: "recommend"))))
-        store.apply(event(1, .toolResultProduced(result(toolName: "present_insight", effect: .read, envelope: insight, callID: "insight"))))
-
-        #expect(store.orderedSurfaces.contains { $0.kind == .recommendation && $0.placement == .topLevel })
-        #expect(store.orderedSurfaces.contains { $0.kind == .insight && $0.placement == .topLevel })
     }
 
     @Test("Approval card is a one-page least-privilege system action")

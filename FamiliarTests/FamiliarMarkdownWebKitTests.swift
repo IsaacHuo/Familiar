@@ -31,7 +31,6 @@ final class FamiliarMarkdownWebKitTests: XCTestCase {
             NavigationStack {
                 FamiliarMessageTimeline(messages: content.messages, modelSwitches: [], agentRuns: content.runs,
                     liveController: content.controller, availableUndoKeys: [], completedUndoKeys: [],
-                    onResolveConfirmation: { _, _ in }, onResolveClarification: { _, _ in },
                     onInsertPrompt: { _ in }, onUndo: { _, _ in }, onEdit: { _ in },
                     onRetry: { _ in }, onRetryRecovery: { _ in })
             }

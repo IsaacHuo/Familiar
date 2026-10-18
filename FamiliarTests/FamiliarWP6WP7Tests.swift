@@ -52,7 +52,7 @@ struct FamiliarWP6WP7Tests {
         let manifests = [
             FamiliarToolManifest(name: "web_fetch", title: "Fetch", description: "Fetch", parameters: .init(type: .object), effect: .read, risk: .low),
             FamiliarToolManifest(name: "shell_execute", title: "Shell", description: "Shell", parameters: .init(type: .object), effect: .reversibleWrite, risk: .high),
-            FamiliarToolManifest(name: "task_plan", title: "Plan", description: "Plan", parameters: .init(type: .object), effect: .read, risk: .low)
+            FamiliarToolManifest(name: "contacts_search", title: "Contacts", description: "Contacts", parameters: .init(type: .object), effect: .read, risk: .low)
         ]
         try service.setCapability(
             "shell_execute",

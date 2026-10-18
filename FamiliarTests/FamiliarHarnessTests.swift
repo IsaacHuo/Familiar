@@ -9,29 +9,13 @@ struct FamiliarHarnessTests {
     func directAnswersDoNotRequirePlans() async throws {
         for projectID in [nil, UUID()] {
             let probe = FamiliarHarnessProbe()
-            let registry = try FamiliarToolRegistry(tools: [AnyFamiliarTool(FamiliarTaskPlanTool())])
+            let registry = try FamiliarToolRegistry(tools: [AnyFamiliarTool(FamiliarAskUserTool())])
             let events = try await run(provider: .init(probe: probe, mode: .direct), registry: registry, projectID: projectID)
             #expect(await probe.count() == 1)
             #expect(!events.contains { if case .toolInvocationRequested = $0.payload { true } else { false } })
             #expect(events.contains { if case .responseTextDelta("Hello") = $0.payload { true } else { false } })
             #expect(outcomes(events) == [.succeeded])
         }
-    }
-
-    @Test("An optional pending checklist does not schedule work or prevent an answer")
-    func optionalChecklistDoesNotGateCompletion() async throws {
-        let probe = FamiliarHarnessProbe()
-        let registry = try FamiliarToolRegistry(tools: [AnyFamiliarTool(FamiliarTaskPlanTool())])
-        let events = try await run(provider: .init(probe: probe, mode: .checklist), registry: registry, projectID: UUID())
-        #expect(await probe.count() == 2)
-        #expect(outcomes(events) == [.succeeded])
-        #expect(events.contains { event in
-            if case .toolResultProduced(let result) = event.payload,
-               case .taskList(let list) = result.envelope.presentation.content {
-                return list.tasks.first?.status == .pending
-            }
-            return false
-        })
     }
 
     @Test("Text File write needs approval but no prior plan")
@@ -164,7 +148,7 @@ private nonisolated struct FamiliarHarnessCommitFailure: LocalizedError, Familia
 }
 
 private struct FamiliarHarnessProvider: FamiliarModelProvider {
-    enum Mode: Sendable { case direct, checklist, file, memory }
+    enum Mode: Sendable { case direct, file, memory }
     let providerID = "harness-fixture"
     let probe: FamiliarHarnessProbe
     let mode: Mode
@@ -173,10 +157,7 @@ private struct FamiliarHarnessProvider: FamiliarModelProvider {
         AsyncThrowingStream { continuation in
             let task = Task {
                 let firstRequest = await probe.next(request) == 1
-                if firstRequest, mode == .checklist {
-                    continuation.yield(.toolCallDelta(index: 0, id: "plan", name: "task_plan", arguments: #"{"planID":"plan","title":"Optional checklist","tasks":[{"id":"step","title":"Consider options","status":"pending"}]}"#))
-                    continuation.yield(.completed(.toolCalls))
-                } else if firstRequest, mode == .file {
+                if firstRequest, mode == .file {
                     continuation.yield(.toolCallDelta(index: 0, id: "write", name: "file_write", arguments: #"{"title":"Note","content":"Verified text","format":"plainText"}"#))
                     continuation.yield(.completed(.toolCalls))
                 } else if firstRequest, mode == .memory {

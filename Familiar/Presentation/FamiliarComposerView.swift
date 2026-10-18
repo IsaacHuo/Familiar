@@ -147,7 +147,6 @@ struct FamiliarComposer: View {
     @State private var photoSelection: [PhotosPickerItem] = []
     @State private var fullPhotoSelection: [PhotosPickerItem] = []
     @State private var pendingDestination: FamiliarComposerAddDestination?
-    @State private var showsAddMenu = false
     @State private var showsCamera = false
     @State private var showsPhotos = false
     @State private var showsFullPhotos = false
@@ -452,12 +451,10 @@ struct FamiliarComposer: View {
     }
 
     private var addButton: some View {
-        Button {
-            focus.wrappedValue = true
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(180))
-                showsAddMenu = true
-            }
+        Menu {
+            Button { choose(.camera) } label: { Label(String(localized: "attachment.camera"), systemImage: "camera") }
+            Button { choose(.photos) } label: { Label(String(localized: "attachment.photos"), systemImage: "photo") }
+            Button { choose(.files) } label: { Label(String(localized: "attachment.files"), systemImage: "paperclip") }
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: FamiliarIconSize.prominent))
@@ -468,16 +465,6 @@ struct FamiliarComposer: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(FamiliarIconButtonStyle())
-        .popover(isPresented: $showsAddMenu, arrowEdge: .bottom) {
-            VStack(alignment: .leading, spacing: 0) {
-                addMenuButton(.camera, title: String(localized: "attachment.camera"), symbol: "camera")
-                addMenuButton(.photos, title: String(localized: "attachment.photos"), symbol: "photo")
-                addMenuButton(.files, title: String(localized: "attachment.files"), symbol: "paperclip")
-            }
-            .padding(.vertical, FamiliarSpacing.small)
-            .frame(minWidth: 220)
-            .presentationCompactAdaptation(.popover)
-        }
         .accessibilityLabel(String(localized: "attachment.add"))
     }
 
@@ -501,19 +488,6 @@ struct FamiliarComposer: View {
         .buttonStyle(FamiliarIconButtonStyle())
         .disabled(isSending || skills.isEmpty)
         .accessibilityLabel(String(localized: "slash.open", defaultValue: "Choose a Skill"))
-    }
-
-    private func addMenuButton(_ destination: FamiliarComposerAddDestination, title: String, symbol: String) -> some View {
-        Button {
-            showsAddMenu = false
-            choose(destination)
-        } label: {
-            Label(title, systemImage: symbol)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .padding(.horizontal, FamiliarSpacing.large)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(FamiliarIconButtonStyle())
     }
 
     private var micButton: some View {

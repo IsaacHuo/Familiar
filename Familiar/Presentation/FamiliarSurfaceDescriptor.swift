@@ -8,15 +8,9 @@ nonisolated enum FamiliarSurfaceKind: String, Sendable, Equatable {
     case search
     case context
     case records
-    case diff
     case mutationReceipt
     case file
-    case taskList
-    case recommendation
-    case insight
     case clarification
-    case code
-    case share
     case shell
     case failure
 }
@@ -694,11 +688,11 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
     private func resultDescriptor(activity: FamiliarActivitySnapshot, envelope: FamiliarToolResultEnvelope, placement: FamiliarSurfacePlacement, file: FamiliarFileDescriptor?) -> FamiliarSurfaceDescriptor {
         let isFileExport = activity.toolName == "prepare_file_export"
         return .init(
-            id: resultSurfaceID(activity: activity, envelope: envelope),
+            id: activity.activityID,
             runID: runtimeID(from: activity.activityID),
             sequence: activity.sequence,
             assistantTurnID: activity.assistantTurnID,
-            kind: isFileExport ? .share : surfaceKind(envelope.presentation.name, hasFile: file != nil),
+            kind: isFileExport ? .file : surfaceKind(envelope.presentation.name, hasFile: file != nil),
             placement: isFileExport ? .topLevel : placement,
             phase: surfacePhase(activity.phase),
             title: FamiliarToolPresentationName.summary(for: activity.toolName, envelope: envelope),
@@ -743,32 +737,19 @@ nonisolated struct FamiliarSurfaceStore: Sendable, Equatable {
         if hasFile { return .file }
         return switch name {
         case .searchResults: .search
-        case .contextMatches, .document, .scalar: .context
+        case .document, .scalar: .context
         case .recordCollection: .records
         case .mutationReceipt: .mutationReceipt
-        case .diff: .diff
         case .fileMutation: .file
-        case .taskList: .taskList
-        case .recommendation: .recommendation
-        case .insight: .insight
-        case .code: .code
-        case .shareDraft: .share
         case .shellExecution: .shell
         }
     }
 
     private func isTopLevelPresentation(_ name: FamiliarToolPresentationPayload.Name) -> Bool {
         switch name {
-        case .contextMatches, .recordCollection, .diff, .taskList, .recommendation, .insight, .code, .shareDraft, .shellExecution: true
+        case .recordCollection, .shellExecution: true
         case .scalar, .searchResults, .document, .mutationReceipt, .fileMutation: false
         }
-    }
-
-    private func resultSurfaceID(activity: FamiliarActivitySnapshot, envelope: FamiliarToolResultEnvelope) -> String {
-        if case .taskList(let taskList) = envelope.presentation.content {
-            return "task-plan:\(runtimeID(from: activity.activityID)):\(taskList.planID)"
-        }
-        return activity.activityID
     }
 
     private func surfacePhase(_ phase: FamiliarActivityPhase) -> FamiliarSurfacePhase {
@@ -875,7 +856,6 @@ nonisolated enum FamiliarToolPresentationName {
         case "current_location": String(localized: "tool.current_location", defaultValue: "Current location")
         case "clipboard_read": String(localized: "tool.clipboard_read", defaultValue: "Read clipboard")
         case "clipboard_write": String(localized: "tool.clipboard_write", defaultValue: "Write clipboard")
-        case "prepare_share": String(localized: "tool.prepare_share", defaultValue: "Prepare share")
         case "familiar_search": String(localized: "tool.familiar_search", defaultValue: "Search Familiar")
         case "web_search": String(localized: "tool.web_search", defaultValue: "Search the web")
         case "web_fetch": String(localized: "tool.web_fetch", defaultValue: "Read web page")
@@ -908,10 +888,7 @@ nonisolated enum FamiliarToolPresentationName {
         case "file_search": String(localized: "tool.resource_search", defaultValue: "Search files")
         case "file_write": String(localized: "tool.file_write", defaultValue: "Save output")
         case "file_edit": String(localized: "tool.file_edit", defaultValue: "Revise output")
-        case "task_plan": String(localized: "tool.task_plan", defaultValue: "Task plan")
         case "tools_load": String(localized: "tool.tools_load", defaultValue: "Prepare tools")
-        case "present_recommendation": String(localized: "tool.present_recommendation", defaultValue: "Recommendation")
-        case "present_insight": String(localized: "tool.present_insight", defaultValue: "Insight")
         case "ask_user": String(localized: "tool.ask_user", defaultValue: "Clarification")
         case "map_search": String(localized: "tool.map_search", defaultValue: "Search places")
         case "weather_forecast": String(localized: "tool.weather_forecast", defaultValue: "Check weather")

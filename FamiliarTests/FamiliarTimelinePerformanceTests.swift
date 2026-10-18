@@ -22,7 +22,6 @@ final class FamiliarTimelinePerformanceTests: XCTestCase {
         }
         let timeline = FamiliarMessageTimeline(messages: messages, modelSwitches: [], agentRuns: [],
             liveController: controller, availableUndoKeys: [], completedUndoKeys: [],
-            onResolveConfirmation: { _, _ in }, onResolveClarification: { _, _ in },
             onInsertPrompt: { _ in }, onUndo: { _, _ in }, onEdit: { _ in },
             onRetry: { _ in }, onRetryRecovery: { _ in }, scrollSession: session)
         let host = UIHostingController(rootView: NavigationStack { timeline })

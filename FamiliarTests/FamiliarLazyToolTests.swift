@@ -225,7 +225,7 @@ struct FamiliarLazyToolTests {
         }
         #expect(FamiliarToolGroup.isDefaultEnabled("file_write"))
         #expect(!FamiliarToolGroup.isDefaultEnabled("workspace_write"))
-        #expect(!FamiliarToolGroup.isDefaultEnabled("task_plan"))
+        #expect(!FamiliarToolGroup.isDefaultEnabled("skill_install"))
         #expect(!FamiliarToolGroup.isDefaultEnabled("skill_install"))
     }
 

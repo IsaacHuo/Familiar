@@ -49,7 +49,7 @@
 | `Shell/` | `FamiliarShellTool`（shell_execute、environment_*）、`FamiliarShellPolicy`、`FamiliarShellExecutor`、`FamiliarISHShellExecutor`、`FamiliarISHPreparation`、`FamiliarContainerShellExecutor`（Mac）、Terminal 事件 |
 | `Native/` `EventKit/` | Map/Weather、NaturalLanguage/Health/Music、Bluetooth、Contacts/Location/Clipboard/Share、Alarm、Photos 保存与文件导出；日历/提醒工具 |
 | `MCP/` `Memory/` `Skills/` | HTTP MCP client 与服务；Memory 服务与工具；Skill 服务与包安装（Yams/ZIPFoundation） |
-| `Presentation/` | `FamiliarChatController`、Chat/Message/InputDock/Composer/Scroll、Markdown WebView 与流式节奏、ApprovalCard、活动投影与 Surface、Projects/Files、各 Settings 视图、Terminal、Web 呈现、Debug 测试场景 |
+| `Presentation/` | `FamiliarChatController`、`Presentation/Chat/`（Timeline、Row、Turn、Runtime、Records、VisualFixture 六个文件）、InputDock/Composer/Scroll、Markdown WebView 与流式节奏、ApprovalCard、活动投影与 Surface、Projects/Files、各 Settings 视图、Terminal、Web 呈现、Debug 测试场景 |
 | `Support/` | `FamiliarTheme`（颜色、字体、间距、圆角、按钮、glass）、`FamiliarMarkdownStyle`、`FamiliarMotion`（含 Haptics） |
 | 其他 | `Security/FamiliarAppLock`、`SystemEntry/`（AppIntents、Notifications、Spotlight）、`Speech/`、`Vision/FamiliarVisionProcessor`、`AI/Models/`（无生产路由入口）、`Resources/` |
 
@@ -63,6 +63,7 @@
 5a. 搜索设置：feature-local `@Observable` 编辑状态以原 Provider 保存草稿；写入与重读成功后才能验证，验证绑定服务与凭据版本。编辑、切换、删除、离开均使旧验证失效；保存失败保留草稿并阻止切换。
 6. Shell/iSH：`.documents` 组（shell_execute/environment_prepare/environment_status/file_publish）默认启用，取代原 shell 组；`shell_execute` manifest 为 reversibleWrite/high；`FamiliarShellPolicy` 决定 deny/确认/风险；首次使用经 `FamiliarISHPreparation` 共享准备（可被启动后预热提前完成），限定 Workspace；未就绪时工具活动行报告“正在准备运行环境”。依赖安装仅 `environment_prepare`（配置软件源、Swift 构造的声明式命令）。
 7. 文件输出：file_write/edit 只写 Markdown/文本，每次新 FileVersion；复杂格式（DOCX/XLSX/PPTX/PDF）先写 Workspace `Outputs/`，经 `file_publish` 校验后登记。Shell 成功后的 Outputs 变更会被捕获登记并 best-effort 解析（已知格式经 `FamiliarFileValidator.extract` 存 extractedText；失败仍登记并在 provenance 标注 `validation.state=failed`）。
+8. 呈现：工具结果只有四种呈现——活动行（点击打开 Sheet，承载 receipt、records、Shell 输出与逐活动技术详情）、行内引用 + 来源 Sheet、统一文件卡（含 prepare_file_export 与失效文件）、输入区审批/澄清。`FamiliarToolPresentationPayload` 只保留 scalar/searchResults/document/recordCollection/mutationReceipt/fileMutation/shellExecution（schemaVersion 4）；task_plan/present_recommendation/present_insight/prepare_share 工具与 diff/code/contextMatches/taskList/recommendation/insight/shareDraft 呈现已移除；写入 receipt 折入活动行并在行上提供 Undo。侧栏为原生 List（新对话/搜索/Pinned/Projects/最近普通对话/设置），省略号菜单精简，Composer 添加菜单为原生 Menu。
 
 ## 6. 授权现状
 

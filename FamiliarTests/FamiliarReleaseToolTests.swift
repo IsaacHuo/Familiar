@@ -207,14 +207,5 @@ struct FamiliarReleaseToolTests {
         #expect(String(decoding: try store.read(relativePath: "Outputs/unrelated.txt", in: workspaceID), as: UTF8.self) == "changed after commit")
     }
 
-    @Test("Share preparation produces a top-level share draft payload")
-    func shareDraft() async throws {
-        let outcome = try await FamiliarPrepareShareTool().execute(.init(title: "Release", text: "Ready"), context: .init())
-        guard case .result(let result) = outcome,
-              case .shareDraft(let draft) = result.envelope.presentation.content
-        else { Issue.record("Expected share draft"); return }
-        #expect(draft.title == "Release")
-        #expect(draft.text == "Ready")
-        #expect(result.envelope.presentation.schemaVersion == 3)
-    }
+
 }

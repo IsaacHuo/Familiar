@@ -83,7 +83,7 @@ struct FamiliarChatInputDock: View {
                     ScrollView {
                         Group {
                         if current.surface.kind == .approval {
-                            FamiliarApprovalCard(surface: current.surface, isCompact: true) { id, decision in
+                            FamiliarApprovalCard(surface: current.surface) { id, decision in
                                 guard drafts.beginSubmission(id) else { return }
                                 controller.resolveConfirmation(requestID: id, decision: decision)
                             }

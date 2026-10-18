@@ -13,22 +13,15 @@ nonisolated public enum FamiliarToolRisk: String, Codable, Sendable {
 }
 
 nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 4
 
     public enum Name: String, Codable, Sendable {
         case scalar
         case searchResults
         case document
-        case contextMatches
         case recordCollection
         case mutationReceipt
         case fileMutation
-        case diff
-        case taskList
-        case recommendation
-        case insight
-        case code
-        case shareDraft
         case shellExecution
     }
 
@@ -85,34 +78,6 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
             self.mimeType = mimeType
             self.url = url
             self.truncated = truncated
-        }
-    }
-
-    public struct ContextMatch: Codable, Equatable, Sendable {
-        public let resourceID: UUID
-        public let versionID: UUID
-        public let version: Int
-        public let title: String
-        public let excerpt: String
-
-        public init(resourceID: UUID, versionID: UUID, version: Int, title: String, excerpt: String) {
-            self.resourceID = resourceID
-            self.versionID = versionID
-            self.version = version
-            self.title = title
-            self.excerpt = excerpt
-        }
-    }
-
-    public struct ContextMatches: Codable, Equatable, Sendable {
-        public let summary: String
-        public let query: String
-        public let matches: [ContextMatch]
-
-        public init(summary: String, query: String, matches: [ContextMatch]) {
-            self.summary = summary
-            self.query = query
-            self.matches = matches
         }
     }
 
@@ -179,139 +144,6 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
             self.title = title
             self.byteSize = byteSize
             self.contentHash = contentHash
-        }
-    }
-
-    public struct Diff: Codable, Equatable, Sendable {
-        public let summary: String
-        public let before: String
-        public let after: String
-
-        public init(summary: String, before: String, after: String) {
-            self.summary = summary
-            self.before = before
-            self.after = after
-        }
-    }
-
-    public enum TaskStatus: String, Codable, Equatable, Sendable, CaseIterable {
-        case pending
-        case running
-        case completed
-        case failed
-    }
-
-    public struct TaskItem: Codable, Equatable, Sendable {
-        public let id: String
-        public let title: String
-        public let status: TaskStatus
-        public let detail: String?
-        public let progress: Double?
-
-        public init(id: String, title: String, status: TaskStatus, detail: String? = nil, progress: Double? = nil) {
-            self.id = id
-            self.title = title
-            self.status = status
-            self.detail = detail
-            self.progress = progress
-        }
-    }
-
-    public struct TaskList: Codable, Equatable, Sendable {
-        public let planID: String
-        public let title: String
-        public let tasks: [TaskItem]
-        public init(planID: String, title: String, tasks: [TaskItem]) {
-            self.planID = planID
-            self.title = title
-            self.tasks = tasks
-        }
-    }
-
-    public enum ConfidenceLevel: String, Codable, Equatable, Sendable, CaseIterable {
-        case low
-        case medium
-        case high
-        case needsReview
-    }
-
-    public struct RecommendationAlternative: Identifiable, Codable, Equatable, Sendable {
-        public let id: String
-        public let title: String
-        public let prompt: String
-
-        public init(id: String, title: String, prompt: String) {
-            self.id = id
-            self.title = title
-            self.prompt = prompt
-        }
-    }
-
-    public struct Recommendation: Codable, Equatable, Sendable {
-        public let title: String
-        public let explanation: String
-        public let nextPrompt: String
-        public let alternatives: [RecommendationAlternative]
-        public let confidenceLevel: ConfidenceLevel?
-
-        public init(title: String, explanation: String, nextPrompt: String, alternatives: [RecommendationAlternative], confidenceLevel: ConfidenceLevel? = nil) {
-            self.title = title
-            self.explanation = explanation
-            self.nextPrompt = nextPrompt
-            self.alternatives = alternatives
-            self.confidenceLevel = confidenceLevel
-        }
-    }
-
-    public struct InsightMetric: Codable, Equatable, Sendable {
-        public let label: String
-        public let value: Double
-        public let unit: String?
-        public let change: Double?
-
-        public init(label: String, value: Double, unit: String? = nil, change: Double? = nil) {
-            self.label = label
-            self.value = value
-            self.unit = unit
-            self.change = change
-        }
-    }
-
-    public struct Insight: Codable, Equatable, Sendable {
-        public let title: String
-        public let explanation: String
-        public let metrics: [InsightMetric]
-
-        public init(title: String, explanation: String, metrics: [InsightMetric]) {
-            self.title = title
-            self.explanation = explanation
-            self.metrics = metrics
-        }
-    }
-
-    public struct Code: Codable, Equatable, Sendable {
-        public let summary: String
-        public let language: String?
-        public let filename: String?
-        public let code: String
-
-        public init(summary: String, language: String? = nil, filename: String? = nil, code: String) {
-            self.summary = summary
-            self.language = language
-            self.filename = filename
-            self.code = code
-        }
-    }
-
-    public struct ShareDraft: Codable, Equatable, Sendable {
-        public let summary: String
-        public let title: String?
-        public let text: String
-
-        public init(summary: String, title: String? = nil, text: String) {
-            self.summary = summary
-            self.title = title
-            self.text = text
         }
     }
 
@@ -390,16 +222,9 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         case scalar(Scalar)
         case searchResults(SearchResults)
         case document(Document)
-        case contextMatches(ContextMatches)
         case recordCollection(RecordCollection)
         case mutationReceipt(MutationReceipt)
         case fileMutation(FileMutation)
-        case diff(Diff)
-        case taskList(TaskList)
-        case recommendation(Recommendation)
-        case insight(Insight)
-        case code(Code)
-        case shareDraft(ShareDraft)
         case shellExecution(ShellExecution)
     }
 
@@ -410,16 +235,9 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
     public static func scalar(_ value: Scalar) -> Self { .init(name: .scalar, content: .scalar(value)) }
     public static func searchResults(_ value: SearchResults) -> Self { .init(name: .searchResults, content: .searchResults(value)) }
     public static func document(_ value: Document) -> Self { .init(name: .document, content: .document(value)) }
-    public static func contextMatches(_ value: ContextMatches) -> Self { .init(name: .contextMatches, content: .contextMatches(value)) }
     public static func recordCollection(_ value: RecordCollection) -> Self { .init(name: .recordCollection, content: .recordCollection(value)) }
     public static func mutationReceipt(_ value: MutationReceipt) -> Self { .init(name: .mutationReceipt, content: .mutationReceipt(value)) }
     public static func fileMutation(_ value: FileMutation) -> Self { .init(name: .fileMutation, content: .fileMutation(value)) }
-    public static func diff(_ value: Diff) -> Self { .init(name: .diff, content: .diff(value)) }
-    public static func taskList(_ value: TaskList) -> Self { .init(name: .taskList, content: .taskList(value)) }
-    public static func recommendation(_ value: Recommendation) -> Self { .init(name: .recommendation, content: .recommendation(value)) }
-    public static func insight(_ value: Insight) -> Self { .init(name: .insight, content: .insight(value)) }
-    public static func code(_ value: Code) -> Self { .init(name: .code, content: .code(value)) }
-    public static func shareDraft(_ value: ShareDraft) -> Self { .init(name: .shareDraft, content: .shareDraft(value)) }
     public static func shellExecution(_ value: ShellExecution) -> Self { .init(name: .shellExecution, content: .shellExecution(value)) }
 
     public var summary: String {
@@ -427,16 +245,9 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         case .scalar(let value): value.summary
         case .searchResults(let value): value.summary
         case .document(let value): value.summary
-        case .contextMatches(let value): value.summary
         case .recordCollection(let value): value.summary
         case .mutationReceipt(let value): value.summary
         case .fileMutation(let value): value.summary
-        case .diff(let value): value.summary
-        case .taskList(let value): value.title
-        case .recommendation(let value): value.title
-        case .insight(let value): value.title
-        case .code(let value): value.summary
-        case .shareDraft(let value): value.summary
         case .shellExecution(let value): value.summary
         }
     }
@@ -469,16 +280,9 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         case .scalar: .scalar(try container.decode(Scalar.self, forKey: .payload))
         case .searchResults: .searchResults(try container.decode(SearchResults.self, forKey: .payload))
         case .document: .document(try container.decode(Document.self, forKey: .payload))
-        case .contextMatches: .contextMatches(try container.decode(ContextMatches.self, forKey: .payload))
         case .recordCollection: .recordCollection(try container.decode(RecordCollection.self, forKey: .payload))
         case .mutationReceipt: .mutationReceipt(try container.decode(MutationReceipt.self, forKey: .payload))
         case .fileMutation: .fileMutation(try container.decode(FileMutation.self, forKey: .payload))
-        case .diff: .diff(try container.decode(Diff.self, forKey: .payload))
-        case .taskList: .taskList(try container.decode(TaskList.self, forKey: .payload))
-        case .recommendation: .recommendation(try container.decode(Recommendation.self, forKey: .payload))
-        case .insight: .insight(try container.decode(Insight.self, forKey: .payload))
-        case .code: .code(try container.decode(Code.self, forKey: .payload))
-        case .shareDraft: .shareDraft(try container.decode(ShareDraft.self, forKey: .payload))
         case .shellExecution: .shellExecution(try container.decode(ShellExecution.self, forKey: .payload))
         }
     }
@@ -491,16 +295,9 @@ nonisolated public struct FamiliarToolPresentationPayload: Codable, Equatable, S
         case .scalar(let value): try container.encode(value, forKey: .payload)
         case .searchResults(let value): try container.encode(value, forKey: .payload)
         case .document(let value): try container.encode(value, forKey: .payload)
-        case .contextMatches(let value): try container.encode(value, forKey: .payload)
         case .recordCollection(let value): try container.encode(value, forKey: .payload)
         case .mutationReceipt(let value): try container.encode(value, forKey: .payload)
         case .fileMutation(let value): try container.encode(value, forKey: .payload)
-        case .diff(let value): try container.encode(value, forKey: .payload)
-        case .taskList(let value): try container.encode(value, forKey: .payload)
-        case .recommendation(let value): try container.encode(value, forKey: .payload)
-        case .insight(let value): try container.encode(value, forKey: .payload)
-        case .code(let value): try container.encode(value, forKey: .payload)
-        case .shareDraft(let value): try container.encode(value, forKey: .payload)
         case .shellExecution(let value): try container.encode(value, forKey: .payload)
         }
     }

@@ -19,41 +19,8 @@ private struct FamiliarClarificationProvider: FamiliarModelProvider {
     }
 }
 
-private struct FamiliarRecommendationProvider: FamiliarModelProvider {
-    let providerID = "recommendation-fixture"
-
-    func stream(request: FamiliarModelRequest) -> AsyncThrowingStream<FamiliarModelStreamEvent, Error> {
-        AsyncThrowingStream { continuation in
-            if request.messages.contains(where: { $0.role == .tool }) {
-                continuation.yield(.textDelta("Choose when ready."))
-                continuation.yield(.completed(.stop))
-            } else {
-                continuation.yield(.toolCallDelta(index: 0, id: "recommendation-1", name: "present_recommendation", arguments: #"{"alternatives":[],"confidenceLevel":"high","explanation":"Verify first.","nextPrompt":"Verify the build","title":"Next step"}"#))
-                continuation.yield(.completed(.toolCalls))
-            }
-            continuation.finish()
-        }
-    }
-}
-
 @Suite("Beautiful UI runtime flows")
 struct FamiliarBeautifulUIRuntimeTests {
-    @Test("Recommendation is read-only and never requests authorization")
-    func recommendationDoesNotAuthorize() async throws {
-        let tool = FamiliarPresentRecommendationTool()
-        let registry = try FamiliarToolRegistry(tools: [AnyFamiliarTool(tool)])
-        let loop = FamiliarAgentLoop(provider: FamiliarRecommendationProvider(), registry: registry, policy: .init(), confirmationCoordinator: .init(), undoStore: .init())
-
-        let events = try await collect(loop, manifests: await registry.manifests())
-
-        #expect(tool.manifest.effect == .read)
-        #expect(!events.contains { if case .approvalRequested = $0.payload { true } else { false } })
-        #expect(events.contains { event in
-            guard case .toolResultProduced(let result) = event.payload else { return false }
-            return result.envelope.presentation.name == .recommendation
-        })
-    }
-
     @Test("Clarification pauses and resumes the same run")
     func clarificationResume() async throws {
         let coordinator = FamiliarClarificationCoordinator()

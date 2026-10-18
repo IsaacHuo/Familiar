@@ -289,12 +289,13 @@ nonisolated enum FamiliarAssistantResponseProjection {
         return blocks
     }
 
+    /// Only file deliveries, waiting interactions and recoverable failures keep a
+    /// standalone card. Every other tool result folds into the activity row, whose
+    /// detail sheet carries receipts, records, shell output and technical detail.
     static func isStandalone(_ surface: FamiliarSurfaceDescriptor) -> Bool {
         if FamiliarRuntimeActivityGroup.requiresUserAction(surface) { return true }
-        if surface.effect != nil && surface.effect != .read,
-           surface.toolName != "shell_execute", surface.toolName != "environment_prepare" { return true }
         return switch surface.kind {
-        case .approval, .clarification, .file, .mutationReceipt, .taskList, .recommendation, .insight, .code, .share, .diff: true
+        case .approval, .clarification, .file: true
         case .failure: surface.effect != .read
         default: false
         }

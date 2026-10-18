@@ -104,16 +104,15 @@ nonisolated struct FamiliarWorkspaceSearchTool: FamiliarTool {
             matches.append((.init(path: file.path, excerpt: String(text[start..<end])), file))
             if matches.count == 20 { break }
         }
-        let presentationMatches = matches.map { match, file in
-            let identity = file.contextIdentity
-            return FamiliarToolPresentationPayload.ContextMatch(
-                resourceID: identity.resourceID, versionID: identity.versionID, version: identity.version,
-                title: match.path, excerpt: match.excerpt
-            )
+        let presentationRecords = matches.map { match, _ in
+            FamiliarToolPresentationPayload.Record(id: match.path, fields: [
+                .init(name: "file", value: match.path),
+                .init(name: "match", value: match.excerpt)
+            ])
         }
         return .result(.init(envelope: try FamiliarToolResultEnvelope(
             model: matches.map(\.0),
-            presentation: .contextMatches(.init(summary: "找到 \(matches.count) 个 Workspace 匹配。", query: query, matches: presentationMatches))
+            presentation: .recordCollection(.init(summary: "找到 \(matches.count) 个 Workspace 匹配。", recordType: "workspaceMatch", records: presentationRecords))
         )))
     }
 }

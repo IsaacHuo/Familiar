@@ -642,24 +642,6 @@ final class FamiliarRunPersistenceRecorder {
         let envelopeJSON = try Self.requireEncodedJSON(envelope)
         let payloadJSON = try Self.requireEncodedJSON(envelope.presentation)
         let truncated = if case .document(let document) = envelope.presentation.content { document.truncated } else { false }
-        let semanticID: String? = if case .taskList(let taskList) = envelope.presentation.content { taskList.planID } else { nil }
-        if let semanticID,
-           let existing = try context.fetch(FetchDescriptor<FamiliarToolResultRecord>()).first(where: { $0.runtimeID == event.runID && $0.semanticID == semanticID }) {
-            for activity in try context.fetch(FetchDescriptor<FamiliarActivityRecord>()) where activity.resultRecordID == existing.id {
-                activity.resultRecordID = nil
-            }
-            existing.activityID = activityID
-            existing.assistantTurnID = event.assistantTurnID
-            existing.toolCallID = event.toolCallID
-            existing.envelopeJSON = envelopeJSON
-            existing.schemaVersion = envelope.presentation.schemaVersion
-            existing.payloadName = envelope.presentation.name.rawValue
-            existing.payloadHash = FamiliarHash.sha256(payloadJSON)
-            existing.revision += 1
-            existing.truncated = truncated
-            existing.createdAt = event.producedAt
-            return existing
-        }
         let result = FamiliarToolResultRecord(
             activityID: activityID,
             runtimeID: event.runID,
@@ -669,7 +651,6 @@ final class FamiliarRunPersistenceRecorder {
             schemaVersion: envelope.presentation.schemaVersion,
             payloadName: envelope.presentation.name.rawValue,
             payloadHash: FamiliarHash.sha256(payloadJSON),
-            semanticID: semanticID,
             trust: .untrusted,
             truncated: truncated,
             createdAt: event.producedAt

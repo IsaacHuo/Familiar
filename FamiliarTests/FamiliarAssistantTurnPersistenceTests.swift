@@ -251,34 +251,6 @@ struct FamiliarAssistantTurnPersistenceTests {
         #expect(activity.endedAt != nil)
     }
 
-    @Test("Task plan updates persist only the latest revision")
-    @MainActor
-    func taskPlanRevision() throws {
-        let fixture = try makeRun(runtimeID: "plan-run")
-        let recorder = FamiliarRunPersistenceRecorder()
-        for (index, status) in [FamiliarToolPresentationPayload.TaskStatus.pending, .completed].enumerated() {
-            let callID = "plan-call-\(index)"
-            let completion = FamiliarRuntimeActivityCompletion(runID: "plan-run", toolCallID: callID, toolName: "task_plan", effect: .read, assistantTurnID: "plan-run:turn:0", detail: "", confirmation: .notRequired, status: .succeeded, startedAt: Date(timeIntervalSince1970: Double(index + 2)), finishedAt: Date(timeIntervalSince1970: Double(index + 3)), fileIdentifier: nil, undoAvailable: false, automaticApprovalRequest: nil)
-            try recorder.recordActivityCompleted(completion, eventSequence: index * 2, conversationID: fixture.conversation.id, context: fixture.context)
-            let payload = FamiliarToolPresentationPayload.taskList(.init(planID: "release", title: "Release", tasks: [.init(id: "build", title: "Build", status: status)]))
-            let envelope = try FamiliarToolResultEnvelope(canonicalModelJSON: #"{"planID":"release"}"#, presentation: payload)
-            let result = FamiliarToolResultProduced(runID: "plan-run", toolCallID: callID, toolName: "task_plan", effect: .read, assistantTurnID: "plan-run:turn:0", envelope: envelope, sources: [], file: nil, producedAt: Date(timeIntervalSince1970: Double(index + 3)))
-            _ = try recorder.recordToolResult(result, eventSequence: index * 2 + 1, conversationID: fixture.conversation.id, context: fixture.context)
-        }
-
-        let records = try fixture.context.fetch(FetchDescriptor<FamiliarToolResultRecord>())
-        let record = try #require(records.first)
-        let envelope = try JSONDecoder().decode(FamiliarToolResultEnvelope.self, from: Data(record.envelopeJSON.utf8))
-        #expect(records.count == 1)
-        #expect(record.semanticID == "release")
-        #expect(record.revision == 2)
-        if case .taskList(let plan) = envelope.presentation.content {
-            #expect(plan.tasks.first?.status == .completed)
-        } else {
-            Issue.record("Expected task plan payload")
-        }
-    }
-
     @Test("Interrupted clarification reloads as non-interactive")
     @MainActor
     func interruptedClarificationProjection() throws {
