@@ -1149,6 +1149,7 @@ private struct FamiliarChatTopBar: View {
                 }
             } label: {
                 HStack(spacing: FamiliarSpacing.small) {
+                    FamiliarProviderIcon(provider: provider, size: 20, showsBackground: false)
                     Text(model.displayName)
                         .id(model.displayName)
                         .transition(.opacity)

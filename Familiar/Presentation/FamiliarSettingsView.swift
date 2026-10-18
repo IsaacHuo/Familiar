@@ -97,30 +97,6 @@ struct FamiliarModelServiceSettingsView: View {
     private func reload() { providers = FamiliarProviderCatalog.instances }
 }
 
-private struct FamiliarProviderIcon: View {
-    let provider: FamiliarProviderDescriptor
-    private var appearance: (String, Color) {
-        switch provider.baseURL.host {
-        case "openrouter.ai": return ("arrow.triangle.branch", .cyan)
-        case "api.x.ai": return ("x.circle", .gray)
-        case "api.moonshot.cn", "api.kimi.com": return ("moon.stars", .indigo)
-        default:
-            switch provider.protocolKind {
-            case .anthropic: return ("sparkles", .purple)
-            case .gemini: return ("diamond", .blue)
-            case .openAIResponses: return ("arrow.triangle.2.circlepath", .mint)
-            case .openAIChat: return ("circle.hexagongrid", .green)
-            }
-        }
-    }
-    var body: some View {
-        Image(systemName: appearance.0).font(.system(size: FamiliarIconSize.prominent))
-            .foregroundStyle(appearance.1).frame(width: 36, height: 36)
-            .background(appearance.1.opacity(0.12), in: RoundedRectangle(cornerRadius: FamiliarRadius.compact))
-            .accessibilityHidden(true)
-    }
-}
-
 private struct FamiliarProviderEditor: View {
     @Environment(\.dismiss) private var dismiss
     let provider: FamiliarProviderDescriptor

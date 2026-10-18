@@ -125,3 +125,12 @@ image digest and requested package set are recorded in
 Vendor/ISHRuntime/manifest.json. Scripts/prepare-ish-rootfs.sh emits the exact
 installed package versions and declared licenses beside the prepared rootfs;
 that generated inventory must be included in release compliance artifacts.
+
+--------------------------------------------------------------------------------
+Familiar includes provider brand marks
+
+DeepSeek, Kimi (Moonshot), OpenRouter, Google Gemini, Anthropic, OpenAI and xAI
+marks identify the model service the user selected and imply no affiliation or
+endorsement. The vector marks are derived from the LobeHub icons set
+(https://github.com/lobehub/lobe-icons, MIT License) and remain trademarks of
+their respective owners.

@@ -829,6 +829,8 @@
 "mcp.trust.detail" = "Trusted servers can be remembered after one confirmation. Untrusted servers ask on every call.";
 "shell.preparing_runtime" = "Preparing the runtime environment…";
 "runtime.ui.record" = "Record";
+"settings.about.development.title" = "Under Development";
+"settings.about.development.body" = "Familiar is still under development: features are incomplete and errors still happen. Feedback and code contributions are welcome. If something feels rough, we will ship fixes as fast as we can.";
 "mcp.add" = "Add MCP Server";
 "mcp.import" = "Import MCP JSON";
 "mcp.title" = "MCP Integrations";

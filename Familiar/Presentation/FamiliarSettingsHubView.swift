@@ -1656,6 +1656,18 @@ private struct FamiliarAboutView: View {
             }
 
             Section {
+                VStack(alignment: .leading, spacing: FamiliarSpacing.small) {
+                    Label(String(localized: "settings.about.development.title", defaultValue: "Under Development"), systemImage: "hammer")
+                        .font(FamiliarTypography.sectionTitle)
+                    Text(String(localized: "settings.about.development.body", defaultValue: "Familiar is still under development: features are incomplete and errors still happen. Feedback and code contributions are welcome. If something feels rough, we will ship fixes as fast as we can."))
+                        .font(FamiliarTypography.secondary)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, FamiliarSpacing.xSmall)
+            }
+
+            Section {
                 Link(String(localized: "settings.about.privacy", defaultValue: "Privacy Policy"), destination: URL(string: "https://isaachuo.github.io/familiar/privacy/")!)
                 Link(String(localized: "settings.about.support", defaultValue: "Support"), destination: URL(string: "https://isaachuo.github.io/familiar/support/")!)
                 Link(String(localized: "settings.about.feedback", defaultValue: "Report an Issue"), destination: URL(string: "https://github.com/IsaacHuo/familiar/issues")!)
