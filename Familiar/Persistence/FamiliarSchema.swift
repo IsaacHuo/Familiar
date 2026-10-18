@@ -167,7 +167,9 @@ nonisolated enum FamiliarModelSchema {
         FamiliarProjectCapabilityBindingRecord.self,
         FamiliarAlarmUndoRecord.self,
         FamiliarFileRecord.self,
-        FamiliarFileVersionRecord.self
+        FamiliarFileVersionRecord.self,
+        FamiliarComposerDraftRecord.self,
+        FamiliarConversationListStateRecord.self
     ]
 
     static var schema: Schema { Schema(models) }

@@ -108,6 +108,7 @@ nonisolated struct FamiliarFileCatalogService {
                 workspace = try FamiliarWorkspaceStore().stageWorkspace(source)
             }
             chat.project = project
+            if let draft = try FamiliarChatListStore.draft(chat.id, in: context) { draft.projectID = project?.id }
             try context.save()
         } catch {
             context.rollback()

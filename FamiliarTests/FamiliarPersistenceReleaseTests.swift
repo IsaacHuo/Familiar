@@ -32,8 +32,8 @@ struct FamiliarPersistenceReleaseTests {
     @MainActor
     func releaseSchemaBaseline() {
         #expect(FamiliarReleaseSchema.versionIdentifier == Schema.Version(5, 0, 0))
-        #expect(FamiliarReleaseSchema.models.count == 37)
-        #expect(FamiliarModelContainer.currentSchema.entities.count == 37)
+        #expect(FamiliarReleaseSchema.models.count == 39)
+        #expect(FamiliarModelContainer.currentSchema.entities.count == 39)
         #expect(!FamiliarModelContainer.currentSchema.entities.contains { $0.name == "FamiliarArtifact" })
         #expect(!FamiliarModelContainer.currentSchema.entities.contains { $0.name == "FamiliarAuthorizationGrantRecord" })
         #expect(FamiliarStoreProfile.development.storeName == "FamiliarDevelopment")

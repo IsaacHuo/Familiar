@@ -10,7 +10,7 @@ nonisolated enum FamiliarAttachmentKind: String, Codable, Sendable {
     case image
 }
 
-nonisolated struct FamiliarAttachmentDraft: Identifiable, Equatable, Sendable {
+nonisolated struct FamiliarAttachmentDraft: Identifiable, Codable, Equatable, Sendable {
     let id: UUID
     let kind: FamiliarAttachmentKind
     let filename: String

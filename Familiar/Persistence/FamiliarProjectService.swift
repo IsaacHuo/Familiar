@@ -281,6 +281,9 @@ struct FamiliarProjectService {
             skillBindings.forEach { context.delete($0) }
             capabilityBindings.forEach { context.delete($0) }
             _ = try FamiliarPinService().stageRemoval(.project, targetIDs: [projectID], in: context)
+            for draft in try context.fetch(FetchDescriptor<FamiliarComposerDraftRecord>()) where draft.projectID == projectID {
+                draft.projectID = nil
+            }
             context.delete(project)
             try context.save()
             FamiliarAttachmentStore.remove(relativePaths: removedAttachmentPaths)
