@@ -30,6 +30,7 @@ git     → 普通代码改动历史
 | [11-verification-and-release-checklist.md](11-verification-and-release-checklist.md) | 静态/构建验证基线、真机验收、当前存储与运行验证门槛 |
 | [15-s1-search-acceptance.md](15-s1-search-acceptance.md) | S1 搜索收口的构建、定向测试、截图和真实服务验收证据；所有者验收独立列出 |
 | [16-work-scope-convergence.md](16-work-scope-convergence.md) | 普通对话/项目分离、抽屉顶栏与 S2a 构建证据及待验收项 |
+| [20-telegram-chat-ui-roadmap.md](20-telegram-chat-ui-roadmap.md) | Telegram 参照的根导航、会话状态、列表、聊天与 AI 编辑器实施设计 |
 | [research/](research/) | 阶段性专题研究材料（2026-08-13 产品/架构评估、UI 壁垒、原生运行时后端、项目 Workspace 流程） |
 
 > 04（Agent/Provider/内容链路）与 06（工程状态与验证）已按职责拆分：当前实现细节并入 `../state/ARCHITECTURE.md`，验证清单并入 `11-verification-and-release-checklist.md`，调试经验并入 `../logs/`。对应的旧文件已删除，不再维护。

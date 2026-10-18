@@ -12,3 +12,5 @@
 | `Familiar_native_AI_UI_and_motion_moat_report_2026-08-13.md` | 2026-08-13 | `main @ f4ab809` | 原生 AI 前端、交互、动画与无障碍壁垒 |
 | `Familiar_native_Swift_AI_runtime_backend_report_2026-08-13.md` | 2026-08-13 | `main @ f4ab809` | 原生 AI 运行时（"后端"）调查：Agent Loop、MCP、Swarm |
 | `familiar-project-workspace-flow.md` | 2026-08-13 | — | 项目与 Workspace 的产品流程、对象关系、端到端验收任务 |
+| [Telegram iOS 功能研究](2026-10-18-telegram-ios-functionality.md) | 2026-10-18 | Telegram `f1dd7a2` | 根导航、分类、草稿、未读与 Familiar 功能映射 |
+| [Telegram iOS UI 研究](2026-10-18-telegram-ios-ui.md) | 2026-10-18 | Telegram `f1dd7a2` | 列表更新、消息体、输入面板、预览与 AI 编辑器 |

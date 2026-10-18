@@ -5,7 +5,7 @@ Familiar is a native, safe, inspectable personal AI agent for iPhone. Chat / Pro
 - Core stack: SwiftUI, SwiftData, URLSession, WebKit, Keychain.
 - Minimum deployment target: iOS 26. Do not add fallback branches for older systems; keep only gates for newer versions (e.g. iOS 26.1, iOS 27) and the Reduce Transparency fallback.
 - The implemented scope includes one Agent with Lazy Tools, BYOK model access (default DeepSeek), local Chat history, Projects, canonical File/FileVersion, Context Compiler, scoped Skills and Memory, Web search/fetch, native Apple tools, the bundled iSH/Alpine guest for Shell and document generation, local document processing, image input and speech transcription. HTTP MCP discovery and approved calls are connected. No Router, Planner, multi-Agent, background execution or cross-restart continuation.
-- The current phase adds no new features; it makes existing features work and look native. See PLAN.md.
+- The current phase closes the user-authorized Telegram-inspired navigation/chat restructure (R0–R5); further work waits for owner device feedback. See PLAN.md for implementation and separate acceptance status.
 - The app has no account system, login, backend database, Supabase dependency, managed quota, subscription, entitlement flow, cloud sync, arbitrary code execution, or multi-Agent orchestration.
 - Familiar never reads academic-system or other app data.
 - Providers use user-supplied API keys or the connected Kimi Code/Codex/OpenRouter external sign-in flows. Credentials remain in the device Keychain and requests go directly from iOS to the selected Provider. There is no Familiar account system.

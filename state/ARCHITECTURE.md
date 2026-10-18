@@ -1,6 +1,6 @@
 # Architecture
 
-最后核对：2026-10-17（普通对话/项目分离、抽屉/顶栏、S2a 静态核对；运行验收独立）
+最后核对：2026-10-18（根导航、持久草稿、会话协调与 AI 编辑器静态核对；运行验收独立）
 
 本文只描述代码现状。设计目标见 `docs/`，切片与验收见根目录 `PLAN.md`。静态核对不代表 Simulator 或真机验收。
 
@@ -10,7 +10,7 @@
 |---|---|
 | UI | SwiftUI；Swift 6.0；app target `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`；iPhone only |
 | 部署目标 | iOS 26.0（全部 iOS target）；`FamiliarMac` 为 macOS 26.0 |
-| 数据 | SwiftData。唯一当前 `FamiliarReleaseSchema` 5.0.0，37 个实体；无历史迁移链、Artifact/Grant 迁移模型。现有 V3/V5…源文件只组织当前实体定义，不参与磁盘迁移。无 CloudKit |
+| 数据 | SwiftData。唯一当前 `FamiliarReleaseSchema` 5.0.0，39 个实体；无历史迁移链、Artifact/Grant 迁移模型。现有 V3/V5…源文件只组织当前实体定义，不参与磁盘迁移。无 CloudKit |
 | Store | `<Application Support>/Familiar/Persistence/<storeName>.store`，`.completeUntilFirstUserAuthentication`；文件名由 `FamiliarStoreProfile` 决定 |
 | 模型网络 | URLSession。`.openAIChat` → `FamiliarOpenAICompatibleModelProvider`；Anthropic/Gemini/OpenAI Responses → `FamiliarStructuredModelProvider`；模型分组 → `FamiliarGroupModelProvider`；Kimi/Codex 由 OAuth Provider 包装 |
 | Web | 搜索：ephemeral URLSession，DuckDuckGo/Bing/Brave/Tavily/Exa（UI 可见 DDG/Bing/Tavily）。抓取：Network.framework 自研受限 HTTP/1.1 客户端 + DNS 解析 + URL 策略 |
@@ -32,6 +32,12 @@
 
 ## 3. App 入口与依赖注入
 
+- `FamiliarAppShell` 拥有文件/聊天/设置三个原生 Tab 与独立导航路径，默认聊天；会话详情隐藏 Tab bar。`FamiliarChatRoute` 按稳定身份区分会话、草稿列表、归档、项目管理/详情与消息定位。旧抽屉隔离在 `frozenDrawerSurface`，保持编译但生产不挂载；下文旧侧栏布局说明已被此入口替代。
+- `FamiliarChatSessionCoordinator` 保留按会话/草稿 UUID 索引的控制器；当前查看路由和正在执行会话分开。`FamiliarForegroundExecution` 为依赖中共享的唯一执行占用，Agent、压缩和润色串行，浏览其他页不取消前台任务；无系统后台运行或跨重启执行。
+- `FamiliarChatsHome` 生成轻量快照；`FamiliarConversationList` 封装 UICollectionView/diffable/UIHostingConfiguration、原生菜单和冻结的最近三条消息只读预览。预览不创建控制器、不改草稿/已读。分类点击与分页进度共享状态并保存各页位置，列表摘要在保存/运行边界更新。
+- `FamiliarComposerDraftRecord` 保存正文、UTF-16 选区、技能、附件 manifest 与可选会话/项目；新草稿首次发送提交前不创建 Conversation。防抖及离开/后台检查点保存，发送提交同次保存删除草稿；清理检查全部持久引用，移动会话/删除项目同步草稿归属。
+- `FamiliarConversationListStateRecord` 保存归档、未读回复身份、手动未读、摘要和失败状态；完整回复与未读同次保存，归档不因回复解除，正式详情末尾可见且前台无遮挡才清对应未读。列表状态不进入上下文或授权。
+- `FamiliarMessageGroupLayout` 按可用宽度分配左右气泡；正文仍用现有 WebKit、工具与文件组件。控制器持有阅读状态；独立技能菜单维护焦点和选区。`FamiliarDraftRewriteSheet` 通过 `FamiliarDraftRewriter` 发送要求与草稿、tools 为空，不进入 Agent；复用已配置模型和用户凭据，完整结果经会话/版本检查后应用、可撤销、不直接发送。
 - `FamiliarApp`（`@main`）创建依赖；首次检测到业务代际非 `5-work-scopes`，清理旧 store、附件、资料、Files、Workspace、ShellRuntime、Skill 包、共享收件箱和派生索引，当前容器打开成功后写代际标记。Keychain、模型/搜索设置和外观偏好不清理。已完成代际的普通打开失败进入恢复页，不再次清空。
 - `FamiliarAppDependencies`（`@MainActor`）持有 ToolRegistry、ExecutionPolicy、确认/澄清 coordinator、UndoStore、原生服务、`FamiliarWebSearchService`、`FamiliarWorkspaceStore`、Python 包源设置、`FamiliarShellRuntimeStatus`、`FamiliarVisionProcessor`。registry 在 init 中一次构建；iSH 资源存在时追加 `shell_execute`/`environment_prepare`。主界面出现后 `FamiliarRootView` 触发 `prewarmShellRuntime()`：后台低优先级、共享 flight、幂等，失败静默由下次调用或设置页 Retry 重试。
 - `makeRuntime(for:...)` 把 `FamiliarProviderFactory.makeProvider` 结果与 registry、policy、coordinator、授权、persist/willCommit 回调注入唯一的 `FamiliarAgentLoop`。
