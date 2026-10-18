@@ -631,7 +631,7 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
     let manifest = FamiliarToolManifest(
         name: "environment_prepare",
         title: "Prepare Project Environment",
-        description: "Install a declarative list of Python packages into the current Project's isolated environment. Do not pass shell commands. Familiar constructs and audits the installation command.",
+        description: "Install a declarative list of Python packages into the current Project's isolated environment. Do not pass shell commands. Familiar constructs and audits the installation command. The bundled runtime already ships python-docx, openpyxl, python-pptx, fpdf2, pypdf, markdown, lxml and Pillow; requesting them returns immediately without downloading anything.",
         parameters: .init(
             type: .object,
             properties: [
@@ -681,6 +681,12 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
            Set(existing.requestedPackages) == Set(packages),
            try await verifyEnvironment(existing, context: context) {
             return .unchanged(try result(existing))
+        }
+        // The bundled runtime already carries the common document libraries. Asking to
+        // install them must not start a multi-minute download inside the guest (which
+        // can outlive the shell timeout on device); verify them and answer immediately.
+        if try await bundledRuntimeSatisfies(packages, context: context) {
+            return .unchanged(try bundledResult(packages: packages))
         }
         let plan = FamiliarEnvironmentPlan(
             scope: scope,
@@ -732,6 +738,63 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
     // the guest. A disk receipt alone is not proof that an environment still works.
     private static let environmentProbe = #"python3 -c 'import importlib, importlib.metadata as m, pathlib; ds=list(m.distributions(path=["/workspace/env/site-packages"])); assert ds; [(_ for _ in ()).throw(RuntimeError(str(f))) for d in ds for f in (d.files or []) if not str(f).startswith("../") and not pathlib.Path(d.locate_file(f)).exists()]; [importlib.import_module(n) for d in ds for n in (d.read_text("top_level.txt") or "").splitlines() if n.isidentifier()]; print("ENVIRONMENT_VERIFIED")'"#
 
+    /// The bundled rootfs ships the common document libraries; packages whose
+    /// metadata the guest already knows (with a matching pin when requested) are
+    /// satisfied without downloading anything.
+    private static let bundledProbe = #"""
+    python3 -c 'import importlib.metadata as m, sys
+    missing = []
+    for spec in sys.argv[1:]:
+        name, _, wanted = spec.partition("==")
+        try:
+            have = m.version(name)
+        except Exception:
+            missing.append(name)
+            continue
+        if wanted and have != wanted:
+            missing.append(spec)
+    print("FAMILIAR_BUNDLED_OK" if not missing else "FAMILIAR_BUNDLED_MISSING " + " ".join(missing))'
+    """#
+
+    private struct BundledOutput: Encodable {
+        let prepared: Bool
+        let source: String
+        let packages: [String]
+    }
+
+    private func bundledRuntimeSatisfies(_ packages: [String], context: FamiliarToolContext) async throws -> Bool {
+        let id = UUID()
+        let view = try workspaceStore.prepareShellTaskView(taskID: id, workspaceID: context.workspaceID ?? .conversation(UUID()), resources: [], attachments: [])
+        defer { try? workspaceStore.removeShellTaskView(view) }
+        let request = FamiliarShellRequest(
+            taskID: id,
+            command: Self.bundledProbe + " " + packages.joined(separator: " "),
+            workspaceID: view.workspaceID,
+            workspaceView: view,
+            timeout: 30,
+            runID: context.runID,
+            toolCallID: context.toolCallID,
+            networkPolicy: .disabled
+        )
+        for try await event in executor.execute(request) {
+            if case .finished(let result) = event {
+                return result.status == .succeeded && result.standardOutput.contains("FAMILIAR_BUNDLED_OK")
+            }
+        }
+        return false
+    }
+
+    private func bundledResult(packages: [String]) throws -> FamiliarToolExecutionResult {
+        .init(envelope: try .init(
+            model: BundledOutput(prepared: true, source: "bundled-runtime", packages: packages),
+            presentation: .scalar(.init(
+                summary: "这些依赖已内置于 Familiar 运行环境，无需安装。",
+                label: "Bundled",
+                value: packages.joined(separator: ", ")
+            ))
+        ))
+    }
+
     private func prepare(
         plan: FamiliarEnvironmentPlan,
         context: FamiliarToolContext
@@ -751,7 +814,8 @@ nonisolated struct FamiliarEnvironmentPrepareTool: FamiliarTool {
         defer { try? workspaceStore.removeShellTaskView(view) }
         let packageArguments = plan.packages.joined(separator: " ")
         let command = "mkdir -p /workspace/env/site-packages && "
-            + "python3 -m pip install --isolated --disable-pip-version-check --no-input "
+            + "python3 -m pip install --isolated --disable-pip-version-check --no-input --no-cache-dir "
+            + "--timeout 20 --retries 2 "
             + "--index-url \(plan.packageIndex) --target /workspace/env/site-packages \(packageArguments) && "
             + "python3 -m pip freeze --path /workspace/env/site-packages > /workspace/env/requirements.lock && "
             + "python3 --version > /workspace/env/python-version.txt && " + Self.environmentProbe

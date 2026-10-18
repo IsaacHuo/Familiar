@@ -416,7 +416,12 @@ private actor FamiliarRealISHRuntimeState {
     func prepare(configuration _: FamiliarISHRuntimeConfiguration) async throws {
         if phase == .ready { return }
         if case .running = phase { return }
-        guard activeTaskID == nil else { throw FamiliarShellExecutorError.unavailable }
+        guard activeTaskID == nil else {
+            // A previous task that could not be terminated keeps its concrete
+            // reason; report that instead of a generic "not ready".
+            if case .failed(let reason) = phase { throw FamiliarShellExecutorError.preparationFailed(reason) }
+            throw FamiliarShellExecutorError.unavailable
+        }
         if let preparation {
             try await preparation.value
             if phase == .booting { phase = .ready }

@@ -7,7 +7,7 @@ version: 1.0.0
 
 1. Use the user's requested headings and source requirements. Show a task_plan only when a checklist helps the user; it is not required to execute the task.
 2. Use web_search and web_fetch. Read at least two relevant source pages. Search snippets alone are not evidence. Prefer primary sources. Keep titles and exact fetched URLs.
-3. Call environment_status. Propose python-docx through environment_prepare if missing. Do not install dependencies using shell_execute.
+3. The bundled runtime already ships python-docx, openpyxl, python-pptx, fpdf2, pypdf, markdown, lxml and Pillow; python-docx needs no installation. Only use environment_prepare for a genuinely missing package, and never install dependencies with pip inside shell_execute.
 4. Write UTF-8 JSON to Outputs/document-input.json with title, sections (heading and paragraphs), and sources (title and url). Use workspace_write; all claims should be supported by the fetched sources. Do not invent facts to fill a document.
 5. Execute `python3 /workspace/files/Skills/research-document/scripts/make_document.py --input /workspace/outputs/document-input.json --output /workspace/outputs/report.docx` with shell_execute. The script is read-only; output belongs in Outputs.
 6. Call file_publish with the DOCX path, requiredText for requested headings, and minimumSources (normally 2). Read it back using file_read when needed. Fix missing sections or broken files and republish, preserving an existing File as the predecessor when revising it.
