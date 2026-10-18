@@ -8,7 +8,6 @@ import SwiftUI
 struct FamiliarProviderIcon: View {
     let provider: FamiliarProviderDescriptor
     var size: CGFloat = 36
-    var showsBackground = true
 
     private enum Kind {
         case brand(asset: String, color: Color, template: Bool)
@@ -20,11 +19,11 @@ struct FamiliarProviderIcon: View {
         case "api.deepseek.com":
             .brand(asset: "ProviderDeepSeek", color: Color(red: 0.30, green: 0.42, blue: 1.00), template: false)
         case "api.moonshot.cn", "api.kimi.com":
-            .brand(asset: "ProviderKimi", color: Color(red: 0.09, green: 0.51, blue: 1.00), template: false)
+            .brand(asset: "ProviderKimi", color: Color(red: 0.09, green: 0.51, blue: 1.00), template: true)
         case "openrouter.ai":
             .brand(asset: "ProviderOpenRouter", color: Color(red: 0.78, green: 1.00, blue: 0.00), template: false)
         case "generativelanguage.googleapis.com":
-            .brand(asset: "ProviderGemini", color: Color(red: 0.19, green: 0.53, blue: 1.00), template: false)
+            .brand(asset: "ProviderGemini", color: Color(red: 0.19, green: 0.53, blue: 1.00), template: true)
         case "api.x.ai":
             .brand(asset: "ProviderXAI", color: .gray, template: true)
         case "api.openai.com", "chatgpt.com":
@@ -53,7 +52,7 @@ struct FamiliarProviderIcon: View {
                     .frame(width: size * 0.56, height: size * 0.56)
                     .frame(width: size, height: size)
                     .background(
-                        showsBackground ? color.opacity(0.12) : Color.clear,
+                        color.opacity(0.12),
                         in: RoundedRectangle(cornerRadius: FamiliarRadius.compact, style: .continuous)
                     )
             case .symbol(let name, let color):
@@ -62,7 +61,7 @@ struct FamiliarProviderIcon: View {
                     .foregroundStyle(color)
                     .frame(width: size, height: size)
                     .background(
-                        showsBackground ? color.opacity(0.12) : Color.clear,
+                        color.opacity(0.12),
                         in: RoundedRectangle(cornerRadius: FamiliarRadius.compact, style: .continuous)
                     )
             }
