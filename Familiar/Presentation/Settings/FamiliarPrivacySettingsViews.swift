@@ -16,6 +16,7 @@ import UniformTypeIdentifiers
 struct FamiliarAuthorizationSettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \FamiliarAuthorizationRuleRecord.createdAt, order: .reverse) private var records: [FamiliarAuthorizationRuleRecord]
+    @State private var errorMessage: String?
 
     private var activeRecords: [FamiliarAuthorizationRuleRecord] {
         records.filter { $0.revokedAt == nil && $0.expiresAt > Date() && $0.duration != .once }
@@ -46,7 +47,7 @@ struct FamiliarAuthorizationSettingsView: View {
                         .swipeActions {
                             Button(String(localized: "settings.authorizations.revoke", defaultValue: "Revoke"), role: .destructive) {
                                 record.revokedAt = Date()
-                                try? modelContext.save()
+                                save()
                             }
                         }
                     }
@@ -58,13 +59,26 @@ struct FamiliarAuthorizationSettingsView: View {
                     Button(String(localized: "settings.authorizations.revoke_all", defaultValue: "Revoke All"), role: .destructive) {
                         let now = Date()
                         activeRecords.forEach { $0.revokedAt = now }
-                        try? modelContext.save()
+                        save()
                     }
                 }
             }
         }
         .navigationTitle(String(localized: "settings.hub.authorizations", defaultValue: "Approved Actions"))
         .navigationBarTitleDisplayMode(.inline)
+        .alert(String(localized: "settings.error.title"), isPresented: Binding(
+            get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button(String(localized: "common.ok"), role: .cancel) { errorMessage = nil }
+        } message: { Text(errorMessage ?? "") }
+    }
+
+    /// Revoking an authorization must not appear to succeed when the save failed.
+    private func save() {
+        do { try modelContext.save() } catch {
+            modelContext.rollback()
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func durationLabel(_ duration: FamiliarAuthorizationDuration) -> String {

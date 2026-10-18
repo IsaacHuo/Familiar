@@ -280,7 +280,7 @@ private struct FamiliarProjectDetailView: View {
                     FamiliarProjectContextRow(
                         title: String(localized: "project.instruction"),
                         detail: project.instruction?.text ?? String(localized: "project.instruction.empty"),
-                        symbol: "text.quote", count: nil
+                        symbol: "text.quote", color: .pink, count: nil
                     )
                     Image(systemName: "chevron.right")
                         .font(FamiliarTypography.caption.weight(.semibold))
@@ -305,7 +305,7 @@ private struct FamiliarProjectDetailView: View {
                         localized: "project.conversations.context_detail",
                         defaultValue: "Chats that share this project context"
                     ),
-                    symbol: "bubble.left.and.bubble.right",
+                    symbol: "bubble.left.and.bubble.right", color: .blue,
                     count: sortedConversations.count
                 )
             }
@@ -314,7 +314,7 @@ private struct FamiliarProjectDetailView: View {
                 projectAdvancedSettings
             } label: {
                 FamiliarProjectContextRow(title: String(localized: "settings.advanced.title"),
-                    detail: String(localized: "project.advanced.detail"), symbol: "slider.horizontal.3", count: nil)
+                    detail: String(localized: "project.advanced.detail"), symbol: "slider.horizontal.3", color: .gray, count: nil)
             }
         }
     }
@@ -328,7 +328,7 @@ private struct FamiliarProjectDetailView: View {
                     FamiliarProjectContextRow(
                         title: String(localized: "project.environment", defaultValue: "Environment"),
                         detail: String(localized: "project.environment.detail", defaultValue: "Dependencies for advanced file tasks"),
-                        symbol: "shippingbox",
+                        symbol: "shippingbox", color: .gray,
                         count: nil
                     )
                 }
@@ -339,7 +339,7 @@ private struct FamiliarProjectDetailView: View {
                     FamiliarProjectContextRow(
                         title: String(localized: "settings.skills.title", defaultValue: "Skills"),
                         detail: String(localized: "project.skills.context_detail", defaultValue: "Guidance available for this Project"),
-                        symbol: "wand.and.stars",
+                        symbol: "wand.and.stars", color: .purple,
                         count: nil
                     )
                 }
@@ -347,7 +347,7 @@ private struct FamiliarProjectDetailView: View {
                 NavigationLink {
                     FamiliarMCPSettingsView(projectID: project.id)
                 } label: {
-                    FamiliarProjectContextRow(title: String(localized: "mcp.title"), detail: String(localized: "mcp.settings.detail"), symbol: "wrench.and.screwdriver", count: nil)
+                    FamiliarProjectContextRow(title: String(localized: "mcp.title"), detail: String(localized: "mcp.settings.detail"), symbol: "wrench.and.screwdriver", color: .blue, count: nil)
                 }
 
                 if let registry {
@@ -357,7 +357,7 @@ private struct FamiliarProjectDetailView: View {
                         FamiliarProjectContextRow(
                             title: String(localized: "project.capabilities", defaultValue: "Capabilities"),
                             detail: String(localized: "project.capabilities.detail", defaultValue: "Choose the tools this Project can use"),
-                            symbol: "switch.2",
+                            symbol: "switch.2", color: .blue,
                             count: nil
                         )
                     }
@@ -374,7 +374,7 @@ private struct FamiliarProjectDetailView: View {
                             localized: "project.runs.context_detail",
                             defaultValue: "Execution history and frozen context"
                         ),
-                        symbol: "bolt",
+                        symbol: "bolt", color: .gray,
                         count: sortedRuns.count
                     )
                 }
@@ -487,11 +487,6 @@ private struct FamiliarProjectDetailView: View {
                 onError(error.localizedDescription)
             }
         }
-    }
-
-    private func emptyRow(_ title: String, systemImage: String) -> some View {
-        Label(title, systemImage: systemImage)
-            .foregroundStyle(.secondary)
     }
 
     private static let allowedResourceTypes: [UTType] = FamiliarAnyDocService.supportedExtensions
@@ -670,14 +665,12 @@ private struct FamiliarProjectContextRow: View {
     let title: String
     let detail: String
     let symbol: String
+    var color: Color = FamiliarTheme.accent
     let count: Int?
 
     var body: some View {
         HStack(spacing: FamiliarSpacing.medium) {
-            Image(systemName: symbol)
-                .font(.system(size: FamiliarIconSize.standard, weight: .medium))
-                .foregroundStyle(FamiliarTheme.accent)
-                .frame(width: FamiliarControlSize.compactVisual)
+            FamiliarSettingsRowIcon(symbol: symbol, color: color)
 
             VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                 Text(title)
@@ -698,40 +691,6 @@ private struct FamiliarProjectContextRow: View {
             }
         }
         .padding(.vertical, FamiliarSpacing.xSmall)
-    }
-}
-
-private struct FamiliarProjectSectionHeader<Destination: View>: View {
-    let title: String
-    let count: Int
-    @ViewBuilder let destination: Destination
-
-    init(
-        title: String,
-        count: Int,
-        @ViewBuilder destination: () -> Destination
-    ) {
-        self.title = title
-        self.count = count
-        self.destination = destination()
-    }
-
-    var body: some View {
-        HStack(spacing: FamiliarSpacing.small) {
-            Text(title)
-                .font(FamiliarTypography.sectionTitle)
-            Text("\(count)")
-                .font(FamiliarTypography.metadata)
-                .foregroundStyle(.tertiary)
-            Spacer()
-            NavigationLink {
-                destination
-            } label: {
-                Text(String(localized: "common.view_all", defaultValue: "View All"))
-                    .font(FamiliarTypography.caption.weight(.medium))
-            }
-            .disabled(count == 0)
-        }
     }
 }
 

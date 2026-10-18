@@ -107,10 +107,13 @@
 - [x] 拆分 FamiliarSettingsHubView.swift（1655 行）：Settings/ 下 Hub、Capability、Personalization、Privacy、RunHistory、RunRecord、About、ModelService 八个文件。
 - [ ] 验收：真机逐页过设置（编辑即生效、无重复运行记录入口、深/浅色）。
 
-### S6 Project 与 Files `[ ]`
+### S6 Project 与 Files `[~]`
 
-- 文件列表原生 List + 文件详情页（版本、预览、分享、删除），预览统一 push。
-- Project 详情行样式与设置统一；修 `try?` 吞掉的保存错误，清理死代码。
+- [x] 文件列表改为原生 List（行即导航），新增文件详情页：概览 + 预览/分享、版本列表（v 序、最新标记、逐版本预览 push）、项目资料开关、删除（确认后 pop）；预览全部 push。
+- [x] Project 详情行样式与设置统一：共享 `FamiliarSettingsRowIcon`（渐变图标块），项目上下文各行按语义配色；设置 Hub 去掉重复的本地缩放属性。
+- [x] 修复吞错的保存：Approved Actions 撤销/全部撤销改用显式 do/catch、失败 rollback 并弹出错误；清理死代码（`FamiliarProjectSectionHeader`、`emptyRow`）。
+- [x] 构建：arm64 iPhone 18 Pro Simulator `build-for-testing` 成功（exit 0，无源码 warning/error）；双语 1050 键一致；测试只编译不执行。
+- [ ] 验收：真机过 Files（行→详情→各版本预览/分享/删除、项目资料开关）与项目详情视觉；统一清单见 docs/19-owner-acceptance-checklist.md。
 
 ### S7 二级能力 `[ ]`
 
@@ -138,5 +141,7 @@ S4（文档工具组默认启用、后台预热、rootfs 预装文档库与中�
 S3（工具结果四种呈现、presentation 工具与 payload 收敛、侧栏原生 List、省略号精简、Composer 原生 Menu、消息视图拆分）已实现：`build-for-testing` 成功，测试只编译不执行；验收（假 Provider 三态截图 + VoiceOver + 真机签字）待所有者执行，验收前 S3 不标完成。
 
 S5（设置分组扁平化、编辑即生效、运行记录 UI 合并、文件拆分；另含 Provider 品牌图标与「仍在开发中」说明）已实现：`build-for-testing` 成功，测试只编译不执行；真机逐页验收待所有者执行。统一验收入口见 docs/19-owner-acceptance-checklist.md。
+
+S6（Files 列表原生 List + 文件详情页、Project 行样式与设置统一、撤销保存错误显式化、死代码清理）已实现：`build-for-testing` 成功，真机验收待所有者执行。
 
 S1 的 79 项定向单测、WebKit 引用回归与 3 项生产 UI 证据仅属于之前的 S1 基线；DeepSeek + Tavily 20 条真实查询与所有者签字仍待完成。后续切片同样单列真实验收结果，不把编译等同于运行通过。

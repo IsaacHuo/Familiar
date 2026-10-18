@@ -1067,6 +1067,8 @@
 "runtime.ui.skipped_count" = "Skipped %lld operations";
 "runtime.ui.unconfirmed_write" = "The result of this operation is unconfirmed. Check the completed actions before trying again to avoid duplicate execution.";
 
+"file.versions" = "Versions";
+"file.latest" = "Latest";
 "file.project_context" = "Use as Project context";
 
 "file.empty" = "No files yet";

@@ -1067,6 +1067,8 @@
 "runtime.ui.skipped_count" = "已跳过 %lld 项操作";
 "runtime.ui.unconfirmed_write" = "这项操作的结果尚未确认。请先核对已完成的操作，避免重复执行。";
 
+"file.versions" = "版本";
+"file.latest" = "最新";
 "file.project_context" = "用于项目上下文";
 
 "file.empty" = "暂无文件";

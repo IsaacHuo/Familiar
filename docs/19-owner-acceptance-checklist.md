@@ -61,6 +61,14 @@
 - [ ] 省略号菜单不再有 Memory（设置 → 记忆中也有入口）；Composer 加号打开原生菜单，选择相机/照片/文件正常。
 - [ ] `-familiar.visual-fixture 1` Visual Fixture 页三态（浅/深/大字体）过目。
 
+## 6.5 Files 与项目详情（S6）
+
+- [ ] Files 列表：点击行进入文件详情；搜索过滤正常；空状态可见。
+- [ ] 文件详情：概览预览/分享可用；版本列表按 v 降序、最新有标记；点任一版本 push 预览；删除有确认、删除后返回列表且文件消失。
+- [ ] 项目聊天内打开 Files：项目资料开关可切换并生效（重启后保留）。
+- [ ] Approved Actions 撤销：正常撤销；（可选）故障注入下保存失败会弹出错误而不是假装成功。
+- [ ] 项目详情各行图标与设置页风格一致，深/浅色与大字体正常。
+
 ## 7. 本轮新增（Provider 图标与开发中说明）
 
 - [ ] 设置 → 模型服务：DeepSeek 显示 DeepSeek 品牌图标、Kimi/Kimi Code 显示 Kimi 图标、OpenRouter/Gemini/xAI/Anthropic/OpenAI 各自品牌图标；自定义兼容端点仍显示协议符号兜底。

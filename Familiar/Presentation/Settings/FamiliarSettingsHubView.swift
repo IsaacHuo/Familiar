@@ -50,11 +50,6 @@ struct FamiliarSettingsView: View {
     let shellRuntimeStatus: FamiliarShellRuntimeStatus
     let onSaveSettings: (FamiliarSettings) -> Void
 
-    /// Scaled so the row icon container grows with the label beside it. A fixed 28pt box
-    /// next to text that scales would leave the glyph visually detached at larger sizes.
-    @ScaledMetric(relativeTo: .body) private var rowIconSize: CGFloat = FamiliarIconSize.standard
-    @ScaledMetric(relativeTo: .body) private var rowIconContainer: CGFloat = FamiliarControlSize.compactVisual
-
     @State private var settings: FamiliarSettings
     @State private var path: [FamiliarSettingsRoute]
 
@@ -153,14 +148,7 @@ struct FamiliarSettingsView: View {
     ) -> some View {
         NavigationLink(value: route) {
             HStack(spacing: FamiliarSpacing.medium) {
-                Image(systemName: symbol)
-                    .font(.system(size: rowIconSize, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: rowIconContainer, height: rowIconContainer)
-                    .background(
-                        color.gradient,
-                        in: RoundedRectangle(cornerRadius: FamiliarRadius.compact, style: .continuous)
-                    )
+                FamiliarSettingsRowIcon(symbol: symbol, color: color)
 
                 VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                     HStack(spacing: FamiliarSpacing.small) {
