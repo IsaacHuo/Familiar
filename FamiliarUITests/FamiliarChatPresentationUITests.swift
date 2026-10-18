@@ -10,6 +10,8 @@ final class FamiliarChatPresentationUITests: XCTestCase {
         if accessibility { app.launchArguments += ["-familiar.accessibility-testing"] }
         if let appearance { app.launchArguments += ["-familiar.appearance.v1", appearance] }
         app.launch()
+        XCTAssertTrue(app.buttons["chats.new"].waitForExistence(timeout: 15))
+        app.buttons["chats.new"].tap()
         let input = app.textViews["composer.input"]
         XCTAssertTrue(input.waitForExistence(timeout: 15))
         input.tap()
@@ -55,7 +57,8 @@ final class FamiliarChatPresentationUITests: XCTestCase {
         app.buttons["Done"].firstMatch.tap()
         XCTAssertTrue(sourceButton.waitForExistence(timeout: 5))
         XCTAssertEqual(sourceButton.frame.minY, original, accuracy: 3)
-        app.buttons["chat.settings"].tap()
+        app.navigationBars.buttons.firstMatch.tap()
+        app.tabBars.buttons["Settings"].tap()
         capture("settings-hub")
         let search = app.descendants(matching: .any)["settings.route.searchService"].firstMatch
         if !search.waitForExistence(timeout: 5) { app.swipeUp() }
@@ -99,6 +102,8 @@ final class FamiliarChatPresentationUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-familiar.ui-testing", "1", "-familiar.chat-testing", "1", "-familiar.history-count", String(count), "-AppleLanguages", "(en)"]
         app.launch()
+        XCTAssertTrue(app.buttons["chats.new"].waitForExistence(timeout: 15))
+        app.buttons["chats.new"].tap()
         let timeline = app.scrollViews["chat.timeline"]
         XCTAssertTrue(timeline.waitForExistence(timeout: 120))
         let options = XCTMeasureOptions()
@@ -134,6 +139,8 @@ final class FamiliarChatPresentationUITests: XCTestCase {
         app.launchArguments = ["-familiar.ui-testing", "1", "-familiar.chat-testing", "1", "-familiar.disk-testing", "1",
             "-familiar.test-store-id", "fc-" + UUID().uuidString, "-AppleLanguages", "(en)"]
         app.launch()
+        XCTAssertTrue(app.buttons["chats.new"].waitForExistence(timeout: 15))
+        app.buttons["chats.new"].tap()
         let input = app.textViews["composer.input"]
         XCTAssertTrue(input.waitForExistence(timeout: 15))
         input.tap(); input.typeText("FC persisted reply")
@@ -142,20 +149,12 @@ final class FamiliarChatPresentationUITests: XCTestCase {
         XCTAssertTrue(app.buttons["message.follow_up.0"].waitForExistence(timeout: 15))
         let savedSuggestion = app.buttons["message.follow_up.0"].label
         app.terminate(); app.launch()
+        let chat = app.cells.matching(NSPredicate(format: "identifier BEGINSWITH %@", "chat.history.row.")).firstMatch
+        XCTAssertTrue(chat.waitForExistence(timeout: 15)); chat.tap()
         XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 15))
         XCTAssertEqual(app.buttons["message.follow_up.0"].label, savedSuggestion)
-        let drawer = app.buttons["chat.history.open"]
-        XCTAssertTrue(drawer.waitForExistence(timeout: 15)); drawer.tap()
-        let chat = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label == %@",
-            "chat.history.row.", "FC persisted reply")).firstMatch
-        if !chat.waitForExistence(timeout: 4) {
-            let expand = app.buttons["Expand Project"].firstMatch
-            if expand.exists { expand.tap() }
-        }
-        XCTAssertTrue(chat.waitForExistence(timeout: 10)); chat.tap()
-        XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 15))
         XCTAssertEqual(app.buttons.matching(identifier: "message.copy").count, 1)
-        XCTAssertEqual(app.buttons["composer.send"].label, "Send")
+        XCTAssertTrue(app.buttons["composer.speech"].exists)
         let capture = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         capture.name = "FC-disk-relaunch"; capture.lifetime = .keepAlways; add(capture)
     }
@@ -345,8 +344,8 @@ final class FamiliarChatPresentationUITests: XCTestCase {
     func testProjectChatPushReturnsToOriginalProject() {
         let app = chat("short")
         XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 20))
-        app.buttons["chat.history.open"].tap()
-        app.buttons["All Projects"].tap()
+        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["chats.manageProjects"].tap()
         app.buttons["projects.create"].tap()
         let name = app.textFields.firstMatch
         XCTAssertTrue(name.waitForExistence(timeout: 10))

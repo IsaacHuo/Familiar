@@ -390,7 +390,7 @@ struct FamiliarSkillEditorView: View {
             } footer: {
                 if skill == nil {
                     Text(String(
-                        format: String(localized: "settings.skills.create.identifier_hint", defaultValue: "Slash command: /%@"),
+                        format: String(localized: "settings.skills.create.identifier_hint", defaultValue: "Skill identifier: %@"),
                         resolvedIdentifier.isEmpty ? "my-skill" : resolvedIdentifier
                     ))
                 }

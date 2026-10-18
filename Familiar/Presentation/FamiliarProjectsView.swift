@@ -150,7 +150,7 @@ struct FamiliarProjectsView<ChatContent: View>: View {
 
 }
 
-private struct FamiliarProjectDetailView: View {
+struct FamiliarProjectDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \FamiliarFileRecord.updatedAt, order: .reverse) private var fileRecords: [FamiliarFileRecord]
@@ -797,7 +797,7 @@ private struct FamiliarProjectResourceEntryView: View {
 
 
 
-private enum FamiliarProjectEditorDestination: Identifiable {
+enum FamiliarProjectEditorDestination: Identifiable {
     case create
     case edit(FamiliarProject)
 
@@ -809,7 +809,7 @@ private enum FamiliarProjectEditorDestination: Identifiable {
     }
 }
 
-private struct FamiliarProjectEditorView: View {
+struct FamiliarProjectEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 

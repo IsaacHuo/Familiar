@@ -4,6 +4,8 @@ import SwiftUI
 import UIKit
 
 struct FamiliarAssistantTurn: View {
+    @Environment(\.dynamicTypeSize) private var dynamicType
+    @Environment(\.familiarExecutionBlocked) private var executionBlocked
     @Environment(\.familiarReadingGeometry) private var readingGeometry
     let message: FamiliarMessageSnapshot?
     let run: FamiliarAgentRunSnapshot?
@@ -32,7 +34,7 @@ struct FamiliarAssistantTurn: View {
     }
 
     private var canRetry: Bool {
-        guard run?.regenerationRequiresInspection != true, liveController == nil else { return false }
+        guard !executionBlocked, run?.regenerationRequiresInspection != true, liveController == nil else { return false }
         return !surfaces.contains { surface in
             surface.effect != nil && surface.effect != .read &&
                 (surface.phase == .succeeded || ["tool_commit_unconfirmed", "tool_persistence_failed", "tool_rollback_failed"].contains(surface.failureCode ?? ""))
@@ -41,6 +43,7 @@ struct FamiliarAssistantTurn: View {
 
     var body: some View {
         let blocks = contentBlocks
+        FamiliarMessageGroupLayout(fraction: dynamicType.isAccessibilitySize ? 0.98 : 0.92, trailing: false) {
         VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceS) {
             ForEach(blocks) { block in
                 Group {
@@ -75,10 +78,12 @@ struct FamiliarAssistantTurn: View {
                 FamiliarLiveReplyStatus(controller: liveController)
             }
             if let message {
+                Text(message.createdAt, style: .time).font(.caption2).foregroundStyle(.secondary)
                 FamiliarAssistantFooter(message: message, onRetryMessage: canRetry ? onRetryMessage : nil, onInsertPrompt: onInsertPrompt)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        }
         .onChange(of: surfaces) { _, _ in onLiveContentChange?(true) }
     }
 
@@ -125,6 +130,7 @@ struct FamiliarMarkdownBlock: View {
         VStack(alignment: .leading, spacing: FamiliarSpacing.small) {
             FamiliarMarkdownWebView(markdown: FamiliarCitation.canonicalized(content, sources: sources).text,
                                     sources: citationSources, isStreaming: streaming)
+                .familiarMessageBubble(isUser: false)
             if live == nil, text.state != .completed {
                 Label(String(localized: "runtime.ui.incomplete_text"), systemImage: "pause.circle")
                     .font(FamiliarTypography.caption).foregroundStyle(.secondary)

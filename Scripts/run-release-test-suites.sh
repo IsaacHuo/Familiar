@@ -24,6 +24,8 @@ simulator_suites=(
     FamiliarStreamingPresentationTests
     FamiliarMarkdownWebKitTests
     FamiliarTimelinePerformanceTests
+    FamiliarDraftRewriteTests
+    FamiliarChatNavigationTests
     FamiliarChatScrollTests
     FamiliarChatInputDockTests
     FamiliarChatTestProviderTests

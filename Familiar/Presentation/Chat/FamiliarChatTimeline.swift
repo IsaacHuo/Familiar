@@ -20,6 +20,11 @@ struct FamiliarReplyMetrics: Equatable {
 
 struct FamiliarMessageTimeline: View {
     @Environment(\.familiarReduceMotion) private var reduceMotion
+    @Environment(\.familiarCanMarkRead) private var canMarkRead
+    @State private var visibleRows: Set<String> = []
+    @State private var latestVisibleReply: UUID?
+    @State private var restoredPosition = false
+    let initialMessageID: UUID?
     let messages: [FamiliarMessageSnapshot]
     let modelSwitches: [FamiliarModelSwitchSnapshot]
     let agentRuns: [FamiliarAgentRunSnapshot]
@@ -45,9 +50,11 @@ struct FamiliarMessageTimeline: View {
         onInsertPrompt: @escaping (String) -> Void, onUndo: @escaping (String, String) -> Void,
         onEdit: @escaping (FamiliarMessageSnapshot) -> Void, onRetry: @escaping (FamiliarMessageSnapshot) -> Void,
         onRetryRecovery: @escaping (String) -> Void,
-        scrollSession: FamiliarChatScrollSession = .init()
+        scrollSession: FamiliarChatScrollSession = .init(),
+        initialMessageID: UUID? = nil
     ) {
         _scroll = State(initialValue: scrollSession)
+        self.initialMessageID = initialMessageID
         self.messages = messages; self.modelSwitches = modelSwitches; self.agentRuns = agentRuns
         self.liveController = liveController
         self.availableUndoKeys = availableUndoKeys; self.completedUndoKeys = completedUndoKeys
@@ -94,6 +101,7 @@ struct FamiliarMessageTimeline: View {
 
     var body: some View {
         GeometryReader { viewport in
+            let viewportHeight = viewport.size.height
             Group {
                 ScrollView {
                     LazyVStack(spacing: FamiliarAISurfaceMetric.spaceXL) {
@@ -134,6 +142,14 @@ struct FamiliarMessageTimeline: View {
                                 )
                                 .id(item.id)
                             }
+                            }
+                            .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                            .onGeometryChange(for: Bool.self) { geometry in
+                                let frame = geometry.frame(in: .named("conversation-scroll"))
+                                return frame.maxY > 0 && frame.maxY <= viewportHeight + 1
+                            } action: { visible in
+                                if visible { visibleRows.insert(item.id) } else { visibleRows.remove(item.id) }
+                                updateReadVisibility()
                             }
                             .onGeometryChange(for: CGRect.self) { geometry in
                                 geometry.frame(in: .named("conversation-scroll"))
@@ -182,7 +198,24 @@ struct FamiliarMessageTimeline: View {
                         scheduleFollow()
                     }
                 }
-                .onAppear { scheduleFollow() }
+                .onAppear {
+                    guard !restoredPosition else { return }
+                    restoredPosition = true
+                    if let initialMessageID, let target = timelineItems.first(where: { item in
+                        switch item {
+                        case .message(let message): return message.id == initialMessageID
+                        case .assistant(_, let message, _, _, _): return message?.id == initialMessageID
+                        case .modelSwitch: return false
+                        }
+                    }) {
+                        scroll.userBegan()
+                        position.scrollTo(id: target.id, anchor: .center)
+                    } else if scroll.mode == .userReading { position.scrollTo(y: max(0, scroll.offset)) }
+                    else { scheduleFollow() }
+                }
+                .onChange(of: scroll.readingRevision) { _, _ in updateReadVisibility() }
+                .onChange(of: canMarkRead) { _, _ in updateReadVisibility() }
+                .onChange(of: messages.last(where: { $0.role == .assistant })?.id) { _, _ in updateReadVisibility() }
                 .onDisappear { scroll.cancel() }
                 .onChange(of: messages.count) { _, _ in contentAdded() }
                 .onChange(of: modelSwitches.count) { _, _ in contentAdded() }
@@ -205,6 +238,21 @@ struct FamiliarMessageTimeline: View {
                 }
             }
         }
+    }
+
+    private func updateReadVisibility() {
+        guard let latest = messages.last(where: { $0.role == .assistant }),
+              let row = timelineItems.first(where: { item in
+                  if case .assistant(_, let message, _, _, _) = item { return message?.id == latest.id }
+                  return false
+              }), visibleRows.contains(row.id) else { latestVisibleReply = nil; return }
+        latestVisibleReply = latest.id
+        markVisibleReplyRead()
+    }
+
+    private func markVisibleReplyRead() {
+        guard canMarkRead, !scroll.isInspecting, let latestVisibleReply else { return }
+        liveController.markReplyRead(latestVisibleReply)
     }
 
     private func contentAdded() {

@@ -48,6 +48,7 @@ struct FamiliarChatInputDock: View {
     let onStop: () -> Void
     @State private var drafts = FamiliarInteractionDrafts()
     @State private var interactionHeight: CGFloat = 0
+    @State private var answerSelection: TextSelection?
 
     private var interactions: [FamiliarPendingInteraction] {
         FamiliarPendingInteraction.project(surfaces: controller.surfaces.orderedSurfaces,
@@ -109,7 +110,7 @@ struct FamiliarChatInputDock: View {
                 images: $controller.draftImages, documents: $controller.draftAttachments,
                 selectedSkillID: $controller.selectedSkillID, skills: skills,
                 isSending: controller.isSending, isListening: isListening,
-                draftScopeID: controller.selectedConversationID ?? controller.selectedProjectID,
+                draftScopeID: controller.selectedConversationID ?? controller.draftConversationID,
                 focus: focus, onSpeech: onSpeech,
                 onSend: {
                     if let question {
@@ -121,12 +122,14 @@ struct FamiliarChatInputDock: View {
                     } else { onSend() }
                 }, availableHeight: availableHeight,
                 isAnsweringClarification: question != nil,
-                allowsCustomAnswer: question.map { $0.surface.clarificationAllowsCustom && !drafts.submitting.contains($0.id) } ?? true
+                allowsCustomAnswer: question.map { $0.surface.clarificationAllowsCustom && !drafts.submitting.contains($0.id) } ?? true,
+                selection: question == nil ? $controller.draftSelection : $answerSelection
             )
         }
         .onChange(of: pending.map(\.id), initial: true) { _, ids in
             drafts.reconcile(Set(ids))
             interactionHeight = 0
+            answerSelection = nil
             focus.wrappedValue = false
         }
         .onChange(of: controller.selectedConversationID) { _, _ in drafts = .init() }

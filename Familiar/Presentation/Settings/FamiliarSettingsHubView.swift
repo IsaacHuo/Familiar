@@ -40,6 +40,7 @@ enum FamiliarSettingsRoute: String, Hashable {
 struct FamiliarSettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
+    let isRootTab: Bool
     let initialSettings: FamiliarSettings
     let initialRoute: FamiliarSettingsRoute?
     let registry: FamiliarToolRegistry
@@ -62,8 +63,10 @@ struct FamiliarSettingsView: View {
         workspaceStore: FamiliarWorkspaceStore,
         workspaceID: FamiliarWorkScope?,
         shellRuntimeStatus: FamiliarShellRuntimeStatus,
-        onSaveSettings: @escaping (FamiliarSettings) -> Void
+        onSaveSettings: @escaping (FamiliarSettings) -> Void,
+        isRootTab: Bool = false
     ) {
+        self.isRootTab = isRootTab
         self.initialSettings = initialSettings
         self.initialRoute = initialRoute
         self.registry = registry
@@ -125,17 +128,18 @@ struct FamiliarSettingsView: View {
             .navigationTitle(String(localized: "drawer.settings"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
+                if !isRootTab { ToolbarItem(placement: .confirmationAction) {
                     Button(String(localized: "common.done", defaultValue: "Done")) {
                         onSaveSettings(settings)
                         dismiss()
                     }
                     .fontWeight(.semibold)
-                }
+                } }
             }
             .navigationDestination(for: FamiliarSettingsRoute.self, destination: destination)
         }
         .tint(FamiliarTheme.accent)
+        .onChange(of: initialSettings) { _, value in if settings != value { settings = value } }
     }
 
     private func settingsLink(

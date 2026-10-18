@@ -55,6 +55,7 @@ final class FamiliarChatScrollSession {
     @ObservationIgnored var viewportHeight: CGFloat = 0
 
     var isInteracting: Bool { state.isInteracting }
+    var isInspecting: Bool { inspectionCount > 0 }
 
     func contentShifted(_ delta: CGFloat) {
         if let anchor { self.anchor = (anchor.id, anchor.y - delta, anchor.priority) }
@@ -107,7 +108,7 @@ final class FamiliarChatScrollSession {
             publish()
         }
     }
-    func endInspection() { inspectionCount = max(0, inspectionCount - 1) }
+    func endInspection() { inspectionCount = max(0, inspectionCount - 1); readingRevision += 1 }
 
     func cancel() { task?.cancel(); task = nil }
     private func publish() {

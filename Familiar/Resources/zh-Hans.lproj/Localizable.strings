@@ -107,7 +107,7 @@
 "settings.skills.description" = "说明";
 "settings.skills.instructions" = "指令";
 "settings.skills.create.title" = "新建技能";
-"settings.skills.create.identifier_hint" = "斜杠命令：/%@";
+"settings.skills.create.identifier_hint" = "技能标识：%@";
 "settings.skills.create.no_tools" = "新建技能只包含指令，默认不使用任何工具。";
 "settings.skills.create.instructions_template" = "目标：\n- 描述这个 技能 要帮助完成什么。\n\n规则：\n- 写出回答必须遵守的要求。\n\n输出要求：\n- 描述期望的格式和风格。";
 "settings.skills.edit.title" = "编辑技能";
@@ -167,10 +167,10 @@
 "settings.about.notices" = "第三方软件声明";
 "settings.about.notices.unavailable" = "无法读取第三方软件声明。";
 "slash.palette" = "技能";
-"slash.open" = "选择 技能";
-"slash.remove" = "移除 技能";
-"slash.empty" = "没有可用的 技能";
-"slash.empty.detail" = "请先在设置中创建 技能。";
+"slash.open" = "选择技能";
+"slash.remove" = "移除技能";
+"slash.empty" = "没有可用技能";
+"slash.empty.detail" = "管理技能";
 
 "drawer.open" = "打开会话列表";
 "drawer.search" = "搜索项目与对话";
@@ -1127,3 +1127,59 @@
 "resource.web.save_to_files" = "保存到文件";
 
 "conversation.delete.ordinary_detail" = "这个对话及其独有文件、工作区、会话记忆和运行记录会从此 iPhone 删除。";
+
+/* Chat navigation and AI draft editor */
+"tab.files" = "文件";
+"tab.chats" = "聊天";
+"tab.settings" = "设置";
+"skills.menu" = "技能";
+"chat.open" = "打开对话";
+"chat.recent" = "最近";
+"chat.archived" = "已归档的聊天";
+"chat.archive" = "归档";
+"chat.unarchive" = "取消归档";
+"chat.mark_read" = "标记为已读";
+"chat.mark_unread" = "标记为未读";
+"chat.unread" = "未读";
+"chat.draft" = "草稿";
+"chat.no_messages" = "还没有消息";
+"chat.list.empty" = "还没有对话";
+"chat.running" = "正在回复";
+"chat.needs_attention" = "需要确认";
+"chat.execution.busy" = "另一个请求正在进行，请返回该对话或等待完成。";
+"chat.draft.missing_attachment" = "部分草稿图片无法打开，请重新添加或移除无法读取的附件。";
+"chat.project_order" = "项目顺序";
+"project.manage" = "管理项目";
+"chat.search.all" = "搜索全部对话";
+"chat.search.messages" = "消息";
+"file.library.scope" = "归属";
+"file.library.all" = "全部文件";
+"rewrite.title" = "AI 编辑器";
+"rewrite.operation" = "编辑方式";
+"rewrite.mode.translate" = "翻译";
+"rewrite.mode.style" = "风格";
+"rewrite.mode.correct" = "修正";
+"rewrite.language" = "翻译为";
+"rewrite.style.natural" = "自然";
+"rewrite.style.formal" = "正式";
+"rewrite.style.short" = "简短";
+"rewrite.style.custom" = "自定义";
+"rewrite.custom" = "描述你希望如何改写";
+"rewrite.original" = "原文";
+"rewrite.preview" = "预览";
+"rewrite.preview.empty" = "选择编辑方式后生成预览。";
+"rewrite.generate" = "生成";
+"rewrite.stop" = "停止生成";
+"rewrite.apply" = "应用到草稿";
+"rewrite.undo" = "撤销 AI 改写";
+"rewrite.model" = "编辑模型";
+"rewrite.model.current" = "使用当前聊天模型";
+"rewrite.provider_note" = "草稿会直接发送到你选择的模型服务。应用结果后仍需自行发送消息。";
+"rewrite.error.incomplete" = "模型未返回完整结果，草稿已保留，请重试。";
+"rewrite.error.too_long" = "文字超过模型限制，请缩短后重试。";
+"rewrite.error.timeout" = "生成超时，草稿已保留，请重试。";
+"rewrite.error.changed" = "草稿已发生变化，请关闭编辑器后重新打开。";
+
+"chat.drafts" = "草稿";
+"chat.drafts.empty" = "没有已保存的草稿";
+"file.library.missing" = "此文件已不可用";

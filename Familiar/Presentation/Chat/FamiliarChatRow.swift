@@ -4,6 +4,8 @@ import SwiftUI
 import UIKit
 
 struct FamiliarMessageRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicType
+    @Environment(\.familiarExecutionBlocked) private var executionBlocked
     let message: FamiliarMessageSnapshot
     let run: FamiliarAgentRunSnapshot?
     let disclosure: FamiliarRuntimeDisclosureState
@@ -42,8 +44,7 @@ struct FamiliarMessageRow: View {
     }
 
     private var userMessage: some View {
-        HStack(alignment: .bottom) {
-            Spacer(minLength: FamiliarAISurfaceMetric.rowHeight)
+        FamiliarMessageGroupLayout(fraction: dynamicType.isAccessibilitySize ? 0.98 : 0.82, trailing: true) {
             VStack(alignment: .trailing, spacing: FamiliarAISurfaceMetric.spaceS) {
                 ForEach(imageAttachments) { attachment in
                     Button { if let url = FamiliarAttachmentStore.url(for: attachment.relativePath) { previewAttachment = .init(url: url) } } label: {
@@ -66,11 +67,11 @@ struct FamiliarMessageRow: View {
                     Text(message.content)
                         .font(FamiliarTypography.body)
                         .textSelection(.enabled)
-                        .padding(FamiliarAISurfaceMetric.spaceM)
-                        .background(FamiliarTheme.userFill, in: RoundedRectangle(cornerRadius: FamiliarRadius.overlay, style: .continuous))
+                        .familiarMessageBubble(isUser: true)
                 }
+                Text(message.createdAt, style: .time).font(.caption2).foregroundStyle(.secondary)
             }
-            .frame(maxWidth: 300, alignment: .trailing)
+            .frame(maxWidth: .infinity, alignment: .trailing)
             .contextMenu {
                 if !message.content.isEmpty {
                     Button { UIPasteboard.general.string = message.content } label: {
@@ -79,7 +80,7 @@ struct FamiliarMessageRow: View {
                 }
                 Button { onEdit(message) } label: {
                     Label(String(localized: "common.edit"), systemImage: "pencil")
-                }
+                }.disabled(executionBlocked)
             }
         }
     }

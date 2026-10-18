@@ -3,6 +3,20 @@ import SwiftUI
 import SafariServices
 
 struct FamiliarChatView: View {
+    @Environment(\.dismiss) private var dismiss
+    let isHosted: Bool
+    let onBack: (() -> Void)?
+    let onNewDraft: ((UUID?) -> Void)?
+    let onRootSettings: ((FamiliarSettingsRoute?) -> Void)?
+    let initialMessageID: UUID?
+    @State private var skillsMenuOpen = false
+    @State private var skillsDismissRevision = 0
+    @State private var showsRewrite = false
+    @State private var detailVisible = false
+    @Environment(\.familiarCanMarkRead) private var rootCanMarkRead
+    let onConversationChanged: ((UUID) -> Void)?
+    let onOpenConversation: ((UUID) -> Void)?
+    let onProjectDetails: ((UUID) -> Void)?
     @Environment(\.modelContext) private var modelContext
     @Environment(\.familiarReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
@@ -52,9 +66,25 @@ struct FamiliarChatView: View {
 
     init(
         dependencies: FamiliarAppDependencies,
-        pendingSystemEntry: Binding<FamiliarSystemEntryRequest?>
+        pendingSystemEntry: Binding<FamiliarSystemEntryRequest?> = .constant(nil),
+        controller: FamiliarChatController? = nil,
+        onBack: (() -> Void)? = nil,
+        onNewDraft: ((UUID?) -> Void)? = nil,
+        onRootSettings: ((FamiliarSettingsRoute?) -> Void)? = nil,
+        initialMessageID: UUID? = nil,
+        onConversationChanged: ((UUID) -> Void)? = nil,
+        onOpenConversation: ((UUID) -> Void)? = nil,
+        onProjectDetails: ((UUID) -> Void)? = nil
     ) {
-        _controller = State(initialValue: FamiliarChatController(dependencies: dependencies))
+        isHosted = controller != nil
+        self.onBack = onBack
+        self.onNewDraft = onNewDraft
+        self.onRootSettings = onRootSettings
+        self.initialMessageID = initialMessageID
+        self.onConversationChanged = onConversationChanged
+        self.onOpenConversation = onOpenConversation
+        self.onProjectDetails = onProjectDetails
+        _controller = State(initialValue: controller ?? FamiliarChatController(dependencies: dependencies))
         toolRegistry = dependencies.registry
         searchService = dependencies.searchService
         pythonPackageSourceSettings = dependencies.pythonPackageSourceSettings
@@ -63,8 +93,220 @@ struct FamiliarChatView: View {
         _pendingSystemEntry = pendingSystemEntry
     }
 
-    var body: some View {
-        @Bindable var controller = controller
+    var body: some View { observedChatSurface }
+
+    private var chatSurface: some View {
+        GeometryReader { geometry in
+            chatSession(availableHeight: geometry.size.height)
+        }
+        .toolbar(.hidden, for: .tabBar)
+        .environment(\.familiarExecutionBlocked, controller.execution.isBusy && !controller.isSending)
+        .sheet(isPresented: $showsRewrite, onDismiss: { isComposerFocused = true; controller.scheduleDraftCheckpoint(in: modelContext) }) {
+            FamiliarDraftRewriteSheet(controller: controller, settings: controller.effectiveSettings(for: selectedProject))
+        }
+        .ignoresSafeArea(.keyboard, edges: isDrawerOpen || drawerDrag != 0 ? .all : [])
+        .onChange(of: isDrawerOpen) { _, _ in FamiliarHaptics.shared.perform(.selection) }
+        .onChange(of: isComposerFocused) { _, focused in
+            // The keyboard belongs to the chat surface: acquiring focus settles any
+            // interrupted drag and closes the drawer instead of leaving it stranded
+            // between the drawer, the keyboard and the chat.
+            if focused { closeDrawer() }
+        }
+    }
+
+    private var presentedChatSurface: some View {
+        chatSurface
+        .sheet(item: $presentedSheet, onDismiss: {
+            projectChatSheet = nil
+            refreshConfiguredProviders()
+        }) { destination in
+            sheetContent(destination)
+        }
+        .sheet(item: Binding(get: { isProjectChatVisible ? nil : webDestination }, set: { webDestination = $0 })) { destination in
+            FamiliarSafariView(url: destination.url) {
+                webDestination = nil
+            }
+            .ignoresSafeArea()
+            .presentationSizing(.page)
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $pendingSharedDraft, onDismiss: discardPendingSharedDraftIfNeeded) { _ in
+            FamiliarSharedDestinationView { destination in
+                importSharedDraft(to: destination)
+            }
+        }
+        .alert(String(localized: "conversation.rename.title"), isPresented: Binding(
+            get: { renameRequest != nil },
+            set: { if !$0 { renameRequest = nil } }
+        )) {
+            TextField(String(localized: "conversation.rename.placeholder"), text: renameTitleBinding)
+            Button(String(localized: "common.save")) { commitRename() }
+            Button(String(localized: "common.cancel"), role: .cancel) {}
+        }
+
+        .alert(String(localized: "app.name"), isPresented: Binding(
+            get: { controller.errorMessage != nil },
+            set: { if !$0 { controller.errorMessage = nil } }
+        )) {
+            if !isSelectedProviderConfigured {
+                Button(String(localized: "common.open_settings")) {
+                    present(.settings(nil))
+                }
+            }
+            Button(String(localized: "common.ok"), role: .cancel) {}
+        } message: {
+            Text(controller.errorMessage ?? String(localized: "error.unknown"))
+        }
+        .confirmationDialog(
+            String(localized: "message.operation.title"),
+            isPresented: Binding(
+                get: { pendingMessageOperation != nil },
+                set: { if !$0 { pendingMessageOperation = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(pendingMessageOperation?.actionTitle ?? "", role: .destructive) {
+                performPendingMessageOperation()
+            }
+            Button(String(localized: "common.cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "message.operation.detail"))
+        }
+        .confirmationDialog(
+            String(localized: "draft.discard.title", defaultValue: "Discard this draft?"),
+            isPresented: Binding(
+                get: { pendingDraftNavigation != nil },
+                set: { if !$0 { pendingDraftNavigation = nil; pendingProjectEntry = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "draft.discard.action", defaultValue: "Discard Draft"), role: .destructive) {
+                performPendingDraftNavigation()
+            }
+            Button(String(localized: "common.cancel"), role: .cancel) { pendingProjectEntry = nil }
+        } message: {
+            Text(String(localized: "draft.discard.detail", defaultValue: "Your unsent text and attachments will be removed before switching."))
+        }
+        .confirmationDialog(
+            String(localized: "conversation.delete.title", defaultValue: "Delete this chat?"),
+            isPresented: Binding(
+                get: { conversationPendingDeletion != nil },
+                set: { if !$0 { conversationPendingDeletion = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "common.delete"), role: .destructive) {
+                guard let conversationPendingDeletion else { return }
+                FamiliarHaptics.shared.perform(.destructive)
+                controller.delete([conversationPendingDeletion], in: modelContext)
+                self.conversationPendingDeletion = nil
+            }
+            Button(String(localized: "common.cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: conversationPendingDeletion?.project == nil ? "conversation.delete.ordinary_detail" : "conversation.delete.detail"))
+        }
+        .confirmationDialog(String(localized: "chat.clear.confirm"), isPresented: $confirmsClearChat, titleVisibility: .visible) {
+            Button(String(localized: "chat.clear"), role: .destructive) {
+                speechPlayer.stop()
+                FamiliarHaptics.shared.perform(.destructive)
+                controller.clearCurrentConversation(in: modelContext)
+            }
+        }
+    }
+
+    private var observedChatSurface: some View {
+        presentedChatSurface
+        .onAppear {
+            detailVisible = true
+            controller.presentationContext = modelContext
+            controller.settings = FamiliarSettingsStore.load()
+            if !isHosted { controller.recoverInterruptedRuns(in: modelContext) }
+            try? FamiliarSkillService().installExampleIfNeeded(in: modelContext)
+            if !isHosted, controller.selectedConversationID == nil,
+               let first = conversations.first(where: { $0.project == nil }) {
+                controller.select(first.id, in: modelContext)
+            }
+            FamiliarChatTestScenario.seedHistory(in: controller)
+            if controller.selectedConversationID == nil, controller.messages.isEmpty {
+                Task { @MainActor in await Task.yield(); if detailVisible { isComposerFocused = true } }
+            }
+            refreshConfiguredProviders()
+            if !isHosted, !controller.isSending && !controller.isCompacting {
+                let retained = (try? FamiliarChatListStore.retainedDraftPaths(in: modelContext)) ?? []
+                FamiliarAttachmentStore.pruneDrafts(keeping: retained.union(controller.draftAttachments.map(\.relativePath)))
+                if let owned = try? FamiliarFileCatalogService().ownedAttachmentPaths(in: modelContext) {
+                    FamiliarAttachmentStore.pruneMessageFiles(keeping: owned.union(
+                        conversations.flatMap { $0.messages.flatMap { $0.attachments.map(\.relativePath) } }
+                    ))
+                }
+            }
+            handlePendingSystemEntry()
+            handleSharedInbox()
+            updateSpotlightIndex(spotlightConversations)
+        }
+        .onChange(of: speechPlayer.errorMessage) { _, message in
+            if let message { controller.errorMessage = message }
+        }
+        .onChange(of: controller.selectedConversationID) { _, _ in speechPlayer.stop() }
+        .onChange(of: speechTranscriber.errorMessage) { _, message in
+            if let message { controller.errorMessage = message }
+        }
+        .onDisappear {
+            detailVisible = false
+            if !isHosted { controller.cancelFollowUps() }
+            speechPlayer.stop()
+            Task { await controller.checkpointDraft(in: modelContext); await speechTranscriber.stop(); await controller.checkpointDraft(in: modelContext) }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { controller.cancelFollowUps() }
+            if phase == .active {
+                refreshConfiguredProviders()
+                handleSharedInbox()
+            } else {
+                Task { await speechTranscriber.stop() }
+            }
+        }
+        .onChange(of: pendingSystemEntry) { _, _ in
+            handlePendingSystemEntry()
+        }
+        .onChange(of: controller.isSending) { _, isSending in
+            if isSending { FamiliarHaptics.shared.perform(.send) }
+            else {
+                handlePendingSystemEntry()
+                handleSharedInbox()
+            }
+        }
+        .onChange(of: controller.draft) { _, _ in
+            controller.scheduleDraftCheckpoint(in: modelContext)
+            handlePendingSystemEntry()
+            handleSharedInbox()
+        }
+        .onChange(of: controller.draftAttachments) { _, _ in
+            controller.scheduleDraftCheckpoint(in: modelContext)
+            handlePendingSystemEntry()
+            handleSharedInbox()
+        }
+        .onChange(of: controller.draftImages.map(\.id)) { _, _ in
+            controller.scheduleDraftCheckpoint(in: modelContext)
+            handlePendingSystemEntry()
+            handleSharedInbox()
+        }
+        .onChange(of: controller.selectedConversationID ?? controller.draftConversationID) { _, id in onConversationChanged?(id) }
+        .onChange(of: controller.selectedSkillID) { _, _ in controller.scheduleDraftCheckpoint(in: modelContext) }
+        .onChange(of: controller.draftSelection) { _, _ in controller.scheduleDraftCheckpoint(in: modelContext) }
+        .onChange(of: installedSkillIDs) { _, skillIDs in
+            if let selectedSkillID = controller.selectedSkillID,
+               !skillIDs.contains(selectedSkillID) {
+                controller.selectedSkillID = nil
+            }
+        }
+        .onChange(of: spotlightConversations) { _, conversations in
+            updateSpotlightIndex(conversations)
+        }
+    }
+
+    // Frozen legacy drawer layout. No production route or edge target mounts this surface.
+    private var frozenDrawerSurface: some View {
         GeometryReader { safeGeometry in
             let safeAreaInsets = safeGeometry.safeAreaInsets
 
@@ -179,179 +421,6 @@ struct FamiliarChatView: View {
             }
             .ignoresSafeArea(.container)
         }
-        .ignoresSafeArea(.keyboard, edges: isDrawerOpen || drawerDrag != 0 ? .all : [])
-        .onChange(of: isDrawerOpen) { _, _ in FamiliarHaptics.shared.perform(.selection) }
-        .onChange(of: isComposerFocused) { _, focused in
-            // The keyboard belongs to the chat surface: acquiring focus settles any
-            // interrupted drag and closes the drawer instead of leaving it stranded
-            // between the drawer, the keyboard and the chat.
-            if focused { closeDrawer() }
-        }
-        .sheet(item: $presentedSheet, onDismiss: {
-            projectChatSheet = nil
-            refreshConfiguredProviders()
-        }) { destination in
-            sheetContent(destination)
-        }
-        .sheet(item: Binding(get: { isProjectChatVisible ? nil : webDestination }, set: { webDestination = $0 })) { destination in
-            FamiliarSafariView(url: destination.url) {
-                webDestination = nil
-            }
-            .ignoresSafeArea()
-            .presentationSizing(.page)
-            .presentationDragIndicator(.visible)
-        }
-        .sheet(item: $pendingSharedDraft, onDismiss: discardPendingSharedDraftIfNeeded) { _ in
-            FamiliarSharedDestinationView { destination in
-                importSharedDraft(to: destination)
-            }
-        }
-        .alert(String(localized: "conversation.rename.title"), isPresented: Binding(
-            get: { renameRequest != nil },
-            set: { if !$0 { renameRequest = nil } }
-        )) {
-            TextField(String(localized: "conversation.rename.placeholder"), text: renameTitleBinding)
-            Button(String(localized: "common.save")) { commitRename() }
-            Button(String(localized: "common.cancel"), role: .cancel) {}
-        }
-
-        .alert(String(localized: "app.name"), isPresented: Binding(
-            get: { controller.errorMessage != nil },
-            set: { if !$0 { controller.errorMessage = nil } }
-        )) {
-            if !isSelectedProviderConfigured {
-                Button(String(localized: "common.open_settings")) {
-                    present(.settings(nil))
-                }
-            }
-            Button(String(localized: "common.ok"), role: .cancel) {}
-        } message: {
-            Text(controller.errorMessage ?? String(localized: "error.unknown"))
-        }
-        .confirmationDialog(
-            String(localized: "message.operation.title"),
-            isPresented: Binding(
-                get: { pendingMessageOperation != nil },
-                set: { if !$0 { pendingMessageOperation = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button(pendingMessageOperation?.actionTitle ?? "", role: .destructive) {
-                performPendingMessageOperation()
-            }
-            Button(String(localized: "common.cancel"), role: .cancel) {}
-        } message: {
-            Text(String(localized: "message.operation.detail"))
-        }
-        .confirmationDialog(
-            String(localized: "draft.discard.title", defaultValue: "Discard this draft?"),
-            isPresented: Binding(
-                get: { pendingDraftNavigation != nil },
-                set: { if !$0 { pendingDraftNavigation = nil; pendingProjectEntry = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button(String(localized: "draft.discard.action", defaultValue: "Discard Draft"), role: .destructive) {
-                performPendingDraftNavigation()
-            }
-            Button(String(localized: "common.cancel"), role: .cancel) { pendingProjectEntry = nil }
-        } message: {
-            Text(String(localized: "draft.discard.detail", defaultValue: "Your unsent text and attachments will be removed before switching."))
-        }
-        .confirmationDialog(
-            String(localized: "conversation.delete.title", defaultValue: "Delete this chat?"),
-            isPresented: Binding(
-                get: { conversationPendingDeletion != nil },
-                set: { if !$0 { conversationPendingDeletion = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button(String(localized: "common.delete"), role: .destructive) {
-                guard let conversationPendingDeletion else { return }
-                FamiliarHaptics.shared.perform(.destructive)
-                controller.delete([conversationPendingDeletion], in: modelContext)
-                self.conversationPendingDeletion = nil
-            }
-            Button(String(localized: "common.cancel"), role: .cancel) {}
-        } message: {
-            Text(String(localized: conversationPendingDeletion?.project == nil ? "conversation.delete.ordinary_detail" : "conversation.delete.detail"))
-        }
-        .confirmationDialog(String(localized: "chat.clear.confirm"), isPresented: $confirmsClearChat, titleVisibility: .visible) {
-            Button(String(localized: "chat.clear"), role: .destructive) {
-                speechPlayer.stop()
-                FamiliarHaptics.shared.perform(.destructive)
-                controller.clearCurrentConversation(in: modelContext)
-            }
-        }
-        .onAppear {
-            controller.recoverInterruptedRuns(in: modelContext)
-            try? FamiliarSkillService().installExampleIfNeeded(in: modelContext)
-            if controller.selectedConversationID == nil,
-               let first = conversations.first(where: { $0.project == nil }) {
-                controller.select(first.id, in: modelContext)
-            }
-            FamiliarChatTestScenario.seedHistory(in: controller)
-            refreshConfiguredProviders()
-            if !controller.isSending && !controller.isCompacting {
-                FamiliarAttachmentStore.pruneDrafts(keeping: Set(controller.draftAttachments.map(\.relativePath)))
-                if let owned = try? FamiliarFileCatalogService().ownedAttachmentPaths(in: modelContext) {
-                    FamiliarAttachmentStore.pruneMessageFiles(keeping: owned.union(
-                        conversations.flatMap { $0.messages.flatMap { $0.attachments.map(\.relativePath) } }
-                    ))
-                }
-            }
-            handlePendingSystemEntry()
-            handleSharedInbox()
-            updateSpotlightIndex(spotlightConversations)
-        }
-        .onChange(of: speechPlayer.errorMessage) { _, message in
-            if let message { controller.errorMessage = message }
-        }
-        .onChange(of: controller.selectedConversationID) { _, _ in speechPlayer.stop() }
-        .onChange(of: speechTranscriber.errorMessage) { _, message in
-            if let message { controller.errorMessage = message }
-        }
-        .onDisappear { controller.cancelFollowUps() }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .background { controller.cancelFollowUps() }
-            if phase == .active {
-                refreshConfiguredProviders()
-                handleSharedInbox()
-            } else {
-                Task { await speechTranscriber.stop() }
-            }
-        }
-        .onChange(of: pendingSystemEntry) { _, _ in
-            handlePendingSystemEntry()
-        }
-        .onChange(of: controller.isSending) { _, isSending in
-            if isSending { FamiliarHaptics.shared.perform(.send) }
-            else {
-                handlePendingSystemEntry()
-                handleSharedInbox()
-            }
-        }
-        .onChange(of: controller.draft) { _, _ in
-            handlePendingSystemEntry()
-            handleSharedInbox()
-        }
-        .onChange(of: controller.draftAttachments) { _, _ in
-            handlePendingSystemEntry()
-            handleSharedInbox()
-        }
-        .onChange(of: controller.draftImages.count) { _, _ in
-            handlePendingSystemEntry()
-            handleSharedInbox()
-        }
-        .onChange(of: installedSkillIDs) { _, skillIDs in
-            if let selectedSkillID = controller.selectedSkillID,
-               !skillIDs.contains(selectedSkillID) {
-                controller.selectedSkillID = nil
-            }
-        }
-        .onChange(of: spotlightConversations) { _, conversations in
-            updateSpotlightIndex(conversations)
-        }
     }
 
     private var spotlightConversations: [FamiliarSpotlightConversation] {
@@ -390,7 +459,7 @@ struct FamiliarChatView: View {
     }
 
     private func handlePendingSystemEntry() {
-        guard let request = pendingSystemEntry, !controller.isSending else { return }
+        guard !isHosted, let request = pendingSystemEntry, !controller.isSending else { return }
 
         guard !hasUnsentDraft else {
             pendingSystemEntry = nil
@@ -417,7 +486,7 @@ struct FamiliarChatView: View {
     }
 
     private func handleSharedInbox() {
-        guard pendingSystemEntry == nil,
+        guard !isHosted, pendingSystemEntry == nil,
               !controller.isSending,
               !isImportingSharedItem,
               controller.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -532,6 +601,7 @@ struct FamiliarChatView: View {
     }
 
     private func present(_ destination: FamiliarSheetDestination) {
+        if isHosted, case .settings(let route) = destination, let onRootSettings { presentedSheet = nil; projectChatSheet = nil; onRootSettings(route); return }
         if case .projects = destination { presentedSheet = destination }
         else if isProjectChatVisible { projectChatSheet = destination }
         else { presentedSheet = destination }
@@ -630,6 +700,11 @@ struct FamiliarChatView: View {
 
     private func chatSession(availableHeight: CGFloat) -> some View {
             chatBody
+                .overlay {
+                    if skillsMenuOpen {
+                        Color.clear.contentShape(Rectangle()).onTapGesture { skillsDismissRevision += 1 }
+                    }
+                }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     FamiliarChatInputDock(
                         controller: controller,
@@ -660,9 +735,11 @@ struct FamiliarChatView: View {
                             controller.cancelSending(in: modelContext)
                         }
                     )
+                    .environment(\.familiarExecutionBlocked, controller.execution.isBusy && !controller.isSending)
+                    .environment(\.familiarComposerActions, composerActions)
+                    .environment(\.familiarSkillsDismissRevision, skillsDismissRevision)
                 }
-                .modifier(FamiliarTopBarInstaller(content: topBar))
-                .toolbar(.hidden, for: .navigationBar)
+                .modifier(FamiliarChatNavigationChrome(bar: topBar, hosted: isHosted))
     }
 
     @ViewBuilder
@@ -679,6 +756,7 @@ struct FamiliarChatView: View {
                 isProviderConfigured: isSelectedProviderConfigured,
                 onConfigure: { present(.settings(nil)) },
                 onPrompt: { prompt in
+                    controller.draftSelection = nil
                     controller.draft = prompt
                     isComposerFocused = true
                 }
@@ -693,6 +771,7 @@ struct FamiliarChatView: View {
                 availableUndoKeys: controller.availableUndoKeys,
                 completedUndoKeys: controller.completedUndoKeys,
                 onInsertPrompt: { prompt in
+                    controller.draftSelection = nil
                     controller.draft = prompt
                     isComposerFocused = true
                 },
@@ -701,9 +780,12 @@ struct FamiliarChatView: View {
                 },
                 onEdit: { pendingMessageOperation = .edit($0) },
                 onRetry: { pendingMessageOperation = .retry($0) },
-                onRetryRecovery: { controller.retry(runID: $0, in: modelContext) }
+                onRetryRecovery: { controller.retry(runID: $0, in: modelContext) },
+                scrollSession: controller.scrollSession,
+                initialMessageID: initialMessageID
             )
             .id(controller.selectedConversationID)
+            .environment(\.familiarCanMarkRead, rootCanMarkRead && detailVisible && presentedSheet == nil && projectChatSheet == nil && webDestination == nil && !showsRewrite && controller.errorMessage == nil && pendingMessageOperation == nil && !confirmsClearChat)
             .environment(\.openURL, OpenURLAction { url in
                 guard FamiliarConversationURLRouter.shouldOpenInApp(url) else {
                     return .systemAction
@@ -714,7 +796,16 @@ struct FamiliarChatView: View {
         }
     }
 
-    private var topBar: some View {
+    private var composerActions: FamiliarComposerActions {
+        let undo: (@MainActor () -> Void)?
+        if controller.draftRewriteUndo?.applied == controller.draft { undo = { controller.undoDraftRewrite() } }
+        else { undo = nil }
+        return .init(identity: controller.executionID,
+            onPolish: { showsRewrite = true },
+            onOpenSkills: { present(.settings(.skills)) }, onSkillsChanged: { skillsMenuOpen = $0 }, onUndo: undo)
+    }
+
+    private var topBar: FamiliarChatTopBar {
         let project = selectedProject
         let effective = controller.effectiveSettings(for: project)
         let providers = FamiliarProviderCatalog.builtIn.filter { configuredProviderIDs.contains($0.id) }
@@ -723,9 +814,11 @@ struct FamiliarChatView: View {
             model: effective.selectedModel,
             project: project,
             providerOptions: providers,
-            isSending: controller.isSending || controller.isCompacting,
+            isSending: controller.isSending || controller.isCompacting || controller.execution.isBusy,
             isNewConversation: isInNewConversation,
-            onOpenSettings: { present(.settings(nil)) },
+            onOpenSettings: { if isHosted { onBack?() } else { present(.settings(nil)) } },
+            isHosted: isHosted,
+            conversationTitle: controller.selectedConversationID.flatMap { id in conversations.first { $0.id == id }?.title },
             onCompact: { controller.compactCurrentConversation(in: modelContext) },
             canCompact: controller.messages.count > 4,
             onClear: { confirmsClearChat = true },
@@ -754,6 +847,7 @@ struct FamiliarChatView: View {
             onConfigure: { present(.settings(nil)) },
             onOpenProject: {
                 guard let project else { return }
+                if isHosted { onProjectDetails?(project.id); return }
                 if isProjectChatVisible { requestedProjectDetailsID = project.id }
                 else { presentedSheet = .projects(project.id) }
             },
@@ -802,6 +896,10 @@ struct FamiliarChatView: View {
     }
 
     private func requestNewConversation(project: FamiliarProject?) {
+        if isHosted, let onNewDraft {
+            Task { await controller.checkpointDraft(in: modelContext); onNewDraft(project?.id) }
+            return
+        }
         guard !controller.isSending else {
             controller.errorMessage = String(localized: "error.deep_link.busy")
             return
@@ -824,6 +922,18 @@ struct FamiliarChatView: View {
     }
 
     private func handleProjectConversationRequest(_ request: FamiliarProjectConversationRequest, onAccepted: @escaping () -> Void) {
+        if isHosted {
+            Task { @MainActor in
+                await controller.checkpointDraft(in: modelContext)
+                presentedSheet = nil
+                projectChatSheet = nil
+                switch request {
+                case .open(let id): onOpenConversation?(id)
+                case .create(let id): onNewDraft?(id)
+                }
+            }
+            return
+        }
         guard !controller.isSending else {
             controller.errorMessage = String(localized: "error.deep_link.busy")
             return
@@ -1084,6 +1194,24 @@ private enum FamiliarPendingMessageOperation: Identifiable {
 
 
 
+private struct FamiliarChatNavigationChrome: ViewModifier {
+    let bar: FamiliarChatTopBar
+    let hosted: Bool
+    @ViewBuilder func body(content: Content) -> some View {
+        if hosted {
+            content
+                .toolbar(.visible, for: .navigationBar)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .principal) { bar.modelMenu }
+                    ToolbarItem(placement: .topBarTrailing) { bar.actionMenu }
+                }
+        } else {
+            content.modifier(FamiliarTopBarInstaller(content: bar)).toolbar(.hidden, for: .navigationBar)
+        }
+    }
+}
+
 private struct FamiliarTopBarInstaller<Bar: View>: ViewModifier {
     let content: Bar
 
@@ -1108,6 +1236,9 @@ private struct FamiliarChatTopBar: View {
     let isSending: Bool
     let isNewConversation: Bool
     let onOpenSettings: () -> Void
+    var isHosted: Bool = false
+    var conversationTitle: String? = nil
+    @Environment(\.dynamicTypeSize) private var dynamicType
     let onCompact: () -> Void
     let canCompact: Bool
     let onClear: () -> Void
@@ -1133,7 +1264,7 @@ private struct FamiliarChatTopBar: View {
     private var controls: some View {
         HStack(spacing: FamiliarSpacing.small) {
             Button(action: onOpenSettings) {
-                Image(systemName: "gearshape")
+                Image(systemName: isHosted ? "chevron.left" : "gearshape")
                     .font(.system(size: toolbarIconSize, weight: .semibold))
                 .frame(
                     width: FamiliarControlSize.minimumHitTarget,
@@ -1142,10 +1273,17 @@ private struct FamiliarChatTopBar: View {
             }
             .buttonStyle(FamiliarIconButtonStyle())
             .familiarGlassCircle(interactive: true)
-            .accessibilityLabel(String(localized: "drawer.settings"))
-            .accessibilityIdentifier("chat.settings")
+            .accessibilityLabel(String(localized: isHosted ? "common.back" : "drawer.settings"))
+            .accessibilityIdentifier(isHosted ? "chat.back" : "chat.settings")
 
-            Menu {
+            modelMenu
+            Spacer(minLength: 0)
+            actionMenu
+        }
+    }
+
+    var modelMenu: some View {
+Menu {
                 if project?.modelIDOverride != nil {
                     Section(String(localized: "chat.model.project", defaultValue: "Project model")) {
                         Button(String(localized: "project.model.follow_global", defaultValue: "Follow global setting"), action: onFollowDefaultModel)
@@ -1161,15 +1299,17 @@ private struct FamiliarChatTopBar: View {
                     }
                 }
             } label: {
-                HStack(spacing: FamiliarSpacing.small) {
-                    Text(model.displayName)
-                        .id(model.displayName)
-                        .transition(.opacity)
-                        .animation(reduceMotion ? nil : FamiliarMotion.micro, value: model.displayName)
-                        .font(.system(size: modelLabelSize, weight: .medium))
-                        .lineLimit(1)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: modelChevronSize, weight: .semibold))
+                VStack(spacing: 1) {
+                    if isHosted, let conversationTitle {
+                        Text(conversationTitle).font(dynamicType.isAccessibilitySize ? .subheadline.weight(.semibold) : .caption.weight(.semibold))
+                            .lineLimit(1).minimumScaleFactor(0.75)
+                    }
+                    if !dynamicType.isAccessibilitySize || conversationTitle == nil {
+                        HStack(spacing: FamiliarSpacing.small) {
+                            Text(model.displayName).font(.system(size: modelLabelSize, weight: .medium)).lineLimit(1)
+                            Image(systemName: "chevron.down").font(.system(size: modelChevronSize, weight: .semibold))
+                        }
+                    }
                 }
                 .padding(.horizontal, FamiliarSpacing.large)
                 .frame(height: FamiliarControlSize.minimumHitTarget)
@@ -1178,10 +1318,10 @@ private struct FamiliarChatTopBar: View {
             .familiarGlassSurface(interactive: true)
             .disabled(isSending)
             .accessibilityLabel(String(format: String(localized: "model.current"), provider.displayName, model.displayName))
+    }
 
-            Spacer(minLength: 0)
-
-                Menu {
+    var actionMenu: some View {
+Menu {
                     Button(action: onNewConversation) {
                         Label(String(localized: "conversation.new"), systemImage: "square.and.pencil")
                     }
@@ -1212,8 +1352,6 @@ private struct FamiliarChatTopBar: View {
                 .accessibilityIdentifier("chat.more")
                 .buttonStyle(FamiliarIconButtonStyle())
                 .familiarGlassCircle(interactive: true)
-
-        }
     }
 
     @ViewBuilder

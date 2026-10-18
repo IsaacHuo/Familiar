@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 /// Opt-in test dependency. There is no credential or network bypass in a device/Release build.
 nonisolated enum FamiliarChatTestScenario {
@@ -36,6 +37,26 @@ nonisolated enum FamiliarChatTestScenario {
         }
         #endif
     }
+    @MainActor static func seedChatList(in context: ModelContext) throws {
+        #if DEBUG && targetEnvironment(simulator)
+        let args = ProcessInfo.processInfo.arguments
+        guard isEnabled, let index = args.firstIndex(of: "-familiar.chat-list-count"), args.indices.contains(index + 1),
+              let count = Int(args[index + 1]), [300, 1_000].contains(count),
+              try context.fetchCount(FetchDescriptor<FamiliarConversation>()) == 0 else { return }
+        let projects = (1...4).map { FamiliarProject(name: "Project \($0)") }
+        for project in projects { context.insert(project) }
+        for index in 0..<count {
+            let time = Date().addingTimeInterval(-Double(index) * 60)
+            let chat = FamiliarConversation(title: "Conversation \(index)", createdAt: time, updatedAt: time,
+                project: index.isMultiple(of: 5) ? nil : projects[index % projects.count])
+            context.insert(chat)
+            context.insert(FamiliarMessage(role: .user, content: "Message preview \(index)", createdAt: time, sequence: 0, conversation: chat))
+            context.insert(FamiliarConversationListStateRecord(conversationID: chat.id, preview: "Message preview \(index)", latestActivityAt: time))
+        }
+        try context.save()
+        #endif
+    }
+
     static var credential: String? { isEnabled ? "local-presentation-test" : nil }
 }
 
@@ -55,6 +76,10 @@ nonisolated struct FamiliarChatTestProvider: FamiliarModelProvider {
                         let questions = ["How can I apply the " + word + " to a concrete example?", "What assumptions in this " + word + " should I verify?"]
                         let data = try JSONEncoder().encode(questions)
                         continuation.yield(.textDelta(String(decoding: data, as: UTF8.self)))
+                        continuation.yield(.completed(.stop)); continuation.finish(); return
+                    }
+                    if request.messages.first?.networkText?.hasPrefix("Rewrite the supplied draft.") == true {
+                        continuation.yield(.textDelta("Polished: " + prompt))
                         continuation.yield(.completed(.stop)); continuation.finish(); return
                     }
                     if prompt.localizedCaseInsensitiveContains("sources") {

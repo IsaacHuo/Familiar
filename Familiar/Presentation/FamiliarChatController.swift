@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SwiftData
+import SwiftUI
 
 private nonisolated enum FamiliarDraftPreparationError: LocalizedError {
     case changed
@@ -19,6 +20,15 @@ final class FamiliarChatController {
     var pendingConfirmations: [FamiliarToolConfirmationRequest] = []
     var pendingClarifications: [FamiliarClarificationRequest] = []
     var draft = ""
+    var draftSelection: TextSelection?
+    var draftRewriteUndo: FamiliarDraftRewriteUndo?
+    @ObservationIgnored var isDiscarded = false
+    @ObservationIgnored var draftCheckpointID: UUID?
+    @ObservationIgnored var draftSaveTask: Task<Void, Never>?
+    let executionID = UUID()
+    let scrollSession = FamiliarChatScrollSession()
+    @ObservationIgnored var presentationContext: ModelContext?
+    var execution: FamiliarForegroundExecution { dependencies.foregroundExecution }
     var draftImages: [FamiliarDraftImage] = []
     var draftAttachments: [FamiliarAttachmentDraft] = []
     var streamingResponseBlocks: [FamiliarLiveResponseBlock] = []
@@ -36,8 +46,8 @@ final class FamiliarChatController {
     var availableUndoKeys: Set<String> = []
     var completedUndoKeys: Set<String> = []
     @ObservationIgnored private var sessionUndoKeys: Set<String> = []
-    var isCompacting = false
-    var isSending = false
+    var isCompacting = false { didSet { if !isSending && !isCompacting { dependencies.foregroundExecution.release(executionID) } } }
+    var isSending = false { didSet { if !isSending && !isCompacting { dependencies.foregroundExecution.release(executionID) } } }
     var errorMessage: String?
     var settings = FamiliarSettingsStore.load()
 
@@ -56,6 +66,38 @@ final class FamiliarChatController {
         clarificationCoordinator = dependencies.clarificationCoordinator
         runRecorder = FamiliarRunPersistenceRecorder()
         runRecovery = FamiliarRunRecoveryService()
+    }
+
+    func markReplyRead(_ id: UUID) {
+        guard let context = presentationContext, let conversation = selectedConversation(in: context),
+              conversation.messages.contains(where: { $0.id == id && $0.role == .assistant }) else { return }
+        do {
+            let state = try FamiliarChatListStore.state(for: conversation, in: context)
+            guard state.isUnread else { return }
+            FamiliarChatListStore.markRead(state, replyID: id)
+            if context.hasChanges { try context.save() }
+        } catch { context.rollback(); errorMessage = error.localizedDescription }
+    }
+
+    func makeDraftRewriteProvider(settings: FamiliarSettings) throws -> any FamiliarModelProvider {
+        guard let descriptor = settings.resolvedProvider else { throw FamiliarProviderConnectionError.invalidResponse }
+        guard let credential = FamiliarProviderFactory.credential(for: descriptor) ?? FamiliarChatTestScenario.credential else { throw FamiliarOAuthError.missingCredential }
+        return dependencies.makeModelProvider(for: descriptor, apiKey: credential, sessionID: (selectedConversationID ?? draftConversationID).uuidString)
+    }
+
+    func applyDraftRewrite(_ result: FamiliarDraftRewriteResult, source: String, sourceID: UUID, selection: TextSelection?) throws {
+        guard !isDiscarded, sourceID == (selectedConversationID ?? draftConversationID), draft == source else { throw FamiliarDraftRewriteError.changed }
+        draftSelection = nil
+        draft = result.text
+        draftRewriteUndo = .init(source: source, applied: result.text, selection: selection)
+    }
+
+    func undoDraftRewrite() {
+        guard let undo = draftRewriteUndo, draft == undo.applied else { return }
+        draftSelection = nil
+        draft = undo.source
+        draftSelection = undo.selection
+        draftRewriteUndo = nil
     }
 
     func moveCurrentConversation(to project: FamiliarProject?, in context: ModelContext) {
@@ -117,6 +159,9 @@ final class FamiliarChatController {
         let value = settings.applyingProjectModelOverride(conversation.project?.modelIDOverride, providerID: conversation.project?.providerIDOverride)
         guard let descriptor = value.resolvedProvider, let key = FamiliarProviderFactory.credential(for: descriptor) else {
             errorMessage = String(localized: "error.api_key_missing"); return
+        }
+        guard dependencies.foregroundExecution.claim(executionID) else {
+            errorMessage = String(localized: "chat.execution.busy"); return
         }
         isCompacting = true
         Task { @MainActor in
@@ -263,7 +308,9 @@ final class FamiliarChatController {
         deleteSkillSnapshots(for: conversations.flatMap(\.agentRuns), in: context)
         var stagedWorkspaces: [FamiliarStagedWorkspaceDirectory] = []
         var stagedFiles: [FamiliarStagedFileDirectory] = []
+        var draftPaths: [String] = []
         do {
+            draftPaths = try FamiliarChatListStore.stageRemoval(conversationIDs: deletedIDs, in: context)
             for conversation in conversations {
                 if conversation.project == nil {
                     let scope = FamiliarWorkScope.conversation(conversation.id), key = FamiliarWorkScope.conversation(conversation.id).storageKey
@@ -287,6 +334,7 @@ final class FamiliarChatController {
             try context.save()
             for staged in stagedWorkspaces { try? dependencies.workspaceStore.discard(staged) }
             for staged in stagedFiles { try? FamiliarFileStore().discard(staged) }
+            FamiliarAttachmentStore.remove(relativePaths: draftPaths)
             if let selectedConversationID, deletedIDs.contains(selectedConversationID) {
                 self.selectedConversationID = nil
                 draftConversationID = UUID()
@@ -355,6 +403,9 @@ final class FamiliarChatController {
         let createdAt = Date()
         let nextSequence = nextConversationSequence(in: existingConversation)
         let history = messages
+        guard dependencies.foregroundExecution.claim(executionID) else {
+            errorMessage = String(localized: "chat.execution.busy"); return
+        }
         isSending = true
         errorMessage = nil
         resetTransientRunState()
@@ -378,9 +429,11 @@ final class FamiliarChatController {
                 let deferredGroups = requestSettings.selectedModel.capabilities.supportsTools ? FamiliarMCPService.deferredGroups(configurations) : []
                 for (index, image) in capturedImages.enumerated() {
                     try Task.checkCancellation()
-                    imageDrafts.append(try await FamiliarAttachmentStore.importImage(image.image, filename: "photo-\(index + 1).jpg"))
+                    if image.attachment == nil {
+                        imageDrafts.append(try await FamiliarAttachmentStore.importImage(image.image, filename: "photo-\(index + 1).jpg"))
+                    }
                 }
-                let attachments = capturedAttachments + imageDrafts
+                let attachments = capturedAttachments + capturedImages.compactMap(\.attachment) + imageDrafts
                 let finalPaths = Dictionary(uniqueKeysWithValues: attachments.map { ($0.id, FamiliarAttachmentStore.committedRelativePath(of: $0, messageID: messageID, scope: scope)) })
                 let readPaths = Dictionary(uniqueKeysWithValues: attachments.map { ($0.id, $0.relativePath) })
                 let pending = FamiliarMessageSnapshot(id: messageID, role: .user, content: prompt, createdAt: createdAt,
@@ -445,6 +498,8 @@ final class FamiliarChatController {
                     }
                     try FamiliarFileCatalogService().stageUploads(userMessage.attachments, in: context)
                     try FamiliarMemoryService().stageUsage(ids: Set(snapshot.memories.map(\.id)), in: context)
+                    try FamiliarChatListStore.stageMessage(userMessage, in: context)
+                    if let savedDraft = try FamiliarChatListStore.draft(conversationID, in: context) { context.delete(savedDraft) }
                     try context.save()
                 } catch {
                     context.rollback()
@@ -455,6 +510,7 @@ final class FamiliarChatController {
                 selectedConversationID = conversationID
                 FamiliarAttachmentStore.remove(relativePaths: attachments.map(\.relativePath))
                 imageDrafts = []
+                draftSelection = nil
                 draft = ""
                 draftAttachments = []
                 draftImages = []
@@ -531,7 +587,7 @@ final class FamiliarChatController {
     }
 
     func prepareToEdit(_ message: FamiliarMessageSnapshot, in context: ModelContext) {
-        guard !isSending && !isCompacting,
+        guard !execution.isBusy && !isSending && !isCompacting,
               message.role == .user,
               let conversation = selectedConversation(in: context)
         else { return }
@@ -560,6 +616,7 @@ final class FamiliarChatController {
             try context.save()
             FamiliarAttachmentStore.remove(relativePaths: FamiliarFileCatalogService().unownedAttachmentPaths(attachmentPaths, in: context))
             discardDraftAttachments()
+            draftSelection = nil
             draft = message.content
             draftAttachments = stagedAttachments
             reloadMessages(in: context)
@@ -571,7 +628,7 @@ final class FamiliarChatController {
     }
 
     func retry(_ message: FamiliarMessageSnapshot, in context: ModelContext) {
-        guard !isSending && !isCompacting,
+        guard !execution.isBusy && !isSending && !isCompacting,
               message.role == .assistant,
               let conversation = selectedConversation(in: context)
         else { return }
@@ -645,7 +702,7 @@ final class FamiliarChatController {
     }
 
     func retry(runID: String, in context: ModelContext) {
-        guard !isSending && !isCompacting,
+        guard !execution.isBusy && !isSending && !isCompacting,
               let run = fetchRun(runtimeID: runID, in: context),
               let conversation = run.conversation
         else { return }
@@ -1304,6 +1361,11 @@ final class FamiliarChatController {
                 runOutcome = outcome
             }
             guard runOutcome?.status == .succeeded else {
+                if runOutcome?.status == .failed, let conversation = fetchConversation(id: conversationID, in: context) {
+                    let state = try FamiliarChatListStore.state(for: conversation, in: context)
+                    state.hasFailure = true
+                    try context.save()
+                }
                 resetTransientRunState()
                 reloadMessages(in: context)
                 if runOutcome?.status == .failed {
@@ -1411,6 +1473,7 @@ final class FamiliarChatController {
             conversation.updatedAt = Date()
             try runRecorder.finishRun(runtimeID: runtimeID, outcome: .succeeded,
                 eventSequence: lastEventSequence, at: Date(), context: context, save: false)
+            try FamiliarChatListStore.stageMessage(assistantMessage, in: context)
             try context.save()
             reloadMessages(in: context)
             resetTransientRunState()

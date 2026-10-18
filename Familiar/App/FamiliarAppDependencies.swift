@@ -25,6 +25,7 @@ struct FamiliarAppDependencies {
     let shellRuntimeStatus: FamiliarShellRuntimeStatus
     private var prepareShellRuntime: (@MainActor @Sendable () -> Void)? = nil
     let visionProcessor = FamiliarVisionProcessor()
+    let foregroundExecution = FamiliarForegroundExecution()
     let sessionID = UUID().uuidString
 
     init() {

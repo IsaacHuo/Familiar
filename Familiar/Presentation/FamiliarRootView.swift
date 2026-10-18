@@ -56,10 +56,11 @@ struct FamiliarRootView: View {
 
     @ViewBuilder
     private var standardContent: some View {
-        FamiliarChatView(
+        FamiliarAppShell(
             dependencies: dependencies,
             pendingSystemEntry: $pendingSystemEntry
         )
+        .environment(\.familiarCanMarkRead, !appLock.isLocked && scenePhase == .active)
     }
 
     private func handlePendingAppIntent() {
