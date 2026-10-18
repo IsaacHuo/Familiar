@@ -99,10 +99,13 @@
 - [x] 构建：arm64 iPhone 18 Pro Simulator `build-for-testing` 成功（exit 0，无源码 warning/error）；guest 冒烟（中文 PDF/DOCX/XLSX/PPTX）在重建镜像时通过；新增/更新测试只编译不执行。见 docs/18-s4-shell-documents-design.md。
 - [ ] 验收：真机 `FamiliarDeviceRuntimeTests` + `log stream`；生成中文 Word/Excel/PPT/PDF；记录冷热启动耗时与内存峰值；所有者签字。
 
-### S5 设置重组 `[ ]`
+### S5 设置重组 `[~]`
 
-- 分组：模型、个性化、能力、外观、隐私与数据、关于，底部“开发者”。取消“高级”中转层。
-- SF Symbol + 系统色；二级页编辑即生效；合并两套运行记录 UI；拆分 FamiliarSettingsHubView.swift。
+- [x] 分组：模型、个性化、能力、外观、隐私与数据、关于，底部“开发者”；取消“高级”与“隐私与数据”两层中转页，全部直达二级页。
+- [x] 二级页编辑即生效：执行预算、自动记忆、人格提示等绑定改为写穿到 `onSaveSettings`，不再依赖 Done。
+- [x] 合并两套运行记录 UI：设置 → 运行记录与项目运行记录共用同一行与详情（共享 `FamiliarRunRecordList/Row/Detail`），删除设置内简化版详情。
+- [x] 拆分 FamiliarSettingsHubView.swift（1655 行）：Settings/ 下 Hub、Capability、Personalization、Privacy、RunHistory、RunRecord、About、ModelService 八个文件。
+- [ ] 验收：真机逐页过设置（编辑即生效、无重复运行记录入口、深/浅色）。
 
 ### S6 Project 与 Files `[ ]`
 
@@ -133,5 +136,7 @@ S2b（能力级持续授权、Memory 自动写入、environment_prepare 自动�
 S4（文档工具组默认启用、后台预热、rootfs 预装文档库与中文字体、Outputs 自动校验、PPTX、documents Skill 模板、watchdog/错误恢复）已实现：`build-for-testing` 成功，guest 冒烟在重建镜像时通过；真机验收清单见 docs/18-s4-shell-documents-design.md §5，验收前 S4 不标完成。
 
 S3（工具结果四种呈现、presentation 工具与 payload 收敛、侧栏原生 List、省略号精简、Composer 原生 Menu、消息视图拆分）已实现：`build-for-testing` 成功，测试只编译不执行；验收（假 Provider 三态截图 + VoiceOver + 真机签字）待所有者执行，验收前 S3 不标完成。
+
+S5（设置分组扁平化、编辑即生效、运行记录 UI 合并、文件拆分；另含 Provider 品牌图标与「仍在开发中」说明）已实现：`build-for-testing` 成功，测试只编译不执行；真机逐页验收待所有者执行。统一验收入口见 docs/19-owner-acceptance-checklist.md。
 
 S1 的 79 项定向单测、WebKit 引用回归与 3 项生产 UI 证据仅属于之前的 S1 基线；DeepSeek + Tavily 20 条真实查询与所有者签字仍待完成。后续切片同样单列真实验收结果，不把编译等同于运行通过。

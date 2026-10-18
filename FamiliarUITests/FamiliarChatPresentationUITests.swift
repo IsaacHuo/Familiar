@@ -57,10 +57,6 @@ final class FamiliarChatPresentationUITests: XCTestCase {
         XCTAssertEqual(sourceButton.frame.minY, original, accuracy: 3)
         app.buttons["chat.settings"].tap()
         capture("settings-hub")
-        let advanced = app.descendants(matching: .any)["settings.route.advanced"].firstMatch
-        if !advanced.waitForExistence(timeout: 5) { app.swipeUp() }
-        XCTAssertTrue(advanced.waitForExistence(timeout: 5))
-        advanced.tap()
         let search = app.descendants(matching: .any)["settings.route.searchService"].firstMatch
         if !search.waitForExistence(timeout: 5) { app.swipeUp() }
         XCTAssertTrue(search.waitForExistence(timeout: 5))

@@ -829,6 +829,7 @@
 "mcp.trust.detail" = "信任后，此服务器的调用可以在确认一次后记住；未信任时每次调用都会询问。";
 "shell.preparing_runtime" = "正在准备运行环境…";
 "runtime.ui.record" = "记录";
+"settings.developer" = "开发者";
 "settings.about.development.title" = "仍在开发中";
 "settings.about.development.body" = "Familiar 还在持续开发中：功能尚不完善，也难免遇到报错。欢迎反馈问题、欢迎参与代码贡献；如果体验有不周，我们会尽快更新修复。";
 "mcp.add" = "添加 MCP 服务器";

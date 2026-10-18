@@ -49,7 +49,7 @@
 | `Shell/` | `FamiliarShellTool`（shell_execute、environment_*）、`FamiliarShellPolicy`、`FamiliarShellExecutor`、`FamiliarISHShellExecutor`、`FamiliarISHPreparation`、`FamiliarContainerShellExecutor`（Mac）、Terminal 事件 |
 | `Native/` `EventKit/` | Map/Weather、NaturalLanguage/Health/Music、Bluetooth、Contacts/Location/Clipboard/Share、Alarm、Photos 保存与文件导出；日历/提醒工具 |
 | `MCP/` `Memory/` `Skills/` | HTTP MCP client 与服务；Memory 服务与工具；Skill 服务与包安装（Yams/ZIPFoundation） |
-| `Presentation/` | `FamiliarChatController`、`Presentation/Chat/`（Timeline、Row、Turn、Runtime、Records、VisualFixture 六个文件）、InputDock/Composer/Scroll、Markdown WebView 与流式节奏、ApprovalCard、活动投影与 Surface、Projects/Files、各 Settings 视图、Terminal、Web 呈现、Debug 测试场景 |
+| `Presentation/` | `FamiliarChatController`、`Presentation/Chat/`（Timeline、Row、Turn、Runtime、Records、VisualFixture 六个文件）、`Presentation/Settings/`（Hub、Capability、Personalization、Privacy、RunHistory、RunRecord、About、ModelService 八个文件）、InputDock/Composer/Scroll、Markdown WebView 与流式节奏、ApprovalCard、活动投影与 Surface、Provider 品牌图标、Projects/Files、Terminal、Web 呈现、Debug 测试场景 |
 | `Support/` | `FamiliarTheme`（颜色、字体、间距、圆角、按钮、glass）、`FamiliarMarkdownStyle`、`FamiliarMotion`（含 Haptics） |
 | 其他 | `Security/FamiliarAppLock`、`SystemEntry/`（AppIntents、Notifications、Spotlight）、`Speech/`、`Vision/FamiliarVisionProcessor`、`AI/Models/`（无生产路由入口）、`Resources/` |
 
