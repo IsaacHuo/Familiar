@@ -16,34 +16,58 @@ import UniformTypeIdentifiers
 struct FamiliarMemorySettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \FamiliarMemoryItem.updatedAt, order: .reverse) private var items: [FamiliarMemoryItem]
+    @Query private var projects: [FamiliarProject]
+    @Query private var conversations: [FamiliarConversation]
+    var scope: FamiliarWorkScope? = nil
+    var showsGlobalControl = true
+    @State private var filter = FamiliarMemoryListFilter.all
 
     @Binding var isAutomaticMemoryEnabled: Bool
     @State private var editing: FamiliarMemoryItem?
     @State private var editedContent = ""
     @State private var asksToClearAll = false
     @State private var errorMessage: String?
+    @State private var editorError: String?
 
     private var visibleItems: [FamiliarMemoryItem] {
-        items.filter(\.isVisible)
+        items.filter { item in
+            guard item.isVisible else { return false }
+            if let scope {
+                switch scope {
+                case .project(let id): return item.scope == .project && item.projectID == id
+                case .conversation(let id): return item.scope == .conversation && item.conversationID == id
+                }
+            }
+            return filter == .all || item.scope.rawValue == filter.rawValue
+        }
     }
 
     var body: some View {
         List {
+            if showsGlobalControl {
             Section {
                 Toggle(
-                    String(localized: "settings.memory.enabled", defaultValue: "Remember across conversations"),
+                    String(localized: "settings.memory.enabled", defaultValue: "Automatic Memory"),
                     isOn: $isAutomaticMemoryEnabled
                 )
             } footer: {
-                Text(String(localized: "settings.memory.enabled.footer", defaultValue: "When off, Familiar neither proposes new memories nor reads existing ones. Stored memories stay on this device and remain listed below."))
+                Text(String(localized: "settings.memory.enabled.footer", defaultValue: "Eligible preferences and facts can be saved automatically with receipts and Undo. Turning this off stops automatic writes and context use; saved memory stays on this device in its original scope."))
             }
 
+            } else {
+                Section { Text(String(localized: "settings.memory.scoped_footer")).font(.subheadline).foregroundStyle(.secondary) }
+            }
+            if scope == nil {
+                Picker(String(localized: "settings.memory.scope_filter"), selection: $filter) {
+                    ForEach(FamiliarMemoryListFilter.allCases) { Text($0.title).tag($0) }
+                }
+            }
             if visibleItems.isEmpty {
                 Section {
                     ContentUnavailableView(
                         String(localized: "settings.memory.empty", defaultValue: "Nothing remembered yet"),
                         systemImage: "brain",
-                        description: Text(String(localized: "settings.memory.empty.detail", defaultValue: "Familiar only remembers what you confirm."))
+                        description: Text(String(localized: "settings.memory.empty.detail", defaultValue: "Eligible preferences and facts can be remembered automatically, with sources and Undo records."))
                     )
                 }
             } else {
@@ -76,19 +100,19 @@ struct FamiliarMemorySettingsView: View {
                 }
 
                 Section {
-                    Button(String(localized: "settings.memory.clear_all", defaultValue: "Delete All Memories"), role: .destructive) {
+                    Button(String(localized: scope == nil && filter == .all ? "settings.memory.clear_all" : "settings.memory.clear_scope"), role: .destructive) {
                         asksToClearAll = true
                     }
                 }
             }
         }
-        .navigationTitle(String(localized: "settings.memory.title", defaultValue: "Memory"))
+        .navigationTitle(scopeTitle)
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $editing) { item in
             editor(for: item)
         }
         .alert(
-            String(localized: "settings.memory.clear_all.confirm", defaultValue: "Delete all memories?"),
+            String(localized: scope == nil && filter == .all ? "settings.memory.clear_all.confirm" : "settings.memory.clear_scope.confirm"),
             isPresented: $asksToClearAll
         ) {
             Button(String(localized: "common.cancel"), role: .cancel) {}
@@ -111,23 +135,31 @@ struct FamiliarMemorySettingsView: View {
             Text(item.content)
                 .font(FamiliarTypography.body)
                 .multilineTextAlignment(.leading)
-            HStack(spacing: FamiliarSpacing.xSmall) {
-                Text(scopeLabel(item.scope))
-                Text("·")
-                // Provenance is shown so a remembered item can always be traced back to
-                // where it came from.
-                Text(item.provenance)
-            }
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
+            Text(ownerLabel(item)).font(.caption).foregroundStyle(.secondary)
+            Text(item.provenance).font(.caption2).foregroundStyle(.tertiary).lineLimit(2)
         }
     }
 
-    private func scopeLabel(_ scope: FamiliarMemoryScope) -> String {
+    private var scopeTitle: String {
+        let title = String(localized: "settings.memory.title")
+        guard let scope else { return title }
         switch scope {
-        case .global: String(localized: "settings.memory.scope.global", defaultValue: "All conversations")
-        case .project: String(localized: "settings.memory.scope.project", defaultValue: "This project only")
-        case .conversation: String(localized: "settings.memory.scope.conversation", defaultValue: "This conversation only")
+        case .project(let id): return (projects.first { $0.id == id }?.displayName ?? String(localized: "project.unavailable")) + " · " + title
+        case .conversation(let id): return (conversations.first { $0.id == id }?.title ?? String(localized: "settings.memory.conversation_missing")) + " · " + title
+        }
+    }
+
+    private func ownerLabel(_ item: FamiliarMemoryItem) -> String {
+        switch item.scope {
+        case .global: return String(localized: "settings.memory.scope.global")
+        case .project:
+            let name = projects.first { $0.id == item.projectID }?.displayName ?? String(localized: "project.unavailable")
+            return String(format: String(localized: "settings.memory.project_owner"), name)
+        case .conversation:
+            let name = conversations.first { $0.id == item.conversationID }?.title ?? String(localized: "settings.memory.conversation_missing")
+            let owner = String(format: String(localized: "settings.memory.conversation_owner"), name)
+            if let projectID = item.projectID, let project = projects.first(where: { $0.id == projectID }) { return project.displayName + " · " + owner }
+            return owner
         }
     }
 
@@ -144,6 +176,9 @@ struct FamiliarMemorySettingsView: View {
             }
             .navigationTitle(String(localized: "settings.memory.edit", defaultValue: "Edit Memory"))
             .navigationBarTitleDisplayMode(.inline)
+            .alert(String(localized: "settings.error.title"), isPresented: Binding(get: { editorError != nil }, set: { if !$0 { editorError = nil } })) {
+                Button(String(localized: "common.ok"), role: .cancel) {}
+            } message: { Text(editorError ?? "") }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(String(localized: "common.cancel")) { editing = nil }
@@ -160,13 +195,13 @@ struct FamiliarMemorySettingsView: View {
     private func save(_ item: FamiliarMemoryItem) {
         let trimmed = editedContent.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count <= FamiliarMemoryPolicy.maximumContentLength else {
-            errorMessage = FamiliarMemoryError.invalidContent.localizedDescription
+            editorError = FamiliarMemoryError.invalidContent.localizedDescription
             return
         }
         // The same rule as the tool and persistence boundaries: an edited memory must not
         // become a way to store a secret by hand.
         guard !FamiliarMemoryPolicy.looksSensitive(trimmed) else {
-            errorMessage = FamiliarMemoryError.sensitiveContent.localizedDescription
+            editorError = FamiliarMemoryError.sensitiveContent.localizedDescription
             return
         }
         item.content = trimmed
@@ -184,18 +219,19 @@ struct FamiliarMemorySettingsView: View {
             try modelContext.save()
             editing = nil
         } catch {
-            errorMessage = error.localizedDescription
+            modelContext.rollback()
+            editorError = error.localizedDescription
         }
     }
 
     private func delete(_ item: FamiliarMemoryItem) {
         modelContext.delete(item)
-        do { try modelContext.save() } catch { errorMessage = error.localizedDescription }
+        do { try modelContext.save() } catch { modelContext.rollback(); errorMessage = error.localizedDescription }
     }
 
     private func clearAll() {
         visibleItems.forEach(modelContext.delete)
-        do { try modelContext.save() } catch { errorMessage = error.localizedDescription }
+        do { try modelContext.save() } catch { modelContext.rollback(); errorMessage = error.localizedDescription }
     }
 }
 

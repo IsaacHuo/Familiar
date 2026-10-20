@@ -91,38 +91,50 @@ struct FamiliarAuthorizationSettingsView: View {
 }
 
 struct FamiliarStorageSettingsView: View {
-    @Query private var conversations: [FamiliarConversation]
-    @Query private var messages: [FamiliarMessage]
-    @Query private var attachments: [FamiliarAttachment]
-
+    @Environment(\.modelContext) private var context
+    @State private var usage: FamiliarStorageUsage?
+    @State private var measuring = false
+    @State private var error: String?
+    @State private var revision = UUID()
+    private let categories = ["settings.storage.attachments", "settings.storage.files", "settings.storage.workspaces", "settings.storage.runtime", "settings.storage.database", "settings.storage.other"]
     var body: some View {
         List {
-            Section(String(localized: "settings.storage.overview", defaultValue: "Overview")) {
-                storageRow(String(localized: "settings.storage.conversations", defaultValue: "Conversations"), value: conversations.count, symbol: "bubble.left.and.bubble.right")
-                storageRow(String(localized: "settings.storage.messages", defaultValue: "Messages"), value: messages.count, symbol: "text.bubble")
-                HStack {
-                    Label(String(localized: "settings.storage.attachments", defaultValue: "Attachments"), systemImage: "doc")
-                    Spacer()
-                    Text(ByteCountFormatter.string(fromByteCount: attachmentBytes, countStyle: .file))
-                        .foregroundStyle(.secondary)
+            Section(String(localized: "settings.storage.overview")) {
+                if let usage {
+                    LabeledContent(String(localized: "settings.storage.conversations"), value: usage.conversations.formatted())
+                    LabeledContent(String(localized: "settings.storage.messages"), value: usage.messages.formatted())
+                    LabeledContent(String(localized: "settings.storage.file_records"), value: usage.files.formatted())
+                    LabeledContent(String(localized: "settings.storage.file_versions"), value: usage.versions.formatted())
+                    LabeledContent(String(localized: "settings.storage.total"), value: size(usage.total))
                 }
+                if measuring { ProgressView() }
+                if let error { Text(error).font(.subheadline).foregroundStyle(.secondary) }
+                Button(String(localized: "settings.storage.refresh")) { revision = UUID() }.disabled(measuring)
             }
-            Section {
-                Text(String(localized: "settings.storage.local.detail", defaultValue: "Conversation history and imported document copies stay in Familiar's private storage on this iPhone. Familiar does not use CloudKit or iCloud sync."))
+            if let usage {
+                Section {
+                    ForEach(categories, id: \.self) { category in
+                        LabeledContent(String(localized: String.LocalizationValue(category)), value: size(usage.bytes[category] ?? 0))
+                    }
+                    if usage.unreadableFiles > 0 { Text(String(localized: "settings.storage.incomplete")).font(.caption).foregroundStyle(.secondary) }
+                } footer: { Text(String(localized: "settings.storage.measurement")) }
             }
+            Section { Text(String(localized: "settings.storage.local.detail")).font(.subheadline).foregroundStyle(.secondary) }
         }
-        .navigationTitle(String(localized: "settings.hub.storage", defaultValue: "Local Storage"))
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(String(localized: "settings.hub.storage")).navigationBarTitleDisplayMode(.inline)
+        .task(id: revision) { await measure() }
     }
-
-    private var attachmentBytes: Int64 { attachments.reduce(0) { $0 + $1.byteSize } }
-
-    private func storageRow(_ title: String, value: Int, symbol: String) -> some View {
-        HStack {
-            Label(title, systemImage: symbol)
-            Spacer()
-            Text(value.formatted()).foregroundStyle(.secondary)
-        }
+    private func size(_ bytes: Int64) -> String { ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
+    private func measure() async {
+        let expected = revision
+        measuring = true; error = nil
+        defer { if revision == expected { measuring = false } }
+        do {
+            let result = try await FamiliarStorageMeasurement.load(container: context.container)
+            guard !Task.isCancelled, revision == expected else { return }
+            usage = result
+        } catch is CancellationError { }
+        catch { if revision == expected && !Task.isCancelled { self.error = error.localizedDescription } }
     }
 }
 

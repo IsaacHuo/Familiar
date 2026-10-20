@@ -8,16 +8,16 @@ struct FamiliarSettingsRowIcon: View {
     let color: Color
 
     @ScaledMetric(relativeTo: .body) private var iconSize: CGFloat = FamiliarIconSize.standard
-    @ScaledMetric(relativeTo: .body) private var container: CGFloat = FamiliarControlSize.compactVisual
+    @ScaledMetric(relativeTo: .body) private var container: CGFloat = 30
 
     var body: some View {
         Image(systemName: symbol)
-            .font(.system(size: iconSize, weight: .semibold))
+            .font(.system(size: iconSize, weight: .regular))
             .foregroundStyle(.white)
             .frame(width: container, height: container)
             .background(
                 color.gradient,
-                in: RoundedRectangle(cornerRadius: FamiliarRadius.compact, style: .continuous)
+                in: RoundedRectangle(cornerRadius: 7, style: .continuous)
             )
             .accessibilityHidden(true)
     }

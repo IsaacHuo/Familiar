@@ -36,13 +36,17 @@ struct FamiliarRunRecordRow: View {
             Image(systemName: statusIcon)
                 .foregroundStyle(statusColor)
             VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                Text(runTitle)
+                Text(run.conversation?.title ?? (runTitle.isEmpty ? String(localized: "project.run") : runTitle))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
+                Text(runTitle).font(FamiliarTypography.caption).foregroundStyle(.secondary).lineLimit(1)
                 Text(run.startedAt, format: .dateTime.month(.abbreviated).day().hour().minute())
                     .font(FamiliarTypography.caption).foregroundStyle(.secondary)
             }
+            Spacer(minLength: 6)
+            Text(run.status.localizedTitle).font(.caption).foregroundStyle(statusColor)
         }
+        .accessibilityElement(children: .combine)
     }
 
     private var runTitle: String {
@@ -80,9 +84,12 @@ struct FamiliarRunRecordDetail: View {
     @Query private var results: [FamiliarToolResultRecord]
     @Query private var invocations: [FamiliarToolInvocationRecord]
     let run: FamiliarAgentRun
+    @State private var showsTechnical = false
 
     init(run: FamiliarAgentRun) {
         self.run = run
+        let runID = run.id
+        _allSkillSnapshots = Query(filter: #Predicate<FamiliarRunSkillSnapshotRecord> { $0.runID == runID }, sort: \FamiliarRunSkillSnapshotRecord.sequence)
         let runtimeID = run.runtimeID
         _activities = Query(
             filter: #Predicate<FamiliarActivityRecord> { $0.runtimeID == runtimeID },
@@ -103,11 +110,14 @@ struct FamiliarRunRecordDetail: View {
     }
 
     var body: some View {
+        let invocationIndex = invocations.reduce(into: [String: FamiliarToolInvocationRecord]()) { index, invocation in
+            if let key = invocation.activityID, index[key] == nil { index[key] = invocation }
+        }
+        let approvalIndex = approvals.reduce(into: [String: FamiliarApprovalRecord]()) { if $0[$1.activityID] == nil { $0[$1.activityID] = $1 } }
+        let resultIndex = results.reduce(into: [String: FamiliarToolResultRecord]()) { if $0[$1.activityID] == nil { $0[$1.activityID] = $1 } }
         List {
-            Section(String(localized: "project.run.execution", defaultValue: "Execution")) {
+            Section(String(localized: "settings.runs.summary", defaultValue: "Execution")) {
                 LabeledContent(String(localized: "project.run.status", defaultValue: "Status"), value: statusText)
-                LabeledContent(String(localized: "settings.provider"), value: providerName)
-                LabeledContent(String(localized: "settings.model"), value: modelName)
                 LabeledContent(String(localized: "project.run.started", defaultValue: "Started")) {
                     Text(run.startedAt, format: .dateTime.year().month().day().hour().minute().second())
                 }
@@ -116,15 +126,14 @@ struct FamiliarRunRecordDetail: View {
                         Text(finishedAt, format: .dateTime.year().month().day().hour().minute().second())
                     }
                 }
-                if let reason = run.finishReason, !reason.isEmpty {
-                    LabeledContent(String(localized: "settings.runs.result", defaultValue: "Result"), value: reason)
-                }
                 if let finishedAt = run.finishedAt {
                     LabeledContent(String(localized: "project.run.duration", defaultValue: "Duration")) {
                         Text(verbatim: "\(finishedAt.timeIntervalSince(run.startedAt).formatted(.number.precision(.fractionLength(1)))) s")
                     }
                 }
             }
+
+            FamiliarRunResultSection(messageID: run.responseMessageID)
 
             Section(String(localized: "project.run.steps", defaultValue: "Execution Steps")) {
                 if toolActivities.isEmpty {
@@ -134,9 +143,9 @@ struct FamiliarRunRecordDetail: View {
                     ForEach(toolActivities) { activity in
                         FamiliarRunRecordStep(
                             activity: activity,
-                            invocation: invocations.first { $0.activityID == activity.activityID },
-                            approval: approvals.first { $0.activityID == activity.activityID },
-                            result: results.first { $0.activityID == activity.activityID }
+                            invocation: invocationIndex[activity.activityID],
+                            approval: approvalIndex[activity.activityID],
+                            result: resultIndex[activity.activityID]
                         )
                     }
                 }
@@ -145,52 +154,18 @@ struct FamiliarRunRecordDetail: View {
             if !approvals.isEmpty {
                 Section(String(localized: "project.run.authorizations", defaultValue: "Authorizations")) {
                     ForEach(approvals) { approval in
-                        FamiliarRunRecordApproval(approval: approval)
-                    }
-                }
-            }
-
-            Section(String(localized: "project.run.resources", defaultValue: "Resources Used")) {
-                if resourceReferences.isEmpty {
-                    Text(String(localized: "project.run.resources.empty", defaultValue: "No project resources were used."))
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(resourceReferences, id: \.id) { reference in
-                        VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                            Text(reference.filename)
-                            Text("v\(reference.version) · \(String(reference.contentHash.prefix(12)))")
-                                .font(FamiliarTypography.caption.monospaced()).foregroundStyle(.secondary)
+                        DisclosureGroup(FamiliarToolPresentationName.title(for: approval.toolName)) {
+                            FamiliarRunRecordApproval(approval: approval)
                         }
                     }
                 }
             }
 
-            Section(String(localized: "project.run.skills", defaultValue: "Skills Used")) {
-                if skillSnapshots.isEmpty {
-                    Text(String(localized: "project.run.skills.empty", defaultValue: "No Skills were used."))
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(skillSnapshots) { skill in
-                        VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
-                            Text(skill.name)
-                            Text("\(skill.stableID) · v\(skill.version) · \(String(skill.contentHash.prefix(12)))")
-                                .font(FamiliarTypography.caption.monospaced()).foregroundStyle(.secondary)
-                            if !skill.allowedTools.isEmpty {
-                                Text(skill.allowedTools.joined(separator: ", "))
-                                    .font(FamiliarTypography.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-            }
-
-            Section(String(localized: "project.run.tools", defaultValue: "Available Tools")) {
-                if toolNames.isEmpty {
-                    Text(String(localized: "project.run.tools.empty", defaultValue: "No tools were exposed."))
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(toolNames, id: \.self) { toolName in
-                        Label(toolName, systemImage: "wrench.and.screwdriver")
+            Section {
+                DisclosureGroup(String(localized: "settings.runs.technical"), isExpanded: $showsTechnical) {
+                    if showsTechnical {
+                        FamiliarRunTechnicalContext(run: run, provider: providerName, model: modelName,
+                            resources: resourceReferences, skills: skillSnapshots, tools: toolNames)
                     }
                 }
             }
@@ -225,14 +200,8 @@ struct FamiliarRunRecordDetail: View {
     private var skillSnapshots: [FamiliarRunSkillSnapshotRecord] {
         allSkillSnapshots.filter { $0.runID == run.id }.sorted { $0.sequence < $1.sequence }
     }
-    private var statusText: String {
-        switch run.status {
-        case .running: String(localized: "project.run.status.running", defaultValue: "Running")
-        case .completed: String(localized: "project.run.status.completed", defaultValue: "Completed")
-        case .cancelled: String(localized: "project.run.status.cancelled", defaultValue: "Cancelled")
-        case .failed: String(localized: "project.run.status.failed", defaultValue: "Failed")
-        }
-    }
+    private var statusText: String { run.status.localizedTitle }
+
 }
 
 struct FamiliarRunRecordStep: View {
@@ -305,11 +274,24 @@ struct FamiliarRunRecordStep: View {
                 VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                     Text(activity.toolName.map { FamiliarToolPresentationName.title(for: $0) } ?? activity.summary)
                         .foregroundStyle(.primary)
-                    Text(activity.phase.rawValue)
+                    Text(phaseTitle)
                         .font(FamiliarTypography.caption)
                         .foregroundStyle(.secondary)
                 }
             }
+        }
+    }
+
+    private var phaseTitle: String {
+        switch activity.phase {
+        case .queued: String(localized: "settings.runs.phase.queued")
+        case .running: String(localized: "project.run.status.running")
+        case .awaitingApproval: String(localized: "agent.status.awaiting_confirmation")
+        case .awaitingClarification: String(localized: "clarification.title")
+        case .succeeded: String(localized: "project.run.status.completed")
+        case .failed: String(localized: "project.run.status.failed")
+        case .cancelled: String(localized: "project.run.status.cancelled")
+        case .undone: String(localized: "settings.runs.phase.undone")
         }
     }
 
