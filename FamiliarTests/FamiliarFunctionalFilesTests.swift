@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import SwiftData
 import Testing
 @testable import Familiar
@@ -7,6 +8,71 @@ private final class FunctionalFileBundleMarker: NSObject {}
 
 @Suite("Real files and Project boundaries", .serialized)
 struct FamiliarFunctionalFilesTests {
+    @Test("Concurrent thumbnail readers share preparation and purging keeps original bytes")
+    @MainActor func coalescedThumbnails() async throws {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 600, height: 400)).image { context in
+            UIColor.blue.setFill(); context.fill(CGRect(x: 0, y: 0, width: 600, height: 400))
+        }
+        let attachment = try await FamiliarAttachmentStore.importImageData(try #require(image.pngData()))
+        defer { FamiliarAttachmentStore.remove(relativePath: attachment.relativePath) }
+        let url = try #require(FamiliarAttachmentStore.url(for: attachment.relativePath))
+        let before = try Data(contentsOf: url)
+        let loader = FamiliarThumbnailLoader()
+        async let left = loader.image(url: url, pixels: 100)
+        async let right = loader.image(url: url, pixels: 100)
+        let (first, second) = await (left, right)
+        let firstImage = try #require(first), secondImage = try #require(second)
+        #expect(firstImage === secondImage)
+        await loader.purge()
+        let after = await loader.image(url: url, pixels: 100)
+        let afterImage = try #require(after)
+        #expect(afterImage !== firstImage)
+        #expect(try Data(contentsOf: url) == before)
+    }
+
+    @Test("File type filters classify actual extensions and MIME types")
+    func browserCategories() {
+        #expect(FamiliarFileCategory.classify(filename: "photo.HEIC", mimeType: "image/heic") == .image)
+        #expect(FamiliarFileCategory.classify(filename: "report.PDF", mimeType: "application/pdf") == .pdf)
+        #expect(FamiliarFileCategory.classify(filename: "budget.xlsx", mimeType: "application/octet-stream") == .spreadsheet)
+        #expect(FamiliarFileCategory.classify(filename: "deck.pptx", mimeType: "application/octet-stream") == .presentation)
+        #expect(FamiliarFileCategory.classify(filename: "notes.md", mimeType: "text/markdown") == .text)
+        #expect(FamiliarFileCategory.classify(filename: "unknown.bin", mimeType: "application/octet-stream") == .other)
+    }
+
+    @Test("Thumbnail dimensions are bounded and a restored image draft retains original bytes")
+    @MainActor func imageDraftRestoresWithoutFullBitmap() async throws {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 1200, height: 800)).image { context in
+            UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: 1200, height: 800))
+        }
+        let data = try #require(image.jpegData(compressionQuality: 0.9))
+        let attachment = try await FamiliarAttachmentStore.importImageData(data)
+        defer { FamiliarAttachmentStore.remove(relativePath: attachment.relativePath) }
+        let url = try #require(FamiliarAttachmentStore.url(for: attachment.relativePath))
+        let original = try Data(contentsOf: url)
+        let thumbnail = try #require(FamiliarThumbnailLoader.downsample(url: url, pixels: 120))
+        #expect(max(thumbnail.cgImage!.width, thumbnail.cgImage!.height) <= 120)
+        let container = try FamiliarTestStore.make(name: "ImageDraftThumbnail")
+        let controller = FamiliarChatController(dependencies: .init())
+        controller.restoreComposerDraft(.init(text: "", selection: nil, skillID: nil, attachments: [attachment]))
+        #expect(controller.draftImages.first?.image == nil)
+        #expect(controller.draftImages.first?.attachment?.relativePath == attachment.relativePath)
+        await controller.checkpointDraft(in: container.mainContext)
+        #expect(controller.errorMessage == nil)
+        #expect(try Data(contentsOf: url) == original)
+        #expect(controller.draftImages.first?.attachment?.id == attachment.id)
+    }
+
+    @Test("Typing preserves attachment ownership but restoring a draft invalidates old import attempts")
+    @MainActor func attachmentOwnerBoundaries() {
+        let controller = FamiliarChatController(dependencies: .init())
+        let original = controller.draftAttachmentIdentity
+        controller.draft = "Type while importing"
+        #expect(controller.draftAttachmentIdentity == original)
+        controller.restoreComposerDraft(.init(text: "Restored", selection: nil, skillID: nil, attachments: []))
+        #expect(controller.draftAttachmentIdentity != original)
+    }
+
     private func fixture(_ name: String) throws -> URL {
         let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .appendingPathComponent("Fixtures/FunctionalFiles/" + name)

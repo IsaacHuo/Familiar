@@ -4,6 +4,36 @@ import Testing
 
 @Suite("Focused UI feedback contracts")
 struct FamiliarUIFeedbackTests {
+    @Test("Restored messages and repeated lazy rows cannot replay their entrance")
+    @MainActor func stableEntrances() {
+        let registry = FamiliarEntranceRegistry(restored: ["message:old", "run:active", "block:existing"])
+        #expect(!registry.claim("message:old"))
+        #expect(!registry.claim("run:active"))
+        #expect(!registry.claim("block:existing"))
+        #expect(registry.claim("run:new"))
+        #expect(!registry.claim("run:new")) // Streaming-to-history keeps the Run ID.
+        #expect(registry.claim("block:new"))
+        #expect(!registry.claim("block:new")) // Lazy disposal/recreation.
+    }
+
+    @Test("Accessible actions preserve existing edit and retry eligibility")
+    @MainActor func messageActionEligibility() {
+        #expect(FamiliarMessageActions(text: "").available.isEmpty)
+        #expect(FamiliarMessageActions(text: "Hello").available == [.copy, .select])
+        #expect(FamiliarMessageActions(text: "Hello", edit: {}).available == [.copy, .select, .edit])
+        #expect(FamiliarMessageActions(text: "Hello", retry: {}).available == [.copy, .select, .retry])
+    }
+
+    @Test("Accessibility announces semantic run boundaries, never planning or tokens")
+    @MainActor func runAnnouncements() {
+        #expect(FamiliarAccessibility.runAnnouncement(for: .running) == nil)
+        #expect(FamiliarAccessibility.runAnnouncement(for: .planning) == nil)
+        #expect(FamiliarAccessibility.runAnnouncement(for: .queued) == nil)
+        for phase: FamiliarSurfacePhase in [.awaitingApproval, .awaitingClarification, .succeeded, .failed, .cancelled] {
+            #expect(FamiliarAccessibility.runAnnouncement(for: phase)?.isEmpty == false)
+        }
+    }
+
     @Test("Copy and Save acknowledge once, expire and cancel on departure")
     @MainActor func confirmationLifetime() async throws {
         let confirmation = FamiliarActionConfirmation()

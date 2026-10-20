@@ -74,24 +74,21 @@ final class FamiliarChatPresentationUITests: XCTestCase {
 
     @MainActor func testS1UncitedPagesHaveNoSourcesDisclosure() {
         let app = chat("uncited sources")
-        XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 25))
+        XCTAssertTrue(app.staticTexts["message.completed"].waitForExistence(timeout: 25))
         XCTAssertFalse(app.buttons["message.sources.disclosure"].exists)
     }
 
     @MainActor
     func testShortReplyCompletesThroughProductionChat() {
         let app = chat("short")
-        XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["message.completed"].waitForExistence(timeout: 20))
         XCTAssertTrue(app.staticTexts["Reply complete."].waitForExistence(timeout: 15))
         XCTAssertEqual(app.webViews.matching(identifier: "markdown.webview").count, 1)
-        let copy = app.buttons["message.copy"]
-        copy.tap()
-        // XCTest waits for the short acknowledgement animation before querying.
-        // Its immediate/lifetime state is verified by confirmationLifetime.
-        XCTAssertTrue(copy.waitForExistence(timeout: 3))
-        let reset = NSPredicate(format: "label == %@", "Copy")
-        expectation(for: reset, evaluatedWith: copy)
-        waitForExpectations(timeout: 4)
+        XCTAssertFalse(app.buttons["message.copy"].exists)
+        app.webViews["markdown.webview"].press(forDuration: 0.8)
+        XCTAssertTrue(app.buttons["Copy"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Select Text"].exists)
+        app.buttons["Copy"].tap()
         let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         screenshot.name = "I1-short-production-chat"
         screenshot.lifetime = .keepAlways
@@ -129,7 +126,7 @@ final class FamiliarChatPresentationUITests: XCTestCase {
         question.tap()
         let input = app.textViews["composer.input"]
         XCTAssertTrue((input.value as? String)?.contains("Markdown report") == true)
-        XCTAssertTrue(app.buttons["message.copy"].exists)
+        XCTAssertTrue(app.staticTexts["message.completed"].exists)
         XCTAssertEqual(app.buttons["composer.send"].label, "Send")
     }
 
@@ -145,15 +142,15 @@ final class FamiliarChatPresentationUITests: XCTestCase {
         XCTAssertTrue(input.waitForExistence(timeout: 15))
         input.tap(); input.typeText("FC persisted reply")
         app.buttons["composer.send"].tap()
-        XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 35))
+        XCTAssertTrue(app.staticTexts["message.completed"].waitForExistence(timeout: 35))
         XCTAssertTrue(app.buttons["message.follow_up.0"].waitForExistence(timeout: 15))
         let savedSuggestion = app.buttons["message.follow_up.0"].label
         app.terminate(); app.launch()
         let chat = app.cells.matching(NSPredicate(format: "identifier BEGINSWITH %@", "chat.history.row.")).firstMatch
         XCTAssertTrue(chat.waitForExistence(timeout: 15)); chat.tap()
-        XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["message.completed"].waitForExistence(timeout: 15))
         XCTAssertEqual(app.buttons["message.follow_up.0"].label, savedSuggestion)
-        XCTAssertEqual(app.buttons.matching(identifier: "message.copy").count, 1)
+        XCTAssertEqual(app.staticTexts.matching(identifier: "message.completed").count, 1)
         XCTAssertTrue(app.buttons["composer.speech"].exists)
         let capture = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         capture.name = "FC-disk-relaunch"; capture.lifetime = .keepAlways; add(capture)
@@ -165,7 +162,7 @@ final class FamiliarChatPresentationUITests: XCTestCase {
     @MainActor
     func testReducedMotionAndLargeTypeCompleteInProductionChat() {
         let app = chat("short", accessibility: true)
-        XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 25))
+        XCTAssertTrue(app.staticTexts["message.completed"].waitForExistence(timeout: 25))
         XCTAssertGreaterThanOrEqual(app.buttons["composer.send"].frame.width, 44)
         XCTAssertGreaterThanOrEqual(app.buttons["composer.send"].frame.height, 44)
         let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
@@ -237,7 +234,7 @@ final class FamiliarChatPresentationUITests: XCTestCase {
     @MainActor
     func testToolActivityOpensResultsAndTechnicalDetail() {
         let app = chat("tools")
-        XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["message.completed"].waitForExistence(timeout: 20))
         let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "runtime.open.")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         row.tap()
@@ -289,7 +286,7 @@ final class FamiliarChatPresentationUITests: XCTestCase {
         let input = app.textViews["composer.input"]
         input.tap(); input.typeText("Use a concrete example")
         app.buttons["composer.send"].tap()
-        XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["message.completed"].waitForExistence(timeout: 20))
         XCTAssertFalse(dock.exists)
         XCTAssertEqual(input.value as? String, "")
         let receipt = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "interaction.receipt.")).firstMatch
@@ -305,7 +302,7 @@ final class FamiliarChatPresentationUITests: XCTestCase {
         XCTAssertTrue(option.waitForExistence(timeout: 15))
         XCTAssertFalse(app.buttons["composer.send"].isEnabled)
         option.tap()
-        XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["message.completed"].waitForExistence(timeout: 20))
         XCTAssertFalse(option.exists)
     }
 
@@ -315,7 +312,7 @@ final class FamiliarChatPresentationUITests: XCTestCase {
         let approve = app.buttons["approval.confirm"]
         let file = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "file.open.")).firstMatch
         XCTAssertTrue(file.waitForExistence(timeout: 20))
-        XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["message.completed"].waitForExistence(timeout: 20))
         XCTAssertFalse(approve.exists)
         file.tap()
         XCTAssertTrue(app.navigationBars["Presentation report.md"].waitForExistence(timeout: 10))
@@ -330,7 +327,7 @@ final class FamiliarChatPresentationUITests: XCTestCase {
     @MainActor
     func testMarkdownCodeTableAndDiagramCompleteInProductionChat() {
         let app = chat("markdown")
-        XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["message.completed"].waitForExistence(timeout: 20))
         let web = app.webViews["markdown.webview"]
         XCTAssertTrue(web.waitForExistence(timeout: 15))
         XCTAssertTrue(web.buttons["Copy"].waitForExistence(timeout: 20))
@@ -343,7 +340,7 @@ final class FamiliarChatPresentationUITests: XCTestCase {
     @MainActor
     func testProjectChatPushReturnsToOriginalProject() {
         let app = chat("short")
-        XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["message.completed"].waitForExistence(timeout: 20))
         app.navigationBars.buttons.firstMatch.tap()
         app.buttons["chats.manageProjects"].tap()
         app.buttons["projects.create"].tap()

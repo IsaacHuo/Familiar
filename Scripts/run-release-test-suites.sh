@@ -20,6 +20,7 @@ simulator_suites=(
     FamiliarModelSelectionTests
     FamiliarSubmissionBoundaryTests
     FamiliarDesignSystemTests
+    FamiliarTelegramMotionTests
     FamiliarStreamingObservationTests
     FamiliarStreamingPresentationTests
     FamiliarMarkdownWebKitTests

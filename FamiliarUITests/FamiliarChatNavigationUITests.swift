@@ -27,7 +27,7 @@ final class FamiliarChatNavigationUITests: XCTestCase {
     @MainActor func testDraftSkillsAndAIEditorThroughProductionNavigation() {
         let app = launch(storeID: "navigation-" + UUID().uuidString)
         XCTAssertTrue(app.tabBars.buttons["Files"].exists)
-        XCTAssertTrue(app.tabBars.buttons["Chats"].isSelected)
+        XCTAssertTrue(app.tabBars.buttons["Conversations"].isSelected)
         XCTAssertTrue(app.tabBars.buttons["Settings"].exists)
         capture(app, "R3-home-light")
         app.buttons["chats.new"].tap()
@@ -54,8 +54,9 @@ final class FamiliarChatNavigationUITests: XCTestCase {
         XCTAssertEqual(input.value as? String, "/ Draft to keep")
         app.buttons["composer.polish"].tap()
         XCTAssertTrue(app.otherElements["rewrite.editor"].waitForExistence(timeout: 10))
-        app.buttons["Generate"].tap()
+        app.buttons["rewrite.generate"].tap()
         let apply = app.buttons["rewrite.apply"]
+        XCTAssertTrue(apply.waitForExistence(timeout: 15))
         let enabled = NSPredicate(format: "enabled == true")
         expectation(for: enabled, evaluatedWith: apply)
         waitForExpectations(timeout: 15)
@@ -63,7 +64,7 @@ final class FamiliarChatNavigationUITests: XCTestCase {
         apply.tap()
         XCTAssertTrue(input.waitForExistence(timeout: 10))
         XCTAssertEqual(input.value as? String, "Polished: / Draft to keep")
-        app.buttons["Undo AI edit"].tap()
+        app.buttons["composer.undoPolish"].tap()
         XCTAssertEqual(input.value as? String, "/ Draft to keep")
         XCTAssertFalse(app.buttons["message.copy"].exists)
     }
@@ -75,7 +76,7 @@ final class FamiliarChatNavigationUITests: XCTestCase {
         XCTAssertTrue(input.waitForExistence(timeout: 10))
         input.tap(); input.typeText("short")
         app.buttons["composer.send"].tap()
-        XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 25))
+        XCTAssertTrue(app.staticTexts["message.completed"].waitForExistence(timeout: 25))
         capture(app, "R4-bubbles-light")
         back(app)
         let cell = app.cells.matching(NSPredicate(format: "identifier BEGINSWITH %@", "chat.history.row.")).firstMatch
@@ -93,7 +94,7 @@ final class FamiliarChatNavigationUITests: XCTestCase {
         cell.press(forDuration: 0.8)
         XCTAssertTrue(app.buttons["Mark as read"].waitForExistence(timeout: 10))
         app.buttons["Open chat"].tap()
-        XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["message.completed"].waitForExistence(timeout: 10))
         back(app)
         cell.press(forDuration: 0.8)
         XCTAssertTrue(app.buttons["Mark as unread"].waitForExistence(timeout: 10))
@@ -130,7 +131,7 @@ final class FamiliarChatNavigationUITests: XCTestCase {
             XCTAssertTrue(input.waitForExistence(timeout: 10))
             input.tap(); input.typeText("Markdown")
             app.buttons["composer.send"].tap()
-            XCTAssertTrue(app.buttons["message.copy"].waitForExistence(timeout: 25))
+            XCTAssertTrue(app.staticTexts["message.completed"].waitForExistence(timeout: 25))
             capture(app, "R4-rich-bubbles-" + appearance + (large ? "-large" : ""))
             app.terminate()
         }

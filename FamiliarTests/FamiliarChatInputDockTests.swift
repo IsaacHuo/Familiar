@@ -6,9 +6,75 @@ import UIKit
 
 @Suite("Input dock waiting identity and independent drafts")
 struct FamiliarChatInputDockTests {
+    @Test("An interactive pop suspends reading before disappear; cancelling resumes the same presenter")
+    @MainActor func interactivePopReadingLifecycle() {
+        let session = FamiliarChatScrollSession(), id = UUID()
+        session.beginPresentation(id)
+        session.geometryChanged(offset: 160, latest: 500, viewport: 400, presenter: id)
+        let lifecycle = FamiliarChatReadingLifecycle.Controller(session: session, presenterID: id)
+        lifecycle.viewWillDisappear(true)
+        session.geometryChanged(offset: 0, latest: 0, viewport: 0, presenter: id)
+        #expect(!session.isPresented && session.offset == 160)
+        lifecycle.viewDidAppear(true)
+        #expect(session.acceptsPresenter(id))
+        session.geometryChanged(offset: 180, latest: 500, viewport: 400, presenter: id)
+        #expect(session.offset == 180)
+    }
+
+    @Test("An outgoing presentation cannot replace the active page's reading geometry")
+    @MainActor func readingPresentationOwnership() {
+        let session = FamiliarChatScrollSession(), previous = UUID(), current = UUID()
+        session.beginPresentation(previous)
+        session.geometryChanged(offset: 120, latest: 300, viewport: 500, presenter: previous)
+        session.beginPresentation(current)
+        session.endPresentation(previous)
+        session.geometryChanged(offset: 0, latest: 0, viewport: 0, presenter: previous)
+        #expect(session.isPresented && session.offset == 120)
+        session.geometryChanged(offset: 250, latest: 500, viewport: 500, presenter: current)
+        #expect(session.offset == 250)
+        session.endPresentation(current)
+        #expect(!session.isPresented)
+    }
+
+    @Test("A dismissed timeline ignores teardown geometry and cancels pending follow")
+    @MainActor func dismissedScrollGeometry() {
+        let session = FamiliarChatScrollSession()
+        session.geometryChanged(offset: 120, latest: 500, viewport: 400)
+        session.setPresented(false)
+        session.geometryChanged(offset: 0, latest: 0, viewport: 0)
+        #expect(session.offset == 120)
+        #expect(session.latestOffset == 500)
+        var moved = false
+        session.rowChanged(id: "old", frame: .zero) { _ in moved = true }
+        #expect(!moved)
+    }
+
+    @Test("Trailing blank paragraphs contribute full height, including beyond the compact cap")
+    @MainActor func trailingBlankLineMeasurement() {
+        let font = UIFont.systemFont(ofSize: 18)
+        let short = FamiliarComposerNativeTextView.contentHeight(text: "Line", font: font, width: 180)
+        let blank = FamiliarComposerNativeTextView.contentHeight(text: "Line" + String(repeating: "\n", count: 12), font: font, width: 180)
+        #expect(blank >= short + 11 * font.lineHeight)
+        let empty = FamiliarComposerNativeTextView.contentHeight(text: "", font: font, width: 180)
+        #expect(empty >= font.lineHeight)
+    }
+
+    @Test("Only plain prose uses compact native layout; Markdown and links retain WebKit")
+    func compactTextClassification() {
+        #expect(FamiliarMessageReadingStyle.isShortPlainText("你好，世界。"))
+        for text in ["**Bold**", "1. List", "- List", "[source]", "https://example.com", "Line\nBreak", "`code`", "a_b"] {
+            #expect(!FamiliarMessageReadingStyle.isShortPlainText(text))
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let midnight = Date(timeIntervalSince1970: 86_400)
+        #expect(FamiliarMessageReadingStyle.startsDay(midnight, after: midnight.addingTimeInterval(-1), calendar: calendar))
+        #expect(!FamiliarMessageReadingStyle.startsDay(midnight.addingTimeInterval(20), after: midnight, calendar: calendar))
+    }
+
     private struct Host: View {
         let controller: FamiliarChatController
-        @FocusState private var focused: Bool
+        @State private var focused = false
         var body: some View {
             FamiliarChatInputDock(controller: controller, skills: [], isListening: false,
                 focus: $focused, availableHeight: 700, onSpeech: {}, onSend: {}, onStop: {})

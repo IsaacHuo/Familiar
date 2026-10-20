@@ -37,6 +37,17 @@ struct FamiliarReleaseComplianceTests {
         let info = try plist("Familiar/Resources/Info.plist")
         let english = try stringsFile("Familiar/Resources/en.lproj/InfoPlist.strings")
         let chinese = try stringsFile("Familiar/Resources/zh-Hans.lproj/InfoPlist.strings")
+        let entitlements = try plist("Familiar/Familiar.entitlements")
+
+        // App Store Connect also requires the update purpose string for this
+        // HealthKit-enabled binary, although authorization requests share no types.
+        if entitlements["com.apple.developer.healthkit"] as? Bool == true {
+            for key in ["NSHealthShareUsageDescription", "NSHealthUpdateUsageDescription"] {
+                #expect((info[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+                #expect(english[key]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+                #expect(chinese[key]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+            }
+        }
 
         for requirement in FamiliarCapabilityRequirement.allCases {
             guard let key = requirement.usageDescriptionKey else { continue }

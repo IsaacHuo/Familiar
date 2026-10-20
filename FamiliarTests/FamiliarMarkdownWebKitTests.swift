@@ -5,6 +5,39 @@ import Observation
 @testable import Familiar
 
 final class FamiliarMarkdownWebKitTests: XCTestCase {
+    @MainActor
+    func testRestoredStreamingBlocksDoNotReplayTheirEntrance() async throws {
+        let web = try await renderer()
+        try await render("# Existing\n\nText", streaming: true, in: web)
+        let initial = try await evaluate("String(document.querySelectorAll('.familiar-appear').length)", in: web)
+        XCTAssertEqual(initial, "0")
+        try await render("# Existing\n\nText grows\n\nNew block", streaming: true, in: web)
+        let inserted = try await evaluate("String(document.querySelectorAll('.familiar-appear').length)", in: web)
+        XCTAssertEqual(inserted, "1")
+        let chunks = try await evaluate("String(document.querySelectorAll('.familiar-chunk').length)", in: web)
+        XCTAssertEqual(chunks, "0")
+    }
+
+    @MainActor
+    func testAccessibleMessageActionsPreserveDocumentStructureAndFocus() async throws {
+        let web = try await renderer()
+        try await render("# Title\n\n[Link](https://example.com)\n\n```swift\nlet value = 1\n```", streaming: false, in: web)
+        let result = try await evaluate("""
+        window.originalHeading = document.querySelector('h1');
+        window.FamiliarMarkdown.setMessageActions(true, [{id:'copy',title:'Copy'},{id:'select',title:'Select Text'}], 'Message actions');
+        const group = document.querySelector('.message-accessibility-actions');
+        window.originalAction = group.querySelector('button');
+        originalAction.focus();
+        window.FamiliarMarkdown.setMessageActions(true, [{id:'copy',title:'Copy'},{id:'select',title:'Select Text'}], 'Message actions');
+        String(originalHeading === document.querySelector('h1') && Boolean(document.querySelector('#content a')) &&
+          Boolean(document.querySelector('#content pre code')) && group.querySelectorAll('button').length === 2 &&
+          document.activeElement === originalAction && !document.querySelector('#content').contains(group))
+        """, in: web)
+        XCTAssertEqual(result, "true")
+        let cleared = try await evaluate("window.FamiliarMarkdown.setMessageActions(false, []); String(document.querySelector('.message-accessibility-actions').hidden)", in: web)
+        XCTAssertEqual(cleared, "true")
+    }
+
     @MainActor @Observable
     fileprivate final class Content {
         var text = "# Title\n\nGrowing"

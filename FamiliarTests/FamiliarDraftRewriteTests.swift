@@ -4,6 +4,39 @@ import Testing
 
 @Suite("AI draft editing")
 struct FamiliarDraftRewriteTests {
+    @Test("AI titles use a bounded tool-free request and reject incomplete responses")
+    @MainActor func summaryTitleRequest() async throws {
+        let capture = RewriteCapture()
+        let title = try await FamiliarConversationTitleService.generate(question: "Question", answer: "Answer",
+            model: .init(providerID: "fake", modelID: "fake"), provider: RewriteProvider(capture: capture))
+        let request = try #require(await capture.request)
+        #expect(title == "Edited draft")
+        #expect(request.tools.isEmpty)
+        #expect(request.maximumOutputTokens == 256)
+        for mode in [RewriteProvider.Mode.truncated, .toolCall, .missingTerminal] {
+            await #expect(throws: (any Error).self) {
+                try await FamiliarConversationTitleService.generate(question: "Q", answer: "A",
+                    model: .init(providerID: "fake", modelID: "fake"), provider: RewriteProvider(capture: RewriteCapture(), mode: mode))
+            }
+        }
+        #expect(throws: (any Error).self) { try FamiliarConversationTitleService.parse("Two\nLines") }
+    }
+
+    @Test("A response from an older revision cannot apply after the text changes back")
+    @MainActor func staleRevisionWithSameText() {
+        let controller = FamiliarChatController(dependencies: .init())
+        controller.draft = "Original"
+        let revision = controller.draftRevision
+        controller.draft = "Temporary change"
+        controller.draft = "Original"
+        let result = FamiliarDraftRewriteResult(text: "Late result", model: .init(providerID: "fake", modelID: "fake"), usage: nil)
+        #expect(throws: FamiliarDraftRewriteError.self) {
+            try controller.applyDraftRewrite(result, source: "Original", sourceID: controller.draftConversationID,
+                sourceRevision: revision, selection: nil)
+        }
+        #expect(controller.draft == "Original")
+    }
+
     @Test("Rewrite sends only the draft and explicit instruction, with no tools")
     @MainActor func isolatedRequest() async throws {
         let capture = RewriteCapture()
@@ -47,9 +80,10 @@ struct FamiliarDraftRewriteTests {
         let controller = FamiliarChatController(dependencies: .init())
         let result = FamiliarDraftRewriteResult(text: "Edited", model: .init(providerID: "fake", modelID: "fake"), usage: nil)
         controller.draft = "Original"
+        let revision = controller.draftRevision
         let id = controller.draftConversationID, skill = UUID()
         controller.selectedSkillID = skill
-        try controller.applyDraftRewrite(result, source: "Original", sourceID: id, selection: nil)
+        try controller.applyDraftRewrite(result, source: "Original", sourceID: id, sourceRevision: revision, selection: nil)
         #expect(controller.draft == "Edited")
         #expect(controller.selectedSkillID == skill)
         #expect(controller.messages.isEmpty)
@@ -58,7 +92,7 @@ struct FamiliarDraftRewriteTests {
         #expect(controller.draft == "Original")
         controller.draft = "Changed while editing"
         #expect(throws: FamiliarDraftRewriteError.self) {
-            try controller.applyDraftRewrite(result, source: "Original", sourceID: id, selection: nil)
+            try controller.applyDraftRewrite(result, source: "Original", sourceID: id, sourceRevision: revision, selection: nil)
         }
         #expect(controller.draft == "Changed while editing")
     }
