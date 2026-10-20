@@ -93,17 +93,33 @@ final class FamiliarActionConfirmation {
     }
 }
 
-/// One restrained entrance for newly arriving native Activity/File surfaces.
+/// One registry per mounted timeline. Restored content is seeded, and a lazy row
+/// claims its identity even when motion/following is disabled, so it cannot replay.
+@MainActor final class FamiliarEntranceRegistry {
+    private var seen: Set<String>
+    init(restored: [String]) { seen = Set(restored) }
+    func contains(_ id: String) -> Bool { seen.contains(id) }
+    func claim(_ id: String) -> Bool { seen.insert(id).inserted }
+}
+
+extension EnvironmentValues {
+    @Entry var familiarEntranceRegistry: FamiliarEntranceRegistry? = nil
+}
+
+/// Transform/opacity only: no animated text measurement or layout height.
 struct FamiliarSoftRise: ViewModifier {
     let enabled: Bool
+    let identity: String
     @Environment(\.familiarReduceMotion) private var reduceMotion
+    @Environment(\.familiarEntranceRegistry) private var registry
     @State private var appeared = false
     func body(content: Content) -> some View {
-        let waiting = enabled && !reduceMotion && !appeared
+        let waiting = enabled && !reduceMotion && !appeared && registry?.contains(identity) == false
         content.opacity(waiting ? 0 : 1)
             .offset(y: waiting ? FamiliarMotion.contentAppearOffset : 0)
-            .task(id: enabled) {
-                guard enabled, !reduceMotion, !appeared else { return }
+            .task(id: identity) {
+                let first = registry?.claim(identity) == true
+                guard first, enabled, !reduceMotion else { appeared = true; return }
                 withAnimation(FamiliarMotion.contentAppear) { appeared = true }
             }
     }

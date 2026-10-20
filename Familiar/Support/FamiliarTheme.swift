@@ -67,7 +67,9 @@ nonisolated enum FamiliarTheme {
             ? .secondarySystemBackground
             : UIColor(red: 0.97, green: 0.97, blue: 0.98, alpha: 1)
     })
-    static let separator = Color.primary.opacity(0.10)
+    static let separator = Color(uiColor: UIColor { traits in
+        traits.accessibilityContrast == .high ? .separator : .label.withAlphaComponent(0.10)
+    })
     static let page = Color(uiColor: .systemBackground)
     static let canvas = Color(uiColor: .secondarySystemBackground)
     static let surface = Color(uiColor: .systemBackground)
@@ -207,12 +209,13 @@ struct FamiliarDismissButton: View {
 
 private struct FamiliarGlassSurface: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
     let interactive: Bool
     let cornerRadius: CGFloat
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if reduceTransparency {
+        if reduceTransparency || contrast == .increased {
             content
                 .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
                 .overlay {
@@ -236,11 +239,12 @@ extension View {
 
 private struct FamiliarGlassCircle: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
     let interactive: Bool
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if reduceTransparency {
+        if reduceTransparency || contrast == .increased {
             content
                 .background(FamiliarTheme.elevatedFill, in: Circle())
                 .overlay {
