@@ -7,6 +7,8 @@ struct FamiliarAssistantTurn: View {
     @Environment(\.dynamicTypeSize) private var dynamicType
     @Environment(\.familiarExecutionBlocked) private var executionBlocked
     @Environment(\.familiarReadingGeometry) private var readingGeometry
+    @Environment(\.familiarChatScrollSession) private var scroll
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
     let message: FamiliarMessageSnapshot?
     let run: FamiliarAgentRunSnapshot?
     let surfaces: [FamiliarSurfaceDescriptor]
@@ -52,11 +54,13 @@ struct FamiliarAssistantTurn: View {
                     FamiliarMarkdownBlock(controller: liveController, text: text,
                         sources: message?.sources ?? [],
                         citationSources: message?.citedSources ?? [],
-                        onContentChange: { onLiveContentChange?(false) })
+                        onContentChange: { onLiveContentChange?(false) },
+                        messageActions: message.map { .init(text: $0.finalAnswerText, messageID: $0.id, blockID: text.id, retry: canRetry ? onRetryMessage : nil) },
+                        timestamp: block.id == blocks.last?.id ? message?.createdAt : nil)
                 case .runtime(let activity):
                     FamiliarRuntimeCard(activity: activity, disclosure: disclosure, context: run?.context,
                         metrics: replyMetrics, undo: runtimeUndo(for: activity))
-                        .modifier(FamiliarSoftRise(enabled: liveController != nil))
+                        .modifier(FamiliarSoftRise(enabled: liveController != nil && scroll?.mode != .userReading && !voiceOver, identity: "block:" + block.id))
                 case .surface(let surface):
                     if surface.kind == .activityTrace {
                         Label(surface.title, systemImage: "exclamationmark.circle")
@@ -66,7 +70,7 @@ struct FamiliarAssistantTurn: View {
                         FamiliarTurnSurface(surface: adjustedUndoPhase(surface), canUndo: canUndo(surface),
                             onUndo: { onUndo(surface.runID, surface.toolCallID ?? "") },
                             onRetry: surface.kind == .failure && surface.toolCallID == nil && canRetry ? retryAction : nil)
-                            .modifier(FamiliarSoftRise(enabled: liveController != nil))
+                            .modifier(FamiliarSoftRise(enabled: liveController != nil && scroll?.mode != .userReading && !voiceOver, identity: "block:" + block.id))
                     }
                 }
                 }
@@ -78,8 +82,14 @@ struct FamiliarAssistantTurn: View {
                 FamiliarLiveReplyStatus(controller: liveController)
             }
             if let message {
-                Text(message.createdAt, style: .time).font(.caption2).foregroundStyle(.secondary)
-                FamiliarAssistantFooter(message: message, onRetryMessage: canRetry ? onRetryMessage : nil, onInsertPrompt: onInsertPrompt)
+                if case .text = blocks.last { } else {
+                    FamiliarMessageTimestamp(date: message.createdAt).accessibilityIdentifier("message.completed")
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(FamiliarTheme.elevatedFill, in: Capsule())
+                }
+                if !message.citedSources.isEmpty || !message.followUpQuestions.isEmpty {
+                    FamiliarAssistantFooter(message: message, onInsertPrompt: onInsertPrompt)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -122,15 +132,33 @@ struct FamiliarMarkdownBlock: View {
     let sources: [FamiliarSource]
     let citationSources: [FamiliarSource]
     let onContentChange: () -> Void
+    var messageActions: FamiliarMessageActions? = nil
+    var timestamp: Date? = nil
+    @ScaledMetric(relativeTo: .body) private var textSize: CGFloat = 17
 
     var body: some View {
         let live = controller?.streamingResponseBlocks.first { "text:\($0.id.uuidString)" == text.id }
         let content = live?.content ?? text.content
         let streaming = live?.isStreaming ?? false
         VStack(alignment: .leading, spacing: FamiliarSpacing.small) {
-            FamiliarMarkdownWebView(markdown: FamiliarCitation.canonicalized(content, sources: sources).text,
-                                    sources: citationSources, isStreaming: streaming)
-                .familiarMessageBubble(isUser: false)
+            Group {
+                if controller == nil, sources.isEmpty, citationSources.isEmpty,
+                   FamiliarMessageReadingStyle.isShortPlainText(content), let messageActions {
+                    if let timestamp {
+                        FamiliarTextAndTimeLayout(lineHeight: UIFont.systemFont(ofSize: textSize).lineHeight, text: content) {
+                            FamiliarMessageText(text: content, messageID: messageActions.messageID, edit: nil, retry: messageActions.retry)
+                            FamiliarMessageTimestamp(date: timestamp).accessibilityIdentifier("message.completed")
+                        }
+                    } else { FamiliarMessageText(text: content, messageID: messageActions.messageID, edit: nil, retry: messageActions.retry) }
+                } else {
+                    VStack(alignment: .trailing, spacing: 4) {
+                        FamiliarMarkdownWebView(markdown: FamiliarCitation.canonicalized(content, sources: sources).text,
+                                                sources: citationSources, isStreaming: streaming, messageActions: messageActions)
+                        if let timestamp { FamiliarMessageTimestamp(date: timestamp).accessibilityIdentifier("message.completed") }
+                    }
+                }
+            }
+            .familiarMessageBubble(isUser: false)
             if live == nil, text.state != .completed {
                 Label(String(localized: "runtime.ui.incomplete_text"), systemImage: "pause.circle")
                     .font(FamiliarTypography.caption).foregroundStyle(.secondary)
@@ -166,7 +194,9 @@ final class FamiliarRuntimeDisclosureState {
     var expanded: Set<String> = []
     func binding(for id: String) -> Binding<Bool> {
         Binding(get: { self.expanded.contains(id) }, set: { value in
-            if value { self.expanded.insert(id) } else { self.expanded.remove(id) }
+            withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : FamiliarTelegramMotion.panel) {
+                if value { self.expanded.insert(id) } else { self.expanded.remove(id) }
+            }
         })
     }
 }
@@ -222,10 +252,10 @@ struct FamiliarPreparedFilePreview: Identifiable, Hashable {
 
 struct FamiliarWriteReceipt: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.familiarOpenMessageFile) private var openMessageFile
     let surface: FamiliarSurfaceDescriptor
     let canUndo: Bool
     let onUndo: () -> Void
-    @State private var previewFile: FamiliarPreparedFilePreview?
     @State private var previewError: String?
 
     var body: some View {
@@ -235,7 +265,7 @@ struct FamiliarWriteReceipt: View {
                     let presentation = FamiliarFilePresentation(file: file, revoked: surface.phase == .undone)
                         .resolved(in: context, scope: file.scope)
                     FamiliarFileTile(file: presentation) {
-                        do { previewFile = .init(url: try presentation.validatedURL(), format: file.format) }
+                        do { openMessageFile?.open(.init(url: try presentation.validatedURL(), format: file.format)) }
                         catch { previewError = error.localizedDescription }
                     }
                     if let authorizationSummary {
@@ -252,9 +282,6 @@ struct FamiliarWriteReceipt: View {
             } else {
                 preparedExportCard
             }
-        }
-        .navigationDestination(item: $previewFile) { file in
-            FamiliarAttachmentPreviewView(url: file.url, format: file.format)
         }
         .alert(String(localized: "app.name"), isPresented: Binding(
             get: { previewError != nil }, set: { if !$0 { previewError = nil } }
@@ -281,7 +308,7 @@ struct FamiliarWriteReceipt: View {
             if let exportURL {
                 HStack(spacing: FamiliarAISurfaceMetric.spaceS) {
                     Button {
-                        previewFile = .init(url: exportURL)
+                        openMessageFile?.open(.init(url: exportURL))
                     } label: {
                         Label(String(localized: "common.preview", defaultValue: "Preview"), systemImage: "eye")
                             .frame(minHeight: FamiliarControlSize.minimumHitTarget)
@@ -425,32 +452,15 @@ struct FamiliarContextTrace: View {
 }
 
 struct FamiliarAssistantFooter: View {
-    @Environment(\.familiarReduceMotion) private var reduceMotion
     @Environment(\.familiarChatScrollSession) private var scroll
     let message: FamiliarMessageSnapshot
-    let onRetryMessage: (() -> Void)?
     let onInsertPrompt: (String) -> Void
     @State private var sourcesOpen = false
-    @State private var copyConfirmation = FamiliarActionConfirmation()
 
     var body: some View {
         VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceS) {
-            HStack(spacing: FamiliarAISurfaceMetric.spaceXS) {
-                if !message.finalAnswerText.isEmpty {
-                    FamiliarMessageAction(symbol: copyConfirmation.isConfirmed ? "checkmark" : "doc.on.doc", label: String(localized: copyConfirmation.isConfirmed ? "common.copied" : "common.copy")) {
-                        guard !copyConfirmation.isConfirmed else { return }
-                        UIPasteboard.general.string = message.finalAnswerText
-                        FamiliarHaptics.shared.perform(.success)
-                        copyConfirmation.confirm()
-                    }
-                    .animation(reduceMotion ? nil : FamiliarMotion.micro, value: copyConfirmation.isConfirmed)
-                    .onDisappear { copyConfirmation.reset() }
-                    .accessibilityIdentifier("message.copy")
-                }
-                if let onRetryMessage {
-                    FamiliarMessageAction(symbol: "arrow.clockwise", label: String(localized: "message.retry"), action: onRetryMessage)
-                }
-                if !message.citedSources.isEmpty {
+            if !message.citedSources.isEmpty {
+                HStack(spacing: FamiliarAISurfaceMetric.spaceXS) {
                     Button {
                         scroll?.beginInspection()
                         sourcesOpen = true
@@ -469,8 +479,8 @@ struct FamiliarAssistantFooter: View {
                     .accessibilityIdentifier("message.sources.disclosure")
                     .accessibilityLabel(String(format: String(localized: "message.sources.count", defaultValue: "%lld sources"), message.citedSources.count))
                 }
+                .foregroundStyle(FamiliarTheme.inkSecondary)
             }
-            .foregroundStyle(FamiliarTheme.inkSecondary)
 
             if !message.followUpQuestions.isEmpty {
                 FamiliarFollowUps(questions: message.followUpQuestions, onInsertPrompt: onInsertPrompt)

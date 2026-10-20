@@ -9,6 +9,7 @@ struct FamiliarChatView: View {
     let onNewDraft: ((UUID?) -> Void)?
     let onRootSettings: ((FamiliarSettingsRoute?) -> Void)?
     let initialMessageID: UUID?
+    @State private var findState = FamiliarConversationFindState()
     @State private var skillsMenuOpen = false
     @State private var skillsDismissRevision = 0
     @State private var showsRewrite = false
@@ -56,7 +57,7 @@ struct FamiliarChatView: View {
     @State private var confirmsClearChat = false
     @State private var speechPlayer = FamiliarReplySpeechPlayer()
     @State private var webDestination: FamiliarWebDestination?
-    @FocusState private var isComposerFocused: Bool
+    @State private var isComposerFocused = false
     private let toolRegistry: FamiliarToolRegistry
     private let searchService: FamiliarWebSearchService
     private let pythonPackageSourceSettings: FamiliarPythonPackageSourceSettingsStore
@@ -93,15 +94,14 @@ struct FamiliarChatView: View {
         _pendingSystemEntry = pendingSystemEntry
     }
 
-    var body: some View { observedChatSurface }
+    var body: some View { observedChatSurface.modifier(FamiliarMessageFileNavigation()).environment(\.familiarSendPresentation, controller.sendPresentation).environment(\.familiarSelectedTextSink, .init(controller: controller, sourceID: controller.selectedConversationID ?? controller.draftConversationID, focus: $isComposerFocused)) }
 
     private var chatSurface: some View {
         GeometryReader { geometry in
             chatSession(availableHeight: geometry.size.height)
         }
-        .toolbar(.hidden, for: .tabBar)
         .environment(\.familiarExecutionBlocked, controller.execution.isBusy && !controller.isSending)
-        .sheet(isPresented: $showsRewrite, onDismiss: { isComposerFocused = true; controller.scheduleDraftCheckpoint(in: modelContext) }) {
+        .sheet(isPresented: $showsRewrite, onDismiss: { if detailVisible { isComposerFocused = true }; controller.scheduleDraftCheckpoint(in: modelContext) }) {
             FamiliarDraftRewriteSheet(controller: controller, settings: controller.effectiveSettings(for: selectedProject))
         }
         .ignoresSafeArea(.keyboard, edges: isDrawerOpen || drawerDrag != 0 ? .all : [])
@@ -221,13 +221,13 @@ struct FamiliarChatView: View {
             controller.presentationContext = modelContext
             controller.settings = FamiliarSettingsStore.load()
             if !isHosted { controller.recoverInterruptedRuns(in: modelContext) }
-            try? FamiliarSkillService().installExampleIfNeeded(in: modelContext)
+            if !isHosted { try? FamiliarSkillService().installExampleIfNeeded(in: modelContext) }
             if !isHosted, controller.selectedConversationID == nil,
                let first = conversations.first(where: { $0.project == nil }) {
                 controller.select(first.id, in: modelContext)
             }
             FamiliarChatTestScenario.seedHistory(in: controller)
-            if controller.selectedConversationID == nil, controller.messages.isEmpty {
+            if controller.selectedConversationID == nil, !controller.hasHistory {
                 Task { @MainActor in await Task.yield(); if detailVisible { isComposerFocused = true } }
             }
             refreshConfiguredProviders()
@@ -253,6 +253,8 @@ struct FamiliarChatView: View {
         }
         .onDisappear {
             detailVisible = false
+            controller.sendPresentation.cancel()
+            isComposerFocused = false
             if !isHosted { controller.cancelFollowUps() }
             speechPlayer.stop()
             Task { await controller.checkpointDraft(in: modelContext); await speechTranscriber.stop(); await controller.checkpointDraft(in: modelContext) }
@@ -276,18 +278,23 @@ struct FamiliarChatView: View {
                 handleSharedInbox()
             }
         }
+        .onChange(of: controller.surfaces.orderedSurfaces.first(where: { $0.kind == .runStatus })?.phase) { _, phase in
+            guard detailAllowsReading, scenePhase == .active, !controller.scrollSession.isInspecting,
+                  let phase, let announcement = FamiliarAccessibility.runAnnouncement(for: phase) else { return }
+            FamiliarAccessibility.announce(announcement)
+        }
         .onChange(of: controller.draft) { _, _ in
             controller.scheduleDraftCheckpoint(in: modelContext)
             handlePendingSystemEntry()
             handleSharedInbox()
         }
         .onChange(of: controller.draftAttachments) { _, _ in
-            controller.scheduleDraftCheckpoint(in: modelContext)
+            controller.scheduleDraftCheckpoint(in: modelContext, immediately: true)
             handlePendingSystemEntry()
             handleSharedInbox()
         }
         .onChange(of: controller.draftImages.map(\.id)) { _, _ in
-            controller.scheduleDraftCheckpoint(in: modelContext)
+            controller.scheduleDraftCheckpoint(in: modelContext, immediately: true)
             handlePendingSystemEntry()
             handleSharedInbox()
         }
@@ -424,14 +431,8 @@ struct FamiliarChatView: View {
     }
 
     private var spotlightConversations: [FamiliarSpotlightConversation] {
-        conversations.compactMap { conversation in
-            guard !conversation.messages.isEmpty || !conversation.agentRuns.isEmpty else { return nil }
-            return FamiliarSpotlightConversation(
-                id: conversation.id,
-                title: conversation.title,
-                updatedAt: conversation.updatedAt
-            )
-        }
+        guard !isHosted else { return [] }
+        return (try? FamiliarSpotlightIndexer.storedConversations(in: modelContext)) ?? []
     }
 
     private var installedSkillIDs: [UUID] {
@@ -444,8 +445,7 @@ struct FamiliarChatView: View {
 
     private var isInNewConversation: Bool {
         !controller.isSending && !controller.isCompacting
-            && controller.messages.isEmpty
-            && controller.agentRuns.isEmpty
+            && !controller.hasHistory
             && controller.pendingConfirmations.isEmpty
             && controller.pendingClarifications.isEmpty
             && controller.streamingText.isEmpty
@@ -453,6 +453,7 @@ struct FamiliarChatView: View {
     }
 
     private func updateSpotlightIndex(_ conversations: [FamiliarSpotlightConversation]) {
+        guard !isHosted else { return }
         Task {
             await FamiliarSpotlightIndexer.shared.replaceConversations(conversations)
         }
@@ -628,6 +629,7 @@ struct FamiliarChatView: View {
                     onSaveSettings: {
                         controller.updateSettings($0, in: modelContext)
                         refreshConfiguredProviders()
+                        return controller.settings
                     }
                 )
             case .terminal(let scope):
@@ -650,7 +652,7 @@ struct FamiliarChatView: View {
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button(String(localized: "common.cancel")) { dismissActiveSheet() } } }
                 }
             case .export:
-                FamiliarChatExportView(messages: controller.messages)
+                FamiliarChatExportView(conversationID: controller.selectedConversationID)
             case .usage:
                 FamiliarUsageView(conversationID: controller.selectedConversationID)
             case .files:
@@ -739,28 +741,25 @@ struct FamiliarChatView: View {
                     .environment(\.familiarComposerActions, composerActions)
                     .environment(\.familiarSkillsDismissRevision, skillsDismissRevision)
                 }
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if findState.isPresented, let id = controller.selectedConversationID {
+                        FamiliarConversationFindBar(conversationID: id, state: findState)
+                    }
+                }
+                .environment(\.familiarChatScrollSession, controller.scrollSession)
                 .modifier(FamiliarChatNavigationChrome(bar: topBar, hosted: isHosted))
     }
 
     @ViewBuilder
     private var chatBody: some View {
         if !controller.isSending, !controller.isCompacting,
-           controller.messages.isEmpty,
-           controller.agentRuns.isEmpty,
+           !controller.hasHistory,
            controller.pendingConfirmations.isEmpty,
            controller.pendingClarifications.isEmpty,
            controller.streamingText.isEmpty,
            controller.streamingReasoningSummary.isEmpty,
            !controller.hasTransientActivity {
-            FamiliarEmptyConversationView(
-                isProviderConfigured: isSelectedProviderConfigured,
-                onConfigure: { present(.settings(nil)) },
-                onPrompt: { prompt in
-                    controller.draftSelection = nil
-                    controller.draft = prompt
-                    isComposerFocused = true
-                }
-            )
+            Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
             .id(controller.selectedConversationID)
         } else {
             FamiliarMessageTimeline(
@@ -771,6 +770,7 @@ struct FamiliarChatView: View {
                 availableUndoKeys: controller.availableUndoKeys,
                 completedUndoKeys: controller.completedUndoKeys,
                 onInsertPrompt: { prompt in
+                    guard controller.messageEdit == nil || !controller.isSending else { return }
                     controller.draftSelection = nil
                     controller.draft = prompt
                     isComposerFocused = true
@@ -778,14 +778,18 @@ struct FamiliarChatView: View {
                 onUndo: { runID, toolCallID in
                     controller.undo(runID: runID, toolCallID: toolCallID, in: modelContext)
                 },
-                onEdit: { pendingMessageOperation = .edit($0) },
+                onEdit: { message in
+                    if controller.prepareToEdit(message, in: modelContext) { isComposerFocused = true }
+                },
                 onRetry: { pendingMessageOperation = .retry($0) },
                 onRetryRecovery: { controller.retry(runID: $0, in: modelContext) },
                 scrollSession: controller.scrollSession,
-                initialMessageID: initialMessageID
+                initialMessageID: initialMessageID, findState: findState,
+                historyIndex: controller.historyIndex,
+                onLoadHistory: { controller.historyIndex == nil || controller.loadHistory(anchor: $0, in: modelContext) }
             )
             .id(controller.selectedConversationID)
-            .environment(\.familiarCanMarkRead, rootCanMarkRead && detailVisible && presentedSheet == nil && projectChatSheet == nil && webDestination == nil && !showsRewrite && controller.errorMessage == nil && pendingMessageOperation == nil && !confirmsClearChat)
+            .environment(\.familiarCanMarkRead, detailAllowsReading)
             .environment(\.openURL, OpenURLAction { url in
                 guard FamiliarConversationURLRouter.shouldOpenInApp(url) else {
                     return .systemAction
@@ -796,13 +800,23 @@ struct FamiliarChatView: View {
         }
     }
 
+    private var detailAllowsReading: Bool {
+        rootCanMarkRead && !findState.isPresented && detailVisible && presentedSheet == nil &&
+            projectChatSheet == nil && webDestination == nil && !showsRewrite && controller.errorMessage == nil &&
+            pendingMessageOperation == nil && !confirmsClearChat
+    }
+
     private var composerActions: FamiliarComposerActions {
         let undo: (@MainActor () -> Void)?
         if controller.draftRewriteUndo?.applied == controller.draft { undo = { controller.undoDraftRewrite() } }
         else { undo = nil }
         return .init(identity: controller.executionID,
             onPolish: { showsRewrite = true },
-            onOpenSkills: { present(.settings(.skills)) }, onSkillsChanged: { skillsMenuOpen = $0 }, onUndo: undo)
+            onOpenSkills: { present(.settings(.skills)) }, onSkillsChanged: { skillsMenuOpen = $0 }, onUndo: undo,
+            onAttachmentImport: { started in
+                controller.pendingAttachmentImports = max(0, controller.pendingAttachmentImports + (started ? 1 : -1))
+                if !started { controller.scheduleDraftCheckpoint(in: modelContext, immediately: true) }
+            })
     }
 
     private var topBar: FamiliarChatTopBar {
@@ -818,9 +832,13 @@ struct FamiliarChatView: View {
             isNewConversation: isInNewConversation,
             onOpenSettings: { if isHosted { onBack?() } else { present(.settings(nil)) } },
             isHosted: isHosted,
-            conversationTitle: controller.selectedConversationID.flatMap { id in conversations.first { $0.id == id }?.title },
+            onSearch: {
+                isComposerFocused = false
+                skillsDismissRevision += 1
+                findState.isPresented = true
+            },
             onCompact: { controller.compactCurrentConversation(in: modelContext) },
-            canCompact: controller.messages.count > 4,
+            canCompact: controller.durableMessageCount > 4,
             onClear: { confirmsClearChat = true },
             onFiles: { present(.files) },
             onTerminal: { present(.terminal(controller.currentScope)) },
@@ -836,7 +854,13 @@ struct FamiliarChatView: View {
                 Task { @MainActor in
                     await speechTranscriber.stop()
                     if speechPlayer.isSpeaking { speechPlayer.stop() }
-                    else if let reply = controller.messages.last(where: { $0.role == .assistant }) { speechPlayer.speak(reply.content) }
+                    else if let id = controller.selectedConversationID {
+                        do {
+                            if let reply = try FamiliarChatHistoryStore.latestAssistantMessage(conversationID: id, in: modelContext) {
+                                speechPlayer.speak(reply.content)
+                            }
+                        } catch { controller.errorMessage = error.localizedDescription }
+                    }
                 }
             },
             isSpeaking: speechPlayer.isSpeaking,
@@ -1103,12 +1127,6 @@ struct FamiliarChatView: View {
         guard let operation = pendingMessageOperation else { return }
         pendingMessageOperation = nil
         switch operation {
-        case .edit(let message):
-            controller.prepareToEdit(message, in: modelContext)
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(120))
-                isComposerFocused = true
-            }
         case .retry(let message):
             controller.retry(message, in: modelContext)
         }
@@ -1174,19 +1192,16 @@ private enum FamiliarPendingDraftNavigation: Identifiable {
 }
 
 private enum FamiliarPendingMessageOperation: Identifiable {
-    case edit(FamiliarMessageSnapshot)
     case retry(FamiliarMessageSnapshot)
 
     var id: String {
         switch self {
-        case .edit(let message): "edit-\(message.id.uuidString)"
         case .retry(let message): "retry-\(message.id.uuidString)"
         }
     }
 
     var actionTitle: String {
         switch self {
-        case .edit: String(localized: "message.edit_and_resend")
         case .retry: String(localized: "message.retry")
         }
     }
@@ -1202,8 +1217,9 @@ private struct FamiliarChatNavigationChrome: ViewModifier {
             content
                 .toolbar(.visible, for: .navigationBar)
                 .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(.hidden, for: .navigationBar)
+                .scrollEdgeEffectHidden(true, for: .top)
                 .toolbar {
-                    ToolbarItem(placement: .principal) { bar.modelMenu }
                     ToolbarItem(placement: .topBarTrailing) { bar.actionMenu }
                 }
         } else {
@@ -1225,10 +1241,7 @@ private struct FamiliarTopBarInstaller<Bar: View>: ViewModifier {
 }
 
 private struct FamiliarChatTopBar: View {
-    @Environment(\.familiarReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .body) private var modelLabelSize: CGFloat = 17
     private let toolbarIconSize = FamiliarIconSize.prominent
-    private let modelChevronSize: CGFloat = 11
     let provider: FamiliarProviderDescriptor
     let model: FamiliarModelDescriptor
     let project: FamiliarProject?
@@ -1237,8 +1250,7 @@ private struct FamiliarChatTopBar: View {
     let isNewConversation: Bool
     let onOpenSettings: () -> Void
     var isHosted: Bool = false
-    var conversationTitle: String? = nil
-    @Environment(\.dynamicTypeSize) private var dynamicType
+    let onSearch: () -> Void
     let onCompact: () -> Void
     let canCompact: Bool
     let onClear: () -> Void
@@ -1276,48 +1288,26 @@ private struct FamiliarChatTopBar: View {
             .accessibilityLabel(String(localized: isHosted ? "common.back" : "drawer.settings"))
             .accessibilityIdentifier(isHosted ? "chat.back" : "chat.settings")
 
-            modelMenu
             Spacer(minLength: 0)
             actionMenu
         }
     }
 
-    var modelMenu: some View {
-Menu {
-                if project?.modelIDOverride != nil {
-                    Section(String(localized: "chat.model.project", defaultValue: "Project model")) {
-                        Button(String(localized: "project.model.follow_global", defaultValue: "Follow global setting"), action: onFollowDefaultModel)
-                    }
-                }
-                if providerOptions.isEmpty {
-                    Button(action: onConfigure) {
-                        Label(String(localized: "empty.configure"), systemImage: "key")
-                    }
-                } else {
-                    ForEach(providerOptions) { provider in
-                        providerMenu(provider)
-                    }
-                }
-            } label: {
-                VStack(spacing: 1) {
-                    if isHosted, let conversationTitle {
-                        Text(conversationTitle).font(dynamicType.isAccessibilitySize ? .subheadline.weight(.semibold) : .caption.weight(.semibold))
-                            .lineLimit(1).minimumScaleFactor(0.75)
-                    }
-                    if !dynamicType.isAccessibilitySize || conversationTitle == nil {
-                        HStack(spacing: FamiliarSpacing.small) {
-                            Text(model.displayName).font(.system(size: modelLabelSize, weight: .medium)).lineLimit(1)
-                            Image(systemName: "chevron.down").font(.system(size: modelChevronSize, weight: .semibold))
-                        }
-                    }
-                }
-                .padding(.horizontal, FamiliarSpacing.large)
-                .frame(height: FamiliarControlSize.minimumHitTarget)
+    private var modelMenu: some View {
+        Menu {
+            if project?.modelIDOverride != nil {
+                Button(String(localized: "project.model.follow_global"), action: onFollowDefaultModel)
             }
-            .buttonStyle(FamiliarIconButtonStyle())
-            .familiarGlassSurface(interactive: true)
-            .disabled(isSending)
-            .accessibilityLabel(String(format: String(localized: "model.current"), provider.displayName, model.displayName))
+            if providerOptions.isEmpty {
+                Button(action: onConfigure) { Label(String(localized: "empty.configure"), systemImage: "key") }
+            } else {
+                ForEach(providerOptions) { provider in providerMenu(provider) }
+            }
+        } label: {
+            Label(String(localized: "model.current.entry"), systemImage: "cpu")
+        }
+        .disabled(isSending)
+        .accessibilityIdentifier("chat.model")
     }
 
     var actionMenu: some View {
@@ -1327,6 +1317,10 @@ Menu {
                     }
                     .disabled(isSending || isNewConversation)
                     .accessibilityIdentifier("chat.new")
+                    Divider()
+                    modelMenu
+                    Button(action: onSearch) { Label(String(localized: "local_search.find"), systemImage: "magnifyingglass") }
+                        .disabled(isNewConversation).accessibilityIdentifier("chat.find")
                     Divider()
                     if project != nil { Button(action: onOpenProject) { Label(String(localized: "project.details"), systemImage: "folder.badge.gearshape") }.accessibilityIdentifier("chat.projectDetails") }
                     Button(action: onFork) { Label(String(localized: "chat.branch"), systemImage: "arrow.branch") }.disabled(isSending || isNewConversation)
@@ -1344,14 +1338,11 @@ Menu {
                     Button(action: onUsage) { Label(String(localized: "usage.title"), systemImage: "number") }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.system(size: toolbarIconSize, weight: .semibold))
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+                        .font(.system(size: 17, weight: .semibold))
                 }
                 .accessibilityLabel(String(localized: "chat.more"))
                 .accessibilityIdentifier("chat.more")
-                .buttonStyle(FamiliarIconButtonStyle())
-                .familiarGlassCircle(interactive: true)
+                .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -1387,99 +1378,6 @@ Menu {
 }
 
 
-
-private struct FamiliarEmptyConversationView: View {
-    let isProviderConfigured: Bool
-    let onConfigure: () -> Void
-    let onPrompt: (String) -> Void
-
-    private static let allPrompts: [String] = (1...10).map {
-        NSLocalizedString("empty.prompt.\($0)", comment: "")
-    }
-
-    @State private var suggestions: [String] = FamiliarEmptyConversationView.randomSuggestions()
-
-    private static func randomSuggestions() -> [String] {
-        Array(allPrompts.shuffled().prefix(3))
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: FamiliarSpacing.section) {
-                Spacer(minLength: 94)
-
-                ZStack {
-                    Circle()
-                        .fill(FamiliarTheme.brandGlow)
-                        .frame(width: 76, height: 76)
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 29, weight: .medium))
-                        .foregroundStyle(FamiliarTheme.accent)
-                }
-
-                VStack(spacing: FamiliarSpacing.small) {
-                    Text(String(localized: "empty.title"))
-                        .font(FamiliarTypography.screenTitle)
-                    Text(String(localized: "empty.subtitle"))
-                        .font(FamiliarTypography.body)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-
-                if isProviderConfigured {
-                    VStack(spacing: FamiliarSpacing.small) {
-                        ForEach(suggestions, id: \.self) { suggestion in
-                            PromptSuggestion(title: suggestion, onSelect: onPrompt)
-                        }
-                    }
-                    .frame(maxWidth: 420)
-                } else {
-                    Button {
-                        onConfigure()
-                    } label: {
-                        Text(String(localized: "empty.configure"))
-                            .font(FamiliarTypography.button)
-                    }
-                    .buttonStyle(FamiliarPillButtonStyle(prominence: .primary))
-                }
-
-                Spacer(minLength: 40)
-            }
-            .padding(.horizontal, FamiliarSpacing.section)
-            .frame(maxWidth: .infinity)
-        }
-        .scrollDismissesKeyboard(.interactively)
-    }
-}
-
-private struct PromptSuggestion: View {
-    let title: String
-    let onSelect: (String) -> Void
-
-    var body: some View {
-        Button {
-            onSelect(title)
-        } label: {
-            HStack {
-                Text(title)
-                    .font(FamiliarTypography.secondary.weight(.medium))
-                    .multilineTextAlignment(.leading)
-                Spacer()
-                Image(systemName: "arrow.up.left")
-                    .font(FamiliarTypography.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, FamiliarSpacing.large)
-            .frame(minHeight: FamiliarControlSize.minimumHitTarget)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .background(
-            FamiliarTheme.elevatedFill,
-            in: RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous)
-        )
-    }
-}
 
 private struct FamiliarConversationDrawer: View {
     @Environment(\.familiarReduceMotion) private var reduceMotion

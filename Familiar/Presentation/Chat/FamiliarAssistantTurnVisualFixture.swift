@@ -65,7 +65,6 @@ struct FamiliarAssistantTurnVisualFixture: View {
                 fixtureSection(String(localized: "visual.fixture.sources", defaultValue: "Sources"), id: "sources") {
                     FamiliarAssistantFooter(
                         message: Self.sourceMessage,
-                        onRetryMessage: {},
                         onInsertPrompt: { draft = $0 }
                     )
                 }
@@ -75,6 +74,7 @@ struct FamiliarAssistantTurnVisualFixture: View {
             .frame(maxWidth: .infinity)
         }
         .background(FamiliarTheme.page)
+        .modifier(FamiliarMessageFileNavigation())
         .navigationTitle(String(localized: "visual.fixture.title", defaultValue: "Assistant Turn Fixture"))
     }
 

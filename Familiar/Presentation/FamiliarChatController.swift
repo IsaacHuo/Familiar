@@ -11,17 +11,32 @@ private nonisolated enum FamiliarDraftPreparationError: LocalizedError {
 @MainActor
 @Observable
 final class FamiliarChatController {
+    @ObservationIgnored let sendPresentation = FamiliarSendPresentation()
     var selectedConversationID: UUID?
     var selectedProjectID: UUID?
     var selectedSkillID: UUID?
     var messages: [FamiliarMessageSnapshot] = []
+    private(set) var historyIndex: FamiliarConversationHistoryIndex?
+    private(set) var loadedHistoryAnchorID: String?
+    var durableMessageCount: Int { historyIndex?.messageCount ?? messages.count }
+    var hasHistory: Bool { historyIndex.map { !$0.entries.isEmpty } ?? (!messages.isEmpty || !modelSwitches.isEmpty || !agentRuns.isEmpty) }
     var modelSwitches: [FamiliarModelSwitchSnapshot] = []
     var agentRuns: [FamiliarAgentRunSnapshot] = []
     var pendingConfirmations: [FamiliarToolConfirmationRequest] = []
     var pendingClarifications: [FamiliarClarificationRequest] = []
-    var draft = ""
-    var draftSelection: TextSelection?
+    var draft = "" {
+        didSet {
+            guard draft != oldValue else { return }
+            draftRevision = UUID()
+            draftSelection = .caretAtEnd(of: draft)
+            draftRewriteUndo = nil
+        }
+    }
+    @ObservationIgnored private(set) var draftRevision = UUID()
+    var draftSelection: FamiliarComposerSelection?
     var draftRewriteUndo: FamiliarDraftRewriteUndo?
+    var messageEdit: FamiliarMessageEditState?
+    @ObservationIgnored var submittedMessageEdit: FamiliarSubmittedMessageEdit?
     @ObservationIgnored var isDiscarded = false
     @ObservationIgnored var draftCheckpointID: UUID?
     @ObservationIgnored var draftSaveTask: Task<Void, Never>?
@@ -29,6 +44,7 @@ final class FamiliarChatController {
     let scrollSession = FamiliarChatScrollSession()
     @ObservationIgnored var presentationContext: ModelContext?
     var execution: FamiliarForegroundExecution { dependencies.foregroundExecution }
+    var draftAttachmentIdentity = UUID()
     var draftImages: [FamiliarDraftImage] = []
     var draftAttachments: [FamiliarAttachmentDraft] = []
     var streamingResponseBlocks: [FamiliarLiveResponseBlock] = []
@@ -47,6 +63,8 @@ final class FamiliarChatController {
     var completedUndoKeys: Set<String> = []
     @ObservationIgnored private var sessionUndoKeys: Set<String> = []
     var isCompacting = false { didSet { if !isSending && !isCompacting { dependencies.foregroundExecution.release(executionID) } } }
+    var pendingAttachmentImports = 0
+    var draftRewriteRequestID: UUID?
     var isSending = false { didSet { if !isSending && !isCompacting { dependencies.foregroundExecution.release(executionID) } } }
     var errorMessage: String?
     var settings = FamiliarSettingsStore.load()
@@ -69,9 +87,13 @@ final class FamiliarChatController {
     }
 
     func markReplyRead(_ id: UUID) {
-        guard let context = presentationContext, let conversation = selectedConversation(in: context),
-              conversation.messages.contains(where: { $0.id == id && $0.role == .assistant }) else { return }
+        guard let context = presentationContext, let conversation = selectedConversation(in: context) else { return }
         do {
+            let conversationID = conversation.id
+            let exists = try context.fetchCount(FetchDescriptor<FamiliarMessage>(predicate: #Predicate {
+                $0.id == id && $0.conversation?.id == conversationID && $0.roleRawValue == "assistant"
+            }))
+            guard exists > 0 else { return }
             let state = try FamiliarChatListStore.state(for: conversation, in: context)
             guard state.isUnread else { return }
             FamiliarChatListStore.markRead(state, replyID: id)
@@ -85,8 +107,8 @@ final class FamiliarChatController {
         return dependencies.makeModelProvider(for: descriptor, apiKey: credential, sessionID: (selectedConversationID ?? draftConversationID).uuidString)
     }
 
-    func applyDraftRewrite(_ result: FamiliarDraftRewriteResult, source: String, sourceID: UUID, selection: TextSelection?) throws {
-        guard !isDiscarded, sourceID == (selectedConversationID ?? draftConversationID), draft == source else { throw FamiliarDraftRewriteError.changed }
+    func applyDraftRewrite(_ result: FamiliarDraftRewriteResult, source: String, sourceID: UUID, sourceRevision: UUID, selection: FamiliarComposerSelection?) throws {
+        guard !isDiscarded, sourceID == (selectedConversationID ?? draftConversationID), sourceRevision == draftRevision, draft == source else { throw FamiliarDraftRewriteError.changed }
         draftSelection = nil
         draft = result.text
         draftRewriteUndo = .init(source: source, applied: result.text, selection: selection)
@@ -120,7 +142,8 @@ final class FamiliarChatController {
         var staged: [String] = []
         do {
             context.insert(fork)
-            for snapshot in messages {
+            let history = try FamiliarChatHistoryStore.messages(conversationID: original.id, in: context)
+            for snapshot in history {
                 let message = FamiliarMessage(role: snapshot.role, content: snapshot.content, createdAt: snapshot.createdAt, sequence: snapshot.sequence, providerID: snapshot.providerID, modelID: snapshot.modelID, conversation: fork)
                 context.insert(message)
                 for source in snapshot.attachments {
@@ -153,8 +176,12 @@ final class FamiliarChatController {
     }
 
     func compactCurrentConversation(in context: ModelContext) {
-        guard !isSending && !isCompacting, let conversation = selectedConversation(in: context), messages.count > 4 else { return }
-        let prefix = Array(messages.dropLast(4)).filter { $0.sequence > (conversation.summaryThroughSequence ?? -1) }
+        guard !isSending && !isCompacting, let conversation = selectedConversation(in: context) else { return }
+        let history: [FamiliarMessageSnapshot]
+        do { history = try FamiliarChatHistoryStore.messages(conversationID: conversation.id, in: context) }
+        catch { errorMessage = error.localizedDescription; return }
+        guard history.count > 4 else { return }
+        let prefix = Array(history.dropLast(4)).filter { $0.sequence > (conversation.summaryThroughSequence ?? -1) }
         guard let last = prefix.last else { return }
         let value = settings.applyingProjectModelOverride(conversation.project?.modelIDOverride, providerID: conversation.project?.providerIDOverride)
         guard let descriptor = value.resolvedProvider, let key = FamiliarProviderFactory.credential(for: descriptor) else {
@@ -275,6 +302,7 @@ final class FamiliarChatController {
             messages = []
             modelSwitches = []
             agentRuns = []
+            historyIndex = nil; loadedHistoryAnchorID = nil
             availableUndoKeys = []
             resetTransientRunState()
             return conversation
@@ -297,6 +325,7 @@ final class FamiliarChatController {
         messages = []
         modelSwitches = []
         agentRuns = []
+        historyIndex = nil; loadedHistoryAnchorID = nil
         availableUndoKeys = []
         resetTransientRunState()
     }
@@ -341,6 +370,7 @@ final class FamiliarChatController {
                 messages = []
                 modelSwitches = []
                 agentRuns = []
+                historyIndex = nil; loadedHistoryAnchorID = nil
                 availableUndoKeys = []
                 resetTransientRunState()
             }
@@ -357,6 +387,8 @@ final class FamiliarChatController {
         let title = proposedTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return }
         conversation.title = String(title.prefix(80))
+        conversation.titleOrigin = "manual"
+        conversation.titleRevision = UUID()
         conversation.updatedAt = Date()
         do {
             try context.save()
@@ -370,6 +402,9 @@ final class FamiliarChatController {
         cancelFollowUps()
         guard !isSending && !isCompacting else { return }
         let capturedDraft = draft
+        let capturedRevision = draftRevision
+        let capturedSelection = draftSelection
+        let capturedEdit = messageEdit
         let prompt = capturedDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         let capturedAttachments = draftAttachments
         let capturedImages = draftImages
@@ -402,7 +437,13 @@ final class FamiliarChatController {
         let messageID = UUID()
         let createdAt = Date()
         let nextSequence = nextConversationSequence(in: existingConversation)
-        let history = messages
+        let history: [FamiliarMessageSnapshot]
+        do {
+            if let existingConversation {
+                history = try FamiliarChatHistoryStore.messages(conversationID: existingConversation.id,
+                    beforeSequence: capturedEdit?.sequence, in: context)
+            } else { history = [] }
+        } catch { errorMessage = error.localizedDescription; return }
         guard dependencies.foregroundExecution.claim(executionID) else {
             errorMessage = String(localized: "chat.execution.busy"); return
         }
@@ -422,7 +463,7 @@ final class FamiliarChatController {
                 let available = requestSettings.selectedModel.capabilities.supportsTools ? await runRegistry.snapshot() : []
                 try Task.checkCancellation()
                 let seed = try makeContextSeed(project: project, conversation: existingConversation, conversationID: conversationID,
-                    skills: skills, query: prompt, settings: requestSettings, context: context)
+                    skills: skills, query: prompt, settings: requestSettings, context: context, includeSummary: capturedEdit == nil)
                 let manifests = try FamiliarProjectService().filterCapabilities(available, projectID: project?.id, in: context)
                     .filter { FamiliarToolGroup.group(for: $0.name) != .memory || requestSettings.isAutomaticMemoryEnabled }
                 let configurations = try FamiliarMCPService.configurations(projectID: project?.id, conversationID: conversationID, in: context)
@@ -430,7 +471,8 @@ final class FamiliarChatController {
                 for (index, image) in capturedImages.enumerated() {
                     try Task.checkCancellation()
                     if image.attachment == nil {
-                        imageDrafts.append(try await FamiliarAttachmentStore.importImage(image.image, filename: "photo-\(index + 1).jpg"))
+                        guard let bitmap = image.image else { throw FamiliarAttachmentStoreError.sourceUnavailable }
+                        imageDrafts.append(try await FamiliarAttachmentStore.importImage(bitmap, filename: "photo-\(index + 1).jpg"))
                     }
                 }
                 let attachments = capturedAttachments + capturedImages.compactMap(\.attachment) + imageDrafts
@@ -470,7 +512,8 @@ final class FamiliarChatController {
                 guard FamiliarProviderFactory.credential(for: descriptor) != nil || FamiliarChatTestScenario.credential != nil else {
                     throw FamiliarOAuthError.missingCredential
                 }
-                guard draft == capturedDraft, draftAttachments == capturedAttachments,
+                guard draft == capturedDraft, draftRevision == capturedRevision, messageEdit == capturedEdit,
+                      draftAttachments == capturedAttachments,
                       draftImages.map(\.id) == capturedImages.map(\.id), selectedSkillID == capturedSkillID,
                       project == nil || fetchProject(id: project!.id, in: context) != nil,
                       existingConversation == nil || fetchConversation(id: conversationID, in: context) != nil else {
@@ -478,6 +521,10 @@ final class FamiliarChatController {
                 }
                 let conversation = existingConversation ?? FamiliarConversation(id: conversationID,
                     currentProviderID: requestSettings.providerID, currentModelID: requestSettings.modelID, project: project)
+                let editSubmission = try capturedEdit.map { edit in
+                    try makeMessageEditSubmission(edit, userMessageID: messageID,
+                        workingDraft: .init(text: capturedDraft, selection: capturedSelection, skillID: capturedSkillID, attachments: attachments), in: context)
+                }
                 var copiedPaths: [String] = []
                 do {
                     if existingConversation == nil { context.insert(conversation) }
@@ -493,22 +540,23 @@ final class FamiliarChatController {
                     conversation.currentProviderID = requestSettings.providerID
                     conversation.currentModelID = requestSettings.modelID
                     conversation.updatedAt = Date()
-                    if existingConversation == nil || conversation.messages.count == 1 {
-                        conversation.title = String((prompt.isEmpty ? attachments.first?.filename ?? String(localized: "conversation.new") : prompt).prefix(28))
-                    }
                     try FamiliarFileCatalogService().stageUploads(userMessage.attachments, in: context)
                     try FamiliarMemoryService().stageUsage(ids: Set(snapshot.memories.map(\.id)), in: context)
                     try FamiliarChatListStore.stageMessage(userMessage, in: context)
-                    if let savedDraft = try FamiliarChatListStore.draft(conversationID, in: context) { context.delete(savedDraft) }
+                    if let editSubmission {
+                        try stageSubmittedMessageEditDraft(editSubmission, conversationID: conversationID, in: context)
+                    } else if let savedDraft = try FamiliarChatListStore.draft(conversationID, in: context) { context.delete(savedDraft) }
                     try context.save()
                 } catch {
                     context.rollback()
                     FamiliarAttachmentStore.remove(relativePaths: copiedPaths)
                     throw error
                 }
+                sendPresentation.commit(id: messageID, scopeID: conversationID, text: capturedDraft)
                 // Consume the draft only after the complete submission save succeeds.
                 selectedConversationID = conversationID
-                FamiliarAttachmentStore.remove(relativePaths: attachments.map(\.relativePath))
+                submittedMessageEdit = editSubmission
+                if editSubmission == nil { FamiliarAttachmentStore.remove(relativePaths: attachments.map(\.relativePath)) }
                 imageDrafts = []
                 draftSelection = nil
                 draft = ""
@@ -522,6 +570,7 @@ final class FamiliarChatController {
                 streamingMessageID = responseID
                 await performSend(contextSnapshot: snapshot, runRegistry: runRegistry, deferredGroups: deferredGroups,
                     apiKey: apiKey, descriptor: descriptor, settings: requestSettings, responseID: responseID, context: context)
+                await restoreUncommittedMessageEdit(in: context)
             } catch is CancellationError {
                 resetTransientRunState()
             } catch {
@@ -584,47 +633,6 @@ final class FamiliarChatController {
                 ?? selectedProjectID.flatMap({ fetchProject(id: $0, in: context) }) else { return }
         do { try FamiliarProjectService().updateModelOverride(project, modelID: "", in: context) }
         catch { errorMessage = error.localizedDescription }
-    }
-
-    func prepareToEdit(_ message: FamiliarMessageSnapshot, in context: ModelContext) {
-        guard !execution.isBusy && !isSending && !isCompacting,
-              message.role == .user,
-              let conversation = selectedConversation(in: context)
-        else { return }
-        guard permitsRegeneration(conversation.agentRuns.filter { $0.startedAt >= message.createdAt }, in: context) else { return }
-
-        let stagedAttachments: [FamiliarAttachmentDraft]
-        do {
-            stagedAttachments = try stagedCopies(of: message.attachments)
-        } catch {
-            errorMessage = error.localizedDescription
-            return
-        }
-        conversation.contextSummary = nil
-        conversation.summaryThroughSequence = nil
-        let messagesToDelete = conversation.messages.filter { $0.sequence >= message.sequence }
-        let attachmentPaths = messagesToDelete.flatMap { $0.attachments.map(\.relativePath) }
-        messagesToDelete.forEach(context.delete)
-        conversation.modelSwitchRecords
-            .filter { $0.sequence >= message.sequence }
-            .forEach(context.delete)
-        let runsToDelete = conversation.agentRuns.filter { $0.startedAt >= message.createdAt }
-        deleteSkillSnapshots(for: runsToDelete, in: context)
-        runsToDelete.forEach(context.delete)
-        conversation.updatedAt = Date()
-        do {
-            try context.save()
-            FamiliarAttachmentStore.remove(relativePaths: FamiliarFileCatalogService().unownedAttachmentPaths(attachmentPaths, in: context))
-            discardDraftAttachments()
-            draftSelection = nil
-            draft = message.content
-            draftAttachments = stagedAttachments
-            reloadMessages(in: context)
-        } catch {
-            context.rollback()
-            FamiliarAttachmentStore.remove(relativePaths: stagedAttachments.map(\.relativePath))
-            errorMessage = String(format: String(localized: "error.edit_message"), error.localizedDescription)
-        }
     }
 
     func retry(_ message: FamiliarMessageSnapshot, in context: ModelContext) {
@@ -780,7 +788,7 @@ final class FamiliarChatController {
         }
     }
 
-    private func permitsRegeneration(_ runs: [FamiliarAgentRun], in context: ModelContext) -> Bool {
+    func permitsRegeneration(_ runs: [FamiliarAgentRun], in context: ModelContext) -> Bool {
         do {
             for run in runs where try runRecovery.requiresInspection(run, in: context) {
                 errorMessage = String(localized: "tool.commit.retry_blocked")
@@ -791,249 +799,50 @@ final class FamiliarChatController {
     }
 
     func reloadMessages(in context: ModelContext) {
-        reloadDurableUndo(in: context)
         guard let conversation = selectedConversation(in: context) else {
-            messages = []
-            modelSwitches = []
-            agentRuns = []
+            messages = []; modelSwitches = []; agentRuns = []; historyIndex = nil; loadedHistoryAnchorID = nil
             return
         }
-        let conversationRuntimeIDs = Set(conversation.agentRuns.map(\.runtimeID))
-        let activityRecords = ((try? context.fetch(FetchDescriptor<FamiliarActivityRecord>())) ?? [])
-            .filter { conversationRuntimeIDs.contains($0.runtimeID) }
-        let approvalRecords = ((try? context.fetch(FetchDescriptor<FamiliarApprovalRecord>())) ?? [])
-            .filter { conversationRuntimeIDs.contains($0.runtimeID) }
-        let resultRecords = ((try? context.fetch(FetchDescriptor<FamiliarToolResultRecord>())) ?? [])
-            .filter { conversationRuntimeIDs.contains($0.runtimeID) }
-        let clarificationRecords = ((try? context.fetch(FetchDescriptor<FamiliarClarificationRecord>())) ?? [])
-            .filter { conversationRuntimeIDs.contains($0.runtimeID) }
-        let invocationRecords = ((try? context.fetch(FetchDescriptor<FamiliarToolInvocationRecord>())) ?? [])
-            .filter { conversationRuntimeIDs.contains($0.runtimeID) }
-        let blockRecords = ((try? context.fetch(FetchDescriptor<FamiliarResponseBlockRecord>())) ?? [])
-            .filter { conversationRuntimeIDs.contains($0.runtimeID) }
-        let activeScope = conversation.project.map { FamiliarWorkScope.project($0.id) } ?? .conversation(conversation.id)
-        let files = ((try? context.fetch(FetchDescriptor<FamiliarStoredFileVersion>())) ?? [])
-            .filter { $0.scope == activeScope }
-        let blockSnapshots = blockRecords.map(responseBlockSnapshot)
-        let blocksByMessageID = Dictionary(grouping: blockSnapshots.compactMap { block in
-            block.messageID.map { ($0, block) }
-        }, by: \.0)
-        messages = conversation.messages
-            .sorted { lhs, rhs in
-                lhs.sequence == rhs.sequence ? lhs.createdAt < rhs.createdAt : lhs.sequence < rhs.sequence
-            }
-            .map {
-                FamiliarMessageSnapshot(
-                    id: $0.id,
-                    role: $0.role,
-                    content: $0.content,
-                    createdAt: $0.createdAt,
-                    sequence: $0.sequence,
-                    providerID: $0.providerID,
-                    modelID: $0.modelID,
-                    attachments: $0.attachments
-                        .sorted { $0.createdAt < $1.createdAt }
-                        .map {
-                            FamiliarAttachmentSnapshot(
-                                id: $0.id,
-                                kind: $0.kind,
-                                filename: $0.filename,
-                                mimeType: $0.mimeType,
-                                relativePath: $0.relativePath,
-                                extractedText: $0.extractedText,
-                                byteSize: $0.byteSize,
-                                extractionEngine: $0.extractionEngine,
-                                extractionVersion: $0.extractionVersion,
-                                detectedFormat: $0.detectedFormat,
-                                usedOCR: $0.usedOCR
-                            )
-                        },
-                    sources: $0.sources
-                        .sorted { $0.sequence < $1.sequence }
-                        .compactMap { record in
-                            guard let url = URL(string: record.urlString) else { return nil }
-                            return FamiliarSource(
-                                id: record.sourceID,
-                                kind: record.kind,
-                                title: record.title,
-                                url: url,
-                                siteName: record.siteName,
-                                snippet: record.snippet,
-                                retrievedAt: record.retrievedAt,
-                                responseBlockID: record.responseBlockID,
-                                retrievalActivityID: record.retrievalActivityID,
-                                citationOrdinal: record.citationOrdinal
-                            )
-                        },
-                    responseBlocks: (blocksByMessageID[$0.id] ?? [])
-                        .map(\.1)
-                        .sorted { $0.order < $1.order },
-                    finalResponseBlockID: $0.responseBlockID
-                )
-            }
-        modelSwitches = conversation.modelSwitchRecords
-            .sorted { lhs, rhs in
-                lhs.sequence == rhs.sequence ? lhs.createdAt < rhs.createdAt : lhs.sequence < rhs.sequence
-            }
-            .map {
-                FamiliarModelSwitchSnapshot(
-                    id: $0.id,
-                    previousProviderID: $0.previousProviderID,
-                    previousModelID: $0.previousModelID,
-                    currentProviderID: $0.currentProviderID,
-                    currentModelID: $0.currentModelID,
-                    sequence: $0.sequence,
-                    createdAt: $0.createdAt
-                )
-            }
-        let skillSnapshotsByRuntimeID = Dictionary(grouping: (
-            (try? context.fetch(FetchDescriptor<FamiliarRunSkillSnapshotRecord>())) ?? []
-        ).filter { conversationRuntimeIDs.contains($0.runtimeID) }, by: \.runtimeID)
-        agentRuns = conversation.agentRuns
-            .sorted { $0.startedAt < $1.startedAt }
-            .map { run in
-                let contextSummary: FamiliarRunContextSummary? = run.contextSnapshot.map { snapshot in
-                    let toolNames = ((try? JSONDecoder().decode(
-                        [String].self,
-                        from: Data(snapshot.exposedToolNamesJSON.utf8)
-                    )) ?? []).sorted()
-                    let resources = snapshot.resourceReferences
-                        .sorted {
-                            $0.filename == $1.filename
-                                ? $0.version < $1.version
-                                : $0.filename.localizedStandardCompare($1.filename) == .orderedAscending
-                        }
-                        .map {
-                            FamiliarRunResourceSummary(
-                                versionID: $0.resourceVersionID,
-                                filename: $0.filename,
-                                version: $0.version
-                            )
-                        }
-                    let skills = (skillSnapshotsByRuntimeID[run.runtimeID] ?? [])
-                        .sorted { $0.sequence < $1.sequence }
-                        .map {
-                            FamiliarRunSkillSummary(
-                                stableID: $0.stableID,
-                                name: $0.name,
-                                version: $0.version
-                            )
-                        }
-                    return FamiliarRunContextSummary(
-                        projectName: snapshot.projectName,
-                        providerID: snapshot.providerID,
-                        modelID: snapshot.modelID,
-                        resources: resources,
-                        skills: skills,
-                        toolNames: toolNames
-                    )
-                }
-                return FamiliarAgentRunSnapshot(
-                    id: run.runtimeID,
-                    responseMessageID: run.responseMessageID,
-                    status: run.status,
-                    startedAt: run.startedAt,
-                    finishedAt: run.finishedAt,
-                    firstTokenAt: run.firstTokenAt,
-                    context: contextSummary,
-                    activities: activityRecords
-                        .filter { $0.runtimeID == run.runtimeID && !$0.activityID.hasPrefix("context:") }
-                        .sorted { $0.sequence < $1.sequence }
-                        .map {
-                            FamiliarActivitySnapshot(
-                                activityID: $0.activityID,
-                                parentID: $0.parentID,
-                                assistantTurnID: $0.assistantTurnID,
-                                kind: $0.kind,
-                                effect: $0.effect,
-                                phase: $0.phase,
-                                toolName: $0.toolName,
-                                toolCallID: $0.toolCallID,
-                                summary: $0.summary,
-                                detail: $0.detail,
-                                failureCode: $0.failureCode,
-                                failureRetryable: $0.failureRetryable,
-                                progress: $0.progress,
-                                resultRecordID: $0.resultRecordID,
-                                approvalRecordID: $0.approvalRecordID,
-                                sequence: $0.sequence,
-                                startedAt: $0.startedAt,
-                                endedAt: $0.endedAt
-                            )
-                        },
-                    approvals: approvalRecords
-                        .filter { $0.runtimeID == run.runtimeID && !$0.activityID.hasPrefix("context:") }
-                        .sorted { $0.requestedAt < $1.requestedAt }
-                        .map { record in
-                            FamiliarApprovalSnapshot(
-                                id: record.id,
-                                activityID: record.activityID,
-                                assistantTurnID: record.assistantTurnID,
-                                toolCallID: record.toolCallID,
-                                toolName: record.toolName,
-                                title: record.title,
-                                fields: (try? JSONDecoder().decode([FamiliarApprovalField].self, from: Data(record.orderedFieldsJSON.utf8))) ?? [],
-                                target: record.target,
-                                effect: record.effect,
-                                risk: record.risk,
-                                consequence: record.consequence,
-                                undoPolicy: record.undoPolicy,
-                                allowedAuthorizationDurations: (try? JSONDecoder().decode(
-                                    [FamiliarAuthorizationDuration].self,
-                                    from: Data(record.allowedAuthorizationDurationsJSON.utf8)
-                                )) ?? [.once],
-                                decision: record.decision,
-                                scope: record.scope,
-                                requestedAt: record.requestedAt,
-                                resolvedAt: record.resolvedAt,
-                                automaticAuthorization: record.automaticAuthorization
-                            )
-                        },
-                    clarifications: clarificationRecords
-                        .filter { $0.runtimeID == run.runtimeID && !$0.activityID.hasPrefix("context:") }
-                        .sorted { $0.requestedAt < $1.requestedAt }
-                        .map { record in
-                            FamiliarClarificationSnapshot(
-                                id: record.id,
-                                activityID: record.activityID,
-                                assistantTurnID: record.assistantTurnID,
-                                toolCallID: record.toolCallID,
-                                question: record.question,
-                                options: (try? JSONDecoder().decode([FamiliarClarificationOption].self, from: Data(record.optionsJSON.utf8))) ?? [],
-                                allowCustom: record.allowCustom,
-                                state: record.state,
-                                resolution: record.resolutionJSON.flatMap { try? JSONDecoder().decode(FamiliarClarificationResolution.self, from: Data($0.utf8)) },
-                                requestedAt: record.requestedAt,
-                                resolvedAt: record.resolvedAt
-                            )
-                        },
-                    toolResults: resultRecords
-                        .filter { $0.runtimeID == run.runtimeID && !$0.activityID.hasPrefix("context:") }
-                        .sorted { $0.createdAt < $1.createdAt }
-                        .map { record in
-                            FamiliarToolResultSnapshot(
-                                id: record.id,
-                                activityID: record.activityID,
-                                toolCallID: record.toolCallID,
-                                envelope: try? JSONDecoder().decode(FamiliarToolResultEnvelope.self, from: Data(record.envelopeJSON.utf8)),
-                                envelopeJSON: record.envelopeJSON,
-                                schemaVersion: record.schemaVersion,
-                                payloadName: record.payloadName,
-                                payloadHash: record.payloadHash,
-                                semanticID: record.semanticID,
-                                revision: record.revision,
-                                trust: record.trust,
-                                truncated: record.truncated,
-                                file: fileDescriptor(for: record, files: files)
-                            )
-                        },
-                    responseBlocks: blockSnapshots
-                        .filter { block in blockRecords.contains { $0.id == block.id && $0.runtimeID == run.runtimeID } }
-                        .sorted { $0.order < $1.order },
-                    regenerationRequiresInspection: (try? runRecovery.requiresInspection(run, in: context)) ?? true,
-                    uncertainToolCallIDs: Set(invocationRecords.filter { $0.runtimeID == run.runtimeID && $0.state == .committing }.map(\.toolCallID))
-                )
-            }
+        if historyIndex?.conversationID != conversation.id {
+            messages = []; modelSwitches = []; agentRuns = []; historyIndex = nil; loadedHistoryAnchorID = nil
+        }
+        do {
+            let index = try FamiliarChatHistoryStore.index(conversationID: conversation.id, in: context)
+            let anchor = scrollSession.historyAnchorID.flatMap { index.positions[$0] == nil ? nil : $0 }
+            try applyHistory(index: index, anchor: anchor, conversation: conversation, in: context)
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    @discardableResult func loadHistory(anchor: String?, in context: ModelContext) -> Bool {
+        guard let index = historyIndex, let conversation = selectedConversation(in: context),
+              index.conversationID == conversation.id else { return false }
+        if loadedHistoryAnchorID == anchor { return true }
+        do {
+            try applyHistory(index: index, anchor: anchor, conversation: conversation, in: context)
+            return true
+        } catch { errorMessage = error.localizedDescription; return false }
+    }
+
+    @discardableResult func locateHistoryMessage(_ id: UUID, in context: ModelContext) -> Bool {
+        guard let anchor = historyIndex?.messageEntries[id] else { return false }
+        guard let index = historyIndex, let conversation = selectedConversation(in: context) else { return false }
+        do {
+            try applyHistory(index: index, anchor: anchor, conversation: conversation, saveBookmark: false, in: context)
+            return true
+        } catch { errorMessage = error.localizedDescription; return false }
+    }
+
+    private func applyHistory(index: FamiliarConversationHistoryIndex, anchor: String?,
+                              conversation: FamiliarConversation, saveBookmark: Bool = true, in context: ModelContext) throws {
+        let range = index.range(anchor: anchor)
+        let page = try FamiliarChatHistoryStore.page(conversation: conversation,
+            references: Array(index.entries[range]), activeRunID: surfaces.orderedSurfaces.first?.runID, in: context)
+        // Do not publish partial payloads or a new index when a fetch fails.
+        messages = page.messages; modelSwitches = page.modelSwitches; agentRuns = page.runs
+        historyIndex = index
+        loadedHistoryAnchorID = anchor
+        if saveBookmark { scrollSession.historyAnchorID = anchor }
+        reloadDurableUndo(in: context, runtimeIDs: page.undoRuntimeIDs)
     }
 
     private func applySettings(_ value: FamiliarSettings, recordingSwitchIn context: ModelContext) {
@@ -1382,6 +1191,7 @@ final class FamiliarChatController {
                 throw CocoaError(.fileNoSuchFile)
             }
 
+            let retiredEditPaths = try stageSuccessfulMessageEdit(in: context)
             let nextSequence = nextConversationSequence(in: conversation)
             guard let runtimeID = activeRuntimeID else { throw FamiliarAgentError.incompleteResponse }
             let assistantTurnID = completedAssistantTurnID ?? "\(runtimeID):turn:response"
@@ -1475,6 +1285,7 @@ final class FamiliarChatController {
                 eventSequence: lastEventSequence, at: Date(), context: context, save: false)
             try FamiliarChatListStore.stageMessage(assistantMessage, in: context)
             try context.save()
+            finishSuccessfulMessageEdit(retiredPaths: retiredEditPaths, in: context)
             reloadMessages(in: context)
             resetTransientRunState()
             scheduleFollowUps(messageID: responseID, blockID: responseBlockID,
@@ -1506,6 +1317,8 @@ final class FamiliarChatController {
         }
     }
 
+    var hasPendingPostprocessing: Bool { followUpTask != nil }
+
     func cancelFollowUps() { followUpTask?.cancel() }
 
     private func scheduleFollowUps(messageID: UUID, blockID: UUID, conversationID: UUID,
@@ -1528,6 +1341,26 @@ final class FamiliarChatController {
             guard let self else { return }
             let result: FamiliarFollowUpSuggestions
             do {
+                if let chat = fetchConversation(id: conversationID, in: context), chat.titleOrigin == "pending" {
+                    let revision = chat.titleRevision
+                    do {
+                        let title = try await FamiliarConversationTitleService.generate(question: question, answer: answer, model: model, provider: provider)
+                        try Task.checkCancellation()
+                        if followUpGenerationID == generationID,
+                           let current = fetchConversation(id: conversationID, in: context),
+                           current.titleOrigin == "pending", current.titleRevision == revision,
+                           current.messages.contains(where: { $0.id == messageID && FamiliarHash.sha256($0.content) == hash }) {
+                            do {
+                                current.title = title
+                                current.titleOrigin = "ai"
+                                current.titleRevision = UUID()
+                                try context.save()
+                            } catch { context.rollback() }
+                        }
+                    } catch is CancellationError { throw CancellationError() }
+                    catch { /* No state changed: keep the default title and retry after a later reply. */ }
+                }
+                try Task.checkCancellation()
                 result = try await FamiliarFollowUpService.generate(question: question, answer: answer, model: model, provider: provider)
             } catch is CancellationError {
                 result = .init(state: .cancelled, model: model, answerHash: hash)
@@ -1679,17 +1512,20 @@ final class FamiliarChatController {
         }
     }
 
-    private func reloadDurableUndo(in context: ModelContext) {
-        let eventKitRecords = (try? context.fetch(FetchDescriptor<FamiliarEventKitUndoRecord>())) ?? []
-        let alarmRecords = (try? context.fetch(FetchDescriptor<FamiliarAlarmUndoRecord>())) ?? []
-        let states = eventKitRecords.map { ($0.idempotencyKey, $0.state) }
-            + alarmRecords.map { ($0.idempotencyKey, $0.state) }
+    private func reloadDurableUndo(in context: ModelContext, runtimeIDs: [String]) {
+        let eventKitRecords: [FamiliarEventKitUndoRecord] = (try? FamiliarRunHistoryQuery.fetch(runtimeIDs, in: context) { ids in
+            var query = FetchDescriptor<FamiliarEventKitUndoRecord>(predicate: #Predicate { ids.contains($0.runtimeID) })
+            query.propertiesToFetch = [\.idempotencyKey, \.stateRawValue]
+            return query
+        }) ?? []
+        let alarmRecords: [FamiliarAlarmUndoRecord] = (try? FamiliarRunHistoryQuery.fetch(runtimeIDs, in: context) { ids in
+            var query = FetchDescriptor<FamiliarAlarmUndoRecord>(predicate: #Predicate { ids.contains($0.runtimeID) })
+            query.propertiesToFetch = [\.idempotencyKey, \.stateRawValue]
+            return query
+        }) ?? []
+        let states = eventKitRecords.map { ($0.idempotencyKey, $0.state) } + alarmRecords.map { ($0.idempotencyKey, $0.state) }
         completedUndoKeys.formUnion(states.filter { $0.1 == .undone }.map(\.0))
-        let chat = selectedConversation(in: context)
-        let scope = chat.map { $0.project.map { FamiliarWorkScope.project($0.id) } ?? .conversation($0.id) }
-        let eligible = (chat?.agentRuns ?? []).filter { run in
-            (run.contextSnapshot?.workScope ?? run.project.map { .project($0.id) } ?? chat.map { .conversation($0.id) }) == scope
-        }.map { $0.runtimeID + ":" }
+        let eligible = runtimeIDs.map { $0 + ":" }
         availableUndoKeys = sessionUndoKeys.union(states.filter { $0.1 == .available }.map(\.0))
             .subtracting(completedUndoKeys).filter { key in eligible.contains { key.hasPrefix($0) } }
     }
@@ -1868,7 +1704,7 @@ final class FamiliarChatController {
         }
     }
 
-    private func stagedCopies(
+    func stagedCopies(
         of attachments: [FamiliarAttachmentSnapshot]
     ) throws -> [FamiliarAttachmentDraft] {
         var drafts: [FamiliarAttachmentDraft] = []
@@ -1884,12 +1720,15 @@ final class FamiliarChatController {
     }
 
     private func discardDraftAttachments() {
+        draftAttachmentIdentity = UUID()
+        messageEdit = nil
+        draftSelection = nil
         FamiliarAttachmentStore.remove(relativePaths: draftAttachments.map(\.relativePath))
         draftAttachments = []
         draftImages = []
     }
 
-    private func selectedConversation(in context: ModelContext) -> FamiliarConversation? {
+    func selectedConversation(in context: ModelContext) -> FamiliarConversation? {
         guard let selectedConversationID else { return nil }
         return fetchConversation(id: selectedConversationID, in: context)
     }
@@ -1903,7 +1742,7 @@ final class FamiliarChatController {
         return file.identifier
     }
 
-    private func deleteSkillSnapshots(
+    func deleteSkillSnapshots(
         for runs: [FamiliarAgentRun],
         in context: ModelContext
     ) {
@@ -1969,7 +1808,8 @@ final class FamiliarChatController {
         skills: [FamiliarSkillSnapshot],
         query: String,
         settings: FamiliarSettings,
-        context: ModelContext
+        context: ModelContext,
+        includeSummary: Bool = true
     ) throws -> FamiliarProjectContextSeed {
         let resources = try project.map { try FamiliarFileCatalogService().contextResources(projectID: $0.id, in: context) } ?? []
         let availableSkills = try project.map { try FamiliarProjectService().boundSkillSnapshots(projectID: $0.id, in: context) } ?? []
@@ -1986,39 +1826,8 @@ final class FamiliarChatController {
             skills: skills,
             availableSkills: availableSkills,
             memories: memories,
-            conversationSummary: conversation?.contextSummary,
-            summaryThroughSequence: conversation?.summaryThroughSequence
-        )
-    }
-
-    private func fileDescriptor(for result: FamiliarToolResultRecord, files: [FamiliarStoredFileVersion]) -> FamiliarFileDescriptor? {
-        guard let envelope = try? JSONDecoder().decode(FamiliarToolResultEnvelope.self, from: Data(result.envelopeJSON.utf8)),
-              case .fileMutation(let mutation) = envelope.presentation.content,
-              let file = files.first(where: {  $0.matchesFileIdentifier(mutation.identifier) && $0.createdByRunID == result.runtimeID })
-        else { return nil }
-        return FamiliarFileDescriptor(id: file.id, identifier: file.identifier, scope: file.scope,
-            title: file.title, format: file.format, relativePath: file.relativePath, byteSize: file.byteSize,
-            contentHash: file.contentHash, source: file.source, sourceURLString: file.sourceURLString,
-            sourceResourceID: file.sourceResourceID, sourceResourceVersionID: file.sourceResourceVersionID,
-            sourceCaptureID: file.sourceCaptureID, createdByRunID: file.createdByRunID,
-            utiIdentifier: file.utiIdentifier, mimeType: file.mimeType,
-            validationReceipt: file.validationReceiptJSON.flatMap { try? JSONDecoder().decode(FamiliarValidationReceipt.self, from: Data($0.utf8)) })
-    }
-
-    private func responseBlockSnapshot(_ record: FamiliarResponseBlockRecord) -> FamiliarResponseBlockSnapshot {
-        FamiliarResponseBlockSnapshot(
-            id: record.id,
-            assistantTurnID: record.assistantTurnID,
-            messageID: record.messageID,
-            kind: record.kind,
-            order: record.order,
-            state: record.state,
-            content: record.content,
-            payloadJSON: record.payloadJSON,
-            schemaVersion: record.schemaVersion,
-            startedAt: record.startedAt,
-            endedAt: record.endedAt,
-            contentHash: record.contentHash
+            conversationSummary: includeSummary ? conversation?.contextSummary : nil,
+            summaryThroughSequence: includeSummary ? conversation?.summaryThroughSequence : nil
         )
     }
 

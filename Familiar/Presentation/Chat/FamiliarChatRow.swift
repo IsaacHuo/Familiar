@@ -5,7 +5,9 @@ import UIKit
 
 struct FamiliarMessageRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicType
+    @ScaledMetric(relativeTo: .body) private var textSize: CGFloat = 17
     @Environment(\.familiarExecutionBlocked) private var executionBlocked
+    @Environment(\.familiarOpenMessageFile) private var openMessageFile
     let message: FamiliarMessageSnapshot
     let run: FamiliarAgentRunSnapshot?
     let disclosure: FamiliarRuntimeDisclosureState
@@ -17,7 +19,8 @@ struct FamiliarMessageRow: View {
     let onRetry: (FamiliarMessageSnapshot) -> Void
     let onRetryRecovery: (String) -> Void
 
-    @State private var previewAttachment: FamiliarPreparedFilePreview?
+    @State private var imagePreview: FamiliarImageGalleryRequest?
+    @State private var imageUnavailable = false
 
     var body: some View {
         Group {
@@ -38,17 +41,26 @@ struct FamiliarMessageRow: View {
                 )
             }
         }
-        .navigationDestination(item: $previewAttachment) { file in
-            FamiliarAttachmentPreviewView(url: file.url, format: file.format)
+        .fullScreenCover(item: $imagePreview) { request in
+            FamiliarImageGalleryView(request: request)
         }
+        .alert(String(localized: "attachment.error.source_unavailable"), isPresented: $imageUnavailable) { Button(String(localized: "common.ok"), role: .cancel) {} }
     }
 
     private var userMessage: some View {
-        FamiliarMessageGroupLayout(fraction: dynamicType.isAccessibilitySize ? 0.98 : 0.82, trailing: true) {
+        FamiliarMessageGroupLayout(fraction: dynamicType.isAccessibilitySize ? 0.98 : 0.85, trailing: true) {
             VStack(alignment: .trailing, spacing: FamiliarAISurfaceMetric.spaceS) {
                 ForEach(imageAttachments) { attachment in
-                    Button { if let url = FamiliarAttachmentStore.url(for: attachment.relativePath) { previewAttachment = .init(url: url) } } label: {
+                    Button {
+                        let items = imageAttachments.compactMap { item -> FamiliarImageGalleryItem? in
+                            guard let url = FamiliarAttachmentStore.url(for: item.relativePath) else { return nil }
+                            return .init(id: item.id, url: url)
+                        }
+                        if items.contains(where: { $0.id == attachment.id }) { FamiliarImagePresentation.update { imagePreview = .init(id: attachment.id, items: items) } }
+                        else { imageUnavailable = true }
+                    } label: {
                         FamiliarImageAttachmentView(relativePath: attachment.relativePath)
+                            .background(FamiliarImageSourceAnchor(id: attachment.id))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(String(format: String(localized: "attachment.preview"), attachment.filename))
@@ -57,31 +69,26 @@ struct FamiliarMessageRow: View {
                 ForEach(documentAttachments) { attachment in
                     FamiliarFileTile(file: .init(attachment: attachment)) {
                         if let url = FamiliarAttachmentStore.url(for: attachment.relativePath) {
-                            previewAttachment = .init(url: url)
+                            openMessageFile?.open(.init(url: url))
                         }
                     }
                     .frame(maxWidth: 280)
                 }
 
                 if !message.content.isEmpty {
-                    Text(message.content)
-                        .font(FamiliarTypography.body)
-                        .textSelection(.enabled)
-                        .familiarMessageBubble(isUser: true)
+                    FamiliarTextAndTimeLayout(lineHeight: UIFont.systemFont(ofSize: textSize).lineHeight, text: message.content) {
+                        FamiliarMessageText(text: message.content, messageID: message.id, edit: executionBlocked ? nil : { onEdit(message) })
+                        FamiliarMessageTimestamp(date: message.createdAt)
+                    }
+                    .familiarMessageBubble(isUser: true)
+                    .modifier(FamiliarSentMessageModifier(id: message.id))
+                } else {
+                    FamiliarMessageTimestamp(date: message.createdAt)
                 }
-                Text(message.createdAt, style: .time).font(.caption2).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
-            .contextMenu {
-                if !message.content.isEmpty {
-                    Button { UIPasteboard.general.string = message.content } label: {
-                        Label(String(localized: "common.copy"), systemImage: "doc.on.doc")
-                    }
-                }
-                Button { onEdit(message) } label: {
-                    Label(String(localized: "common.edit"), systemImage: "pencil")
-                }.disabled(executionBlocked)
-            }
+            .modifier(FamiliarSentMessageModifier(id: message.content.isEmpty ? message.id : nil))
+
         }
     }
 
@@ -94,28 +101,10 @@ struct FamiliarMessageRow: View {
     }
 }
 
-struct FamiliarMessageAction: View {
-    @Environment(\.familiarReduceMotion) private var reduceMotion
-    let symbol: String
-    let label: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .contentTransition(reduceMotion ? .opacity : .symbolEffect(.replace))
-                .font(.system(size: FamiliarIconSize.standard, weight: .regular))
-                .frame(width: FamiliarControlSize.minimumHitTarget, height: FamiliarControlSize.minimumHitTarget)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(FamiliarIconButtonStyle())
-        .accessibilityLabel(label)
-    }
-}
-
 struct FamiliarImageAttachmentView: View {
     let relativePath: String
     @State private var image: UIImage?
+    @State private var loading = true
 
     var body: some View {
         Group {
@@ -130,11 +119,19 @@ struct FamiliarImageAttachmentView: View {
                 RoundedRectangle(cornerRadius: FamiliarRadius.overlay, style: .continuous)
                     .fill(FamiliarTheme.inset)
                     .frame(width: 220, height: 180)
-                    .overlay { ProgressView() }
+                    .overlay {
+                        if loading { ProgressView() }
+                        else { Image(systemName: "photo.badge.exclamationmark").foregroundStyle(.secondary) }
+                    }
             }
         }
         .task(id: relativePath) {
-            if let url = FamiliarAttachmentStore.url(for: relativePath) { image = UIImage(contentsOfFile: url.path) }
+            image = nil; loading = true
+            let result: UIImage?
+            if let url = FamiliarAttachmentStore.url(for: relativePath) { result = await FamiliarThumbnailLoader.shared.image(url: url, pixels: 960) }
+            else { result = nil }
+            guard !Task.isCancelled else { return }
+            image = result; loading = false
         }
     }
 

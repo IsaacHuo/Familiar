@@ -5,10 +5,10 @@ import UIKit
 
 struct FamiliarDraftImage: Identifiable {
     let id: UUID
-    let image: UIImage
+    let image: UIImage?
     let attachment: FamiliarAttachmentDraft?
 
-    init(id: UUID = UUID(), image: UIImage, attachment: FamiliarAttachmentDraft? = nil) {
+    init(id: UUID = UUID(), image: UIImage? = nil, attachment: FamiliarAttachmentDraft? = nil) {
         self.id = id
         self.image = image
         self.attachment = attachment
@@ -17,7 +17,6 @@ struct FamiliarDraftImage: Identifiable {
 
 private nonisolated enum FamiliarComposerMode: Equatable {
     case compact
-    case expanded
     case fullscreen
 }
 
@@ -34,10 +33,7 @@ struct FamiliarSkillMenuItem: Identifiable, Equatable {
     let detail: String
 }
 
-private struct FamiliarComposerTextHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
+
 
 private struct FamiliarInlinePhotoPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -97,8 +93,9 @@ struct FamiliarComposer: View {
     private var undoRewrite: (@MainActor () -> Void)? { actions?.onUndo }
     @Environment(\.familiarSkillsDismissRevision) private var dismissSkillsRevision
     @Environment(\.familiarExecutionBlocked) private var executionBlocked
-    @Binding var selection: TextSelection?
-    @State private var savedSelection: Range<Int>?
+    @Binding var selection: FamiliarComposerSelection?
+    @State private var savedSelection: FamiliarComposerSelection?
+    @State private var savedSelectionText = ""
     @ScaledMetric(relativeTo: .body) private var skillRowHeight: CGFloat = 62
     @Binding var draft: String
     @Binding var images: [FamiliarDraftImage]
@@ -108,17 +105,23 @@ struct FamiliarComposer: View {
     let isSending: Bool
     let isListening: Bool
     let draftScopeID: UUID?
-    let focus: FocusState<Bool>.Binding
+    let attachmentOwnerID: UUID?
+    let isAttachmentOwnerCurrent: (UUID?) -> Bool
+    let focus: Binding<Bool>
     let onSpeech: () -> Void
     let onSend: () -> Void
+    let isEditingMessage: Bool
     let isAnsweringClarification: Bool
     let allowsCustomAnswer: Bool
 
+    @Environment(\.familiarSendPresentation) private var sendPresentation
+    @State private var inputControl = FamiliarComposerInputControl()
     @State private var mode: FamiliarComposerMode = .compact
     @State private var measuredTextHeight: CGFloat = 0
-    @State private var importingFileCount = 0
+    @State private var pendingImports: [FamiliarAttachmentImport] = []
     @State private var importTasks: [UUID: Task<Void, Never>] = [:]
-    @State private var photoTasks: [UUID: Task<Void, Never>] = [:]
+    @State private var importTail: Task<Void, Never>?
+    @State private var importTailID: UUID?
     @State private var photoSelection: [PhotosPickerItem] = []
     @State private var fullPhotoSelection: [PhotosPickerItem] = []
     @State private var pendingDestination: FamiliarComposerAddDestination?
@@ -129,22 +132,13 @@ struct FamiliarComposer: View {
     @State private var showsFiles = false
     @State private var showsSkillPalette = false
     @State private var notice: FamiliarComposerNotice?
-    @Namespace private var imageTransition
-    @State private var previewImage: FamiliarDraftImage?
+    @State private var previewImage: FamiliarImageGalleryRequest?
     private let availableHeight: CGFloat
     /// Scales with Dynamic Type. It must be one value shared by the font and the height
     /// math below: scaling the font while measuring against a fixed 20pt would clip the
     /// user's own text at larger sizes.
     @ScaledMetric(relativeTo: .body) private var editorFontSize: CGFloat = 18
     private var lineHeight: CGFloat { UIFont.systemFont(ofSize: editorFontSize).lineHeight }
-    /// SwiftUI's TextEditor lays its first line out below this inset; the
-    /// placeholder mirrors it so both render on the same line.
-    private let textEditorTopInset: CGFloat = 8
-    /// Centers the compact text block on the control row so its line shares the
-    /// add/mic/send center instead of sitting above it.
-    private var compactTextTopPadding: CGFloat {
-        max((controlsHeight - effectiveTextHeight) / 2 - textEditorTopInset, 0)
-    }
 
     init(
         draft: Binding<String>,
@@ -155,14 +149,20 @@ struct FamiliarComposer: View {
         isSending: Bool,
         isListening: Bool,
         draftScopeID: UUID?,
-        focus: FocusState<Bool>.Binding,
+        focus: Binding<Bool>,
         onSpeech: @escaping () -> Void,
         onSend: @escaping () -> Void,
         availableHeight: CGFloat,
         isAnsweringClarification: Bool = false,
         allowsCustomAnswer: Bool = true,
-        selection: Binding<TextSelection?> = .constant(nil)
+        selection: Binding<FamiliarComposerSelection?> = .constant(nil),
+        isEditingMessage: Bool = false,
+        attachmentOwnerID: UUID? = nil,
+        isAttachmentOwnerCurrent: @escaping (UUID?) -> Bool = { _ in true }
     ) {
+        self.isEditingMessage = isEditingMessage
+        self.attachmentOwnerID = attachmentOwnerID
+        self.isAttachmentOwnerCurrent = isAttachmentOwnerCurrent
         _selection = selection
         _draft = draft
         _images = images
@@ -180,19 +180,26 @@ struct FamiliarComposer: View {
         self.allowsCustomAnswer = allowsCustomAnswer
     }
 
-    private var isImporting: Bool { importingFileCount > 0 || !photoTasks.isEmpty }
+    private var imageSlots: Int { max(0, 4 - images.count - pendingImports.filter { $0.source.isImage }.count) }
+    private var documentSlots: Int { max(0, 3 - documents.count - pendingImports.filter { !$0.source.isImage }.count) }
+    private var removeGalleryImage: ((UUID) -> Void)? {
+        guard !(isEditingMessage && isSending) else { return nil }
+        return { id in images.removeAll { $0.id == id } }
+    }
+    private var isImporting: Bool { pendingImports.contains { $0.phase == .preparing } }
     private var hasText: Bool { !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var canSend: Bool {
         if isAnsweringClarification { return allowsCustomAnswer && hasText }
-        return isSending || (!isImporting && (hasText || !documents.isEmpty || !images.isEmpty))
+        return isSending || (pendingImports.isEmpty && (hasText || !documents.isEmpty || !images.isEmpty))
     }
     private var showsStop: Bool { isSending && !isAnsweringClarification }
-    private var hasDraftContent: Bool { selectedSkill != nil || !images.isEmpty || !documents.isEmpty || isImporting }
+    private var hasDraftContent: Bool { selectedSkill != nil || !images.isEmpty || !documents.isEmpty || !pendingImports.isEmpty }
     private var effectiveTextHeight: CGFloat { max(measuredTextHeight, CGFloat(max(draft.components(separatedBy: "\n").count, 1)) * lineHeight) }
     private var isLongText: Bool { effectiveTextHeight >= lineHeight * 4 - 0.5 }
     private var showsExpansion: Bool { mode == .fullscreen || isLongText }
-    private var editorHeight: CGFloat { min(max(effectiveTextHeight + 18, 44), lineHeight * 4 + 20) }
-    private var controlsHeight: CGFloat { mode == .compact ? max(44, editorHeight) : editorHeight + 8 + 44 }
+    private var compactHeight: CGFloat { max(44, lineHeight + 16) }
+    private var editorHeight: CGFloat { min(max(effectiveTextHeight + 16, compactHeight), lineHeight * 6 + 16) }
+    private var fieldHeight: CGFloat { mode == .fullscreen ? max(fullscreenHeight - 30, 100) : editorHeight }
     private var fullscreenHeight: CGFloat {
         min(max(availableHeight * 0.8 - 14, 240), max(availableHeight - 14, 240))
     }
@@ -202,42 +209,46 @@ struct FamiliarComposer: View {
             VStack(spacing: FamiliarSpacing.small) {
                 if !isAnsweringClarification {
                     skillPalette
-                    draftPreview
+                    draftPreview.background(FamiliarComposerAttachmentAnchor(control: inputControl))
                     if let undoRewrite {
                         Button(action: undoRewrite) { Label(String(localized: "rewrite.undo"), systemImage: "arrow.uturn.backward") }
                             .font(.caption).frame(minHeight: 44)
+                            .accessibilityIdentifier("composer.undoPolish")
                     }
                 }
                 HStack(alignment: .bottom, spacing: FamiliarSpacing.small) {
                     if !isAnsweringClarification {
                         skillMenuButton
-                        VStack(spacing: 2) {
-                            if hasText && effectiveTextHeight >= lineHeight * 3 { polishButton }
-                            addButton
-                        }
-                        .familiarGlassSurface(interactive: true)
+                        VStack(spacing: 0) {
+                            if hasText, onPolish != nil { polishButton.transition(.scale(scale: 0.01, anchor: .bottom).combined(with: .opacity)) }
+                            addButton.frame(height: compactHeight)
+                        }.familiarGlassSurface(interactive: true)
                     }
                     HStack(alignment: .bottom, spacing: 0) {
-                        editor
-                            .frame(height: mode == .fullscreen ? max(fullscreenHeight - 30, 100) : editorHeight)
-                        if !isAnsweringClarification, hasText, effectiveTextHeight < lineHeight * 3 { polishButton }
-                        if !isAnsweringClarification && !hasText && images.isEmpty && documents.isEmpty && !isSending { micButton }
-                        else { sendButton }
+                        editor.frame(height: fieldHeight).clipped()
+                        ZStack(alignment: .topLeading) {
+                            HStack(spacing: 0) {
+                                primaryActionButton.frame(height: compactHeight)
+                            }
+                            .frame(height: fieldHeight, alignment: .bottom)
+                            if showsExpansion { expansionButton }
+                        }
                     }
-                    .padding(.horizontal, 5).padding(.vertical, 3)
-                    .familiarGlassSurface(interactive: true, cornerRadius: FamiliarRadius.overlay)
+                    // Input controls own their gestures; glass is only the background.
+                    .familiarGlassSurface(cornerRadius: FamiliarRadius.overlay)
                 }
             }
         }
+        .animation(reduceMotion ? nil : FamiliarTelegramMotion.panel, value: hasText)
         .padding(.horizontal, FamiliarSpacing.medium)
         .padding(.vertical, FamiliarSpacing.small)
-        .photosPicker(isPresented: $showsFullPhotos, selection: $fullPhotoSelection, maxSelectionCount: max(4 - images.count, 1), matching: .images)
+        .photosPicker(isPresented: $showsFullPhotos, selection: $fullPhotoSelection, maxSelectionCount: max(imageSlots, 1), matching: .images)
         .onChange(of: fullPhotoSelection) { _, items in
             guard !transitionToFullPhotos else { return }
             beginLoadingImages(items)
         }
         .sheet(isPresented: $showsPhotos, onDismiss: showFullPhotosIfNeeded) {
-            FamiliarInlinePhotoPickerSheet(selection: photoSelection, limit: max(4 - images.count, 1), onCommit: beginLoadingImages, onAllPhotos: { items in transitionToFullPhotos = true; fullPhotoSelection = items })
+            FamiliarInlinePhotoPickerSheet(selection: photoSelection, limit: max(imageSlots, 1), onCommit: beginLoadingImages, onAllPhotos: { items in transitionToFullPhotos = true; fullPhotoSelection = items })
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
@@ -249,10 +260,8 @@ struct FamiliarComposer: View {
             .presentationBackground(.black)
         }
         .fullScreenCover(item: $previewImage) { item in
-            FamiliarDraftImagePreviewView(image: item.image) {
-                images.removeAll { $0.id == item.id }
-            }
-            .modifier(FamiliarImageZoom(sourceID: item.id, namespace: imageTransition))
+            FamiliarImageGalleryView(request: item, onRemove: removeGalleryImage)
+
         }
         .fileImporter(isPresented: $showsFiles, allowedContentTypes: Self.allowedFileTypes, allowsMultipleSelection: true, onCompletion: importFiles)
         .alert(item: $notice) { notice in
@@ -262,7 +271,6 @@ struct FamiliarComposer: View {
         .onChange(of: dismissSkillsRevision) { _, _ in showsSkillPalette = false }
         .onChange(of: focus.wrappedValue) { _, focused in
             if focused { showsSkillPalette = false }
-            updateModeForFocus(focused)
         }
         .onChange(of: isAnsweringClarification) { _, _ in
             measuredTextHeight = 0
@@ -270,16 +278,11 @@ struct FamiliarComposer: View {
             showsSkillPalette = false
         }
         .onChange(of: draftScopeID) { _, _ in cancelDraftTasks() }
+        .onChange(of: attachmentOwnerID) { _, _ in cancelDraftTasks() }
         .onDisappear { cancelDraftTasks() }
-        .onPreferenceChange(FamiliarComposerTextHeightKey.self) { height in
-            guard abs(measuredTextHeight - height) >= 0.5 else { return }
-            withAnimation(reduceMotion ? nil : FamiliarMotion.standard) { measuredTextHeight = height }
-            updateModeForText()
-        }
         .animation(reduceMotion ? nil : FamiliarMotion.standard, value: images.map(\.id))
         .animation(reduceMotion ? nil : FamiliarMotion.standard, value: documents.map(\.id))
-        .animation(reduceMotion ? nil : FamiliarMotion.standard, value: importingFileCount)
-        .animation(reduceMotion ? nil : FamiliarMotion.standard, value: photoTasks.count)
+        .animation(reduceMotion ? nil : FamiliarMotion.standard, value: pendingImports.map(\.phase))
     }
 
     @ViewBuilder
@@ -294,7 +297,7 @@ struct FamiliarComposer: View {
                             Text(String(localized: "slash.empty", defaultValue: "No Skills Available"))
                                 .font(FamiliarTypography.sectionTitle)
                             Button(String(localized: "slash.empty.detail")) { actions?.onOpenSkills() }
-                                .font(FamiliarTypography.caption)
+                                .font(FamiliarTypography.caption).frame(minHeight: 44)
                         }
                         Spacer()
                     }
@@ -344,6 +347,7 @@ struct FamiliarComposer: View {
             .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
             .accessibilityElement(children: .contain)
             .accessibilityLabel(String(localized: "slash.palette", defaultValue: "Skills"))
+            .accessibilityAction(.escape) { showsSkillPalette = false }
             .accessibilityIdentifier("composer.skillMenu")
         }
     }
@@ -355,51 +359,31 @@ struct FamiliarComposer: View {
     }
 
     private var editor: some View {
-        ZStack(alignment: .topLeading) {
-            if draft.isEmpty {
-                Text(String(localized: isAnsweringClarification ? "clarification.custom" : "composer.placeholder"))
-                    .font(.system(size: editorFontSize))
-                    .lineLimit(1)
-                    .foregroundStyle(.tertiary)
-                    .padding(.leading, 5)
-                    .padding(.top, textEditorTopInset)
-                    .allowsHitTesting(false)
-            }
-            TextEditor(text: $draft, selection: $selection)
-                .accessibilityIdentifier("composer.input")
-                .font(.system(size: editorFontSize))
-                .scrollContentBackground(.hidden)
-                .scrollIndicators(.hidden)
-                .padding(.leading, 0)
-                .padding(.top, 0)
-                .padding(.trailing, showsExpansion ? 44 : 0)
-                .scrollDismissesKeyboard(.interactively)
-                .focused(focus)
-                .disabled(isAnsweringClarification && !allowsCustomAnswer)
-            if showsExpansion {
-                HStack {
-                    Spacer()
-                    Button { toggleFullscreen() } label: {
-                        Image(systemName: mode == .fullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
-                            .foregroundStyle(.secondary).frame(width: 44, height: 44)
-                    }
-                    .buttonStyle(FamiliarIconButtonStyle())
-                    .accessibilityLabel(String(localized: mode == .fullscreen ? "composer.collapse" : "composer.expand"))
-                }
-            }
+        FamiliarComposerTextView(text: $draft, selection: $selection,
+            focused: focus, fontSize: editorFontSize,
+            placeholder: String(localized: isAnsweringClarification ? "clarification.custom" : "composer.placeholder"),
+            editable: (!isAnsweringClarification || allowsCustomAnswer) && !(isEditingMessage && isSending),
+            centersSingleLine: mode != .fullscreen, trailingInset: 0,
+            onHeight: { height in
+                guard abs(measuredTextHeight - height) > 0.5 else { return }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { measuredTextHeight = height }
+            }, inputControl: inputControl)
+    }
+
+    private var expansionButton: some View {
+        Button { toggleFullscreen() } label: {
+            Image(systemName: mode == .fullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                .foregroundStyle(.secondary).frame(width: 44, height: 44)
         }
-        .background {
-            GeometryReader { proxy in
-                Color.clear.preference(key: FamiliarComposerTextHeightKey.self, value: measuredHeight(width: proxy.size.width))
-            }
-        }
+        .buttonStyle(FamiliarIconButtonStyle())
+        .accessibilityLabel(String(localized: mode == .fullscreen ? "composer.collapse" : "composer.expand"))
     }
 
     private var addButton: some View {
         Menu {
-            Button { choose(.camera) } label: { Label(String(localized: "attachment.camera"), systemImage: "camera") }
-            Button { choose(.photos) } label: { Label(String(localized: "attachment.photos"), systemImage: "photo") }
-            Button { choose(.files) } label: { Label(String(localized: "attachment.files"), systemImage: "paperclip") }
+            Button { choose(.camera) } label: { Label(String(localized: "attachment.camera"), systemImage: "camera") }.disabled(imageSlots == 0)
+            Button { choose(.photos) } label: { Label(String(localized: "attachment.photos"), systemImage: "photo") }.disabled(imageSlots == 0)
+            Button { choose(.files) } label: { Label(String(localized: "attachment.files"), systemImage: "paperclip") }.disabled(documentSlots == 0)
         } label: {
             Image(systemName: "paperclip")
                 .font(.system(size: FamiliarIconSize.prominent))
@@ -410,6 +394,7 @@ struct FamiliarComposer: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(FamiliarIconButtonStyle())
+        .disabled(isEditingMessage && isSending)
         .accessibilityLabel(String(localized: "attachment.add"))
     }
 
@@ -417,30 +402,28 @@ struct FamiliarComposer: View {
         Button {
             if showsSkillPalette { showsSkillPalette = false }
             else {
-                if let selection, case .selection(let range) = selection.indices {
-                    savedSelection = range.lowerBound.utf16Offset(in: draft)..<range.upperBound.utf16Offset(in: draft)
-                } else { savedSelection = draft.utf16.count..<draft.utf16.count }
+                inputControl.commitText()
+                savedSelection = selection ?? .caretAtEnd(of: draft)
+                savedSelectionText = draft
                 focus.wrappedValue = false
                 withAnimation(reduceMotion ? nil : FamiliarMotion.interactiveSpring) { showsSkillPalette = true }
             }
         } label: {
-            HStack(spacing: 5) {
-                Image(systemName: showsSkillPalette ? "xmark" : "line.3.horizontal")
-                    .contentTransition(reduceMotion ? .opacity : .symbolEffect(.replace))
-                if !focus.wrappedValue && !hasText { Text(String(localized: "skills.menu")).font(.subheadline.weight(.semibold)) }
-            }
-            .frame(minWidth: 44, minHeight: 44).padding(.horizontal, !focus.wrappedValue && !hasText ? 10 : 0)
+            Image(systemName: showsSkillPalette ? "xmark" : "line.3.horizontal")
+                .font(.system(size: FamiliarIconSize.prominent))
+                .contentTransition(reduceMotion ? .opacity : .symbolEffect(.replace))
+                .frame(width: 44, height: compactHeight)
         }
         .buttonStyle(.plain)
         .familiarGlassSurface(interactive: true)
         .disabled(isSending)
-        .accessibilityLabel(String(localized: "slash.open"))
+        .accessibilityLabel(String(localized: showsSkillPalette ? "skills.close" : "slash.open"))
         .accessibilityIdentifier("composer.skills")
     }
 
     @ViewBuilder private var polishButton: some View {
         if onPolish != nil {
-            Button { showsSkillPalette = false; focus.wrappedValue = false; onPolish?() } label: {
+            Button { inputControl.commitText(); showsSkillPalette = false; focus.wrappedValue = false; onPolish?() } label: {
                 Image(systemName: "wand.and.stars").font(.system(size: 20))
                     .frame(width: 44, height: 44)
             }
@@ -451,64 +434,62 @@ struct FamiliarComposer: View {
     }
 
     private func restoreEditorFocus() {
-        if let savedSelection {
-            let lower = min(savedSelection.lowerBound, draft.utf16.count)
-            let upper = min(max(lower, savedSelection.upperBound), draft.utf16.count)
-            selection = TextSelection(range: String.Index(utf16Offset: lower, in: draft)..<String.Index(utf16Offset: upper, in: draft))
-        }
+        selection = savedSelectionText == draft ? savedSelection?.normalized(in: draft) : .caretAtEnd(of: draft)
         Task { @MainActor in await Task.yield(); focus.wrappedValue = true }
     }
 
-    private var micButton: some View {
-        Button(action: onSpeech) {
-            Image(systemName: isListening ? "waveform" : "mic")
-                .font(.system(size: FamiliarIconSize.prominent, weight: isListening ? .semibold : .regular))
-                .foregroundStyle(isListening ? FamiliarTheme.accent : Color.primary)
-                .contentTransition(reduceMotion ? .opacity : .symbolEffect(.replace))
-                .symbolEffect(.breathe, isActive: isListening && !reduceMotion)
-                .animation(reduceMotion ? nil : FamiliarMotion.micro, value: isListening)
-                .frame(
-                    width: FamiliarControlSize.minimumHitTarget,
-                    height: FamiliarControlSize.minimumHitTarget
-                )
-        }
-        .buttonStyle(FamiliarIconButtonStyle())
-        .disabled(isAnsweringClarification)
-        .accessibilityLabel(String(localized: isListening ? "speech.stop" : "speech.start"))
-        .accessibilityIdentifier("composer.speech")
+    private var showsSpeechAction: Bool {
+        !isAnsweringClarification && !isSending &&
+            (isListening || (!hasText && images.isEmpty && documents.isEmpty))
     }
 
-    private var sendButton: some View {
+    private var primaryActionSymbol: String {
+        showsSpeechAction ? (isListening ? "waveform" : "mic") : (showsStop ? "stop.fill" : "arrow.up")
+    }
+
+    /// A single Button retains its identity, frame and accessibility focus while
+    /// microphone / send / stop change. Dictation keeps its Stop action as text arrives.
+    private var primaryActionButton: some View {
         Button {
-            if isAnsweringClarification { if canSend { onSend() } }
+            if showsSpeechAction { onSpeech() }
+            else if isAnsweringClarification { if canSend { inputControl.commitText(); onSend() } }
             else if isSending { FamiliarHaptics.shared.perform(.selection); onSend() }
-            else if isImporting { return }
-            else if hasText || !documents.isEmpty || !images.isEmpty { onSend() }
+            else if !pendingImports.isEmpty { return }
+            else if hasText || !documents.isEmpty || !images.isEmpty {
+                inputControl.commitText()
+                sendPresentation?.capture(view: hasText ? inputControl.view : inputControl.attachmentView, text: draft, scopeID: draftScopeID)
+                onSend()
+            }
         } label: {
-            Image(systemName: showsStop ? "stop.fill" : "arrow.up")
+            Image(systemName: primaryActionSymbol)
                 .contentTransition(reduceMotion ? .opacity : .symbolEffect(.replace))
-                .scaleEffect(showsStop && !reduceMotion ? 0.94 : 1)
-                .animation(reduceMotion ? nil : FamiliarMotion.micro, value: showsStop)
-                .font(.system(size: FamiliarIconSize.standard, weight: .semibold))
-                .foregroundStyle(.white)
+                .symbolEffect(.breathe, isActive: showsSpeechAction && isListening && !reduceMotion)
+                .font(.system(size: showsSpeechAction ? FamiliarIconSize.prominent : FamiliarIconSize.standard,
+                    weight: showsSpeechAction && !isListening ? .regular : .semibold))
+                .foregroundStyle(showsSpeechAction ? (isListening ? FamiliarTheme.accent : Color.primary) : .white)
                 .frame(width: FamiliarControlSize.standardVisual, height: FamiliarControlSize.standardVisual)
-                .background(canSend ? FamiliarTheme.accent : Color.secondary.opacity(0.28), in: Circle())
-                .frame(
-                    width: FamiliarControlSize.minimumHitTarget,
-                    height: FamiliarControlSize.minimumHitTarget
-                )
+                .background(showsSpeechAction ? Color.clear : (canSend ? FamiliarTheme.accent : Color.secondary.opacity(0.28)), in: Circle())
+                .frame(width: FamiliarControlSize.minimumHitTarget, height: FamiliarControlSize.minimumHitTarget)
         }
         .buttonStyle(FamiliarIconButtonStyle())
-        .disabled(!canSend || (!isSending && executionBlocked))
+        .disabled(!showsSpeechAction && (!canSend || (!isSending && executionBlocked)))
+        .animation(reduceMotion ? nil : FamiliarMotion.micro, value: primaryActionSymbol)
         .animation(reduceMotion ? nil : FamiliarMotion.micro, value: canSend)
-        .accessibilityIdentifier("composer.send")
-        .accessibilityLabel(String(localized: isAnsweringClarification ? "clarification.submit" : (showsStop ? "message.stop" : "message.send")))
-        .accessibilityHint(sendDisabledReason ?? "")
+        .accessibilityIdentifier(showsSpeechAction ? "composer.speech" : "composer.send")
+        .accessibilityLabel(primaryActionLabel)
+        .accessibilityHint(showsSpeechAction ? "" : sendDisabledReason ?? "")
+    }
+
+    private var primaryActionLabel: String {
+        if showsSpeechAction { return String(localized: isListening ? "speech.stop" : "speech.start") }
+        return String(localized: isAnsweringClarification ? "clarification.submit" :
+            (showsStop ? "message.stop" : (isEditingMessage ? "message.edit.send" : "message.send")))
     }
 
     private var sendDisabledReason: String? {
         if isSending { return nil }
         if isImporting { return String(localized: "composer.disabled.importing") }
+        if !pendingImports.isEmpty { return String(localized: "attachment.resolve_failed") }
         if !hasText && documents.isEmpty && images.isEmpty { return String(localized: "composer.disabled.empty") }
         return nil
     }
@@ -535,15 +516,16 @@ struct FamiliarComposer: View {
                     ForEach(images) { item in
                         ZStack(alignment: .topTrailing) {
                             Button {
-                                previewImage = item
+                                openImage(item.id)
                             } label: {
-                                Image(uiImage: item.image)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 96, height: 96)
-                                    .clipShape(RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous))
-                                    .clipped()
-                                    .matchedTransitionSource(id: item.id, in: imageTransition)
+                                Group {
+                                    if let attachment = item.attachment {
+                                        FamiliarFileThumbnail(url: FamiliarAttachmentStore.url(for: attachment.relativePath), identity: item.id.uuidString, symbol: "photo.badge.exclamationmark", side: 96)
+                                    } else if let image = item.image { Image(uiImage: image).resizable().scaledToFill().frame(width: 96, height: 96).clipped() }
+                                    else { Image(systemName: "photo.badge.exclamationmark").frame(width: 96, height: 96) }
+                                }
+                                .clipShape(RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous))
+                                .background(FamiliarImageSourceAnchor(id: item.id))
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(String(localized: "attachment.preview_image", defaultValue: "Preview image"))
@@ -560,8 +542,9 @@ struct FamiliarComposer: View {
                             }
                             .buttonStyle(.plain)
                             .frame(minWidth: FamiliarControlSize.minimumHitTarget, minHeight: FamiliarControlSize.minimumHitTarget)
+                            .disabled(isEditingMessage && isSending)
                             .accessibilityLabel(String(localized: "attachment.remove_image"))
-                            .offset(x: 8, y: -8)
+                            .offset(x: 2, y: -2)
                         }
                         .padding(.trailing, FamiliarSpacing.xSmall)
                         .transition(reduceMotion ? .opacity : FamiliarMotion.softRise)
@@ -578,15 +561,26 @@ struct FamiliarComposer: View {
                         .background(FamiliarTheme.elevatedFill, in: Capsule())
                         .transition(reduceMotion ? .opacity : FamiliarMotion.softRise)
                     }
-                    if isImporting {
-                        HStack(spacing: FamiliarSpacing.small) {
-                            ProgressView().controlSize(.small)
-                            Text(String(localized: "attachment.processing"))
-                                .font(FamiliarTypography.caption)
+                    ForEach(pendingImports) { item in
+                        HStack(spacing: 8) {
+                            if item.phase == .preparing { ProgressView().controlSize(.small) }
+                            else { Image(systemName: "exclamationmark.circle").foregroundStyle(FamiliarTheme.failure) }
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(item.source.name).font(.caption.weight(.medium)).lineLimit(1)
+                                switch item.phase {
+                                case .preparing: Text(String(localized: "attachment.processing")).font(.caption2).foregroundStyle(.secondary)
+                                case .failed(let error): Text(error).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                                }
+                            }.frame(maxWidth: 180, alignment: .leading)
+                            if case .failed = item.phase {
+                                Button(String(localized: "attachment.retry")) { startImport(item.id) }
+                                    .font(.caption).frame(minHeight: 44)
+                            }
+                            removeButton(label: String(localized: "attachment.import_cancel")) { cancelImport(item.id) }
                         }
-                        .padding(.horizontal, FamiliarSpacing.medium)
-                        .frame(height: 48)
-                        .background(FamiliarTheme.elevatedFill, in: Capsule())
+                        .padding(.leading, 12).frame(minHeight: 56)
+                        .background(FamiliarTheme.elevatedFill, in: RoundedRectangle(cornerRadius: FamiliarRadius.card))
+                        .accessibilityIdentifier("attachment.import." + item.id.uuidString)
                     }
                 }
             }
@@ -595,7 +589,8 @@ struct FamiliarComposer: View {
 
     private func removeButton(label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) { Image(systemName: "xmark.circle.fill").symbolRenderingMode(.palette).foregroundStyle(.white, .black.opacity(0.7)) }
-            .frame(width: FamiliarControlSize.standardVisual, height: FamiliarControlSize.standardVisual)
+            .buttonStyle(FamiliarIconButtonStyle())
+            .disabled(isEditingMessage && isSending)
             .accessibilityLabel(label)
     }
 
@@ -615,21 +610,8 @@ struct FamiliarComposer: View {
     }
 
     private func toggleFullscreen() {
-        setMode(mode == .fullscreen ? .expanded : .fullscreen, emphasized: true)
+        setMode(mode == .fullscreen ? .compact : .fullscreen, emphasized: true)
         Task { @MainActor in await Task.yield(); focus.wrappedValue = true }
-    }
-
-    private func updateModeForFocus(_ focused: Bool) {
-        if focused, mode == .compact, isLongText {
-            setMode(.expanded)
-        } else if !focused, mode == .expanded, !isLongText, !hasDraftContent, pendingDestination == nil, !showsCamera, !showsPhotos, !showsFullPhotos, !showsFiles {
-            setMode(.compact)
-        }
-    }
-
-    private func updateModeForText() {
-        if isLongText, mode == .compact { setMode(.expanded) }
-        else if !isLongText, !focus.wrappedValue, mode == .expanded, !hasDraftContent { setMode(.compact) }
     }
 
     private func setMode(_ newMode: FamiliarComposerMode, emphasized: Bool = false) {
@@ -642,144 +624,105 @@ struct FamiliarComposer: View {
         }
     }
 
-    private func measuredHeight(width: CGFloat) -> CGFloat {
-        let text = draft.isEmpty ? " " : (draft.hasSuffix("\n") ? draft + " " : draft)
-        let bounds = (text as NSString).boundingRect(with: CGSize(width: max(width - 10 - (showsExpansion ? 44 : 0), 1), height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: [.font: UIFont.systemFont(ofSize: editorFontSize)], context: nil)
-        return max(ceil(bounds.height), CGFloat(max(draft.components(separatedBy: "\n").count, 1)) * lineHeight)
-    }
-
     private func showFullPhotosIfNeeded() {
         guard transitionToFullPhotos else { return }
         transitionToFullPhotos = false
         Task { @MainActor in await Task.yield(); showsFullPhotos = true }
     }
 
-    private func beginAddingCameraImage(_ image: UIImage) {
-        guard images.count < 4 else { return }
-        let scopeID = draftScopeID, taskID = UUID()
-        photoTasks[taskID] = Task { @MainActor in
-            defer { photoTasks.removeValue(forKey: taskID) }
-            do {
-                let attachment = try await FamiliarAttachmentStore.importImage(image)
-                guard !Task.isCancelled, scopeID == draftScopeID, images.count < 4 else {
-                    FamiliarAttachmentStore.remove(relativePath: attachment.relativePath); return
-                }
-                images.append(.init(id: attachment.id, image: image, attachment: attachment))
-            } catch is CancellationError {} catch { notice = .fileImportFailed(error.localizedDescription) }
+    private func openImage(_ id: UUID) {
+        let items = images.compactMap { item -> FamiliarImageGalleryItem? in
+            guard let attachment = item.attachment, let url = FamiliarAttachmentStore.url(for: attachment.relativePath) else { return nil }
+            return .init(id: item.id, url: url)
         }
+        guard items.contains(where: { $0.id == id }) else { notice = .fileImportFailed(String(localized: "attachment.error.source_unavailable")); return }
+        FamiliarImagePresentation.update { previewImage = .init(id: id, items: items) }
     }
+
+    private func beginAddingCameraImage(_ image: UIImage) { enqueue(.camera(image)) }
 
     private func beginLoadingImages(_ items: [PhotosPickerItem]) {
-        let taskID = UUID()
-        photoTasks[taskID] = Task {
-            await loadImages(items)
-            photoTasks.removeValue(forKey: taskID)
-        }
+        for item in items { enqueue(.photo(item)) }
+        photoSelection = []; fullPhotoSelection = []
     }
 
-    private func loadImages(_ items: [PhotosPickerItem]) async {
-        let scopeID = draftScopeID
-        var loaded: [FamiliarDraftImage] = []
-        for item in items.prefix(max(4 - images.count, 0)) {
-            guard !Task.isCancelled else { FamiliarAttachmentStore.remove(relativePaths: loaded.compactMap { $0.attachment?.relativePath }); return }
-            if let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) {
-                do {
-                    let attachment = try await FamiliarAttachmentStore.importImage(image)
-                    loaded.append(.init(id: attachment.id, image: image, attachment: attachment))
-                } catch is CancellationError {
-                    FamiliarAttachmentStore.remove(relativePaths: loaded.compactMap { $0.attachment?.relativePath }); return
-                } catch { notice = .fileImportFailed(error.localizedDescription) }
-            }
-        }
-        guard !Task.isCancelled, scopeID == draftScopeID else {
-            FamiliarAttachmentStore.remove(relativePaths: loaded.compactMap { $0.attachment?.relativePath }); return
-        }
-        let accepted = Array(loaded.prefix(max(4 - images.count, 0)))
-        let acceptedIDs = Set(accepted.map(\.id))
-        FamiliarAttachmentStore.remove(relativePaths: loaded.filter { !acceptedIDs.contains($0.id) }.compactMap { $0.attachment?.relativePath })
-        images.append(contentsOf: accepted)
-        photoSelection = items
-    }
-
-    private static let allowedFileTypes: [UTType] = FamiliarAnyDocService.supportedExtensions
-        .sorted()
-        .compactMap { UTType(filenameExtension: $0) }
+    private static let allowedFileTypes: [UTType] = FamiliarAnyDocService.supportedExtensions.sorted().compactMap { UTType(filenameExtension: $0) }
 
     private func importFiles(_ result: Result<[URL], Error>) {
-        do {
-            let urls = try result.get().prefix(max(3 - documents.count, 0))
-            guard !urls.isEmpty else { return }
-            importingFileCount += urls.count
-            let scopeID = draftScopeID
-            for url in urls {
-                let taskID = UUID()
-                importTasks[taskID] = Task {
-                    defer { finishImport(taskID) }
-                    do {
-                        let attachment = try await FamiliarAttachmentStore.importDocument(from: url)
-                        guard !Task.isCancelled, scopeID == draftScopeID else {
-                            FamiliarAttachmentStore.remove(relativePath: attachment.relativePath)
-                            return
-                        }
-                        documents.append(attachment)
-                    } catch is CancellationError {
-                        return
-                    } catch {
-                        notice = .fileImportFailed(error.localizedDescription)
-                    }
-                }
-            }
-        } catch {
+        do { for url in try result.get() { enqueue(.file(url)) } }
+        catch {
+            let error = error as NSError
+            if error.domain == NSCocoaErrorDomain && error.code == NSUserCancelledError { return }
             notice = .fileImportFailed(error.localizedDescription)
         }
     }
 
-    private func finishImport(_ taskID: UUID) {
-        guard importTasks.removeValue(forKey: taskID) != nil else { return }
-        importingFileCount = max(importingFileCount - 1, 0)
+    private func enqueue(_ source: FamiliarAttachmentImportSource) {
+        let pending = pendingImports.filter { $0.source.isImage == source.isImage }.count
+        guard source.isImage ? images.count + pending < 4 : documents.count + pending < 3 else {
+            notice = .fileImportFailed(String(localized: "attachment.import_limit")); return
+        }
+        let item = FamiliarAttachmentImport(id: UUID(), source: source)
+        pendingImports.append(item)
+        startImport(item.id)
+    }
+
+    private func startImport(_ id: UUID) {
+        guard let index = pendingImports.firstIndex(where: { $0.id == id }) else { return }
+        importTasks[id]?.cancel()
+        let attempt = UUID(), scopeID = draftScopeID, ownerID = attachmentOwnerID, source = pendingImports[index].source
+        pendingImports[index].attempt = attempt
+        pendingImports[index].phase = .preparing
+        let predecessor = importTail
+        let importActivity = actions?.onAttachmentImport
+        importActivity?(true)
+        importTasks[id] = Task { @MainActor in
+            var prepared: FamiliarAttachmentDraft?
+            defer {
+                importActivity?(false)
+                if importTailID == attempt { importTail = nil; importTailID = nil }
+                if pendingImports.first(where: { $0.id == id })?.attempt == attempt { importTasks.removeValue(forKey: id) }
+                if let prepared { FamiliarAttachmentStore.remove(relativePath: prepared.relativePath) }
+            }
+            do {
+                // Keep large Photos transfers and document decoding serial in this
+                // composer; queued entries remain cancellable without allocating bytes.
+                await predecessor?.value
+                try Task.checkCancellation()
+                guard isAttachmentOwnerCurrent(ownerID) else { return }
+                let attachment = try await source.prepare()
+                prepared = attachment
+                try Task.checkCancellation()
+                guard isAttachmentOwnerCurrent(ownerID), scopeID == draftScopeID, let current = pendingImports.firstIndex(where: { $0.id == id && $0.attempt == attempt }) else { return }
+                if source.isImage {
+                    guard images.count < 4 else { throw FamiliarAttachmentImportError.limit }
+                    images.append(.init(id: attachment.id, attachment: attachment))
+                } else {
+                    guard documents.count < 3 else { throw FamiliarAttachmentImportError.limit }
+                    documents.append(attachment)
+                }
+                prepared = nil
+                pendingImports.remove(at: current)
+                importTasks.removeValue(forKey: id)
+            } catch is CancellationError { }
+            catch {
+                guard isAttachmentOwnerCurrent(ownerID), scopeID == draftScopeID, let current = pendingImports.firstIndex(where: { $0.id == id && $0.attempt == attempt }) else { return }
+                pendingImports[current].phase = .failed(error.localizedDescription)
+            }
+        }
+        importTail = importTasks[id]; importTailID = attempt
+    }
+
+    private func cancelImport(_ id: UUID) {
+        importTasks.removeValue(forKey: id)?.cancel()
+        pendingImports.removeAll { $0.id == id }
     }
 
     private func cancelDraftTasks() {
-        let fileTasks = importTasks.values
-        let imageTasks = photoTasks.values
-        importTasks = [:]
-        photoTasks = [:]
-        importingFileCount = 0
-        fileTasks.forEach { $0.cancel() }
-        imageTasks.forEach { $0.cancel() }
-    }
-}
-
-private struct FamiliarDraftImagePreviewView: View {
-    @Environment(\.dismiss) private var dismiss
-    let image: UIImage
-    let onDelete: () -> Void
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.black.ignoresSafeArea()
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .accessibilityLabel(String(localized: "attachment.preview_image", defaultValue: "Image preview"))
-            }
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) { FamiliarDismissButton() }
-                ToolbarItem(placement: .destructiveAction) {
-                    Button(role: .destructive) {
-                        onDelete()
-                        dismiss()
-                    } label: {
-                        Image(systemName: "trash")
-                    }
-                    .accessibilityLabel(String(localized: "attachment.remove_image"))
-                }
-            }
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarBackground(.black.opacity(0.72), for: .navigationBar)
-        }
-        .tint(.white)
+        let tasks = Array(importTasks.values)
+        importTasks = [:]; pendingImports = []; importTail = nil; importTailID = nil
+        photoSelection = []; fullPhotoSelection = []
+        tasks.forEach { $0.cancel() }
     }
 }
 
@@ -799,16 +742,5 @@ private struct FamiliarComposerNotice: Identifiable {
     }
     static func fileImportFailed(_ detail: String) -> FamiliarComposerNotice {
         FamiliarComposerNotice(kind: .fileImportFailed(detail))
-    }
-}
-
-
-private struct FamiliarImageZoom: ViewModifier {
-    let sourceID: UUID
-    let namespace: Namespace.ID
-    @Environment(\.familiarReduceMotion) private var reduceMotion
-    @ViewBuilder func body(content: Content) -> some View {
-        if reduceMotion { content }
-        else { content.navigationTransition(.zoom(sourceID: sourceID, in: namespace)) }
     }
 }

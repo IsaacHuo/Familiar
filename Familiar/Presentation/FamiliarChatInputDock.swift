@@ -1,4 +1,5 @@
 import Observation
+import SwiftData
 import SwiftUI
 
 /// Only registered, currently waiting requests may own the input area.
@@ -38,17 +39,18 @@ nonisolated struct FamiliarInteractionDrafts {
 
 /// Pending interactions observe activity boundaries, never the streaming text.
 struct FamiliarChatInputDock: View {
+    @Environment(\.modelContext) private var context
     let controller: FamiliarChatController
     let skills: [FamiliarSkillMenuItem]
     let isListening: Bool
-    let focus: FocusState<Bool>.Binding
+    let focus: Binding<Bool>
     let availableHeight: CGFloat
     let onSpeech: () -> Void
     let onSend: () -> Void
     let onStop: () -> Void
     @State private var drafts = FamiliarInteractionDrafts()
     @State private var interactionHeight: CGFloat = 0
-    @State private var answerSelection: TextSelection?
+    @State private var answerSelection: FamiliarComposerSelection?
 
     private var interactions: [FamiliarPendingInteraction] {
         FamiliarPendingInteraction.project(surfaces: controller.surfaces.orderedSurfaces,
@@ -103,6 +105,25 @@ struct FamiliarChatInputDock: View {
                 .padding(.horizontal, FamiliarSpacing.medium)
                 .accessibilityIdentifier("interaction.dock")
             }
+            if current == nil, let edit = controller.messageEdit {
+                HStack(spacing: FamiliarSpacing.small) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Label(String(localized: "message.edit.title"), systemImage: "pencil")
+                            .font(.caption.weight(.semibold))
+                        Text(edit.sourceContent).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        Text(String(localized: "message.edit.detail")).font(.caption2).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    Button {
+                        controller.cancelMessageEdit(in: context)
+                        focus.wrappedValue = true
+                    } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }
+                        .buttonStyle(.plain).disabled(controller.isSending || controller.isCompacting)
+                        .accessibilityLabel(String(localized: "message.edit.cancel"))
+                        .accessibilityIdentifier("composer.edit.cancel")
+                }.padding(.horizontal, FamiliarSpacing.medium)
+                    .accessibilityIdentifier("composer.edit.banner")
+            }
             FamiliarComposer(
                 draft: question.map { item in
                     Binding(get: { drafts.answer(for: item.id) }, set: { drafts.setAnswer($0, for: item.id) })
@@ -123,7 +144,10 @@ struct FamiliarChatInputDock: View {
                 }, availableHeight: availableHeight,
                 isAnsweringClarification: question != nil,
                 allowsCustomAnswer: question.map { $0.surface.clarificationAllowsCustom && !drafts.submitting.contains($0.id) } ?? true,
-                selection: question == nil ? $controller.draftSelection : $answerSelection
+                selection: question == nil ? $controller.draftSelection : $answerSelection,
+                isEditingMessage: controller.messageEdit != nil,
+                attachmentOwnerID: controller.draftAttachmentIdentity,
+                isAttachmentOwnerCurrent: { $0 == controller.draftAttachmentIdentity }
             )
         }
         .onChange(of: pending.map(\.id), initial: true) { _, ids in
