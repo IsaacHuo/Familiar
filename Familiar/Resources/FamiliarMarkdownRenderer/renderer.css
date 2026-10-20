@@ -438,19 +438,58 @@ summary {
   outline: 2px solid var(--familiar-accent);
   outline-offset: 3px;
 }
+
+/* Keep the structured message tree (headings, links, code) intact. These
+   labelled actions follow it in the accessibility tree without an overlay. */
+.message-accessibility-actions:not([hidden]) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* Keyboard focus reveals actions after the message, in the same reading order.
+   Their height is reported separately without changing the message DOM. */
+.message-accessibility-actions:focus-within:not([hidden]) {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0;
+  clip-path: none;
+  white-space: normal;
+  display: flex;
+  flex-wrap: wrap;
+  background: var(--familiar-surface);
+}
+.message-accessibility-actions button {
+  min-width: 44px;
+  min-height: 44px;
+  font: inherit;
+  color: var(--familiar-accent);
+  background: var(--familiar-surface);
+  border: 1px solid var(--familiar-line-strong);
+}
+.message-accessibility-actions button:focus-visible {
+  outline: 2px solid var(--familiar-accent);
+  outline-offset: -3px;
+}
 .hljs-deletion { color: var(--familiar-failure); }
 
 
 .markdown-block:first-child > :first-child { margin-top: 0; }
 .markdown-block:last-child > :last-child { margin-bottom: 0; }
-.familiar-chunk { display: inline; position: relative; animation: familiar-soft-rise var(--familiar-content-duration, 150ms) ease-out both; }
 .familiar-appear { position: relative; animation: familiar-soft-rise var(--familiar-content-duration, 150ms) ease-out both; }
 @keyframes familiar-soft-rise {
   from { opacity: 0; top: var(--familiar-content-offset, 2.5px); }
   to { opacity: 1; top: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .familiar-chunk, .familiar-appear { position: relative; animation: none; }
+  .familiar-appear { position: relative; animation: none; }
 }
 
-#content.reduce-motion .familiar-chunk, #content.reduce-motion .familiar-appear, #content.reduce-motion.streaming > .markdown-block:last-child > :last-child::after { animation: none; }
+#content.reduce-motion .familiar-appear, #content.reduce-motion.streaming > .markdown-block:last-child > :last-child::after { animation: none; }
+
+.message-search-highlights { position: fixed; inset: 0; pointer-events: none; z-index: 1000; overflow: hidden; }
+.message-search-highlights > span { position: absolute; pointer-events: none; background: rgba(255, 204, 0, 0.28); border-radius: 2px; }

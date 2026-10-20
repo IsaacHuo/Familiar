@@ -7,7 +7,81 @@
   let lastReportedHeight = 0;
   let lastReportedSelection = "";
   let selectionEnabled = false;
+  let messageActionsEnabled = false;
+  let messageSelecting = false;
+  let accessibilityActionsKey = "";
+  let accessibilityActions = null;
+
+  function reportMessageInteractionRegions() {
+    const regions = Array.from(content.querySelectorAll("a, button, input, textarea, [role=button]"))
+      .concat(accessibilityActions && accessibilityActions.matches(":focus-within") ? Array.from(accessibilityActions.querySelectorAll("button")) : [])
+      .flatMap(function (node) {
+        return Array.from(node.getClientRects()).map(function (rect) {
+          return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        });
+      });
+    post("messageInteractionRegions", regions);
+  }
+
+  function setMessageActions(enabled, actions, label) {
+    messageActionsEnabled = enabled;
+    if (!messageSelecting) setSelectionEnabled(!enabled);
+    const entries = enabled && Array.isArray(actions) ? actions : [];
+    const key = JSON.stringify([entries, label]);
+    if (accessibilityActionsKey === key) return;
+    accessibilityActionsKey = key;
+    if (!accessibilityActions && entries.length) {
+      accessibilityActions = document.createElement("div");
+      accessibilityActions.className = "message-accessibility-actions";
+      accessibilityActions.setAttribute("role", "group");
+      document.body.appendChild(accessibilityActions);
+    }
+    if (!accessibilityActions) return;
+    accessibilityActions.setAttribute("aria-label", label || "Message actions");
+    accessibilityActions.replaceChildren();
+    entries.forEach(function (entry) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = entry.title;
+      button.addEventListener("click", function () { post("messageAccessibilityAction", entry.id); });
+      accessibilityActions.appendChild(button);
+    });
+    accessibilityActions.hidden = entries.length === 0;
+    reportHeight();
+  }
+
+  function selectMessageText(x, y) {
+    messageSelecting = true;
+    setSelectionEnabled(true);
+    const selection = window.getSelection();
+    if (!selection) return;
+    const range = document.caretRangeFromPoint(x, y);
+    if (range && range.startContainer.nodeType === Node.TEXT_NODE && content.contains(range.startContainer)) {
+      const node = range.startContainer;
+      const text = node.textContent || "";
+      let start = Math.min(range.startOffset, Math.max(0, text.length - 1));
+      let end = start;
+      while (start > 0 && !/\s/.test(text[start - 1])) start--;
+      while (end < text.length && !/\s/.test(text[end])) end++;
+      range.setStart(node, start); range.setEnd(node, Math.max(start, end));
+      selection.removeAllRanges(); selection.addRange(range);
+    } else {
+      const all = document.createRange(); all.selectNodeContents(content);
+      selection.removeAllRanges(); selection.addRange(all);
+    }
+    reportSelection();
+  }
+
+  function endMessageSelection() {
+    messageSelecting = false;
+    setSelectionEnabled(!messageActionsEnabled);
+    const selection = window.getSelection();
+    if (selection) selection.removeAllRanges();
+    reportSelection();
+  }
+
   let renderVersion = 0;
+  let didRenderBlocks = false;
   let markdownParser = null;
   let readingAnchor = null;
   function setReadingTop(y) {
@@ -36,7 +110,9 @@
         if (Math.abs(shift) > 0.5) post("readingShift", shift);
         readingAnchor.top = top;
       }
-      const height = Math.ceil(Math.max(content.scrollHeight, content.getBoundingClientRect().height));
+      const actionsHeight = accessibilityActions && accessibilityActions.matches(":focus-within")
+        ? accessibilityActions.getBoundingClientRect().height : 0;
+      const height = Math.ceil(Math.max(content.scrollHeight, content.getBoundingClientRect().height) + actionsHeight);
       if (Math.abs(height - lastReportedHeight) < 1) return;
       lastReportedHeight = height;
       post("heightChanged", height);
@@ -58,7 +134,9 @@
       const text = selectedPlainText();
       if (text === lastReportedSelection) return;
       lastReportedSelection = text;
-      post("selectionChanged", text);
+      const current = window.getSelection();
+      const box = current && current.rangeCount ? current.getRangeAt(0).getBoundingClientRect() : { x: 0, y: 0, width: 0, height: 0 };
+      post("selectionChanged", { text: text, rect: { x: box.x, y: box.y, width: box.width, height: box.height } });
     });
   }
 
@@ -527,20 +605,15 @@
   }
 
   // The block wrapper owns identity; content changes never replace the whole document.
-  function appendChunk(parent, value, animate) {
+  function appendChunk(parent, value) {
     if (!value) return;
-    if (!animate) { parent.appendChild(document.createTextNode(value)); return; }
-    const span = document.createElement("span");
-    span.className = "familiar-chunk";
-    span.textContent = value;
-    span.addEventListener("animationend", function () {
-      span.replaceWith(document.createTextNode(span.textContent));
-      parent.normalize();
-    }, { once: true });
-    parent.appendChild(span);
+    // Incremental text never pulses or changes its accessibility identity.
+    const last = parent.lastChild;
+    if (last && last.nodeType === Node.TEXT_NODE) last.appendData(value);
+    else parent.appendChild(document.createTextNode(value));
   }
 
-  function patchNode(current, next, animate) {
+  function patchNode(current, next) {
     if (current.nodeType !== next.nodeType || current.nodeName !== next.nodeName) {
       current.replaceWith(next);
       return;
@@ -551,28 +624,31 @@
       if (!next.hasAttribute(attr.name)) current.removeAttribute(attr.name);
     });
     Array.from(next.attributes).forEach(function (attr) { current.setAttribute(attr.name, attr.value); });
-    // Preserve already appearing text chunks across subsequent pacing ticks.
+    // Preserve the text node across subsequent pacing ticks.
     const nextText = next.childNodes.length === 1 && next.firstChild.nodeType === 3;
     const currentText = Array.from(current.childNodes).every(function (node) {
-      return node.nodeType === 3 || (node.nodeType === 1 && node.classList.contains("familiar-chunk"));
+      return node.nodeType === 3;
     });
     if (nextText && currentText) {
       const before = current.textContent;
       const after = next.textContent;
-      if (after.startsWith(before)) appendChunk(current, after.slice(before.length), animate);
+      if (after.startsWith(before)) appendChunk(current, after.slice(before.length));
       else current.textContent = after;
       return;
     }
     const children = Array.from(next.childNodes);
     children.forEach(function (child, index) {
-      if (current.childNodes[index]) patchNode(current.childNodes[index], child, animate);
+      if (current.childNodes[index]) patchNode(current.childNodes[index], child);
       else current.appendChild(child);
     });
     while (current.childNodes.length > children.length) current.lastChild.remove();
   }
 
   function reconcileBlocks(fragment, options) {
-    const animate = Boolean(options && options.streaming && !options.reduceMotion);
+    // A fresh WebView may be restoring an already-running message after lazy
+    // recycling. Its initial blocks are existing content, never new insertions.
+    const animate = Boolean(didRenderBlocks && options && options.streaming && !options.reduceMotion);
+    didRenderBlocks = true;
     const nodes = Array.from(fragment.childNodes).filter(function (node) {
       return node.nodeType !== 3 || node.textContent.trim();
     });
@@ -602,12 +678,83 @@
             if (copy) copy.disabled = node.hasAttribute("data-familiar-open-code");
           } else if (table && node.nodeName === "TABLE") patchNode(table, node, false);
           else block.replaceChildren(node);
-        } else if (block.firstChild) patchNode(block.firstChild, node, animate);
+        } else if (block.firstChild) patchNode(block.firstChild, node);
         else block.appendChild(node);
         block._familiarHTML = html;
       }
     });
     old.slice(nodes.length).forEach(function (node) { node.remove(); });
+  }
+
+  let messageSearchTerm = "";
+  let searchLayer = null;
+  let searchHighlightFrame = null;
+  function queueSearchHighlights() {
+    if (searchHighlightFrame !== null) return;
+    searchHighlightFrame = requestAnimationFrame(function () {
+      searchHighlightFrame = null;
+      updateSearchHighlights();
+    });
+  }
+  function setSearchTerm(term) {
+    messageSearchTerm = String(term || "");
+    queueSearchHighlights();
+  }
+  function updateSearchHighlights() {
+    // WebKit bug 278455 hides CSS Custom Highlights under user-select:none.
+    // Paint noninteractive range rectangles in a sibling layer instead. Never
+    // wrap/rewrite message text or change the message-selection gesture policy.
+    if (!searchLayer && !messageSearchTerm) return;
+    if (!searchLayer) {
+      searchLayer = document.createElement("div");
+      searchLayer.className = "message-search-highlights";
+      searchLayer.setAttribute("aria-hidden", "true");
+      document.body.appendChild(searchLayer);
+    }
+    searchLayer.replaceChildren();
+    if (!messageSearchTerm) return;
+    function folded(value) { return value.normalize("NFKD").replace(/\p{M}/gu, "").toLocaleLowerCase(); }
+    const query = folded(messageSearchTerm);
+    if (!query) return;
+    const ranges = [];
+    const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode()) && ranges.length < 500) {
+      if (node.parentElement.closest("button, .katex, [data-mermaid-id], script, style")) continue;
+      let normalized = "", starts = [], ends = [], offset = 0;
+      for (const character of node.textContent) {
+        const value = folded(character);
+        for (let i = 0; i < value.length; i++) { starts.push(offset); ends.push(offset + character.length); }
+        normalized += value;
+        offset += character.length;
+      }
+      let start = 0, match;
+      while ((match = normalized.indexOf(query, start)) >= 0 && ranges.length < 500) {
+        const range = document.createRange();
+        range.setStart(node, starts[match]);
+        range.setEnd(node, ends[match + query.length - 1]);
+        ranges.push(range);
+        start = match + query.length;
+      }
+    }
+    const fragment = document.createDocumentFragment();
+    for (const range of ranges) {
+      for (const rect of range.getClientRects()) {
+        let left = rect.left, right = rect.right, top = rect.top, bottom = rect.bottom;
+        let parent = range.startContainer.parentElement;
+        while (parent && parent !== content) {
+          const style = getComputedStyle(parent), clip = parent.getBoundingClientRect();
+          if (/hidden|auto|scroll|clip/.test(style.overflowX)) { left = Math.max(left, clip.left); right = Math.min(right, clip.right); }
+          if (/hidden|auto|scroll|clip/.test(style.overflowY)) { top = Math.max(top, clip.top); bottom = Math.min(bottom, clip.bottom); }
+          parent = parent.parentElement;
+        }
+        if (right <= left || bottom <= top) continue;
+        const mark = document.createElement("span");
+        mark.style.cssText = "left:" + left + "px;top:" + top + "px;width:" + (right - left) + "px;height:" + (bottom - top) + "px";
+        fragment.appendChild(mark);
+      }
+    }
+    searchLayer.appendChild(fragment);
   }
 
   function render(markdown, options) {
@@ -617,7 +764,10 @@
       if (style) Object.keys(style).forEach(function (key) {
         if (key.indexOf("--familiar-") === 0) document.documentElement.style.setProperty(key, String(style[key]));
       });
-      setSelectionEnabled(!(options && options.streaming));
+      if (options && typeof options.messageActionsEnabled === "boolean") {
+        setMessageActions(options.messageActionsEnabled, options.messageAccessibilityActions, options.messageActionsLabel);
+      }
+      setSelectionEnabled(!(options && options.streaming) && (!messageActionsEnabled || messageSelecting));
       content.classList.toggle("reduce-motion", Boolean(options && options.reduceMotion));
       content.classList.toggle("streaming", Boolean(options && options.streaming));
       if (!(options && options.streaming)) {
@@ -655,6 +805,8 @@
           decorateCodeBlocks(content, options);
           decorateTables(content);
           reportHeight();
+          reportMessageInteractionRegions();
+          queueSearchHighlights();
         });
     } catch (error) {
       content.innerHTML = "<p>" + escapeHTML(markdown || "").replace(/\n/g, "<br>") + "</p>";
@@ -664,13 +816,21 @@
   }
 
   if (window.ResizeObserver) {
-    new ResizeObserver(reportHeight).observe(content);
+    new ResizeObserver(function () { reportHeight(); reportMessageInteractionRegions(); queueSearchHighlights(); }).observe(content);
   }
   document.addEventListener("selectionchange", reportSelection);
+  document.addEventListener("focusin", function () { reportHeight(); reportMessageInteractionRegions(); });
+  document.addEventListener("focusout", function () { requestAnimationFrame(function () { reportHeight(); reportMessageInteractionRegions(); }); });
+  document.addEventListener("scroll", function () { reportMessageInteractionRegions(); if (messageSearchTerm) queueSearchHighlights(); }, true);
+  window.addEventListener("resize", queueSearchHighlights);
 
   window.FamiliarMarkdown = {
     render: render,
-    setReadingTop: setReadingTop
+    setSearchTerm: setSearchTerm,
+    setReadingTop: setReadingTop,
+    setMessageActions: setMessageActions,
+    selectMessageText: selectMessageText,
+    endMessageSelection: endMessageSelection
   };
   post("rendererReady", true);
 })();

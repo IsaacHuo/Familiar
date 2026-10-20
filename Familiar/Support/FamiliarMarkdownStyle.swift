@@ -5,7 +5,16 @@ import UIKit
 /// native content. This is presentation input, never model-controlled CSS.
 @MainActor
 enum FamiliarMarkdownStyle {
+    private struct Key: Hashable {
+        let scheme: ColorScheme
+        let size: DynamicTypeSize
+        let contrast: ColorSchemeContrast
+    }
+    // Finite system appearance inputs; no message text or per-view identities.
+    private static var cache: [Key: String] = [:]
     static func json(colorScheme: ColorScheme, size: DynamicTypeSize, contrast: ColorSchemeContrast) -> String {
+        let key = Key(scheme: colorScheme, size: size, contrast: contrast)
+        if let value = cache[key] { return value }
         let traits = UITraitCollection(mutations: {
             $0.userInterfaceStyle = colorScheme == .dark ? .dark : .light
             $0.preferredContentSizeCategory = category(size)
@@ -33,7 +42,9 @@ enum FamiliarMarkdownStyle {
         variables["--familiar-content-duration"] = "\(FamiliarMotion.contentAppearDuration * 1000)ms"
         variables["--familiar-content-offset"] = "\(FamiliarMotion.contentAppearOffset)px"
         let data = try? JSONSerialization.data(withJSONObject: variables, options: [.sortedKeys])
-        return data.map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+        let value = data.map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+        cache[key] = value
+        return value
     }
 
     private static func category(_ size: DynamicTypeSize) -> UIContentSizeCategory {
