@@ -3,6 +3,7 @@
 "NSCalendarsFullAccessUsageDescription" = "Familiar reads calendar events you ask about and adds an event only after you confirm its preview.";
 "NSContactsUsageDescription" = "Familiar searches contacts only when you ask and only after you approve access.";
 "NSHealthShareUsageDescription" = "Familiar reads only the health activity summaries you explicitly request and never writes health data.";
+"NSHealthUpdateUsageDescription" = "Familiar accesses HealthKit to answer your questions about steps, active energy, and walking or running distance. Access is read-only; Familiar does not save or change health records.";
 "NSLocationWhenInUseUsageDescription" = "Familiar requests a single foreground location only when your task needs it.";
 "NSPhotoLibraryAddUsageDescription" = "Familiar saves a Workspace image to Photos only after you approve the exact output.";
 "NSPhotoLibraryUsageDescription" = "Familiar reads recent photo metadata only when you ask, respects limited access, and does not read image pixels without a separate selection.";

@@ -3,6 +3,13 @@
 "common.back" = "返回";
 "common.cancel" = "取消";
 "common.clear" = "清除";
+"skills.close" = "关闭技能菜单";
+"message.select_text" = "选择文本";
+"message.edit.title" = "正在编辑消息";
+"message.edit.detail" = "新回复成功保存后才替换原历史。";
+"message.edit.cancel" = "取消编辑";
+"message.edit.send" = "发送修改";
+"message.edit.changed" = "原消息已变更或不可用。请取消编辑后重新选择消息。";
 "common.close" = "关闭";
 "common.continue" = "继续";
 "common.copy" = "复制";
@@ -73,7 +80,7 @@
 "settings.hub.soul.detail" = "手动设定语气、语言与回复格式";
 "settings.hub.appearance" = "外观";
 "settings.hub.storage" = "本地存储";
-"settings.hub.storage.detail" = "此 iPhone 上的会话与附件";
+"settings.hub.storage.detail" = "文件、附件、工作区与运行环境的本机用量";
 "settings.hub.permissions" = "权限";
 "settings.hub.permissions.detail" = "查看由 iOS 管理的访问权限";
 "settings.hub.run_history" = "运行记录";
@@ -241,7 +248,7 @@
 "project.run.step.retryable" = "可重试";
 "project.run.step.payload" = "结果载荷";
 "project.run.step.payload_hash" = "结果哈希";
-"project.run.authorization.automatic" = "已匹配此前记住的授权";
+"project.run.authorization.automatic" = "已按应用的自动执行规则允许";
 "project.run.authorization.automatic.short" = "自动授权";
 "project.run.authorization.cancelled" = "用户已取消";
 "project.run.authorization.risk" = "风险";
@@ -708,12 +715,12 @@
 "settings.diagnostics.unavailable" = "%@ 项不可用";
 "settings.diagnostics.unavailable.footer" = "请求工具组时会说明不可用的工具和原因。加载工具组不会授予系统访问或操作权限。";
 "settings.memory.title" = "记忆";
-"settings.memory.detail.on" = "记住你确认过的偏好和事实";
+"settings.memory.detail.on" = "按原归属保存和使用记忆";
 "settings.memory.detail.off" = "已关闭 · 已保存的记忆仍保留但不使用";
-"settings.memory.enabled" = "跨对话记住";
-"settings.memory.enabled.footer" = "关闭后，Familiar 既不会提议新的记忆，也不会读取已有记忆。已保存的记忆仍留在本机，并继续显示在下方。";
+"settings.memory.enabled" = "自动记忆";
+"settings.memory.enabled.footer" = "开启后，Familiar 可自动保存符合规则的偏好和事实，并提供回执与撤销。关闭后，后续发送不再自动新增记忆或将其用于回答，已保存的内容仍留在本机。记忆按项目、对话或全局归属隔离。正在运行的任务沿用开始时的配置。";
 "settings.memory.empty" = "还没有记住任何内容";
-"settings.memory.empty.detail" = "Familiar 只会记住你确认过的内容。";
+"settings.memory.empty.detail" = "符合规则的偏好和事实可自动记住，并保留来源与撤销记录。";
 "settings.memory.count" = "已记住 %@ 条";
 "settings.memory.footer" = "每条记忆都记录了来源。记忆不会被当作指令，也不能授予权限。";
 "settings.memory.clear_all" = "删除全部记忆";
@@ -1086,7 +1093,7 @@
 
 "settings.hub.interface" = "界面与交互";
 
-"settings.hub.memory.detail" = "管理已确认的偏好与事实";
+"settings.hub.memory.detail" = "管理带来源的偏好与事实，按归属隔离使用";
 
 "settings.hub.privacy_data.detail" = "访问、授权、安全与本地数据";
 
@@ -1130,7 +1137,7 @@
 
 /* Chat navigation and AI draft editor */
 "tab.files" = "文件";
-"tab.chats" = "聊天";
+"tab.chats" = "对话";
 "tab.settings" = "设置";
 "skills.menu" = "技能";
 "chat.open" = "打开对话";
@@ -1154,7 +1161,7 @@
 "chat.search.messages" = "消息";
 "file.library.scope" = "归属";
 "file.library.all" = "全部文件";
-"rewrite.title" = "AI 编辑器";
+"rewrite.title" = "AI 润色";
 "rewrite.operation" = "编辑方式";
 "rewrite.mode.translate" = "翻译";
 "rewrite.mode.style" = "风格";
@@ -1171,7 +1178,7 @@
 "rewrite.generate" = "生成";
 "rewrite.stop" = "停止生成";
 "rewrite.apply" = "应用到草稿";
-"rewrite.undo" = "撤销 AI 改写";
+"rewrite.undo" = "撤销润色";
 "rewrite.model" = "编辑模型";
 "rewrite.model.current" = "使用当前聊天模型";
 "rewrite.provider_note" = "草稿会直接发送到你选择的模型服务。应用结果后仍需自行发送消息。";
@@ -1183,3 +1190,123 @@
 "chat.drafts" = "草稿";
 "chat.drafts.empty" = "没有已保存的草稿";
 "file.library.missing" = "此文件已不可用";
+
+"profile.default_name" = "我";
+"profile.edit" = "编辑资料";
+"profile.avatar.change" = "更换头像";
+"profile.avatar.remove" = "移除头像";
+"profile.name" = "昵称";
+"profile.bio" = "简介";
+"profile.local" = "资料仅保存在本机，用于个性化显示。";
+"message.return_position" = "返回阅读位置";
+
+"local_search.prompt" = "搜索对话和消息";
+"local_search.local" = "仅搜索本机保存的内容。";
+"local_search.more" = "加载更多结果";
+"local_search.retry" = "重试";
+"local_search.photos_count" = "%lld 张照片";
+"local_search.files_more" = "另有 %lld 个文件";
+"local_search.find" = "在对话中查找";
+"local_search.count" = "%1$lld / %2$lld";
+"local_search.previous" = "上一个结果";
+"local_search.next" = "下一个结果";
+"local_search.no_matches" = "没有匹配的消息";
+
+"files.type" = "文件类型";
+"files.filters" = "筛选与排序";
+"files.sort" = "排序";
+"files.type.all" = "全部类型";
+"files.type.image" = "图片";
+"files.type.pdf" = "PDF";
+"files.type.document" = "文档";
+"files.type.spreadsheet" = "表格";
+"files.type.presentation" = "演示文稿";
+"files.type.text" = "文本与代码";
+"files.type.other" = "其他";
+"files.sort.recent" = "最近更新";
+"files.sort.oldest" = "最早更新";
+"files.sort.name" = "名称";
+"files.sort.size" = "大小（从大到小）";
+"files.origin.upload" = "对话附件";
+"files.origin.projectImport" = "导入文件";
+"files.origin.webCapture" = "网页资料";
+"files.origin.generated" = "生成文件";
+"files.origin.shell" = "运行环境产物";
+"files.versions_count" = "%lld 个版本";
+"files.no_version" = "暂无可用版本";
+"files.details" = "文件详情";
+"files.source" = "来源";
+"files.updated" = "更新时间";
+"attachment.import_failed" = "导入失败";
+"attachment.resolve_failed" = "请重试或移除失败的附件后发送。";
+"attachment.import_limit" = "已达到附件数量上限。";
+"attachment.retry" = "重试";
+"attachment.import_cancel" = "取消导入";
+"attachment.preview_count" = "%1$lld / %2$lld";
+
+"settings.search.local" = "搜索设置";
+"settings.state.on" = "已开启";
+"settings.state.off" = "已关闭";
+"settings.provider.discovering" = "正在获取模型列表";
+"settings.provider.verifying" = "正在验证选定模型";
+"settings.provider.signing_in" = "正在连接授权";
+"settings.memory.scope_filter" = "记忆归属";
+"settings.memory.filter.all" = "全部归属";
+"settings.memory.filter.global" = "全局";
+"settings.memory.filter.project" = "项目";
+"settings.memory.filter.conversation" = "对话";
+"settings.memory.project_owner" = "项目 · %@";
+"settings.memory.conversation_owner" = "对话 · %@";
+"settings.memory.conversation_missing" = "对话不可用";
+"settings.memory.scoped_footer" = "此页只管理该工作范围的记忆。全局记忆及自动记忆开关在设置中管理。";
+"settings.memory.clear_scope" = "删除当前范围的记忆";
+"settings.memory.clear_scope.confirm" = "删除当前显示范围的记忆？";
+"project.work" = "项目工作";
+"project.configuration" = "工具与环境";
+"settings.runs.technical" = "技术详情";
+"settings.runs.summary" = "运行摘要";
+"settings.storage.measurement" = "按本机文件字节大小统计，并按存储目录分组；同一物理文件及其引用不重复相加。未包含系统缓存和其他 App 数据。";
+"settings.storage.refresh" = "重新统计";
+"settings.storage.database" = "历史与数据库";
+"settings.storage.files" = "文件与资料";
+"settings.storage.workspaces" = "工作区";
+"settings.storage.runtime" = "运行环境";
+"settings.storage.other" = "其他本地数据";
+"settings.storage.total" = "已统计文件大小";
+
+"settings.storage.incomplete" = "部分文件暂时无法读取，统计结果可能不完整。";
+"settings.runs.scope" = "归属";
+"settings.runs.no_reply" = "本次运行没有已保存的回复。";
+"settings.runs.phase.queued" = "准备中";
+"settings.runs.phase.undone" = "已撤销";
+
+"settings.storage.file_records" = "文件条目";
+"settings.storage.file_versions" = "文件版本";
+
+/* Motion and accessibility */
+"accessibility.reply_failed" = "回复失败";
+"accessibility.reply_stopped" = "回复已停止";
+"accessibility.message_actions" = "消息操作";
+"accessibility.selection_started" = "已进入文本选择。使用完成按钮或两指擦除手势退出。";
+"accessibility.unread_conversations" = "%lld 个未读对话";
+
+"model.current.entry" = "当前模型";
+"rewrite.compare" = "对照原文与润色结果";
+"rewrite.regenerate" = "重新润色";
+
+"message.load_earlier" = "加载更早的消息";
+"message.load_later" = "加载后续消息";
+
+"files.select" = "选择";
+
+"files.select_all" = "全选";
+
+"files.deselect_all" = "取消全选";
+
+"files.selection.count" = "已选择 %lld 项";
+
+"files.delete.count" = "删除 %lld 个文件？";
+
+"files.delete.all_versions" = "将删除所选文件及其全部版本。";
+
+"files.delete.partial" = "已删除 %lld 项，%lld 项失败。失败文件仍保留，可重试。";

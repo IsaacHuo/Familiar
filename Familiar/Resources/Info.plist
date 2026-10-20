@@ -51,6 +51,8 @@
 	<string>Unlock your private Familiar workspace.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Familiar reads only the health activity summaries you explicitly request and never writes health data.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Familiar accesses HealthKit to answer your questions about steps, active energy, and walking or running distance. Access is read-only; Familiar does not save or change health records.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Familiar requests a single foreground location only when your task needs it.</string>
 	<key>NSMicrophoneUsageDescription</key>

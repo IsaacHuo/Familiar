@@ -3,6 +3,7 @@
 "NSCalendarsFullAccessUsageDescription" = "Familiar 仅查询你询问的日历事件，并且只在你确认预览后添加日程。";
 "NSContactsUsageDescription" = "Familiar 仅在你要求时搜索联系人，并且只在你授权后访问。";
 "NSHealthShareUsageDescription" = "Familiar 只读取你明确要求的健康活动摘要，不会写入任何健康数据。";
+"NSHealthUpdateUsageDescription" = "Familiar 访问健康数据，以回答你关于步数、活动能量和步行或跑步距离的问题。访问仅限读取，不会保存或修改健康记录。";
 "NSLocationWhenInUseUsageDescription" = "Familiar 只在任务需要时请求一次前台位置。";
 "NSPhotoLibraryAddUsageDescription" = "Familiar 只会在你确认具体输出后，把 Workspace 图片保存到照片。";
 "NSPhotoLibraryUsageDescription" = "Familiar 仅在你要求时读取最近照片的元数据，尊重“有限照片”授权，且不会在你另行选择前读取图片像素。";

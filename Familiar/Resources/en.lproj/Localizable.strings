@@ -3,6 +3,13 @@
 "common.back" = "Back";
 "common.cancel" = "Cancel";
 "common.clear" = "Clear";
+"skills.close" = "Close skill menu";
+"message.select_text" = "Select Text";
+"message.edit.title" = "Editing message";
+"message.edit.detail" = "Original history stays until the new reply is saved successfully.";
+"message.edit.cancel" = "Cancel editing";
+"message.edit.send" = "Send edit";
+"message.edit.changed" = "The original message changed or is unavailable. Cancel editing and select the message again.";
 "common.close" = "Close";
 "common.continue" = "Continue";
 "common.copy" = "Copy";
@@ -73,7 +80,7 @@
 "settings.hub.soul.detail" = "Set tone, language and response format manually";
 "settings.hub.appearance" = "Appearance";
 "settings.hub.storage" = "Local Storage";
-"settings.hub.storage.detail" = "Conversations and attachments on this iPhone";
+"settings.hub.storage.detail" = "Local files, attachments, workspaces and runtime usage";
 "settings.hub.permissions" = "Permissions";
 "settings.hub.permissions.detail" = "Review access managed by iOS";
 "settings.hub.run_history" = "Run History";
@@ -241,7 +248,7 @@
 "project.run.step.retryable" = "Retryable";
 "project.run.step.payload" = "Result payload";
 "project.run.step.payload_hash" = "Payload hash";
-"project.run.authorization.automatic" = "Allowed by a remembered authorization";
+"project.run.authorization.automatic" = "Allowed by the app’s automatic execution rules";
 "project.run.authorization.automatic.short" = "Automatic";
 "project.run.authorization.cancelled" = "Cancelled by the user";
 "project.run.authorization.risk" = "Risk";
@@ -708,12 +715,12 @@
 "settings.diagnostics.unavailable" = "%@ unavailable";
 "settings.diagnostics.unavailable.footer" = "Unavailable tools are reported when their group is requested. Loading a group never grants system access or action approval.";
 "settings.memory.title" = "Memory";
-"settings.memory.detail.on" = "Remembers confirmed preferences and facts";
+"settings.memory.detail.on" = "Save and use memory in its original scope";
 "settings.memory.detail.off" = "Off · stored memories are kept but unused";
-"settings.memory.enabled" = "Remember across conversations";
-"settings.memory.enabled.footer" = "When off, Familiar neither proposes new memories nor reads existing ones. Stored memories stay on this device and remain listed below.";
+"settings.memory.enabled" = "Automatic Memory";
+"settings.memory.enabled.footer" = "When enabled, Familiar can automatically save eligible preferences and facts with receipts and Undo. When off, future messages stop automatic memory writes and context use; saved memory stays on this device in its original scope. Running tasks keep the configuration they started with.";
 "settings.memory.empty" = "Nothing remembered yet";
-"settings.memory.empty.detail" = "Familiar only remembers what you confirm.";
+"settings.memory.empty.detail" = "Eligible preferences and facts can be remembered automatically, with source and Undo records.";
 "settings.memory.count" = "%@ remembered";
 "settings.memory.footer" = "Each memory records where it came from. Memory is never treated as an instruction and cannot grant permissions.";
 "settings.memory.clear_all" = "Delete All Memories";
@@ -1086,7 +1093,7 @@
 
 "settings.hub.interface" = "Interface & Interaction";
 
-"settings.hub.memory.detail" = "Manage confirmed preferences and facts";
+"settings.hub.memory.detail" = "Manage scoped preferences and facts with their sources";
 
 "settings.hub.privacy_data.detail" = "Access, authorizations, security and local data";
 
@@ -1130,7 +1137,7 @@
 
 /* Chat navigation and AI draft editor */
 "tab.files" = "Files";
-"tab.chats" = "Chats";
+"tab.chats" = "Conversations";
 "tab.settings" = "Settings";
 "skills.menu" = "Skills";
 "chat.open" = "Open chat";
@@ -1154,7 +1161,7 @@
 "chat.search.messages" = "Messages";
 "file.library.scope" = "Location";
 "file.library.all" = "All files";
-"rewrite.title" = "AI editor";
+"rewrite.title" = "AI Polish";
 "rewrite.operation" = "Editing mode";
 "rewrite.mode.translate" = "Translate";
 "rewrite.mode.style" = "Style";
@@ -1171,7 +1178,7 @@
 "rewrite.generate" = "Generate";
 "rewrite.stop" = "Stop";
 "rewrite.apply" = "Apply to draft";
-"rewrite.undo" = "Undo AI edit";
+"rewrite.undo" = "Undo polish";
 "rewrite.model" = "Editing model";
 "rewrite.model.current" = "Use current chat model";
 "rewrite.provider_note" = "The draft is sent directly to your selected model provider. Applying the result does not send a chat message.";
@@ -1183,3 +1190,123 @@
 "chat.drafts" = "Drafts";
 "chat.drafts.empty" = "No saved drafts";
 "file.library.missing" = "This file is no longer available";
+
+"profile.default_name" = "Me";
+"profile.edit" = "Edit Profile";
+"profile.avatar.change" = "Change Photo";
+"profile.avatar.remove" = "Remove Photo";
+"profile.name" = "Nickname";
+"profile.bio" = "Bio";
+"profile.local" = "Your profile is stored on this device for personal display.";
+"message.return_position" = "Return to Reading Position";
+
+"local_search.prompt" = "Search Conversations and Messages";
+"local_search.local" = "Search content saved on this device.";
+"local_search.more" = "Load More Results";
+"local_search.retry" = "Retry";
+"local_search.photos_count" = "%lld photos";
+"local_search.files_more" = "%lld more files";
+"local_search.find" = "Find in Conversation";
+"local_search.count" = "%1$lld / %2$lld";
+"local_search.previous" = "Previous Result";
+"local_search.next" = "Next Result";
+"local_search.no_matches" = "No matching messages";
+
+"files.type" = "File Type";
+"files.filters" = "Filter and Sort";
+"files.sort" = "Sort";
+"files.type.all" = "All Types";
+"files.type.image" = "Images";
+"files.type.pdf" = "PDF";
+"files.type.document" = "Documents";
+"files.type.spreadsheet" = "Spreadsheets";
+"files.type.presentation" = "Presentations";
+"files.type.text" = "Text and Code";
+"files.type.other" = "Other";
+"files.sort.recent" = "Recently Updated";
+"files.sort.oldest" = "Oldest First";
+"files.sort.name" = "Name";
+"files.sort.size" = "Largest First";
+"files.origin.upload" = "Conversation Attachment";
+"files.origin.projectImport" = "Imported File";
+"files.origin.webCapture" = "Web Capture";
+"files.origin.generated" = "Generated File";
+"files.origin.shell" = "Environment Output";
+"files.versions_count" = "%lld versions";
+"files.no_version" = "No available version";
+"files.details" = "File Details";
+"files.source" = "Source";
+"files.updated" = "Updated";
+"attachment.import_failed" = "Import Failed";
+"attachment.resolve_failed" = "Retry or remove failed attachments before sending.";
+"attachment.import_limit" = "The attachment limit has been reached.";
+"attachment.retry" = "Retry";
+"attachment.import_cancel" = "Cancel Import";
+"attachment.preview_count" = "%1$lld / %2$lld";
+
+"settings.search.local" = "Search Settings";
+"settings.state.on" = "On";
+"settings.state.off" = "Off";
+"settings.provider.discovering" = "Discovering models";
+"settings.provider.verifying" = "Verifying the selected model";
+"settings.provider.signing_in" = "Connecting authorization";
+"settings.memory.scope_filter" = "Memory Scope";
+"settings.memory.filter.all" = "All Scopes";
+"settings.memory.filter.global" = "Global";
+"settings.memory.filter.project" = "Projects";
+"settings.memory.filter.conversation" = "Conversations";
+"settings.memory.project_owner" = "Project · %@";
+"settings.memory.conversation_owner" = "Conversation · %@";
+"settings.memory.conversation_missing" = "Conversation unavailable";
+"settings.memory.scoped_footer" = "This page manages memory in this work scope. Global memory and automatic memory are managed in Settings.";
+"settings.memory.clear_scope" = "Delete Memories in This Scope";
+"settings.memory.clear_scope.confirm" = "Delete memories in the displayed scope?";
+"project.work" = "Project Work";
+"project.configuration" = "Tools and Environment";
+"settings.runs.technical" = "Technical Details";
+"settings.runs.summary" = "Run Summary";
+"settings.storage.measurement" = "Measured from local file bytes, grouped by storage directory. Physical files and their references are not counted twice. System caches and other apps are excluded.";
+"settings.storage.refresh" = "Measure Again";
+"settings.storage.database" = "History and Database";
+"settings.storage.files" = "Files and Resources";
+"settings.storage.workspaces" = "Workspaces";
+"settings.storage.runtime" = "Runtime Environment";
+"settings.storage.other" = "Other Local Data";
+"settings.storage.total" = "Measured File Size";
+
+"settings.storage.incomplete" = "Some files could not be read. This measurement may be incomplete.";
+"settings.runs.scope" = "Scope";
+"settings.runs.no_reply" = "No reply was persisted for this run.";
+"settings.runs.phase.queued" = "Preparing";
+"settings.runs.phase.undone" = "Undone";
+
+"settings.storage.file_records" = "File Records";
+"settings.storage.file_versions" = "File Versions";
+
+/* Motion and accessibility */
+"accessibility.reply_failed" = "Reply failed";
+"accessibility.reply_stopped" = "Reply stopped";
+"accessibility.message_actions" = "Message actions";
+"accessibility.selection_started" = "Text selection enabled. Use Done or the escape gesture to finish.";
+"accessibility.unread_conversations" = "%lld unread conversations";
+
+"model.current.entry" = "Current model";
+"rewrite.compare" = "Compare original and result";
+"rewrite.regenerate" = "Generate again";
+
+"message.load_earlier" = "Load earlier messages";
+"message.load_later" = "Load later messages";
+
+"files.select" = "Select";
+
+"files.select_all" = "Select All";
+
+"files.deselect_all" = "Deselect All";
+
+"files.selection.count" = "%lld Selected";
+
+"files.delete.count" = "Delete selected files (%lld)?";
+
+"files.delete.all_versions" = "The selected files and all their versions will be deleted.";
+
+"files.delete.partial" = "Deleted %lld items; %lld failed. Failed files are preserved and can be retried.";
