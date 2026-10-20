@@ -12,6 +12,7 @@ final class FamiliarComposerDraftRecord {
     var selectionEnd: Int = 0
     var skillID: UUID?
     var attachmentsData: Data = Data()
+    var editStateData: Data?
     var updatedAt: Date = Date()
 
     init(id: UUID, conversationID: UUID?, projectID: UUID?) {
@@ -22,6 +23,14 @@ final class FamiliarComposerDraftRecord {
 
     func attachments() throws -> [FamiliarAttachmentDraft] {
         attachmentsData.isEmpty ? [] : try JSONDecoder().decode([FamiliarAttachmentDraft].self, from: attachmentsData)
+    }
+
+    func editState() throws -> FamiliarMessageEditState? {
+        try editStateData.map { try JSONDecoder().decode(FamiliarMessageEditState.self, from: $0) }
+    }
+
+    func retainedAttachments() throws -> [FamiliarAttachmentDraft] {
+        try attachments() + (editState()?.previousDraft.attachments ?? [])
     }
 }
 
@@ -82,14 +91,14 @@ enum FamiliarChatListStore {
 
     static func retainedDraftPaths(in context: ModelContext) throws -> Set<String> {
         try context.fetch(FetchDescriptor<FamiliarComposerDraftRecord>()).reduce(into: Set<String>()) { result, record in
-            result.formUnion(try record.attachments().map(\.relativePath))
+            result.formUnion(try record.retainedAttachments().map(\.relativePath))
         }
     }
 
     static func stageRemoval(conversationIDs: Set<UUID>, in context: ModelContext) throws -> [String] {
         let drafts = try context.fetch(FetchDescriptor<FamiliarComposerDraftRecord>())
             .filter { conversationIDs.contains($0.conversationID ?? $0.id) }
-        let paths = try drafts.flatMap { try $0.attachments().map(\.relativePath) }
+        let paths = try drafts.flatMap { try $0.retainedAttachments().map(\.relativePath) }
         drafts.forEach(context.delete)
         try context.fetch(FetchDescriptor<FamiliarConversationListStateRecord>())
             .filter { conversationIDs.contains($0.conversationID) }.forEach(context.delete)
@@ -103,14 +112,29 @@ enum FamiliarChatListStore {
         return try context.fetch(descriptor).first
     }
 
+    static func draftSummary(_ draft: FamiliarComposerDraftRecord) -> String {
+        let text = draft.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let attachments = (try? draft.attachments()) ?? []
+        let files = attachmentSummary(attachments.map { ($0.kind, $0.filename) })
+        return [files, String(text.prefix(180))].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    private static func attachmentSummary(_ files: [(FamiliarAttachmentKind, String)]) -> String {
+        let photos = files.filter { $0.0 == .image }.count
+        let documents = files.filter { $0.0 != .image }
+        var parts: [String] = []
+        if photos > 0 { parts.append(String(format: String(localized: "local_search.photos_count"), photos)) }
+        parts += documents.prefix(2).map { $0.1 }
+        if documents.count > 2 { parts.append(String(format: String(localized: "local_search.files_more"), documents.count - 2)) }
+        return parts.joined(separator: " · ")
+    }
+
     static func summary(_ message: FamiliarMessage?) -> String {
         guard let message else { return "" }
         let excerpt = String(message.content.prefix(2_000)).replacingOccurrences(of: #"\[\[[^\]\n]+\]\]"#, with: "", options: .regularExpression)
         let plain = (try? AttributedString(markdown: excerpt)).map { String($0.characters) } ?? excerpt
         let text = plain.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
-        if !text.isEmpty { return String(text.prefix(200)) }
-        let files = message.attachments
-        if files.contains(where: { $0.kind == .image }) { return String(localized: "attachment.photos") }
-        return files.first?.filename ?? ""
+        let files = attachmentSummary(message.attachments.map { ($0.kind, $0.filename) })
+        return [files, String(text.prefix(200))].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 }

@@ -1,5 +1,43 @@
 import Foundation
 
+/// UTF-16 offsets survive persistence without retaining indices into an older String.
+nonisolated struct FamiliarComposerSelection: Codable, Equatable, Sendable {
+    let start: Int
+    let end: Int
+
+    static func caretAtEnd(of text: String) -> Self { .init(start: text.utf16.count, end: text.utf16.count) }
+
+    func normalized(in text: String) -> Self {
+        let value = text as NSString
+        let lower = min(max(0, start), value.length)
+        let upper = min(max(lower, end), value.length)
+        if lower == upper {
+            guard lower < value.length else { return .init(start: lower, end: lower) }
+            let boundary = value.rangeOfComposedCharacterSequence(at: lower).location
+            return .init(start: boundary, end: boundary)
+        }
+        let range = value.rangeOfComposedCharacterSequences(for: NSRange(location: lower, length: upper - lower))
+        return .init(start: range.location, end: NSMaxRange(range))
+    }
+
+    var nsRange: NSRange { NSRange(location: start, length: end - start) }
+}
+
+nonisolated struct FamiliarComposerDraftSnapshot: Codable, Equatable, Sendable {
+    let text: String
+    let selection: FamiliarComposerSelection?
+    let skillID: UUID?
+    let attachments: [FamiliarAttachmentDraft]
+}
+
+nonisolated struct FamiliarMessageEditState: Codable, Equatable, Sendable {
+    let messageID: UUID
+    let sequence: Int
+    let sourceContent: String
+    let sourceAttachmentIDs: Set<UUID>
+    let previousDraft: FamiliarComposerDraftSnapshot
+}
+
 nonisolated enum FamiliarMessageRole: String, Codable, Sendable {
     case user
     case assistant

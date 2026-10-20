@@ -25,6 +25,8 @@ enum FamiliarSchemaV3: VersionedSchema {
     final class FamiliarConversation {
         @Attribute(.unique) var id: UUID
         var title: String
+        var titleOrigin: String?
+        var titleRevision: UUID?
         var createdAt: Date
         var updatedAt: Date
         var currentProviderID: String
@@ -52,6 +54,8 @@ enum FamiliarSchemaV3: VersionedSchema {
         ) {
             self.id = id
             self.title = title
+            self.titleOrigin = title == String(localized: "conversation.new") ? "pending" : "manual"
+            self.titleRevision = UUID()
             self.createdAt = createdAt
             self.updatedAt = updatedAt
             self.currentProviderID = currentProviderID

@@ -1,5 +1,6 @@
 import CoreSpotlight
 import Foundation
+import SwiftData
 import UniformTypeIdentifiers
 
 nonisolated struct FamiliarSpotlightConversation: Equatable, Sendable {
@@ -16,6 +17,16 @@ actor FamiliarSpotlightIndexer {
     static let shared = FamiliarSpotlightIndexer()
     static let domainIdentifier = "com.isaachuo.familiar.conversations"
     static let maximumTitleCharacters = 80
+
+    @MainActor static func storedConversations(in context: ModelContext) throws -> [FamiliarSpotlightConversation] {
+        var query = FetchDescriptor<FamiliarConversation>(predicate: #Predicate {
+            !$0.messages.isEmpty || !$0.agentRuns.isEmpty
+        })
+        query.propertiesToFetch = [\.id, \.title, \.updatedAt]
+        return try context.fetch(query).map {
+            FamiliarSpotlightConversation(id: $0.id, title: $0.title, updatedAt: $0.updatedAt)
+        }
+    }
 
     private let index = CSSearchableIndex(
         name: "FamiliarConversations",
