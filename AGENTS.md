@@ -5,7 +5,7 @@ Familiar is a native, safe, inspectable personal AI agent for iPhone. Chat / Pro
 - Core stack: SwiftUI, SwiftData, URLSession, WebKit, Keychain.
 - Minimum deployment target: iOS 26. Do not add fallback branches for older systems; keep only gates for newer versions (e.g. iOS 26.1, iOS 27) and the Reduce Transparency fallback.
 - The implemented scope includes one Agent with Lazy Tools, BYOK model access (default DeepSeek), local Chat history, Projects, canonical File/FileVersion, Context Compiler, scoped Skills and Memory, Web search/fetch, native Apple tools, the bundled iSH/Alpine guest for Shell and document generation, local document processing, image input and speech transcription. HTTP MCP discovery and approved calls are connected. No Router, Planner, multi-Agent, background execution or cross-restart continuation.
-- The current phase closes the user-authorized Telegram-inspired navigation/chat restructure (R0–R5); further work waits for owner device feedback. See PLAN.md for implementation and separate acceptance status.
+- The current UI phase has implemented the owner feedback fixes for Settings/chat/AI Polish and the first U6 layer (presentation windows, scoped history queries, bounded idle sessions and thumbnail work), following U0–U5. U6 now reads rich history payloads by an ID-indexed window, with full business-history reads separated from UI. The lightweight per-conversation index remains linear; device SQL/performance acceptance remains open. Compilation and owner device acceptance remain separate; see PLAN.md.
 - The app has no account system, login, backend database, Supabase dependency, managed quota, subscription, entitlement flow, cloud sync, arbitrary code execution, or multi-Agent orchestration.
 - Familiar never reads academic-system or other app data.
 - Providers use user-supplied API keys or the connected Kimi Code/Codex/OpenRouter external sign-in flows. Credentials remain in the device Keychain and requests go directly from iOS to the selected Provider. There is no Familiar account system.
@@ -43,9 +43,9 @@ Repository knowledge is split by responsibility; read in this order:
 ### Verification
 
 - Verify code changes with an arm64 iOS Simulator build using a concrete arm64 Simulator destination (not `generic/platform=iOS Simulator`, which fails to link iSH).
-- Run the narrowest relevant unit tests on one Simulator. UI slices may boot one Simulator to capture production-page screenshots (light/dark, large Dynamic Type). iSH slices may run signed device tests and `log stream` on a connected device; never change signing or erase data.
+- Current owner validation preference: build App and test targets only; the owner performs physical-device visual acceptance. Do not boot Simulator or run Simulator visual checks/screenshots. Keep compilation separate from unexecuted tests and device acceptance. Never change signing or erase data.
 - A test or Simulator command that shows no progress within 3 minutes is treated as hung: kill it, record the cause, and do not block the slice on retries.
-- A slice is complete only after executed tests, screenshots reviewed by the owner and owner sign-off on a physical device. Compilation alone is not completion.
+- For the current UI phase, a passing build closes agent implementation; physical-device visual acceptance belongs to the owner and remains separately pending. Compilation is not evidence of executed tests or runtime behavior.
 
 ### Git Workflow
 

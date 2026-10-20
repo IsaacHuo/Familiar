@@ -30,3 +30,15 @@
 ## 视觉验证
 
 浅/深色、大字体、小屏、空列表、多项目、长标题、媒体/文件、复杂 Markdown、菜单键盘切换、预览进出、运行期间返回列表分别截取生产页面。所有者视觉与真机签字独立于自动测试。
+
+## 真机反馈后的补充核对
+
+2026-10-18 再次沿以下调用链检查。上述截图项改由所有者真机验收；所有者最新要求代理仅构建，不再启动 Simulator 做视觉检查。
+
+- `ChatListHeaderComponent/Sources/ChatListNavigationBar.swift:15–16,308–426`：搜索折叠距离 54pt，按列表偏移计算可见高度和展开比例，分类跟随头部可见高度定位。`ChatListUI/Sources/ChatListControllerNode.swift:2313–2330` 在中间位置按一半距离吸附，不使用独立显隐计时器。
+- `ChatListHeaderComponent/Sources/ChatListHeaderComponent.swift:1156–1201`：左右按钮分别由单个玻璃容器承载。Familiar 的省略号曾把自带玻璃的 ToolbarItem 和自定义圆形玻璃叠加，本次移除内部玻璃；中央自定义胶囊关闭系统共享背景。
+- `Chat/ChatTextInputPanelNode/Sources/ChatTextInputPanelNode.swift:3155–3215`：正文框、占位文字读取同一组内部 inset。Familiar 改用薄封装 UITextView，共享字体、实际文本测量、占位位置和选区；不再依靠独立 TextEditor 占位 overlay 的估计 padding。
+- `Chat/ChatMessageBubbleItemNode/Sources/ChatMessageBubbleItemNode.swift:870–936`：先判断链接等命中内容与当前选择状态，再分发消息菜单，按压激活有专用来源视图。Familiar 将原生 UIContextMenuInteraction 附在实际文本视图，菜单与原位文本选择互斥；WebKit 上报交互元素区域，避免透明手势层遮挡链接和代码操作。
+- `GlassBackgroundComponent/Sources/GlassBackgroundComponent.swift:504–511` 使用公开 UIGlassEffect；`LiquidLens/Sources/LiquidLensView.swift:198–228` 同时存在私有 `_UILiquidLensView` 调用。Familiar 仅采用公开玻璃 API 和布局规则，不复制私有透镜实现。
+
+这些结论来自固定提交的静态源码核对，不代表 Familiar 已通过运行或视觉验收。
