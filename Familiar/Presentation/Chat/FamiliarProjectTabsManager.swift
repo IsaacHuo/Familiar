@@ -11,7 +11,8 @@ struct FamiliarProjectTabsManager: View {
         let ids = order.split(separator: ",").map(String.init)
         return projects.filter { $0.status == .active }.sorted {
             let lhs = ids.firstIndex(of: $0.id.uuidString) ?? Int.max, rhs = ids.firstIndex(of: $1.id.uuidString) ?? Int.max
-            return lhs == rhs ? $0.createdAt < $1.createdAt : lhs < rhs
+            if lhs != rhs { return lhs < rhs }
+            return $0.createdAt == $1.createdAt ? $0.id.uuidString < $1.id.uuidString : $0.createdAt < $1.createdAt
         }
     }
     var body: some View {

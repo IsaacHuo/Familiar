@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import Observation
 
 struct FamiliarChatsHome: View {
     @Environment(\.modelContext) private var context
@@ -14,9 +15,11 @@ struct FamiliarChatsHome: View {
     var archived = false
     let onNavigate: (FamiliarChatRoute) -> Void
     let onNew: (UUID?) -> Void
+    var onActiveRun: (() -> Void)? = nil
     @State private var filter = FamiliarChatListFilter.recent
-    @State private var query = ""
-    @State private var searchAll = false
+    @State private var search = FamiliarHomeSearchState()
+    @State private var searching = false
+    @State private var searchDestination: FamiliarChatRoute?
     @State private var editing = false
     @State private var selection: Set<UUID> = []
     @State private var pendingDelete: Set<UUID> = []
@@ -27,8 +30,11 @@ struct FamiliarChatsHome: View {
 
     private var orderedProjects: [FamiliarProject] {
         let ids = projectOrder.split(separator: ",").compactMap { UUID(uuidString: String($0)) }
+        let order = ids.enumerated().reduce(into: [UUID: Int]()) { values, entry in
+            if values[entry.element] == nil { values[entry.element] = entry.offset }
+        }
         return projects.filter { $0.status == .active }.sorted {
-            let lhs = ids.firstIndex(of: $0.id) ?? Int.max, rhs = ids.firstIndex(of: $1.id) ?? Int.max
+            let lhs = order[$0.id] ?? Int.max, rhs = order[$1.id] ?? Int.max
             if lhs != rhs { return lhs < rhs }
             return $0.createdAt == $1.createdAt ? $0.id.uuidString < $1.id.uuidString : $0.createdAt < $1.createdAt
         }
@@ -37,7 +43,10 @@ struct FamiliarChatsHome: View {
     private var rows: [FamiliarConversationListSnapshot] {
         let stateByID = Dictionary(uniqueKeysWithValues: states.map { ($0.conversationID, $0) })
         let draftByID = Dictionary(uniqueKeysWithValues: drafts.compactMap { draft in draft.conversationID.map { ($0, draft) } })
-        let pinned = Set(pins.filter { $0.targetType == .conversation }.map(\.targetID))
+        let pinOrder = pins.enumerated().reduce(into: [UUID: Int]()) { result, entry in
+            if entry.element.targetType == .conversation, result[entry.element.targetID] == nil { result[entry.element.targetID] = entry.offset }
+        }
+        let pinned = Set(pinOrder.keys)
         let active = coordinator.activeSession
         return conversations.compactMap { conversation in
             let state = stateByID[conversation.id]
@@ -46,7 +55,7 @@ struct FamiliarChatsHome: View {
             let running = active?.selectedConversationID == conversation.id
             let attention = running && (!(active?.pendingConfirmations.isEmpty ?? true) || !(active?.pendingClarifications.isEmpty ?? true))
             let preview: String
-            if let draft { preview = String(localized: "chat.draft") + " · " + String(draft.text.prefix(180)) }
+            if let draft { preview = String(localized: "chat.draft") + " · " + FamiliarChatListStore.draftSummary(draft) }
             else if attention { preview = String(localized: "chat.needs_attention") }
             else if running { preview = String(localized: "chat.running") }
             else { preview = state?.preview ?? "…" }
@@ -55,12 +64,12 @@ struct FamiliarChatsHome: View {
                 date: max(draft?.updatedAt ?? .distantPast, state?.latestActivityAt ?? conversation.updatedAt),
                 isPinned: pinned.contains(conversation.id), isUnread: state?.isUnread ?? false,
                 isArchived: archived, hasDraft: draft != nil, isRunning: running,
-                needsAttention: attention, hasFailure: state?.hasFailure ?? false)
+                needsAttention: attention, hasFailure: state?.hasFailure ?? false, projectID: conversation.project?.id)
         }.sorted { lhs, rhs in
             if lhs.isPinned != rhs.isPinned { return lhs.isPinned }
             if lhs.isPinned {
-                let left = pins.firstIndex { $0.targetID == lhs.id } ?? Int.max
-                let right = pins.firstIndex { $0.targetID == rhs.id } ?? Int.max
+                let left = pinOrder[lhs.id] ?? Int.max
+                let right = pinOrder[rhs.id] ?? Int.max
                 if left != right { return left < right }
             }
             if lhs.date != rhs.date { return lhs.date > rhs.date }
@@ -68,41 +77,62 @@ struct FamiliarChatsHome: View {
         }
     }
 
-    private func filtered(_ rows: [FamiliarConversationListSnapshot], by filter: FamiliarChatListFilter) -> [FamiliarConversationListSnapshot] {
-        guard case .project(let id) = filter else { return rows }
-        let ids = Set(conversations.filter { $0.project?.id == id }.map(\.id))
-        return rows.filter { ids.contains($0.id) }
-    }
-
     var body: some View {
         let entries = rows
-        VStack(spacing: 0) {
-            if !query.isEmpty {
-                searchResults(entries)
-            } else {
-                FamiliarChatProjectPager(rows: entries, projects: orderedProjects, filter: $filter,
-                    editing: editing, selection: $selection,
-                    counts: projectUnreadCounts,
-                    specialRows: AnyView(specialRows),
-                    rowFilter: filtered,
-                    onManage: { onNavigate(.projects) },
-                    onOpen: { onNavigate(.chat($0)) }, onAction: perform,
-                    preview: previewMessages)
+        let filters: [FamiliarChatListFilter] = [.recent] + orderedProjects.map { .project($0.id) }
+        let grouped = Dictionary(grouping: entries.compactMap { row in row.projectID.map { ($0, row) } }, by: { $0.0 })
+        let lists = Dictionary(uniqueKeysWithValues: filters.map { item in
+            switch item {
+            case .recent: return (item, entries)
+            case .project(let id): return (item, grouped[id]?.map { $0.1 } ?? [])
             }
-        }
-        .navigationTitle(String(localized: archived ? "chat.archived" : "tab.chats"))
+        })
+        let special = Dictionary(uniqueKeysWithValues: filters.compactMap { item in
+            hasSpecialRows(for: item) ? (item, AnyView(specialRows(for: item))) : nil
+        })
+        FamiliarChatProjectPager(rowsByFilter: lists, projects: orderedProjects, filter: $filter,
+            editing: editing, selection: $selection,
+            counts: projectUnreadCounts,
+            specialRowsByFilter: special, specialRowsRevision: specialRevision,
+            onManage: { onNavigate(.projects) },
+            onOpen: { onNavigate(.chat($0)) }, onAction: perform, preview: previewMessages)
+        .navigationTitle(archived ? String(localized: "chat.archived") : "")
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $query, prompt: String(localized: "drawer.search"))
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button(String(localized: editing ? "common.done" : "common.edit")) { editing.toggle(); selection.removeAll() }
+                Button(String(localized: editing ? "common.done" : "common.edit")) { searching = false; search.query = ""; editing.toggle(); selection.removeAll() }
                     .accessibilityIdentifier("chats.edit")
             }
-            ToolbarItem(placement: .topBarTrailing) {
+            if let active = coordinator.activeSession, let onActiveRun {
+                ToolbarItem(placement: .principal) {
+                    Button(action: onActiveRun) {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.mini)
+                            Text(String(localized: active.pendingConfirmations.isEmpty && active.pendingClarifications.isEmpty ? "chat.running" : "chat.needs_attention"))
+                                .font(.subheadline.weight(.medium)).lineLimit(1)
+                        }.padding(.horizontal, 12).frame(minHeight: 44)
+                    }
+                    .buttonStyle(.plain).familiarGlassSurface(interactive: true)
+                    .accessibilityIdentifier("chat.activeRun")
+                }.sharedBackgroundVisibility(.hidden)
+            }
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button { searching = true } label: { Image(systemName: "magnifyingglass") }
+                    .accessibilityLabel(String(localized: "drawer.search"))
+                    .accessibilityIdentifier("chats.search.open").disabled(editing)
                 Button { if case .project(let id) = filter { onNew(id) } else { onNew(nil) } } label: {
                     Image(systemName: "square.and.pencil")
                 }.accessibilityLabel(String(localized: "conversation.new")).accessibilityIdentifier("chats.new")
             }
+        }
+        .sheet(isPresented: $searching, onDismiss: {
+            search.query = ""
+            if let route = searchDestination { searchDestination = nil; onNavigate(route) }
+        }) {
+            FamiliarHomeSearchPage(state: search, conversationIDs: searchConversationIDs,
+                onOpen: { searchDestination = .chat($0); searching = false },
+                onMessage: { searchDestination = .message($0, $1); searching = false })
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if editing {
@@ -138,7 +168,6 @@ struct FamiliarChatsHome: View {
         }
         .task { initializeMetadata() }
         .onChange(of: filter) { _, _ in selection.removeAll() }
-        .onChange(of: query) { _, value in if !value.isEmpty { editing = false; selection.removeAll() } }
         .onChange(of: orderedProjects.map(\.id)) { _, ids in
             if case .project(let id) = filter, !ids.contains(id) { filter = .recent }
         }
@@ -146,13 +175,21 @@ struct FamiliarChatsHome: View {
     }
 
     private var projectUnreadCounts: [UUID: Int] {
-        let unreadIDs = Set(states.filter { !$0.isArchived && $0.isUnread }.map(\.conversationID))
+        let unreadIDs = Set(states.filter { $0.isArchived == archived && $0.isUnread }.map(\.conversationID))
         return conversations.reduce(into: [:]) { counts, chat in
             if unreadIDs.contains(chat.id), let id = chat.project?.id { counts[id, default: 0] += 1 }
         }
     }
 
-    private var specialRows: some View {
+    private func hasSpecialRows(for filter: FamiliarChatListFilter) -> Bool {
+        !archived && (states.contains(where: \.isArchived) || drafts.contains { draft in
+            guard draft.conversationID == nil else { return false }
+            if case .project(let id) = filter { return draft.projectID == id }
+            return true
+        })
+    }
+
+    private func specialRows(for filter: FamiliarChatListFilter) -> some View {
         VStack(spacing: 0) {
             if !archived {
                 let visibleDrafts = drafts.filter { draft in
@@ -191,42 +228,28 @@ struct FamiliarChatsHome: View {
         }
     }
 
-    @ViewBuilder private func searchResults(_ entries: [FamiliarConversationListSnapshot]) -> some View {
-        let scoped = searchAll ? entries : filtered(entries, by: filter)
-        let ids = Set(scoped.map(\.id))
-        let candidates = conversations.filter { searchAll || ids.contains($0.id) }
-        List {
-            Toggle(String(localized: "chat.search.all"), isOn: $searchAll)
-            Section(String(localized: "tab.chats")) {
-                ForEach(scoped.filter { $0.title.localizedCaseInsensitiveContains(query) || $0.preview.localizedCaseInsensitiveContains(query) }) { row in
-                    Button { onNavigate(.chat(row.id)) } label: { FamiliarConversationListRow(row: row) }.buttonStyle(.plain)
-                }
-                // Archived conversations remain discoverable in an explicit all-chat search.
-                if searchAll {
-                    ForEach(conversations.filter { chat in !ids.contains(chat.id) && chat.title.localizedCaseInsensitiveContains(query) }) { chat in
-                        Button { onNavigate(.chat(chat.id)) } label: { Label(chat.title, systemImage: "archivebox") }
-                    }
-                }
-            }
-            Section(String(localized: "chat.search.messages")) {
-                ForEach(candidates.flatMap { conversation in
-                    conversation.messages.filter { $0.content.localizedCaseInsensitiveContains(query) }
-                        .map { FamiliarMessageSearchMatch(id: $0.id, chatID: conversation.id, title: conversation.title, text: String($0.content.prefix(240))) }
-                }.prefix(100)) { match in
-                    Button { onNavigate(.message(match.chatID, match.id)) } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(match.title).font(.headline)
-                            Text(match.text).font(.subheadline).foregroundStyle(.secondary).lineLimit(3)
-                        }
-                    }.buttonStyle(.plain)
-                }
-            }
-        }.listStyle(.plain)
+    private var searchConversationIDs: [UUID] {
+        let archivedIDs = Set(states.filter(\.isArchived).map(\.conversationID))
+        return conversations.filter { chat in
+            guard archivedIDs.contains(chat.id) == archived else { return false }
+            if case .project(let id) = filter { return chat.project?.id == id }
+            return true
+        }.map(\.id).sorted { $0.uuidString < $1.uuidString }
+    }
+
+    private var specialRevision: Int {
+        var hash = Hasher()
+        for draft in drafts { hash.combine(draft.id); hash.combine(draft.projectID); hash.combine(draft.updatedAt) }
+        for state in states { hash.combine(state.conversationID); hash.combine(state.isArchived); hash.combine(state.isUnread) }
+        return hash.finalize()
     }
 
     private func initializeMetadata() {
         do {
-            for conversation in conversations { _ = try FamiliarChatListStore.state(for: conversation, in: context) }
+            let known = Set(states.map(\.conversationID))
+            for conversation in conversations where !known.contains(conversation.id) {
+                _ = try FamiliarChatListStore.state(for: conversation, in: context)
+            }
             if context.hasChanges { try context.save() }
             if projectOrder.isEmpty {
                 let pinned = pins.filter { $0.targetType == .project }.map(\.targetID)
@@ -270,6 +293,8 @@ struct FamiliarChatsHome: View {
         let title = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return }
         chat.title = String(title.prefix(80))
+        chat.titleOrigin = "manual"
+        chat.titleRevision = UUID()
         do { try context.save() } catch { context.rollback(); errorMessage = error.localizedDescription }
     }
 
@@ -292,109 +317,16 @@ struct FamiliarChatsHome: View {
     }
 
     private func previewMessages(_ id: UUID) -> [FamiliarMessageSnapshot] {
-        guard let chat = conversations.first(where: { $0.id == id }) else { return [] }
-        return chat.messages.sorted { $0.sequence < $1.sequence }.suffix(3).map(FamiliarMessageSnapshot.init(previewing:))
+        guard conversations.contains(where: { $0.id == id }) else { return [] }
+        do {
+            var request = FetchDescriptor<FamiliarMessage>(predicate: #Predicate { $0.conversation?.id == id }, sortBy: [SortDescriptor(\.sequence, order: .reverse)])
+            request.fetchLimit = 3
+            return try context.fetch(request).reversed().map(FamiliarMessageSnapshot.init(previewing:))
+        } catch { return [] }
     }
 }
 
 private struct FamiliarMoveConversationDestination: Identifiable { let id: UUID }
-private struct FamiliarMessageSearchMatch: Identifiable { let id: UUID; let chatID: UUID; let title: String; let text: String }
-
-private struct FamiliarChatProjectPager: View {
-    @Environment(\.familiarReduceMotion) private var reduceMotion
-    let rows: [FamiliarConversationListSnapshot]
-    let projects: [FamiliarProject]
-    @Binding var filter: FamiliarChatListFilter
-    let editing: Bool
-    @Binding var selection: Set<UUID>
-    let counts: [UUID: Int]
-    let specialRows: AnyView
-    let rowFilter: ([FamiliarConversationListSnapshot], FamiliarChatListFilter) -> [FamiliarConversationListSnapshot]
-    let onManage: () -> Void
-    let onOpen: (UUID) -> Void
-    let onAction: (UUID, FamiliarConversationListAction) -> Void
-    let preview: (UUID) -> [FamiliarMessageSnapshot]
-    @State private var offsets = FamiliarChatListPositions()
-    @State private var pageID: FamiliarChatListFilter? = .recent
-    @State private var progress: CGFloat = 0
-    @State private var tabFrames: [FamiliarChatListFilter: CGRect] = [:]
-    private var filters: [FamiliarChatListFilter] { [.recent] + projects.map { .project($0.id) } }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: FamiliarSpacing.xSmall) {
-                    ForEach(filters, id: \.self) { item in
-                        Button {
-                            filter = item
-                            withAnimation(reduceMotion ? nil : FamiliarMotion.interactiveSpring) { pageID = item }
-                        } label: {
-                            HStack(spacing: 5) {
-                                Text(title(item)).font(.subheadline.weight(.semibold)).lineLimit(1)
-                                if case .project(let id) = item, let count = counts[id], count > 0 { Text(count, format: .number).font(.caption2.weight(.bold)) }
-                            }.padding(.horizontal, 14).frame(minHeight: 44)
-                        }.buttonStyle(.plain).accessibilityAddTraits(filter == item ? .isSelected : [])
-                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("project-tabs")) } action: { frame in
-                                if tabFrames[item] != frame { tabFrames[item] = frame }
-                            }
-                    }
-                    Button(action: onManage) { Image(systemName: "folder.badge.gearshape").frame(width: 44, height: 44) }
-                        .buttonStyle(.plain).accessibilityLabel(String(localized: "project.manage"))
-                        .accessibilityIdentifier("chats.manageProjects")
-                }
-                .coordinateSpace(name: "project-tabs")
-                .background(alignment: .topLeading) {
-                    if let frame = selectionFrame {
-                        Capsule().fill(FamiliarTheme.accentTint)
-                            .frame(width: frame.width, height: frame.height)
-                            .familiarGlassSurface(cornerRadius: 22)
-                            .offset(x: frame.minX, y: frame.minY)
-                            .allowsHitTesting(false).accessibilityHidden(true)
-                    }
-                }
-                .padding(.horizontal, FamiliarSpacing.medium).padding(.vertical, 5)
-            }.background(.bar)
-            specialRows
-            GeometryReader { geometry in
-                ScrollView(.horizontal) {
-                    LazyHStack(spacing: 0) {
-                        ForEach(filters, id: \.self) { item in
-                            let visible = rowFilter(rows, item)
-                            FamiliarConversationList(rows: visible, isEditing: editing, selection: $selection,
-                                initialOffset: offsets.values[item] ?? 0, reduceMotion: reduceMotion,
-                                onScroll: { offsets.values[item] = $0 }, onOpen: onOpen, onAction: onAction, preview: preview)
-                                .overlay { if visible.isEmpty { ContentUnavailableView(String(localized: "chat.list.empty"), systemImage: "bubble.left.and.bubble.right") } }
-                                .frame(width: geometry.size.width, height: geometry.size.height).id(item)
-                        }
-                    }.scrollTargetLayout()
-                }
-                .scrollTargetBehavior(.paging).scrollIndicators(.hidden).scrollDisabled(editing)
-                .scrollPosition(id: $pageID)
-                .onScrollGeometryChange(for: CGFloat.self) { value in
-                    value.contentOffset.x / max(value.containerSize.width, 1)
-                } action: { _, value in progress = value }
-                .onScrollPhaseChange { _, phase in if phase == .idle, let pageID { filter = pageID } }
-                .onChange(of: pageID) { _, value in if let value { filter = value } }
-                .onChange(of: filter) { _, value in if pageID != value { pageID = value } }
-            }
-        }
-    }
-    private var selectionFrame: CGRect? {
-        guard !filters.isEmpty else { return nil }
-        let position = min(max(progress, 0), CGFloat(filters.count - 1))
-        let lower = Int(floor(position)), upper = min(lower + 1, filters.count - 1)
-        guard let start = tabFrames[filters[lower]] else { return nil }
-        let end = tabFrames[filters[upper]] ?? start
-        let fraction = position - CGFloat(lower)
-        return .init(x: start.minX + (end.minX - start.minX) * fraction,
-                     y: start.minY, width: start.width + (end.width - start.width) * fraction,
-                     height: start.height)
-    }
-
-    private func title(_ filter: FamiliarChatListFilter) -> String {
-        switch filter { case .recent: String(localized: "chat.recent"); case .project(let id): projects.first { $0.id == id }?.displayName ?? "" }
-    }
-}
 
 extension FamiliarMessageSnapshot {
     init(previewing record: FamiliarMessage) {
@@ -412,9 +344,4 @@ extension FamiliarMessageSnapshot {
                     responseBlockID: source.responseBlockID, retrievalActivityID: source.retrievalActivityID, citationOrdinal: source.citationOrdinal)
             })
     }
-}
-
-@MainActor private final class FamiliarChatListPositions {
-    // Geometry is not observable; native vertical scrolling must not rebuild the pager.
-    var values: [FamiliarChatListFilter: CGFloat] = [:]
 }

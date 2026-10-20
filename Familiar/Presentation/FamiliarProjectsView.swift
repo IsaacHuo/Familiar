@@ -185,6 +185,7 @@ struct FamiliarProjectDetailView: View {
             }
 
             projectContextSection
+            projectConfigurationSection
 
             Section {
                 NavigationLink {
@@ -311,17 +312,21 @@ struct FamiliarProjectDetailView: View {
             }
 
             NavigationLink {
-                projectAdvancedSettings
+                FamiliarMemorySettingsView(scope: .project(project.id), showsGlobalControl: false,
+                    isAutomaticMemoryEnabled: .constant(FamiliarSettingsStore.load().isAutomaticMemoryEnabled))
             } label: {
-                FamiliarProjectContextRow(title: String(localized: "settings.advanced.title"),
-                    detail: String(localized: "project.advanced.detail"), symbol: "slider.horizontal.3", color: .gray, count: nil)
+                FamiliarProjectContextRow(title: String(localized: "settings.memory.title"), detail: "",
+                    symbol: "brain", color: .pink, count: nil)
+            }
+            NavigationLink { FamiliarRunRecordList(runs: sortedRuns) } label: {
+                FamiliarProjectContextRow(title: String(localized: "project.runs"), detail: "",
+                    symbol: "clock.arrow.circlepath", color: .gray, count: sortedRuns.count)
             }
         }
     }
 
-    private var projectAdvancedSettings: some View {
-        List {
-            Section(String(localized: "settings.advanced.configuration")) {
+    private var projectConfigurationSection: some View {
+        Section(String(localized: "project.configuration")) {
                 NavigationLink {
                     FamiliarProjectEnvironmentView(projectID: project.id)
                 } label: {
@@ -362,28 +367,8 @@ struct FamiliarProjectDetailView: View {
                         )
                     }
                 }
-
-            }
-            Section(String(localized: "settings.advanced.activity")) {
-                NavigationLink {
-                    FamiliarRunRecordList(runs: sortedRuns)
-                } label: {
-                    FamiliarProjectContextRow(
-                        title: String(localized: "project.runs", defaultValue: "Runs"),
-                        detail: String(
-                            localized: "project.runs.context_detail",
-                            defaultValue: "Execution history and frozen context"
-                        ),
-                        symbol: "bolt", color: .gray,
-                        count: sortedRuns.count
-                    )
-                }
-            }
         }
-        .navigationTitle(String(localized: "settings.advanced.title"))
-        .navigationBarTitleDisplayMode(.inline)
     }
-
 
     private var resourceImportMenu: some View {
         Menu {
@@ -676,10 +661,9 @@ private struct FamiliarProjectContextRow: View {
                 Text(title)
                     .font(FamiliarTypography.body)
                     .foregroundStyle(.primary)
-                Text(detail)
-                    .font(FamiliarTypography.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                if count == nil, !detail.isEmpty {
+                    Text(detail).font(FamiliarTypography.caption).foregroundStyle(.secondary).lineLimit(2)
+                }
             }
 
             Spacer(minLength: FamiliarSpacing.small)

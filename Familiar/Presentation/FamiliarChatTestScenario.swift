@@ -26,7 +26,7 @@ nonisolated enum FamiliarChatTestScenario {
     @MainActor static func seedHistory(in controller: FamiliarChatController) {
         #if DEBUG && targetEnvironment(simulator)
         let args = ProcessInfo.processInfo.arguments
-        guard isEnabled, controller.messages.isEmpty,
+        guard isEnabled, !controller.hasHistory,
               let index = args.firstIndex(of: "-familiar.history-count"), args.indices.contains(index + 1),
               let count = Int(args[index + 1]), [100, 300].contains(count) else { return }
         controller.messages = (0..<count).map { index in

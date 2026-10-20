@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct FamiliarAppShell: View {
     @Environment(\.modelContext) private var context
@@ -33,7 +34,7 @@ struct FamiliarAppShell: View {
             }
             Tab(String(localized: "tab.chats"), systemImage: "bubble.left.and.bubble.right", value: .chats) {
                 NavigationStack(path: $chatPath) {
-                    FamiliarChatsHome(coordinator: coordinator, onNavigate: navigate, onNew: newDraft)
+                    FamiliarChatsHome(coordinator: coordinator, onNavigate: navigate, onNew: newDraft, onActiveRun: openActiveRun)
                         .navigationDestination(for: FamiliarChatRoute.self, destination: destination)
                 }
             }.badge(listStates.filter { !$0.isArchived && $0.isUnread }.count)
@@ -48,22 +49,15 @@ struct FamiliarAppShell: View {
             }
         }
         .environment(\.familiarCanMarkRead, rootCanMarkRead && tab == .chats && sharedDraft == nil && errorMessage == nil)
-        .tabViewBottomAccessory {
-            if let active = coordinator.activeSession {
-                Button {
-                    tab = .chats
-                    chatPath = [.chat(active.selectedConversationID ?? active.draftConversationID)]
-                } label: {
-                    HStack(spacing: 10) {
-                        ProgressView().controlSize(.small)
-                        Text(active.pendingConfirmations.isEmpty && active.pendingClarifications.isEmpty
-                             ? String(localized: "chat.running") : String(localized: "chat.needs_attention"))
-                            .font(.subheadline.weight(.medium))
-                        Spacer()
-                        Image(systemName: "chevron.up").font(.caption.weight(.semibold))
-                    }.padding(.horizontal).frame(minHeight: 44).contentShape(Rectangle())
-                }.buttonStyle(.plain).accessibilityIdentifier("chat.activeRun")
+        .tabBarMinimizeBehavior(.never)
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+            Task {
+                await FamiliarThumbnailLoader.shared.purge()
+                await coordinator.trim(retaining: retainedSessionIDs, idleLimit: 0, in: context)
             }
+        }
+        .task(id: sessionCacheState) {
+            await coordinator.trim(retaining: retainedSessionIDs, in: context)
         }
         .task { initialize() }
         .onChange(of: pendingSystemEntry) { _, _ in handleSystemEntry() }
@@ -94,6 +88,18 @@ struct FamiliarAppShell: View {
         } message: { Text(errorMessage ?? "") }
     }
 
+    private var retainedSessionIDs: Set<UUID> {
+        Set(chatPath.compactMap { route in
+            switch route { case .chat(let id), .message(let id, _): id; default: nil }
+        })
+    }
+
+    private var sessionCacheState: [Set<UUID>] {
+        [retainedSessionIDs, Set(coordinator.sessions.keys), Set(coordinator.sessions.compactMap { id, session in
+            coordinator.canRelease(session) ? id : nil
+        })]
+    }
+
     @ViewBuilder private func destination(_ route: FamiliarChatRoute) -> some View {
         switch route {
         case .chat(let id): detail(id)
@@ -122,10 +128,30 @@ struct FamiliarAppShell: View {
                 if !chatPath.isEmpty { chatPath.removeLast() }
                 chatPath.append(.chat(newID))
             }, onOpenConversation: { navigate(.chat($0)) }, onProjectDetails: { navigate(.project($0)) })
+            .toolbar(.hidden, for: .tabBar)
             .id(id)
     }
 
-    private func navigate(_ route: FamiliarChatRoute) { tab = .chats; chatPath.append(route) }
+    private func openActiveRun() {
+        guard let active = coordinator.activeSession else { return }
+        tab = .chats
+        chatPath = [.chat(active.selectedConversationID ?? active.draftConversationID)]
+    }
+
+    private func navigate(_ route: FamiliarChatRoute) {
+        if case .chat(let id) = route {
+            do { guard try coordinator.existingSession(id: id, in: context) != nil else { return } }
+            catch { errorMessage = error.localizedDescription; return }
+        } else if case .message(let id, let messageID) = route {
+            do {
+                guard let session = try coordinator.existingSession(id: id, in: context),
+                      session.locateHistoryMessage(messageID, in: context) else { return }
+            }
+            catch { errorMessage = error.localizedDescription; return }
+        }
+        tab = .chats
+        if chatPath.last != route { chatPath.append(route) }
+    }
     private func newDraft(_ projectID: UUID?) {
         let id = coordinator.newDraft(projectID: projectID, in: context)
         navigate(.chat(id))
@@ -137,6 +163,7 @@ struct FamiliarAppShell: View {
         let recovery = FamiliarChatController(dependencies: coordinator.dependencies)
         recovery.recoverInterruptedRuns(in: context)
         do {
+            if let error = coordinator.removePreSummaryHistory(in: context) { errorMessage = error; return }
             try FamiliarSkillService().installExampleIfNeeded(in: context)
             try FamiliarChatTestScenario.seedChatList(in: context)
             let paths = try FamiliarChatListStore.retainedDraftPaths(in: context)
@@ -147,13 +174,14 @@ struct FamiliarAppShell: View {
         handleSharedInbox()
     }
 
-    private func saveSettings(_ value: FamiliarSettings) {
+    private func saveSettings(_ value: FamiliarSettings) -> FamiliarSettings {
         do {
             try FamiliarSettingsStore.save(value)
             settings = value
             // Active requests already hold a frozen settings snapshot.
             for session in coordinator.sessions.values { session.settings = value }
         } catch { errorMessage = error.localizedDescription }
+        return settings
     }
 
     private func handleSystemEntry() {
@@ -182,9 +210,7 @@ struct FamiliarAppShell: View {
 
     private func updateSpotlight() {
         guard !FamiliarChatTestScenario.isEnabled else { return }
-        let values = conversations.filter { !$0.messages.isEmpty || !$0.agentRuns.isEmpty }.map {
-            FamiliarSpotlightConversation(id: $0.id, title: $0.title, updatedAt: $0.updatedAt)
-        }
+        guard let values = try? FamiliarSpotlightIndexer.storedConversations(in: context) else { return }
         Task { await FamiliarSpotlightIndexer.shared.replaceConversations(values) }
     }
 
@@ -254,6 +280,7 @@ nonisolated struct FamiliarComposerActions: Equatable {
     let onOpenSkills: @MainActor () -> Void
     let onSkillsChanged: @MainActor (Bool) -> Void
     let onUndo: (@MainActor () -> Void)?
+    var onAttachmentImport: @MainActor (Bool) -> Void = { _ in }
     // Actions address the same retained controller and State storage, not streaming values.
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.identity == rhs.identity && (lhs.onUndo == nil) == (rhs.onUndo == nil) }
 }
@@ -280,7 +307,7 @@ private struct FamiliarChatDestination: View {
     @State private var unavailable = false
     var body: some View {
         Group {
-            if let session {
+            if let session = session ?? preparedSession {
                 FamiliarChatView(dependencies: coordinator.dependencies, controller: session,
                     onBack: onBack, onNewDraft: onNewDraft, onRootSettings: onRootSettings,
                     initialMessageID: messageID, onConversationChanged: onConversationChanged,
@@ -291,6 +318,10 @@ private struct FamiliarChatDestination: View {
         }
         .task(id: id) {
             do {
+                if let cached = coordinator.sessions[id] {
+                    if let messageID, !cached.locateHistoryMessage(messageID, in: context) { unavailable = true; return }
+                    session = cached; return
+                }
                 let target = id
                 var descriptor = FetchDescriptor<FamiliarConversation>(predicate: #Predicate { $0.id == target })
                 descriptor.fetchLimit = 1
@@ -299,8 +330,18 @@ private struct FamiliarChatDestination: View {
                 guard coordinator.sessions[id] != nil || hasConversation || hasDraft else {
                     unavailable = true; return
                 }
-                session = coordinator.session(id: id, in: context)
+                let loaded = coordinator.session(id: id, in: context)
+                if let messageID, !loaded.locateHistoryMessage(messageID, in: context) { unavailable = true; return }
+                session = loaded
             } catch { unavailable = true }
         }
+    }
+
+    private var preparedSession: FamiliarChatController? {
+        guard let cached = coordinator.sessions[id] else { return nil }
+        if let messageID {
+            guard let target = cached.historyIndex?.messageEntries[messageID], cached.loadedHistoryAnchorID == target else { return nil }
+        }
+        return cached
     }
 }

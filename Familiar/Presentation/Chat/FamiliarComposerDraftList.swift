@@ -53,7 +53,7 @@ struct FamiliarComposerDraftList: View {
         guard !isRunning(id) else { errorMessage = String(localized: "chat.execution.busy"); return }
         do {
             guard let record = try FamiliarChatListStore.draft(id, in: context), record.conversationID == nil else { return }
-            let paths = try record.attachments().map(\.relativePath)
+            let paths = try record.retainedAttachments().map(\.relativePath)
             context.delete(record)
             try context.save()
             coordinator.invalidate([id])

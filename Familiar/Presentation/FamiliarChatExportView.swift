@@ -1,8 +1,10 @@
 import SwiftUI
+import SwiftData
 
 struct FamiliarChatExportView: View {
     @Environment(\.dismiss) private var dismiss
-    let messages: [FamiliarMessageSnapshot]
+    @Environment(\.modelContext) private var context
+    let conversationID: UUID?
     @State private var document: URL?
     @State private var errorMessage: String?
     var body: some View {
@@ -21,6 +23,8 @@ struct FamiliarChatExportView: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button(String(localized: "common.done")) { dismiss() } } }
             .task {
                 do {
+                    guard let conversationID else { throw CocoaError(.fileNoSuchFile) }
+                    let messages = try FamiliarChatHistoryStore.messages(conversationID: conversationID, in: context)
                     let body = messages.map { message in
                         let role = message.role == .user ? String(localized: "chat.export.user") : "Familiar"
                         let attachments = message.attachments.map { "- " + $0.filename }.joined(separator: "\n")
