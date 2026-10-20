@@ -24,6 +24,8 @@ struct FamiliarFileDetailView: View {
     }
 
     var body: some View {
+        let orderedVersions = versions
+        let latestID = orderedVersions.first?.id
         List {
             if let snapshot = file.snapshot {
                 Section {
@@ -50,12 +52,19 @@ struct FamiliarFileDetailView: View {
                 }
             }
 
+            Section(String(localized: "files.details")) {
+                if let origin = FamiliarFileOrigin(rawValue: file.originRawValue) { LabeledContent(String(localized: "files.source"), value: origin.title) }
+                LabeledContent(String(localized: "files.updated"), value: file.updatedAt.formatted(date: .abbreviated, time: .shortened))
+                if let url = orderedVersions.first?.sourceURLString { Text(url).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
+            }
             Section(String(localized: "file.versions", defaultValue: "Versions")) {
-                if versions.isEmpty {
+                if orderedVersions.isEmpty {
                     Text(String(localized: "settings.runs.no_activities", defaultValue: "No persisted activities"))
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(versions) { version in
+                    ForEach(orderedVersions) { version in
+                        let versionSnapshot = FamiliarFileCatalogService().snapshot(version)
+                        let versionURL = versionSnapshot.flatMap { FamiliarFileByteReader.url(for: $0) }
                         Button {
                             open(version)
                         } label: {
@@ -68,9 +77,12 @@ struct FamiliarFileDetailView: View {
                                     Text(versionMeta(version))
                                         .font(FamiliarTypography.caption)
                                         .foregroundStyle(.secondary)
+                                    if versionURL == nil {
+                                        Text(String(localized: "runtime.ui.file_unavailable")).font(.caption).foregroundStyle(.secondary)
+                                    }
                                 }
                                 Spacer(minLength: FamiliarSpacing.small)
-                                if version.id == file.latestVersion?.id {
+                                if version.id == latestID {
                                     Text(String(localized: "file.latest", defaultValue: "Latest"))
                                         .font(FamiliarTypography.caption.weight(.semibold))
                                         .foregroundStyle(FamiliarTheme.accent)
@@ -84,6 +96,12 @@ struct FamiliarFileDetailView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("file.version.\(version.version)")
+                        .contextMenu {
+                            if let snapshot = versionSnapshot, let url = versionURL {
+                                Button { open(snapshot) } label: { Label(String(localized: "common.preview"), systemImage: "eye") }
+                                ShareLink(item: url) { Label(String(localized: "common.share"), systemImage: "square.and.arrow.up") }
+                            }
+                        }
                     }
                 }
             }

@@ -1,6 +1,30 @@
 import SwiftUI
 import SwiftData
 
+extension EnvironmentValues {
+    @Entry var familiarOpenMessageFile: FamiliarMessageFilePreviewAction? = nil
+}
+
+struct FamiliarMessageFilePreviewAction: Equatable {
+    let ownerID: UUID
+    let presentation: Binding<FamiliarPreparedFilePreview?>
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.ownerID == rhs.ownerID }
+    @MainActor func open(_ file: FamiliarPreparedFilePreview) { presentation.wrappedValue = file }
+}
+
+/// Navigation destinations belong to the mounted page, never lazy message rows.
+struct FamiliarMessageFileNavigation: ViewModifier {
+    @State private var preview: FamiliarPreparedFilePreview?
+    @State private var ownerID = UUID()
+    func body(content: Content) -> some View {
+        content
+            .environment(\.familiarOpenMessageFile, .init(ownerID: ownerID, presentation: $preview))
+            .navigationDestination(item: $preview) { file in
+                FamiliarAttachmentPreviewView(url: file.url, format: file.format)
+            }
+    }
+}
+
 /// Shared file vocabulary. Density belongs to the host; file identity and actions do not.
 struct FamiliarFilePresentation: Identifiable {
     let id: String
@@ -80,10 +104,17 @@ struct FamiliarFilePresentation: Identifiable {
 
     func resolved(in context: ModelContext, scope: FamiliarWorkScope? = nil) -> Self {
         guard !isRevoked, let versionID = UUID(uuidString: id) else { return self }
-        let records = (try? context.fetch(FetchDescriptor<FamiliarFileVersionRecord>())) ?? []
-        guard let version = records.first(where: { $0.id == versionID && (scope == nil || $0.scope == scope) })
-                ?? records.first(where: { scope != nil && $0.scope == scope && $0.sourceFileVersionIDs.contains(versionID) }),
-              let snapshot = FamiliarFileCatalogService().snapshot(version) else { return self }
+        var request = FetchDescriptor<FamiliarFileVersionRecord>(predicate: #Predicate { $0.id == versionID })
+        request.fetchLimit = 1
+        let direct = (try? context.fetch(request))?.first
+        let version: FamiliarFileVersionRecord?
+        if let direct, scope == nil || direct.scope == scope { version = direct }
+        else if let scope {
+            let key = scope.storageKey
+            let scoped = (try? context.fetch(FetchDescriptor<FamiliarFileVersionRecord>(predicate: #Predicate { $0.scopeKey == key }))) ?? []
+            version = scoped.first { $0.sourceFileVersionIDs.contains(versionID) }
+        } else { version = nil }
+        guard let version, let snapshot = FamiliarFileCatalogService().snapshot(version) else { return self }
         return .init(snapshot: snapshot)
     }
 }
@@ -93,10 +124,8 @@ struct FamiliarFileLabel: View {
     var compact = false
     var body: some View {
         HStack(spacing: FamiliarSpacing.medium) {
-            Image(systemName: file.symbol)
-                .font(.system(size: compact ? FamiliarIconSize.standard : FamiliarIconSize.prominent))
-                .foregroundStyle(.secondary)
-                .frame(width: compact ? FamiliarIconSize.standard : FamiliarControlSize.standardVisual)
+            if compact { Image(systemName: file.symbol).font(.system(size: FamiliarIconSize.standard)).foregroundStyle(.secondary) }
+            else { FamiliarFileThumbnail(url: file.url, identity: file.id, symbol: file.symbol) }
             VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                 Text(file.title).font(compact ? FamiliarTypography.caption : FamiliarTypography.secondary.weight(.medium))
                     .lineLimit(compact ? 1 : 2)

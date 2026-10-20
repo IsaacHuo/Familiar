@@ -9,7 +9,7 @@ struct FamiliarAttachmentPreviewView: View {
 
     init(url: URL, format: FamiliarFileFormat? = nil) {
         self.url = url
-        self.format = format
+        self.format = ["html", "htm"].contains(url.pathExtension.lowercased()) ? .html : format
     }
 
     var body: some View {
@@ -34,6 +34,8 @@ struct FamiliarAttachmentPreviewView: View {
 private struct FamiliarLocalHTMLPreviewView: UIViewRepresentable {
     let url: URL
 
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
@@ -42,10 +44,26 @@ private struct FamiliarLocalHTMLPreviewView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        guard let source = try? String(contentsOf: url, encoding: .utf8) else { return }
-        let policy = "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:;\">"
-        webView.loadHTMLString(policy + source, baseURL: nil)
+        context.coordinator.load(url, in: webView)
     }
+
+    static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) { coordinator.task?.cancel(); webView.stopLoading() }
+
+    @MainActor final class Coordinator {
+        var loadedURL: URL?
+        var task: Task<Void, Never>?
+        func load(_ url: URL, in web: WKWebView) {
+            guard loadedURL != url else { return }
+            loadedURL = url; task?.cancel()
+            task = Task { [weak self, weak web] in
+                let source = await Task.detached(priority: .userInitiated) { try? String(contentsOf: url, encoding: .utf8) }.value
+                guard !Task.isCancelled, self?.loadedURL == url, let web else { return }
+                let policy = "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:;\">"
+                web.loadHTMLString(policy + (source ?? "<p>" + String(localized: "runtime.ui.file_unavailable") + "</p>"), baseURL: nil)
+            }
+        }
+    }
+
 }
 
 struct FamiliarAttachmentQuickLookView: UIViewControllerRepresentable {
@@ -62,6 +80,7 @@ struct FamiliarAttachmentQuickLookView: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: QLPreviewController, context: Context) {
+        guard context.coordinator.url != url else { return }
         context.coordinator.url = url
         uiViewController.reloadData()
     }
