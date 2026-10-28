@@ -96,7 +96,7 @@ struct FamiliarChatsHome: View {
             specialRowsByFilter: special, specialRowsRevision: specialRevision,
             onManage: { onNavigate(.projects) },
             onOpen: { onNavigate(.chat($0)) }, onAction: perform, preview: previewMessages)
-        .navigationTitle(archived ? String(localized: "chat.archived") : "")
+        .navigationTitle(archived ? String(localized: "chat.archived") : String(localized: "tab.chats"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
@@ -126,13 +126,18 @@ struct FamiliarChatsHome: View {
                 }.accessibilityLabel(String(localized: "conversation.new")).accessibilityIdentifier("chats.new")
             }
         }
-        .sheet(isPresented: $searching, onDismiss: {
+        .modifier(FamiliarHomeSearchPresentation(state: search, presented: $searching,
+            conversationIDs: searchConversationIDs,
+            onOpen: { searchDestination = .chat($0); searching = false },
+            onMessage: { searchDestination = .message($0, $1); searching = false }))
+        .task(id: searching) {
+            guard !searching else { return }
             search.query = ""
-            if let route = searchDestination { searchDestination = nil; onNavigate(route) }
-        }) {
-            FamiliarHomeSearchPage(state: search, conversationIDs: searchConversationIDs,
-                onOpen: { searchDestination = .chat($0); searching = false },
-                onMessage: { searchDestination = .message($0, $1); searching = false })
+            // Settle the native search dismissal before changing the navigation path.
+            await Task.yield()
+            guard !Task.isCancelled, !searching, let route = searchDestination else { return }
+            searchDestination = nil
+            onNavigate(route)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if editing {

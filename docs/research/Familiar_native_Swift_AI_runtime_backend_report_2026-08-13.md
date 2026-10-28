@@ -4,7 +4,7 @@
 > 审阅对象：`IsaacHuo/Familiar`，提交 `f4ab80992a42221ca5717605c0ada753149de3a9`  
 > 覆盖：Agent Loop、模型适配、工具与授权、MCP、Skills、Workspace、Memory、后台执行、Apple Foundation Models、Swarm 与其他 Swift SDK
 
-> 顺序说明：本文是专题研究材料。实际实施顺序以 [`../10-next-phase-execution-plan.md`](../10-next-phase-execution-plan.md) 为准；官方 MCP Swift SDK 只在 Project/Capability/Authorization 基础完成后评估引入，不属于当前第一轮动作。
+> 顺序说明：本文是专题研究材料。实际实施顺序以 [`../../PLAN.md`](../../PLAN.md) 为准；官方 MCP Swift SDK 只在 Project/Capability/Authorization 基础完成后评估引入，不属于当前第一轮动作。
 
 ## 结论先行
 

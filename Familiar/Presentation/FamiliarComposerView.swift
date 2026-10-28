@@ -466,7 +466,7 @@ struct FamiliarComposer: View {
                 .symbolEffect(.breathe, isActive: showsSpeechAction && isListening && !reduceMotion)
                 .font(.system(size: showsSpeechAction ? FamiliarIconSize.prominent : FamiliarIconSize.standard,
                     weight: showsSpeechAction && !isListening ? .regular : .semibold))
-                .foregroundStyle(showsSpeechAction ? (isListening ? FamiliarTheme.accent : Color.primary) : .white)
+                .foregroundStyle(showsSpeechAction ? (isListening ? FamiliarTheme.accent : Color.primary) : FamiliarTheme.onAccent)
                 .frame(width: FamiliarControlSize.standardVisual, height: FamiliarControlSize.standardVisual)
                 .background(showsSpeechAction ? Color.clear : (canSend ? FamiliarTheme.accent : Color.secondary.opacity(0.28)), in: Circle())
                 .frame(width: FamiliarControlSize.minimumHitTarget, height: FamiliarControlSize.minimumHitTarget)

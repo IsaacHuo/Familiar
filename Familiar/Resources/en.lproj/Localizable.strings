@@ -401,6 +401,7 @@
 "attachment.add_photos_count" = "Add %ld Photos";
 "attachment.remove_image" = "Remove image";
 "attachment.preview_image" = "Preview image";
+"attachment.loading_image" = "Loading image…";
 "attachment.remove_file" = "Remove file";
 "attachment.file_import_failed_title" = "Couldn't add files";
 "attachment.processing" = "Converting with AnyDoc…";
@@ -1310,3 +1311,9 @@
 "files.delete.all_versions" = "The selected files and all their versions will be deleted.";
 
 "files.delete.partial" = "Deleted %lld items; %lld failed. Failed files are preserved and can be retried.";
+
+"message.date.today" = "Today";
+
+/* App Review: native weather attribution and health discovery */
+"weather.attribution.legal" = "Weather data sources and legal information";
+"settings.permissions.health_usage" = "To use Health Activity, configure a model in Settings → Model Service, then start a chat and ask “Read my steps, active energy, and walking or running distance for the last seven days.” Review the in-app approval and allow the requested Health access. Familiar only reads these three activity totals; results may be sent to your selected model provider.";

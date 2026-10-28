@@ -140,35 +140,59 @@ struct FamiliarFileLabel: View {
 }
 
 struct FamiliarFileTile: View {
+    @ScaledMetric(relativeTo: .body) private var titleSize: CGFloat = 16
+    @ScaledMetric(relativeTo: .body) private var metadataSize: CGFloat = 13
     let file: FamiliarFilePresentation
-    let onOpen: () -> Void
+    var isUser = false
+    var date: Date? = nil
+    var onOpen: (() -> Void)? = nil
 
     var body: some View {
-        HStack(spacing: FamiliarSpacing.small) {
-            Button(action: onOpen) {
-                HStack(spacing: FamiliarSpacing.medium) {
-                    FamiliarFileLabel(file: file)
-                    Spacer(minLength: FamiliarSpacing.small)
-                    if file.url != nil { Image(systemName: "chevron.right").font(FamiliarTypography.caption).foregroundStyle(.tertiary) }
+        VStack(alignment: .trailing, spacing: 4) {
+            HStack(spacing: 8) {
+                if let onOpen {
+                    Button(action: onOpen) { fileLabel.contentShape(Rectangle()) }
+                        .buttonStyle(.plain)
+                        .disabled(file.url == nil)
+                        .accessibilityIdentifier("file.open.\(file.id)")
+                } else { fileLabel.accessibilityElement(children: .combine) }
+                if onOpen != nil, let url = file.url {
+                    ShareLink(item: url) {
+                        Image(systemName: "square.and.arrow.up")
+                            .foregroundStyle(statusColor)
+                            .frame(width: FamiliarControlSize.minimumHitTarget, height: FamiliarControlSize.minimumHitTarget)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(String(localized: "common.share"))
                 }
-                .frame(maxWidth: .infinity, minHeight: FamiliarControlSize.minimumHitTarget, alignment: .leading)
-                .padding(FamiliarSpacing.medium)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(FamiliarIconButtonStyle())
-            .disabled(file.url == nil)
-            .accessibilityIdentifier("file.open.\(file.id)")
-            if let url = file.url {
-                ShareLink(item: url) {
-                    Image(systemName: "square.and.arrow.up")
-                        .frame(width: FamiliarControlSize.minimumHitTarget, height: FamiliarControlSize.minimumHitTarget)
-                }
-                .buttonStyle(FamiliarIconButtonStyle())
-                .padding(.trailing, FamiliarSpacing.small)
-                .accessibilityLabel(String(localized: "common.share"))
+            if let date {
+                if !isUser && onOpen != nil {
+                    FamiliarMessageTimestamp(date: date).accessibilityIdentifier("message.completed")
+                } else { FamiliarMessageTimestamp(date: date) }
             }
         }
-        .foregroundStyle(.primary)
-        .background(FamiliarTheme.inset, in: RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous))
+        .padding(EdgeInsets(top: 15, leading: 9, bottom: 15, trailing: 12))
+        .foregroundStyle(isUser ? FamiliarChatAppearance.outgoingText : FamiliarChatAppearance.incomingText)
+        .environment(\.familiarOutgoingMessage, isUser)
+        .background { FamiliarMessageBubbleBackground(isUser: isUser) }
+    }
+
+    private var statusColor: Color { isUser ? FamiliarChatAppearance.outgoingTime : FamiliarChatAppearance.incomingTime }
+
+    private var fileLabel: some View {
+        HStack(spacing: 8) {
+            FamiliarFileThumbnail(url: file.url, identity: file.id, symbol: file.symbol)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(file.title).font(.system(size: floor(titleSize))).lineLimit(2).truncationMode(.middle)
+                Text(file.metadata).font(.system(size: floor(metadataSize))).monospacedDigit().foregroundStyle(statusColor)
+                if file.url == nil {
+                    Text(String(localized: file.isRevoked ? "runtime.ui.file_revoked" : "runtime.ui.file_unavailable"))
+                        .font(.system(size: floor(metadataSize))).foregroundStyle(statusColor)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(minHeight: FamiliarControlSize.minimumHitTarget, alignment: .leading)
     }
 }

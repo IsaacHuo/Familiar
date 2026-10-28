@@ -30,7 +30,7 @@ body {
   color: var(--familiar-ink);
   font: -apple-system-body;
   font-size: var(--familiar-body-size);
-  line-height: 1.5;
+  line-height: var(--familiar-line-height, 1.2);
   overflow-x: hidden;
 }
 

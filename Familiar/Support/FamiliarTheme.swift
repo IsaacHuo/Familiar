@@ -52,7 +52,8 @@ struct FamiliarAppearanceSettingsView: View {
 }
 
 nonisolated enum FamiliarTheme {
-    static let accent = Color(uiColor: .systemBlue)
+    static let accent = FamiliarChatAppearance.color(0x0088ff, 0xffffff)
+    static let onAccent = FamiliarChatAppearance.color(0xffffff, 0x000000)
     static let displayCornerRadius: CGFloat = 62
     static let brandViolet = Color(red: 0.55, green: 0.44, blue: 0.98)
     static let brandGlow = LinearGradient(
@@ -164,7 +165,7 @@ struct FamiliarPillButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(FamiliarTypography.button)
-            .foregroundStyle(prominence == .primary ? Color.white : Color.primary)
+            .foregroundStyle(prominence == .primary ? FamiliarTheme.onAccent : Color.primary)
             .padding(.horizontal, FamiliarSpacing.large)
             .frame(minHeight: FamiliarControlSize.minimumHitTarget)
             .background(

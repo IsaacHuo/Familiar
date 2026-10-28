@@ -45,7 +45,11 @@ struct FamiliarAssistantTurn: View {
 
     var body: some View {
         let blocks = contentBlocks
-        FamiliarMessageGroupLayout(fraction: dynamicType.isAccessibilitySize ? 0.98 : 0.92, trailing: false) {
+        let fileTimestampBlockID = blocks.last.flatMap { block -> String? in
+            guard case let .surface(surface) = block, surface.kind == .file, surface.file != nil else { return nil }
+            return block.id
+        }
+        FamiliarMessageGroupLayout(accessibilityWide: dynamicType.isAccessibilitySize, trailing: false) {
         VStack(alignment: .leading, spacing: FamiliarAISurfaceMetric.spaceS) {
             ForEach(blocks) { block in
                 Group {
@@ -69,7 +73,8 @@ struct FamiliarAssistantTurn: View {
                     } else {
                         FamiliarTurnSurface(surface: adjustedUndoPhase(surface), canUndo: canUndo(surface),
                             onUndo: { onUndo(surface.runID, surface.toolCallID ?? "") },
-                            onRetry: surface.kind == .failure && surface.toolCallID == nil && canRetry ? retryAction : nil)
+                            onRetry: surface.kind == .failure && surface.toolCallID == nil && canRetry ? retryAction : nil,
+                            timestamp: block.id == fileTimestampBlockID ? message?.createdAt : nil)
                             .modifier(FamiliarSoftRise(enabled: liveController != nil && scroll?.mode != .userReading && !voiceOver, identity: "block:" + block.id))
                     }
                 }
@@ -81,11 +86,15 @@ struct FamiliarAssistantTurn: View {
             if let liveController {
                 FamiliarLiveReplyStatus(controller: liveController)
             }
+            ForEach(FamiliarWeatherAttribution.unique(in: surfaces)) { attribution in
+                FamiliarWeatherAttributionView(attribution: attribution)
+            }
             if let message {
-                if case .text = blocks.last { } else {
-                    FamiliarMessageTimestamp(date: message.createdAt).accessibilityIdentifier("message.completed")
-                        .padding(.horizontal, 10).padding(.vertical, 4)
-                        .background(FamiliarTheme.elevatedFill, in: Capsule())
+                if case .text = blocks.last { } else if fileTimestampBlockID == nil {
+                    FamiliarMessageTimestamp(date: message.createdAt, onMedia: true).accessibilityIdentifier("message.completed")
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(FamiliarChatAppearance.serviceFill, in: Capsule())
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 if !message.citedSources.isEmpty || !message.followUpQuestions.isEmpty {
                     FamiliarAssistantFooter(message: message, onInsertPrompt: onInsertPrompt)
@@ -143,13 +152,13 @@ struct FamiliarMarkdownBlock: View {
         VStack(alignment: .leading, spacing: FamiliarSpacing.small) {
             Group {
                 if controller == nil, sources.isEmpty, citationSources.isEmpty,
-                   FamiliarMessageReadingStyle.isShortPlainText(content), let messageActions {
+                   FamiliarMessageReadingStyle.canUseNativeText(content), let messageActions {
                     if let timestamp {
-                        FamiliarTextAndTimeLayout(lineHeight: UIFont.systemFont(ofSize: textSize).lineHeight, text: content) {
-                            FamiliarMessageText(text: content, messageID: messageActions.messageID, edit: nil, retry: messageActions.retry)
+                        FamiliarTextAndTimeLayout(fontSize: textSize, text: content) {
+                            FamiliarMessageText(text: content, actions: messageActions)
                             FamiliarMessageTimestamp(date: timestamp).accessibilityIdentifier("message.completed")
                         }
-                    } else { FamiliarMessageText(text: content, messageID: messageActions.messageID, edit: nil, retry: messageActions.retry) }
+                    } else { FamiliarMessageText(text: content, actions: messageActions) }
                 } else {
                     VStack(alignment: .trailing, spacing: 4) {
                         FamiliarMarkdownWebView(markdown: FamiliarCitation.canonicalized(content, sources: sources).text,
@@ -207,6 +216,7 @@ struct FamiliarTurnSurface: View {
     let canUndo: Bool
     let onUndo: () -> Void
     let onRetry: (() -> Void)?
+    var timestamp: Date? = nil
 
     var body: some View {
         Group {
@@ -214,7 +224,7 @@ struct FamiliarTurnSurface: View {
             case .approval:
                 FamiliarInteractionReceipt(surface: surface)
             case .file:
-                FamiliarWriteReceipt(surface: surface, canUndo: canUndo, onUndo: onUndo)
+                FamiliarWriteReceipt(surface: surface, canUndo: canUndo, onUndo: onUndo, timestamp: timestamp)
             case .failure:
                 FamiliarFailureRecovery(surface: surface, onRetry: onRetry, canUndo: canUndo, onUndo: onUndo)
             case .clarification:
@@ -256,6 +266,7 @@ struct FamiliarWriteReceipt: View {
     let surface: FamiliarSurfaceDescriptor
     let canUndo: Bool
     let onUndo: () -> Void
+    var timestamp: Date? = nil
     @State private var previewError: String?
 
     var body: some View {
@@ -264,7 +275,7 @@ struct FamiliarWriteReceipt: View {
                 VStack(alignment: .leading, spacing: FamiliarSpacing.small) {
                     let presentation = FamiliarFilePresentation(file: file, revoked: surface.phase == .undone)
                         .resolved(in: context, scope: file.scope)
-                    FamiliarFileTile(file: presentation) {
+                    FamiliarFileTile(file: presentation, date: timestamp) {
                         do { openMessageFile?.open(.init(url: try presentation.validatedURL(), format: file.format)) }
                         catch { previewError = error.localizedDescription }
                     }

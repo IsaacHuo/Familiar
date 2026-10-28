@@ -401,6 +401,7 @@
 "attachment.add_photos_count" = "添加 %ld 张照片";
 "attachment.remove_image" = "移除图片";
 "attachment.preview_image" = "预览图片";
+"attachment.loading_image" = "正在载入图片…";
 "attachment.remove_file" = "移除文件";
 "attachment.file_import_failed_title" = "无法添加文件";
 "attachment.processing" = "正在使用 AnyDoc 转换…";
@@ -1310,3 +1311,9 @@
 "files.delete.all_versions" = "将删除所选文件及其全部版本。";
 
 "files.delete.partial" = "已删除 %lld 项，%lld 项失败。失败文件仍保留，可重试。";
+
+"message.date.today" = "今天";
+
+/* App Review: native weather attribution and health discovery */
+"weather.attribution.legal" = "天气数据来源与法律信息";
+"settings.permissions.health_usage" = "使用健康活动前，请在“设置 → 模型服务”配置模型，然后新建会话并提问“读取最近七天的步数、活动能量和步行跑步距离”。查看应用内审批并允许所需的健康读取权限。Familiar 只读取这三项活动汇总，结果可能发送给你选择的模型服务。";

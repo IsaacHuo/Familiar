@@ -4,7 +4,7 @@
 > 审阅对象：`IsaacHuo/Familiar`，提交 `f4ab80992a42221ca5717605c0ada753149de3a9`  
 > 范围：SwiftUI 前端、AI 运行状态呈现、工具交互、动效、触觉、无障碍与项目工作台体验
 
-> 顺序说明：本文是专题研究材料。实际实施顺序以 [`../10-next-phase-execution-plan.md`](../10-next-phase-execution-plan.md) 为准；视觉与 motion 系统不先于 benchmark、CI、迁移和 Project 数据路径。
+> 顺序说明：本文是专题研究材料。实际实施顺序以 [`../../PLAN.md`](../../PLAN.md) 为准；视觉与 motion 系统不先于 benchmark、CI、迁移和 Project 数据路径。
 
 ## 一句话结论
 

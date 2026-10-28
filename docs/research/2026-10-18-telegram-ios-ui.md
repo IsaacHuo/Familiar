@@ -1,6 +1,6 @@
 # Telegram iOS：UI、手势与转场研究
 
-研究日期：2026-10-18；参照提交 [f1dd7a2](https://github.com/TelegramMessenger/Telegram-iOS/tree/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838)。截图由所有者提供；源码阅读不等于运行手感验证。功能语义见 [功能研究](2026-10-18-telegram-ios-functionality.md)，Familiar 目标见 [总计划](../20-telegram-chat-ui-roadmap.md)。
+研究日期：2026-10-18；参照提交 [f1dd7a2](https://github.com/TelegramMessenger/Telegram-iOS/tree/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838)。截图由所有者提供；源码阅读不等于运行手感验证。功能语义见 [功能研究](2026-10-18-telegram-ios-functionality.md)，Familiar 目标见 [总计划](../03-ui-ux-design.md)。
 
 ## 源码观察
 

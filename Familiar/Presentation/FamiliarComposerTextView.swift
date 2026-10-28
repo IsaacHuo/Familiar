@@ -29,7 +29,7 @@ struct FamiliarComposerTextView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeUIView(context: Context) -> FamiliarComposerNativeTextView {
-        let view = FamiliarComposerNativeTextView(usingTextLayoutManager: false)
+        let view = FamiliarComposerNativeTextView.makeTextKit1View()
         view.backgroundColor = .clear
         view.clipsToBounds = true
         view.isScrollEnabled = true
@@ -169,6 +169,20 @@ final class FamiliarComposerNativeTextView: UITextView {
     private var lastCaretLayout: String = ""
     private var lastCaretSize = CGSize.zero
     private var measurement: (text: String, font: UIFont, width: CGFloat, height: CGFloat)?
+    private var isLayingOut = false
+
+    static func makeTextKit1View() -> FamiliarComposerNativeTextView {
+        // UIKit's imported factory need not enter our designated initializer.
+        // Build TextKit 1 explicitly so every Swift stored property is initialized.
+        let storage = NSTextStorage()
+        let manager = NSLayoutManager()
+        let container = NSTextContainer(size: .zero)
+        storage.addLayoutManager(manager)
+        manager.addTextContainer(container)
+        let view = FamiliarComposerNativeTextView(frame: .zero, textContainer: container)
+        withExtendedLifetime(storage) {}
+        return view
+    }
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
@@ -185,6 +199,10 @@ final class FamiliarComposerNativeTextView: UITextView {
     }
 
     override func layoutSubviews() {
+        guard !isLayingOut else { return }
+        isLayingOut = true
+        defer { isLayingOut = false }
+        let layoutText = text ?? ""
         let horizontal: CGFloat = 10
         var insets = UIEdgeInsets(top: 8, left: horizontal, bottom: 8, right: horizontal + extraTrailingInset)
         if textContainerInset.left != insets.left || textContainerInset.right != insets.right { textContainerInset = insets }
@@ -193,7 +211,7 @@ final class FamiliarComposerNativeTextView: UITextView {
         // so its used rect is not an authoritative height once scrolling begins.
         let measuredFont = font ?? .systemFont(ofSize: 18)
         let measuredWidth = max(1, bounds.width - insets.left - insets.right)
-        let measuredText = text ?? ""
+        let measuredText = layoutText
         if measurement?.text != measuredText || measurement?.font != measuredFont || measurement?.width != measuredWidth {
             measurement = (measuredText, measuredFont, measuredWidth,
                 Self.contentHeight(text: measuredText, font: measuredFont, width: measuredWidth))
@@ -202,15 +220,19 @@ final class FamiliarComposerNativeTextView: UITextView {
         if centersSingleLine && textHeight <= line + 1 { insets.top = max(8, (bounds.height - line) * 0.5); insets.bottom = insets.top }
         if textContainerInset != insets { textContainerInset = insets }
         super.layoutSubviews()
-        placeholderLabel.isHidden = !text.isEmpty
+        placeholderLabel.isHidden = !layoutText.isEmpty
         placeholderLabel.frame = CGRect(x: insets.left, y: insets.top,
             width: max(0, bounds.width - insets.left - insets.right), height: line)
         // Keep UIKit scrolling enabled even while the outer field grows. This also
         // gives trailing empty paragraphs a real caret viewport at the height cap.
-        if isFirstResponder, lastCaretLayout != text || lastCaretSize != bounds.size {
-            lastCaretLayout = text ?? ""
+        let range = selectedRange
+        if isFirstResponder, lastCaretLayout != layoutText || lastCaretSize != bounds.size,
+           range.location != NSNotFound, range.location >= 0, range.length >= 0,
+           range.location <= layoutText.utf16.count,
+           range.length <= layoutText.utf16.count - range.location {
+            lastCaretLayout = layoutText
             lastCaretSize = bounds.size
-            scrollRangeToVisible(selectedRange)
+            scrollRangeToVisible(range)
         }
         if abs(textHeight - reportedHeight) > 0.5, bounds.width > 0 {
             reportedHeight = textHeight

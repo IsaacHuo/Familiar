@@ -133,7 +133,7 @@ private struct FamiliarImageGalleryController: UIViewControllerRepresentable {
         func animateInIfReady() {
             guard appeared, !entered, let page = currentPage, page.finished else { return }; entered = true
             guard !UIAccessibility.isReduceMotionEnabled, let source = sourceRect(), let image = page.imageView.image else { backdrop.alpha = 1; pager.alpha = 1; return }
-            let ghost = UIImageView(image: image); ghost.contentMode = .scaleAspectFill; ghost.clipsToBounds = true; ghost.layer.cornerRadius = 18
+            let ghost = UIImageView(image: image); ghost.contentMode = .scaleAspectFill; ghost.clipsToBounds = true; ghost.layer.cornerRadius = FamiliarChatAppearance.mediaCornerRadius
             ghost.frame = source; view.addSubview(ghost); pager.alpha = 0; backdrop.alpha = 0
             UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseInOut) { ghost.frame = page.imageView.convert(page.imageView.bounds, to: self.view); ghost.layer.cornerRadius = 0; self.backdrop.alpha = 1 } completion: { _ in self.pager.alpha = 1; ghost.removeFromSuperview() }
         }
@@ -210,7 +210,7 @@ private struct FamiliarImageGalleryController: UIViewControllerRepresentable {
             }
             let ghost = UIImageView(image: image); ghost.contentMode = .scaleAspectFill; ghost.clipsToBounds = true
             ghost.frame = page.imageView.convert(page.imageView.bounds, to: view); view.addSubview(ghost); pager.alpha = 0
-            UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseInOut) { ghost.frame = target; ghost.layer.cornerRadius = 18; self.backdrop.alpha = 0; self.navigationController?.navigationBar.alpha = 0; self.caption.alpha = 0 } completion: { _ in ghost.removeFromSuperview(); self.onClose() }
+            UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseInOut) { ghost.frame = target; ghost.layer.cornerRadius = FamiliarChatAppearance.mediaCornerRadius; self.backdrop.alpha = 0; self.navigationController?.navigationBar.alpha = 0; self.caption.alpha = 0 } completion: { _ in ghost.removeFromSuperview(); self.onClose() }
         }
         func toggleControls() { controlsHidden.toggle(); UIView.animate(withDuration: 0.2) { self.navigationController?.navigationBar.alpha = self.controlsHidden ? 0 : 1; self.caption.alpha = self.controlsHidden ? 0 : 1 } }
         func share() {

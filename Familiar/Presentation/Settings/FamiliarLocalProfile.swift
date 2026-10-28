@@ -47,7 +47,7 @@ private struct FamiliarProfileAvatar: View {
             if let data = profile.avatar, let image = UIImage(data: data) {
                 Image(uiImage: image).resizable().scaledToFill()
             } else {
-                Circle().fill(FamiliarTheme.accent.gradient)
+                Circle().fill(Color.blue.gradient)
                     .overlay { Text(String(profile.displayName.prefix(1))).font(.system(size: size * 0.4, weight: .medium)).foregroundStyle(.white) }
             }
         }

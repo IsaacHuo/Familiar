@@ -15,6 +15,7 @@ struct FamiliarRootView: View {
             Color(uiColor: .systemBackground).ignoresSafeArea()
             rootContent
         }
+        .tint(FamiliarTheme.accent)
         .background(FamiliarWindowSceneReader { appLock.attach($0) })
         .onChange(of: scenePhase) { _, phase in appLock.sceneChanged(phase) }
         .onChange(of: appLock.isLocked) { _, locked in

@@ -106,6 +106,49 @@ final class FamiliarMarkdownWebKitTests: XCTestCase {
     }
 
     @MainActor
+    func testCompletedLongPlainParagraphsReplaceTheLiveWebView() async throws {
+        let content = TimelineContent()
+        let runID = UUID().uuidString, messageID = UUID(), blockID = UUID(), date = Date()
+        let body = String(repeating: "普通长回答保留原文与段落。", count: 40) + "\n\n最后一段 👩🏽‍💻"
+        let live = FamiliarLiveResponseBlock(id: blockID, assistantTurnID: runID + ":turn:0",
+            order: 1, startedAt: date, content: body)
+        content.controller.surfaces.apply(.init(runID: runID, sequence: 0, timestamp: date,
+            assistantTurnID: nil, payload: .runPhaseChanged(.starting)))
+        content.controller.streamingResponseBlocks = [live]
+        content.controller.runtimeContentBlocks = [.text(.init(live))]
+        let host = UIHostingController(rootView: TimelineHost(content: content))
+        let window = familiarTestWindow(width: 350, height: 800)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        host.view.layoutIfNeeded()
+        let retired = try XCTUnwrap(webViews(in: host.view).first)
+
+        let block = FamiliarResponseBlockSnapshot(id: blockID, assistantTurnID: live.assistantTurnID,
+            messageID: messageID, kind: .markdown, order: 1, state: .completed, content: body,
+            payloadJSON: "{}", schemaVersion: 1, startedAt: date, endedAt: date, contentHash: "")
+        content.messages = [.init(id: messageID, role: .assistant, content: body, createdAt: date, sequence: 1,
+            providerID: nil, modelID: nil, attachments: [], responseBlocks: [block], finalResponseBlockID: blockID)]
+        content.runs = [.init(id: runID, responseMessageID: messageID, status: .completed,
+            startedAt: date, finishedAt: date, responseBlocks: [block])]
+        content.controller.surfaces = FamiliarSurfaceStore()
+        content.controller.streamingResponseBlocks = []
+        content.controller.runtimeContentBlocks = []
+        func nativeTexts(in view: UIView) -> [UITextView] {
+            (view as? UITextView).map { [$0] } ?? view.subviews.flatMap { nativeTexts(in: $0) }
+        }
+        for _ in 0..<50 {
+            host.view.layoutIfNeeded()
+            if webViews(in: host.view).isEmpty && nativeTexts(in: host.view).contains(where: { $0.text == body }) { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertTrue(webViews(in: host.view).isEmpty)
+        XCTAssertTrue(nativeTexts(in: host.view).contains { $0.text == body })
+        XCTAssertNil(retired.navigationDelegate)
+        XCTAssertNil(retired.uiDelegate)
+    }
+
+    @MainActor
     private func webViews(in view: UIView) -> [WKWebView] {
         (view as? WKWebView).map { [$0] } ?? view.subviews.flatMap { webViews(in: $0) }
     }

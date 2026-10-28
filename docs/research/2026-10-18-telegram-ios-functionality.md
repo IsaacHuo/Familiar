@@ -1,6 +1,6 @@
 # Telegram iOS：功能与状态研究
 
-研究日期：2026-10-18。源码固定于 [f1dd7a2](https://github.com/TelegramMessenger/Telegram-iOS/tree/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838)。以下为源码研究，不代表 Telegram 动态验收。Familiar 目标方案见 [总计划](../20-telegram-chat-ui-roadmap.md)，交付现实以 `state/` 和根 `PLAN.md` 为准。
+研究日期：2026-10-18。源码固定于 [f1dd7a2](https://github.com/TelegramMessenger/Telegram-iOS/tree/f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838)。以下为源码研究，不代表 Telegram 动态验收。Familiar 目标方案见 [总计划](../03-ui-ux-design.md)，交付现实以 `state/` 和根 `PLAN.md` 为准。
 
 ## 证据与适配
 

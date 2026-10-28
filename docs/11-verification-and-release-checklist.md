@@ -1,192 +1,61 @@
-# Familiar 验证与发布清单
+# 统一验证与发布清单
 
-用途：在不把真实 API Key 写入自动化环境的前提下，验证认证、流式协议、错误边界、工具闭环、真机行为与发布门槛。每次执行记录 App commit、设备/iOS、Provider、模型 ID、时间和结论；**不要记录 API Key、完整问题或返回的私密内容**。
+编译、测试执行、真实服务、性能和所有者真机视觉分别记录。当前UI目标按[320项账本](telegram-ios-ui-checklist.md)逐项验收；最新构建只记录在[PLAN](../PLAN.md)，代码事实在[state](../state/CURRENT.md)。
 
-当前实现边界与最新验证证据见 `state/CURRENT.md` 和 `state/ARCHITECTURE.md`。本文件只维护稳定的手动、真机与发布检查，不复制单次构建或测试结果。
+## 代理验证边界
 
-## 1. 真实 Provider 冒烟
+只在具体arm64 iOS Simulator destination执行Debug build-for-testing，编译App、单测与UI测试目标。不使用generic Simulator，不启动Simulator、不执行测试、不截图、不安装设备、不修改签名或清理数据。构建设置不改变项目签名配置。三分钟无输出停止本次拥有的进程，记录原因。
 
-当前阶段唯一启用的 Provider descriptor 是 DeepSeek，默认主路径为 `deepseek-v4-flash`。底层仍使用通用 `FamiliarModelProvider` 与 OpenAI-compatible adapter，不把 DeepSeek 写入 Agent Runtime 分支。真实 Key 和真机验收由所有者执行。
+静态检查覆盖diff空白、文档本地链接、资源存在性、中英strings重复和键集合、plutil、渲染JS语法、测试套件登记。纯视觉常量不机械加测试；身份、阅读状态、晚到回调、草稿覆盖或事务行为变更需定向回归，并明确当前只编译。
 
-### 1.1 通用前置
+## 所有者真机顺序
 
-- 使用非生产测试 Key，并确认 Key 只保存在对应 Provider 的 Keychain 项。
-- 使用公开、非私密问题；工具测试使用可删除的测试日历或提醒列表。
-- 记录 Provider endpoint、协议族、模型 ID 和模型能力标记。
-- 抓取 App 可见状态和必要的脱敏网络错误，不保存 Authorization header。
+| 场景 | 观察结果 |
+|---|---|
+| 聊天视觉 | Classic/Night背景与气泡、短长消息、连续用户消息、跨日、时间、模型标题、输入基线 |
+| 输入与阅读 | 中文组合／Emoji／空行、六行后滚动、附件、键盘、生成中上滑、停止、回最新、半程返回取消 |
+| 富文本 | 长代码、宽表格、引用、公式、Mermaid、复制、链接、原位选择、搜索高亮不抢手势 |
+| AI与工具 | 真实Provider流式／错误Key／断网／取消；工具序列、来源、后续问题、审批和回执如实 |
+| 菜单与编辑 | Native/WK选区动作、追加保留原草稿、切会话不晚到回填；取消／失败保留历史 |
+| 图片与文件 | 导入取消／失败／重试、缩放翻页拖拽取消、当前缩略图回归、准确版本预览／分享、批量删除部分失败 |
+| 首页 | 三Tab、分类与分页、未读／置顶／归档、草稿独立恢复、预览无副作用、搜索取消和消息定位 |
+| 设置与润色 | 资料头部滚动与返回、目录搜索、Provider验证身份、翻译／风格／修正、应用／撤销／晚到结果 |
+| 系统偏好 | 中文／英文、深浅色、小屏、大字体、粗体、增强对比度、VoiceOver、降低动效／透明度 |
 
-### 1.2 当前主路径：DeepSeek
+每项反馈写目标编号、构建、设备／系统、复现步骤、实际结果与截图。代理不能代填视觉通过。
 
-使用 `deepseek-v4-flash` 完成认证、文本流式、错误 Key、模型列表、取消、工具调用、Apple Vision 证据注入以及日历/提醒闭环。对 `deepseek-v4-pro` 执行最小文本与 Tool Call 冒烟。
+R3优先复验：BUB-010–016/022–024/029按原截图检查长Markdown白色背景是否完整包裹正文、短绿色气泡和连续边角；TXT-012与MED-001/002/004/005/021–024检查单图／极端比例／多图／图片+文档+正文、无正文时间唯一、缺失资源、版本预览与分享。以上在浅深色及大字体各查一次，反馈仍沿用原编号。
 
-图片不进入 DeepSeek 请求。用户添加图片后只由 Apple Vision 在设备端生成有限、不可信的只读证据文字，再进入当前文本模型上下文。
+R4追加复验原编号：BUB-029／MED-001/004/021/022检查预览与聊天附件顺序、15/7pt邻接、文件名／版本／缺失状态且预览无操作；TXT-012／AIR-003/008/009检查文件末尾唯一时间、完成标识、真实Undo及撤销；ACT-001–005/016/017/020检查菜单退场、资格变化、切换消息／退出后旧动作无效；LST-014/015检查最多三条与同会话提交。
 
-### 1.3 通用 Provider 合同
+## 稳定业务验收
 
-| 场景 | 操作 | 通过标准 |
-|---|---|---|
-| 认证成功 | 保存有效 Key，执行连接验证 | 明确成功，不泄露 Key |
-| 文本流式 | 发送简短非私密问题 | 收到增量文本和正常 stop，不出现空响应 |
-| 错误 Key | 替换为无效 Key | 显示认证失败，不显示虚假回答 |
-| 模型列表 | 刷新 DeepSeek `/models`，与 Flash/Pro curated catalog 对照 | 只显示实时可用的正式模型；空交集明确失败 |
-| 超时/取消 | 发送长请求并主动停止 | 请求终止，UI 回到可发送状态，不保存虚假助手终态 |
-| Provider 错误 | 使用无效模型 ID | 显示有限长度错误，草稿和历史可恢复 |
+- Scope：普通聊天不创建默认Project；同UUID不同类型不互通。创建／移动／删除Project及Chat后文件归属、授权和历史正确；首次既有代际重置与后续打开失败恢复分别验收。
+- 授权：创建／更新首次默认始终允许此类，同scope换参数复用，换scope重新询问，设置撤销后再询问；删除／闹钟取消／未信任MCP每次询问；拒绝和取消零写入。
+- Memory：真实归属、开关关闭不注入不写入；自动写可撤销，保存失败回滚；不把Memory视为权限。
+- 文档任务：公开Web来源→DOCX/XLSX/PPTX/PDF→Outputs捕获→FileVersion→校验回执→真机预览／分享／重开；四种格式分别记录。预装库不重复安装，配置源准确，冷／热准备和取消可恢复。
+- 系统服务：EventKit、Contacts、Location、Weather、Health、Music、Bluetooth、Photos add-only、Alarm逐一核对真实系统许可、成功／空／拒绝／失败／取消／重开，fixture不替代硬件结果。
+- Provider：使用实际配置服务与模型；保存／删除凭据、发现模型、连接验证、外部登录／取消／刷新分别记录。图片是否上传由当前模型能力决定，文本模型只接收本地Vision证据。
+- 语音：连续启停、中断、准备时停止、切会话、后台与晚到回调；无录音文件。iOS26实现与iOS27新版系统路径按拥有设备分别验收。
+- 系统入口：分享、Deep Link、通知、Spotlight、App Intents、Widget／Control覆盖冷启动、锁定、目标删除与未发送草稿，入口不自动写授权。
+- 中断窗口：只用专用测试条目检查审批后中断、journal和真实系统状态；不自动重放不确定写入，不声称可跨重启续跑，不人为填满日常设备做故障注入。
 
-验证 `data:` SSE、`[DONE]`、文本/reasoning delta、`finish_reason`、增量 `tool_calls` 参数、ToolResult 回填和最终 stop。测试断言针对通用 adapter 合同，不使用 DeepSeek 类型判断；DeepSeek 专有差异只允许放在 descriptor/model capabilities 中。
+## 性能与卡死复验
 
-### 1.5 工具闭环
+hwf卡死调查保留在[现场记录](research/2026-10-19-hwf-hang-investigation.md)。旧版本trace不代表修正版性能。若复现，保持当前前台进程采主线程／Time Profiler，不先重装或重启。
 
-当前阶段使用 DeepSeek descriptor 执行以下主路径：
+同设备、构建、数据集分别检查100／300条消息、复杂图示、接近25MiB文档、大图导入、反复进出会话和交互返回。记录卡顿、CPU、峰值内存及退出回落。U6轻量索引仍线性；24MiB/120项缩略图缓存仅成本提示，不能当硬内存上限。没有前后证据不报告性能改善。
 
-1. "明天下午有什么安排？"验证 EventKit read Tool Call。
-2. "明天下午三点提醒我测试 Familiar"验证首次结构化授权，默认选择“本次会话”。
-3. 在授权前取消，确认 EventKit 零写入。
-4. 再次执行并授权，确认只创建一条提醒并显示动作卡和 Undo。
-5. 在相同 Project、工具和目标范围内再次创建，确认免重复询问但仍显示动作卡。
-6. 改变目标或超出参数范围，确认重新询问。
-7. 重启 App 后执行 Undo，确认系统对象被删除、卡片进入已撤销且不能重复 Undo。
-8. 执行公开 Web 查询，确认 Sources 可见且失败来源不会被声称已读取。
+## 历史证据
 
-## 2. 真机验收
+- [2026-10-17搜索证据](research/2026-10-17-search-evidence.md)：79项7套件、单项WebKit及三项UI分别有历史通过记录；20条真实DeepSeek+Tavily缺凭据未执行，相关性和引用支持度待审。
+- [早期成品化证据](research/2026-09-product-completion.md)：保留原失败、定向重跑和未验收硬件边界，不能覆盖当前UI。
+- 2026-10-19 Telegram P0–P5收尾日志 /tmp/Familiar-Telegram-motion-final-build.log 仅App和测试目标编译，无测试执行、设备安装或修正版性能采样。
 
-### 2.1 EventKit
+## 发布门槛
 
-full access 允许 / 拒绝 / restricted；查询时间范围与文字条件；创建预览、确认写入、取消、任务中止；重复工具调用；系统保存失败。
+实际执行测试须另有所有者授权；届时按Scripts/run-release-test-suites.sh串行记录xcresult，不能将build-for-testing叫作测试通过。缺Info.plist、中断或卡死结果不计成功，不重复安装无关套件来掩盖flake。
 
-### 2.2 文件与文档
+发布前完成当前真实Provider和工具闭环、真机UI、权限／删除／恢复、隐私目的地、许可证、entitlements、版本与签名Archive核对。Key不进入命令行、截图或公开日志；记录脱敏Provider、协议、model ID、设备、构建与结论。
 
-- iCloud Drive 安全作用域文件、On My iPhone 文件、25 MiB 边界。
-- DOCX、PPTX、XLSX、ODT、RTF、EPUB、CSV；文本 PDF；扫描 PDF；加密和损坏文档。
-- 附件删除和重新预览。
-- 项目资源从 iCloud Drive / On My iPhone 导入、Quick Look、OCR 标记和删除。
-- 同一资源在两条项目对话中使用，重启后版本/hash 保持。
-- 项目删除后历史聊天仍可打开且资源目录不可恢复；运行中 Run 时删除按钮禁用。
-
-### 2.3 Project 主链路（WP1–WP4）
-
-- 验证统一 Chat 顶栏的设置、工作区、模型和新对话入口；普通/项目工作区恢复各自最近会话，抽屉按置顶、可折叠项目和普通最近会话分区。
-- 抽屉、设置、Run timeline 与工具清单在中英文、VoiceOver 和极端 Dynamic Type 下可操作。
-- 核对唯一当前 schema 5.0.0、37 实体、完整工作 scope 与业务代际重置。首次重置保留配置/凭据、重复启动保留新数据和打开失败恢复分别验收；构建不代表磁盘执行通过。
-- 创建/编辑/归档项目并拒绝重复项目名称；创建普通与项目聊天，确认项目指令只进入项目聊天；历史 Run 项目归属符合启动时快照。
-- 从 Composer 显式选择 Skill，确认只影响下一次 Run；为 Project 绑定候选 Skill，确认只暴露 metadata，`skill_read` 至多加载一个并冻结 snapshot/收窄工具，且不会自动注入或扩大 Capability。
-- 导入文本 PDF、扫描 PDF 和至少一种 Office 文档，确认进度、OCR、Quick Look、文件保护、两条项目聊天共享资料及超预算提示。
-- 删除单条消息不删除资源；删除资源后预览不可用；删除项目后聊天/历史 Run 保留并脱离，资源与指令删除。
-- 断网/取消/模型失败后 Run ContextSnapshot 元数据和资源 hash 引用仍可读取，且记录中没有完整资源抽取文本。
-
-### 2.4 相机与图片
-
-- 相机权限、前后镜头、闪光灯和 PhotosPicker 多选。
-- `deepseek-v4-flash` / `deepseek-v4-pro` 使用 Apple Vision 完成 OCR、条码和基础分类，并在折叠运行过程记录方法、版本和原图引用；原始图片不进入 Provider 请求。
-- 基础结果不足时说明限制；不自动切换到实验视觉模型，不调用 FastVLM。
-- 所有视觉路径失败时文字和图片草稿保持。
-
-### 2.5 FastVLM 不进入 iOS 1.0
-
-- 设置中不显示 FastVLM 安装、下载、基准或删除入口。
-- Chat 不自动调用 FastVLM；未安装和历史残留模型均不改变当前路由。
-- 当前图片路径只使用 Apple Vision 基础证据。
-- Release target 和 Package graph 不包含 FastVLMRuntime/MLX；`Vendor/` 研究源码不进入 App 包。
-
-### 2.6 Speech
-
-Speech 权限、麦克风权限、中文转写、设备端识别、系统中断、App 失活停止、无录音文件。
-
-### 2.7 系统入口
-
-Share Extension（Notes/Safari/Files 来源、文件协调、签名环境）、Deep Link（冷启动/回前台）、通知（权限、锁屏呈现、冷启动点击、目标已删除）、Spotlight（索引延迟、中英文查询、设备锁定、冷启动、重命名/删除刷新）、App Intents（Siri/Shortcuts/Spotlight/Action Button、后台唤起、语音参数、真实请求）、Widget/Control（Gallery、主屏幕/锁屏启动、控制中心注册、未发送草稿保护）。
-
-### 2.8 SwiftData 恢复
-
-- Debug `FamiliarDevelopment.store` 与 Release `Familiar.store` 使用同一当前 schema；不支持历史磁盘升级链。代际 5-work-scopes 按本次明确授权清空旧业务，成功后写完成标记。
-- 代际完成后的打开失败保留新 store 与文件，进入恢复页。重复打开、缺失字节、存储失败、历史 Evidence/Undo 与 project/conversation scope 隔离需独立验收。
-
-### 2.9 Complex Task Golden Task
-
-- 在 Project Chat 输入“搜索北京的公开资料，整理城市简介、三处代表性地点和实用出行提示，生成一份中文 Word 文档，并在文末列出实际读取的来源链接”。
-- 至少两个来源必须经 `web_fetch` 成功读取；只出现在 search result 的页面不得写成已读取来源。
-- 分别选择官方 PyPI 与清华 TUNA，确认 `environment_prepare` 审批卡、可信安装命令和 receipt 使用同一个准确索引地址；空 Project Environment 时批准 `python-docx` 依赖方案，确认依赖只进入当前 Project，其他 Project 不可见，App 重启后 lock/receipt 保持。
-- 使用真实 iSH 生成 DOCX，`file_publish` 必须返回 AnyDoc validation receipt、字节数和 SHA-256；缺失或损坏文件不得完成 Run。
-- 在真机 Quick Look 打开，通过 Share Sheet 保存到 Files 并重新打开。分别执行冷启动、缓存 Environment、强制退出后重启三条路径。
-
-## 3. UI 验证矩阵
-
-- iOS 18 和 iOS 26。
-- Light 和 Dark。
-- 简体中文和英文。
-- Dynamic Type（含极端字号）。
-- VoiceOver（含焦点返回、连续工具状态播报）。
-- Reduce Motion 与 Reduce Transparency。
-- Increase Contrast 与 Bold Text。
-- 键盘交互与抽屉边缘手势。
-- 长回答和滚动稳定性。
-- 信息性状态无卡片背景，完成后默认折叠。
-- 单张动作卡普通布局；多张动作卡近全宽横向 pager、逐卡吸附、边缘渐隐和轻触觉。
-- 多动作部分成功/失败、失败重试和已撤销终态。
-- Markdown、代码、表格、引用、KaTeX、Mermaid。
-- 复制、分享、编辑、重试。
-
-## 4. 发布前质量门槛
-
-### 构建
-
-- 按切片记录具体构建 target、配置和平台；本次指定 arm64 iPhone 18 Pro Simulator，不使用 generic Simulator，不修改签名。
-- 当前 Xcode 稳定版 Swift 6 警告清零。
-- `build-for-testing` 只证明 App 与测试产物完成编译；只有实际执行 `test` 或 `test-without-building` 并记录结果，才能声明测试通过。
-- 先完成 `build-for-testing`，再运行 `Scripts/run-release-test-suites.sh <simulator-udid> <derived-data-path>`；脚本逐 suite 串行执行全部 Swift Testing 与 UI smoke，并保留每个 suite 的独立 xcresult。
-
-### 数据
-
-- 历史迁移方案已由本次已授权的业务重置替代。当前构建证据与待运行项见 16-work-scope-convergence.md。
-- Ordinary Chat deletion removes its owned Files and Workspace; Project Chat deletion retains shared Files. Moves copy and rebind linked versions. History/Undo/reopen remains device acceptance.
-- Development 与 Release store 不相互搬迁；业务代际完成后，普通打开失败保留新数据并进入恢复页。
-- 当前仅维护一个 schema。今后的数据保留或代际策略需单独明确；普通打开失败不能触发新一轮业务重置。
-
-### Agent
-
-- 无有效授权的写操作在用户授权前零执行；取消写操作零执行。
-- 有效 grant 只在 Project、工具、目标、参数和期限均匹配时生效。
-- 会话级和长期授权可撤销；模型和系统入口不能产生授权。
-- 相同 run 的重复写入最多一次成功。
-- 工具失败不显示成功状态。
-- EventKit 写入在 App 重启后仍可撤销，撤销结果保留在原动作卡。
-
-### Provider
-
-- 当前 DeepSeek descriptor 至少完成一次真实文本流式、错误和工具闭环冒烟。
-- Flash/Pro `/models`、文本流式与 Tool Call 有脱敏记录；不存在生产图片模型。
-- Provider/Agent 测试确认 adapter 和 AgentLoop 没有 DeepSeek 类型判断；当前只启用 DeepSeek 不等于接口绑定 DeepSeek。
-
-### 隐私
-
-- API Key 不出现在日志和普通存储。
-- 图片 bytes 只进入设备端 Apple Vision 与本地附件存储，不进入 DeepSeek 或无关存储。
-- 视觉证据带 provenance，作为不可信只读输入，不能产生工具授权。
-- FastVLMRuntime/MLX 不在 Release 二进制或数据目的地中。
-- Speech 和 EventKit 用途说明与调用一致。
-- Markdown 远程图片不自动加载，策略在 App 与官网披露。
-
-### Release 交付
-
-- 无账户、订阅、托管额度和无效入口。
-- Provider 模型 ID 失效时界面可恢复。
-- 所有者完成 DeepSeek 真机主路径验收。
-- 所有者使用正式证书生成签名 Archive，检查 Organizer Privacy Report、entitlements、版本一致性与 App Store Connect 隐私问卷。
-- 先进入 Internal TestFlight；真实 Key、真机、隐私、许可证与签名 Archive 全部通过后，才可声明 App Store 1.0 ready。
-
-## 5. 记录模板
-
-```text
-Date:
-Commit:
-Device / iOS:
-Provider:
-Protocol:
-Model ID:
-Authentication: pass / fail
-Text stream: pass / fail
-Invalid key: pass / fail
-Model list/fallback: pass / fail
-Cancellation: pass / fail
-Tool round trip: pass / fail / not supported
-Notes (redacted):
-```
+商店文本与网站说明见[App Store Connect](../website/APP-STORE-CONNECT.md)。所有者生成正式签名Archive并检查Organizer隐私报告和营养标签，先Internal TestFlight；未完成不声明App Store ready。本轮不提交、推送、部署或发布。

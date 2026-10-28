@@ -8,7 +8,7 @@ struct FamiliarSettingsRowIcon: View {
     let color: Color
 
     @ScaledMetric(relativeTo: .body) private var iconSize: CGFloat = FamiliarIconSize.standard
-    @ScaledMetric(relativeTo: .body) private var container: CGFloat = 30
+    @ScaledMetric(relativeTo: .body) private var container: CGFloat = 29
 
     var body: some View {
         Image(systemName: symbol)

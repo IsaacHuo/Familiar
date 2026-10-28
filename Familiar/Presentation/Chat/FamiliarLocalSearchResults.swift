@@ -108,27 +108,28 @@ struct FamiliarHomeSearchResults: View {
     }
 }
 
-/// Search has one explicit entry; the conversation list keeps its own position.
-struct FamiliarHomeSearchPage: View {
-    @Environment(\.dismiss) private var dismiss
+/// Native drawer search replaces the independent Sheet. This modifier owns
+/// query observation so keystrokes do not rebuild home list snapshots.
+struct FamiliarHomeSearchPresentation: ViewModifier {
     @Bindable var state: FamiliarHomeSearchState
+    @Binding var presented: Bool
     let conversationIDs: [UUID]
     let onOpen: (UUID) -> Void
     let onMessage: (UUID, UUID) -> Void
-    @State private var active = true
 
-    var body: some View {
-        NavigationStack {
-            FamiliarHomeSearchResults(state: state, conversationIDs: conversationIDs,
-                onOpen: onOpen, onMessage: onMessage)
-                .navigationTitle(String(localized: "drawer.search"))
-                .navigationBarTitleDisplayMode(.inline)
-                .searchable(text: $state.query, isPresented: $active,
-                    placement: .navigationBarDrawer(displayMode: .always), prompt: String(localized: "drawer.search"))
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) { FamiliarDismissButton() }
+    func body(content: Content) -> some View {
+        content
+            .allowsHitTesting(!presented)
+            .accessibilityHidden(presented)
+            .overlay {
+                if presented {
+                    FamiliarHomeSearchResults(state: state, conversationIDs: conversationIDs,
+                        onOpen: onOpen, onMessage: onMessage)
+                        .background(FamiliarTheme.page)
                 }
-        }
-        .onChange(of: active) { _, value in if !value { dismiss() } }
+            }
+            .searchable(text: $state.query, isPresented: $presented,
+                placement: .navigationBarDrawer(displayMode: .automatic),
+                prompt: String(localized: "drawer.search"))
     }
 }

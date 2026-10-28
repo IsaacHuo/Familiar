@@ -54,8 +54,8 @@ import UIKit
             guard let self, let target, let window, target.window === window, self.generation == token else { return }
             hidden(true)
             let ghost = source.snapshot
-            ghost.frame = rect; ghost.layer.cornerRadius = 18; ghost.clipsToBounds = true
-            ghost.backgroundColor = .secondarySystemBackground
+            ghost.frame = rect; ghost.layer.cornerRadius = FamiliarChatAppearance.cornerRadius; ghost.clipsToBounds = true
+            ghost.backgroundColor = UIColor(FamiliarChatAppearance.outgoingBottom)
             window.addSubview(ghost); self.flight = ghost
             self.completion = { hidden(false) }
             let pairs: [(String, CGFloat, CGFloat, CAMediaTimingFunction)] = [

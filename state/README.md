@@ -17,6 +17,7 @@ git     → 普通代码改动历史
 |---|---|
 | [`CURRENT.md`](CURRENT.md) | 未来 Agent 进入仓库时优先阅读：阶段、重点、最近完成、进行中、已知问题、下一步 |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 基于当前代码验证的模块、数据层、数据流与依赖关系 |
+| [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md) | 功能入口与验证边界索引，不复制逐工具流水 |
 
 ## 维护原则
 

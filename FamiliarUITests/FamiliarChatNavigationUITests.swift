@@ -19,6 +19,31 @@ final class FamiliarChatNavigationUITests: XCTestCase {
         else { app.navigationBars.buttons.firstMatch.tap() }
     }
 
+    @MainActor func testReviewNewConversationButtonAndKeyboardRepeatedly() {
+        let app = launch()
+        defer { XCUIDevice.shared.orientation = .portrait }
+        for index in 0..<3 {
+            XCTAssertTrue(app.buttons["chats.new"].waitForExistence(timeout: 10))
+            app.buttons["chats.new"].tap()
+            let input = app.textViews["composer.input"]
+            XCTAssertTrue(input.waitForExistence(timeout: 10))
+            input.tap()
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+            if index == 2 {
+                let draft = "Review draft\nSecond line"
+                input.typeText(draft)
+                XCTAssertEqual(input.value as? String, draft)
+                XCUIDevice.shared.orientation = .landscapeLeft
+                XCTAssertTrue(input.waitForExistence(timeout: 5))
+                XCTAssertEqual(input.value as? String, draft)
+                XCUIDevice.shared.orientation = .portrait
+            }
+            back(app)
+            XCTAssertTrue(app.buttons["chats.new"].waitForExistence(timeout: 10))
+            XCTAssertEqual(app.state, .runningForeground)
+        }
+    }
+
     @MainActor private func capture(_ app: XCUIApplication, _ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)

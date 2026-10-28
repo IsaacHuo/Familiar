@@ -84,7 +84,7 @@ private struct FamiliarDocumentGlyph: View {
     let `extension`: String
     let category: FamiliarFileCategory
     private var color: Color {
-        switch category { case .pdf, .presentation: .red; case .spreadsheet: .green; case .other: .orange; default: FamiliarTheme.accent }
+        switch category { case .pdf, .presentation: .red; case .spreadsheet: .green; case .other: .orange; default: .blue }
     }
     var body: some View {
         ZStack {

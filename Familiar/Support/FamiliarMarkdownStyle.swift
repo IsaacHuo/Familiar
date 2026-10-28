@@ -27,14 +27,16 @@ enum FamiliarMarkdownStyle {
                           Int(r * 255), Int(g * 255), Int(b * 255), Double(a))
         }
         let colors: [String: Color] = [
-            "ink": Color(uiColor: .label), "secondary": Color(uiColor: .secondaryLabel), "tertiary": FamiliarTheme.inkTertiary,
+            "ink": FamiliarChatAppearance.incomingText, "secondary": FamiliarChatAppearance.incomingTime, "tertiary": FamiliarTheme.inkTertiary,
             "surface": FamiliarTheme.surface, "inset": FamiliarTheme.inset, "line": FamiliarTheme.line,
-            "line-strong": FamiliarTheme.lineStrong, "accent": FamiliarTheme.accent, "accent-tint": FamiliarTheme.accentTint,
+            "line-strong": FamiliarTheme.lineStrong, "accent": FamiliarChatAppearance.link, "accent-tint": FamiliarTheme.accentTint,
             "code-fill": FamiliarTheme.userFill, "success": FamiliarTheme.success, "failure": FamiliarTheme.failure,
             "warning": FamiliarTheme.warning, "keyword": Color(uiColor: .systemPurple)
         ]
         var variables = Dictionary(uniqueKeysWithValues: colors.map { ("--familiar-" + $0.key, color($0.value)) })
         variables["--familiar-body-size"] = "\(UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits).pointSize)px"
+        let bodyFont = UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits)
+        variables["--familiar-line-height"] = String(format: "%.4f", locale: Locale(identifier: "en_US_POSIX"), bodyFont.lineHeight / bodyFont.pointSize)
         variables["--familiar-caption-size"] = "\(UIFont.preferredFont(forTextStyle: .caption1, compatibleWith: traits).pointSize)px"
         variables["--familiar-radius-compact"] = "\(FamiliarRadius.compact)px"
         variables["--familiar-radius-control"] = "\(FamiliarRadius.control)px"

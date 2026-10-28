@@ -702,6 +702,7 @@ struct FamiliarChatView: View {
 
     private func chatSession(availableHeight: CGFloat) -> some View {
             chatBody
+                .background { FamiliarChatWallpaper() }
                 .overlay {
                     if skillsMenuOpen {
                         Color.clear.contentShape(Rectangle()).onTapGesture { skillsDismissRevision += 1 }
@@ -823,7 +824,9 @@ struct FamiliarChatView: View {
         let project = selectedProject
         let effective = controller.effectiveSettings(for: project)
         let providers = FamiliarProviderCatalog.builtIn.filter { configuredProviderIDs.contains($0.id) }
+        let title = conversations.first { $0.id == controller.selectedConversationID }?.title ?? String(localized: "app.name")
         return FamiliarChatTopBar(
+            title: title,
             provider: effective.selectedProvider,
             model: effective.selectedModel,
             project: project,
@@ -1220,6 +1223,7 @@ private struct FamiliarChatNavigationChrome: ViewModifier {
                 .toolbarBackground(.hidden, for: .navigationBar)
                 .scrollEdgeEffectHidden(true, for: .top)
                 .toolbar {
+                    ToolbarItem(placement: .principal) { bar.titleView }
                     ToolbarItem(placement: .topBarTrailing) { bar.actionMenu }
                 }
         } else {
@@ -1242,6 +1246,7 @@ private struct FamiliarTopBarInstaller<Bar: View>: ViewModifier {
 
 private struct FamiliarChatTopBar: View {
     private let toolbarIconSize = FamiliarIconSize.prominent
+    let title: String
     let provider: FamiliarProviderDescriptor
     let model: FamiliarModelDescriptor
     let project: FamiliarProject?
@@ -1289,8 +1294,22 @@ private struct FamiliarChatTopBar: View {
             .accessibilityIdentifier(isHosted ? "chat.back" : "chat.settings")
 
             Spacer(minLength: 0)
+            titleView
+            Spacer(minLength: 0)
             actionMenu
         }
+    }
+
+    /// Telegram ChatTitleView: 17pt semibold title and 13pt subtitle.
+    /// The real current model replaces a peer's online status.
+    var titleView: some View {
+        VStack(spacing: 1) {
+            Text(title).font(.system(size: 17, weight: .semibold)).monospacedDigit()
+            Text(model.displayName).font(.system(size: 13)).foregroundStyle(.secondary)
+        }
+        .lineLimit(1)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("chat.title")
     }
 
     private var modelMenu: some View {

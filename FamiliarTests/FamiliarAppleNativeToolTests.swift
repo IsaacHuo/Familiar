@@ -229,6 +229,37 @@ struct FamiliarAppleNativeToolTests {
 
     // MARK: WeatherKit
 
+    @Test("Native forecast and history retain attribution without model citations")
+    func weatherAttributionContract() async throws {
+        let service = FamiliarWeatherServiceFixture()
+        let forecast = try await FamiliarWeatherForecastTool(service: service).execute(
+            .init(latitude: 39.9, longitude: 116.4, days: 3), context: context())
+        let history = try await FamiliarWeatherHistoryTool(service: service).execute(
+            .init(latitude: 39.9, longitude: 116.4, startISO8601: "2026-08-20T00:00:00Z", endISO8601: "2026-08-21T00:00:00Z"), context: context())
+        var surfaces: [FamiliarSurfaceDescriptor] = []
+        for (name, outcome) in [("weather_forecast", forecast), ("weather_history", history)] {
+            guard case .result(let result) = outcome else { Issue.record("Expected native weather result"); return }
+            let envelope = try JSONDecoder().decode(FamiliarToolResultEnvelope.self, from: JSONEncoder().encode(result.envelope))
+            let surface = FamiliarSurfaceDescriptor(id: name, runID: "run", kind: .records, placement: .trace,
+                phase: .succeeded, title: name, toolName: name, resultEnvelope: envelope)
+            let attribution = try #require(FamiliarWeatherAttribution(surface: surface))
+            #expect(attribution.legalURL.absoluteString == "https://weatherkit.apple.com/legal-attribution.html")
+            surfaces.append(surface)
+        }
+        #expect(FamiliarWeatherAttribution.unique(in: surfaces + surfaces).count == 1)
+        var rejected = try #require(surfaces.first)
+        for phase in [FamiliarSurfacePhase.running, .failed, .cancelled] {
+            rejected.phase = phase
+            #expect(FamiliarWeatherAttribution(surface: rejected) == nil)
+        }
+        rejected.phase = .succeeded
+        rejected.toolName = "web_search"
+        #expect(FamiliarWeatherAttribution(surface: rejected) == nil)
+        rejected.toolName = "weather_forecast"
+        rejected.resultEnvelope = try .init(canonicalModelJSON: "{}", presentation: .scalar(.init(summary: "Missing", value: "")))
+        #expect(FamiliarWeatherAttribution(surface: rejected) == nil)
+    }
+
     @Test("Weather forecast applies the advertised default day count")
     func weatherForecastDefault() async throws {
         let service = FamiliarWeatherServiceFixture()

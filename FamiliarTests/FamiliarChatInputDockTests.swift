@@ -6,6 +6,64 @@ import UIKit
 
 @Suite("Input dock waiting identity and independent drafts")
 struct FamiliarChatInputDockTests {
+    @Test("Production text views use initialized Swift subclasses and a retained TextKit 1 stack")
+    @MainActor func nativeTextViewInitialization() throws {
+        let composer = FamiliarComposerNativeTextView.makeTextKit1View()
+        #expect(composer.centersSingleLine)
+        #expect(composer.extraTrailingInset == 0)
+        #expect(composer.placeholderLabel.superview === composer)
+        #expect(!composer.placeholderLabel.isUserInteractionEnabled)
+        #expect(!composer.placeholderLabel.isAccessibilityElement)
+        let message = FamiliarMessageNativeTextView.makeTextKit1View()
+        for view in [composer as UITextView, message] {
+            #expect(view.textLayoutManager == nil)
+            #expect(view.textContainer.layoutManager === view.layoutManager)
+            #expect(view.layoutManager.textStorage === view.textStorage)
+            view.text = "中文 👩🏽‍💻\nSecond line\n"
+            view.frame = CGRect(x: 0, y: 0, width: 320, height: 100)
+            view.layoutIfNeeded()
+            #expect(view.textStorage.string == view.text)
+        }
+        var escaped = false
+        message.onEscape = { escaped = true; return true }
+        #expect(message.accessibilityPerformEscape())
+        #expect(escaped)
+    }
+
+    @Test("Opening and focusing the production composer repeatedly handles empty and multiline drafts")
+    @MainActor func newChatComposerLifecycle() async throws {
+        let window = familiarTestWindow(width: 390, height: 844)
+        defer { window.isHidden = true; window.rootViewController = nil }
+        for _ in 0..<3 {
+            let controller = FamiliarChatController(dependencies: .init())
+            let host = UIHostingController(rootView: Host(controller: controller))
+            window.rootViewController = host
+            window.makeKeyAndVisible()
+            host.view.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(80))
+            let editor = try #require(textViews(host.view).first as? FamiliarComposerNativeTextView)
+            #expect(editor.centersSingleLine)
+            #expect(editor.placeholderLabel.superview === editor)
+            #expect(editor.textLayoutManager == nil)
+            #expect(editor.becomeFirstResponder())
+            for text in ["", "中文 👩🏽‍💻", "Line\n" + String(repeating: "\n", count: 12), ""] {
+                editor.text = text
+                editor.selectedRange = NSRange(location: text.utf16.count, length: 0)
+                editor.delegate?.textViewDidChange?(editor)
+                editor.setNeedsLayout()
+                editor.layoutIfNeeded()
+                #expect(editor.placeholderLabel.isHidden == !text.isEmpty)
+                #expect(controller.draft == text)
+            }
+            editor.setMarkedText("拼音", selectedRange: NSRange(location: 2, length: 0))
+            editor.layoutIfNeeded()
+            #expect(editor.markedTextRange != nil)
+            editor.unmarkText()
+            editor.resignFirstResponder()
+            window.rootViewController = nil
+        }
+    }
+
     @Test("An interactive pop suspends reading before disappear; cancelling resumes the same presenter")
     @MainActor func interactivePopReadingLifecycle() {
         let session = FamiliarChatScrollSession(), id = UUID()
@@ -59,11 +117,13 @@ struct FamiliarChatInputDockTests {
         #expect(empty >= font.lineHeight)
     }
 
-    @Test("Only plain prose uses compact native layout; Markdown and links retain WebKit")
-    func compactTextClassification() {
-        #expect(FamiliarMessageReadingStyle.isShortPlainText("你好，世界。"))
-        for text in ["**Bold**", "1. List", "- List", "[source]", "https://example.com", "Line\nBreak", "`code`", "a_b"] {
-            #expect(!FamiliarMessageReadingStyle.isShortPlainText(text))
+    @Test("Plain prose stays native across length and paragraph boundaries; rich content retains WebKit")
+    func nativeTextClassification() {
+        for text in ["你好，世界。", "Line\nBreak", "Line\n\nBreak", "Line\r\nBreak", "中文 👩🏽‍💻\nمرحبا", String(repeating: "普通长回答。", count: 100)] {
+            #expect(FamiliarMessageReadingStyle.canUseNativeText(text))
+        }
+        for text in ["", "**Bold**", "1. List", "- List", "[source]", "https://example.com", "`code`", "a_b", "Paragraph\n- List", "Paragraph\n  2. List", "Paragraph\n+ List", "---", "+", "Title\n--", "Paragraph\n---\r\n", "Paragraph\n    code", "\tcode", "Paragraph\nperson@example.com", "$$x$$", "| Column |", "\\(x\\)"] {
+            #expect(!FamiliarMessageReadingStyle.canUseNativeText(text))
         }
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!

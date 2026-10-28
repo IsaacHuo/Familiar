@@ -122,7 +122,7 @@ struct FamiliarDraftRewriteSheet: View {
                 } label: {
                     Text(String(localized: requestID != nil ? "rewrite.stop" : result != nil ? "rewrite.apply" : "rewrite.generate"))
                         .font(.headline).frame(maxWidth: .infinity, minHeight: 52)
-                        .foregroundStyle(.white).background(FamiliarTheme.accent, in: Capsule())
+                        .foregroundStyle(FamiliarTheme.onAccent).background(FamiliarTheme.accent, in: Capsule())
                 }.buttonStyle(.plain)
                     .disabled(requestID == nil && result == nil && generationBlocked)
                     .opacity(requestID == nil && result == nil && generationBlocked ? 0.45 : 1)
@@ -130,7 +130,7 @@ struct FamiliarDraftRewriteSheet: View {
                 if result != nil {
                     Button { showsOriginal = false; generate() } label: {
                         Image(systemName: "arrow.clockwise").font(.system(size: 22))
-                            .frame(width: 52, height: 52).foregroundStyle(.white)
+                            .frame(width: 52, height: 52).foregroundStyle(FamiliarTheme.onAccent)
                             .background(FamiliarTheme.accent, in: Circle())
                     }.buttonStyle(.plain).disabled(controller.execution.isBusy)
                         .accessibilityLabel(String(localized: "rewrite.regenerate"))

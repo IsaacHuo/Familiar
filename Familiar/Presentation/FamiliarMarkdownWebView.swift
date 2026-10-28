@@ -61,7 +61,7 @@ struct FamiliarMarkdownWebView: View {
                 ScrollView {
                     Group {
                         if let messageActions {
-                            FamiliarMessageText(text: messageActions.text, messageID: messageActions.messageID, edit: messageActions.edit, retry: messageActions.retry)
+                            FamiliarMessageText(text: messageActions.text, actions: messageActions)
                         } else {
                             FamiliarMarkdownFallbackText(markdown: markdown)
                                 .textSelection(.enabled)
@@ -577,8 +577,9 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
         )
 
         if renderedState != pendingRender && didFailRendering.wrappedValue {
-            DispatchQueue.main.async { [weak self] in
-                self?.didFailRendering.wrappedValue = false
+            DispatchQueue.main.async { [weak self, weak webView] in
+                guard let self, let webView, self.webView === webView else { return }
+                self.didFailRendering.wrappedValue = false
             }
         }
 
@@ -606,15 +607,18 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
         Self.messageNames.forEach {
             webView.configuration.userContentController.removeScriptMessageHandler(forName: $0)
         }
-        if self.webView === webView {
-            self.webView = nil
-        }
+        if self.webView === webView { self.webView = nil }
+        webView.navigationDelegate = nil
+        webView.uiDelegate = nil
+        webView.stopLoading()
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.frameInfo.isMainFrame else { return }
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
+        guard message.frameInfo.isMainFrame, let origin = message.webView, origin === webView else { return }
+        DispatchQueue.main.async { [weak self, weak origin] in
+            // A completed plain block may now be native. Its retired WebView
+            // must not publish a queued height, failure, selection or action.
+            guard let self, let origin, self.webView === origin else { return }
             switch message.name {
             case "heightChanged":
                 if let value = message.body as? NSNumber {
@@ -635,8 +639,8 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
                 #if os(iOS)
                 if let delta = message.body as? NSNumber, delta.doubleValue.isFinite {
                     // Let the paired height message settle native layout first.
-                    DispatchQueue.main.async { [weak self] in
-                        guard let self, let session = self.scrollSession,
+                    DispatchQueue.main.async { [weak self, weak origin] in
+                        guard let self, let origin, self.webView === origin, let session = self.scrollSession,
                               session.acceptsPresenter(self.presenterID), session.mode == .userReading, !session.isInteracting,
                               let scroll = self.containingScrollView else { return }
                         scroll.superview?.layoutIfNeeded()
@@ -697,15 +701,18 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
     #endif
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard self.webView === webView else { return }
         isRendererReady = true
         renderIfReady()
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        guard self.webView === webView else { return }
         didFailRendering.wrappedValue = true
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        guard self.webView === webView else { return }
         didFailRendering.wrappedValue = true
     }
 
@@ -747,9 +754,9 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
         readingTop = self.readingTop(in: webView)
         #endif
         isRendering = true
-        webView.evaluateJavaScript("window.FamiliarMarkdown.setReadingTop(\(readingTop)); window.FamiliarMarkdown.setSearchTerm(\(FamiliarMarkdownHTML.javascriptStringLiteral(searchTerm))); window.FamiliarMarkdown.render(\(literal), { sources: \(target.sourcesJSON), streaming: \(target.isStreaming), messageActionsEnabled: \(messageInteraction.actions != nil), messageAccessibilityActions: \(messageAccessibilityActionsJSON), messageActionsLabel: \(FamiliarMarkdownHTML.javascriptStringLiteral(String(localized: "accessibility.message_actions"))), mermaidPreviewEnabled: \(target.allowsMermaidPreview), mermaidPreviewLabel: \(mermaidPreviewLabel), reduceMotion: \(target.reduceMotion), style: \(target.styleJSON), copyLabel: \(copyLabel), copiedLabel: \(copiedLabel) });") { [weak self] _, error in
+        webView.evaluateJavaScript("window.FamiliarMarkdown.setReadingTop(\(readingTop)); window.FamiliarMarkdown.setSearchTerm(\(FamiliarMarkdownHTML.javascriptStringLiteral(searchTerm))); window.FamiliarMarkdown.render(\(literal), { sources: \(target.sourcesJSON), streaming: \(target.isStreaming), messageActionsEnabled: \(messageInteraction.actions != nil), messageAccessibilityActions: \(messageAccessibilityActionsJSON), messageActionsLabel: \(FamiliarMarkdownHTML.javascriptStringLiteral(String(localized: "accessibility.message_actions"))), mermaidPreviewEnabled: \(target.allowsMermaidPreview), mermaidPreviewLabel: \(mermaidPreviewLabel), reduceMotion: \(target.reduceMotion), style: \(target.styleJSON), copyLabel: \(copyLabel), copiedLabel: \(copiedLabel) });") { [weak self, weak webView] _, error in
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self, let webView, self.webView === webView else { return }
                 self.isRendering = false
                 if error == nil {
                     self.renderedState = target

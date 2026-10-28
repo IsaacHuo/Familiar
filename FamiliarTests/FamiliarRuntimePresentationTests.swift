@@ -259,6 +259,38 @@ struct FamiliarRuntimePresentationTests {
         #expect(failure.failureRetryable == false)
     }
 
+    @Test("Weather attribution survives live projection and a fresh persisted Run read without citations")
+    @MainActor func weatherAttributionReload() throws {
+        let fixture = try makeRun()
+        defer { withExtendedLifetime(fixture.container) {} }
+        let recorder = FamiliarRunPersistenceRecorder()
+        var store = FamiliarSurfaceStore()
+        let envelope = try FamiliarToolResultEnvelope(canonicalModelJSON:
+            #"{"attributionServiceName":"Apple Weather","attributionLegalURL":"https://weatherkit.apple.com/legal-attribution.html"}"#,
+            presentation: .recordCollection(.init(summary: "Forecast", recordType: "weatherDay", records: [])))
+        for (index, name) in ["weather_forecast", "weather_history"].enumerated() {
+            let sequence = index * 2 + 1
+            let completion = FamiliarRuntimeActivityCompletion(runID: "run", toolCallID: name, toolName: name, effect: .read,
+                assistantTurnID: "run:turn:0", detail: "", confirmation: .notRequired, status: .succeeded,
+                startedAt: date, finishedAt: date, fileIdentifier: nil, undoAvailable: false, automaticApprovalRequest: nil)
+            let result = FamiliarToolResultProduced(runID: "run", toolCallID: name, toolName: name, effect: .read,
+                assistantTurnID: "run:turn:0", envelope: envelope, sources: [], file: nil, producedAt: date)
+            store.apply(event(sequence, .activityCompleted(completion)))
+            store.apply(event(sequence + 1, .toolResultProduced(result)))
+            try recorder.recordActivityCompleted(completion, eventSequence: sequence, conversationID: fixture.conversation.id, context: fixture.context)
+            _ = try recorder.recordToolResult(result, eventSequence: sequence + 1, conversationID: fixture.conversation.id, context: fixture.context)
+        }
+        let live = FamiliarWeatherAttribution.unique(in: store.orderedSurfaces)
+        #expect(live.count == 1)
+        try recorder.finishRun(runtimeID: "run", outcome: .succeeded, eventSequence: 5, at: date, context: fixture.context)
+        try fixture.context.save()
+        let context = ModelContext(fixture.container)
+        let controller = FamiliarChatController(dependencies: .init())
+        controller.select(fixture.conversation.id, in: context)
+        let run = try #require(controller.agentRuns.first)
+        #expect(FamiliarWeatherAttribution.unique(in: FamiliarSurfaceStore.projectedSurfaces(for: run)) == live)
+    }
+
     private func block(_ content: String, order: Int) -> FamiliarResponseBlockSnapshot {
         .init(id: UUID(), assistantTurnID: "run:turn:\(order)", messageID: nil, kind: .markdown, order: order,
             state: .completed, content: content, payloadJSON: "{}", schemaVersion: 1, startedAt: date, endedAt: date, contentHash: "hash")

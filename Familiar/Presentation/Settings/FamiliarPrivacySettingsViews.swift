@@ -173,6 +173,7 @@ struct FamiliarPermissionsSettingsView: View {
                 VStack(alignment: .leading, spacing: FamiliarSpacing.xSmall) {
                     Text(String(localized: "settings.permissions.footer", defaultValue: "Familiar asks for access only when you use the related feature. Permissions are controlled by iOS."))
                     Text(String(localized: "settings.permissions.health_footer", defaultValue: "HealthKit never tells apps whether you denied a read request, so Familiar can only show whether it has asked. Missing values are never reported as zero."))
+                    Text(String(localized: "settings.permissions.health_usage"))
                 }
             }
 

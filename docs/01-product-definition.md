@@ -1,247 +1,30 @@
 # Familiar 产品定义
 
-> 本文描述**产品设计与目标**。当前实现状态见 `state/CURRENT.md`。
+Familiar 是面向 iPhone 的原生 AI 问答 App，采用 Telegram iOS 的视觉和交互。用户通过自己的模型凭据直接连接 Provider，聊天与文件保存在本机。
 
-## 1. 产品标识
+## 产品对象
 
-- 产品名称：Familiar
-- 产品形态：iPhone 原生个人 AI Agent
-- 最低系统：iOS 26
-- 支持设备：iPhone
-- 分发目标：个人、非商业实验产品；当前不进入 App Store 或其他公开市场
-- 账户模式：无账户
-- 计费模式：无订阅、无 Familiar 托管额度
-- 模型接入：用户自备 API Key，设备直接请求 Provider
-- 数据存储：会话、附件索引和工具记录保存在本机
+- Chat 是提问、阅读、输入和执行反馈的入口，普通聊天不需要 Project。
+- Project 是可选的长期工作范围，共享指令、资料与配置。
+- Files 统一管理导入、显式保存和生成的版本化文件。
+- Memory 是可检查、可关闭的系统行为；Run 是执行历史，不增加一级导航。
 
-普通对话不属于项目，不自动建立日常项目。它使用全局设置，文件、上下文、工作区、环境和会话记忆按对话隔离；只有显式全局 Memory 可以跨对话。项目由用户单独创建，提供共享资料、指令、能力配置与项目记忆。
+## 当前目标
 
-## 2. 产品定位
+先完成聊天页，再对齐聊天首页、Files、Project、设置及辅助页面。以固定 Telegram 源码逐项核对布局、排版、状态、手势、动效、配色和背景，保留 Familiar 品牌与文件／聊天／设置三个入口。
 
-> **用户通过 Chat 在 Project 中工作，Files 承载长期内容。Context Compiler 决定模型看到什么，Single Agent Runtime 推进行动，Tools 提供能力，Policy 决定是否允许执行，Persistence 保证长期数据与执行安全。**
+用户和 AI 都使用消息气泡。AI 回答继续支持流式、Markdown、代码、表格、公式、Mermaid、来源和后续问题；工具进度、回执、Undo、审批和澄清保持真实且可检查。长回答不另立宽屏阅读样式。
 
-Familiar 把 iPhone 的原生能力转成一个可组合、可治理的执行面：
+完整目标见 [UI 设计](03-ui-ux-design.md) 与 [对齐账本](telegram-ios-ui-checklist.md)，实现和验证状态只查 [当前状态](../state/CURRENT.md) 与 [PLAN](../PLAN.md)。
 
-- Apple 原生工具处理设备能力；内置 iSH/Alpine 处理受限计算、转换与复杂文档生成。
-- 不依赖 Apple Intelligence。
-- 不把每一个用户需求硬编码成 workflow。
-- 不从复杂多 Agent 开始，坚持单 Agent First，通过清晰 Tools 扩展能力。
+## 保留能力
 
-North Star：
+BYOK 与已接入外部 Provider 登录、本地历史、Project、canonical File/FileVersion、单 Agent Lazy Tools、Context Compiler、Skills、Memory、Web、Apple 原生工具、MCP、内置 iSH/Alpine 文档生成、图片输入与语音转写。能力可用性与权限由 Swift 判断，模型不能自授权。
 
-> **让用户始终在 Chat 中完成事情，同时让 Project 为长期工作持续提供清晰、有边界、可检查的上下文。**
+不增加 Familiar 账户、业务后端、订阅、云同步、社交关系、通话、频道、多 Agent、后台执行或跨重启续跑。最低 iOS 26；不增加旧系统回退。
 
-与 OpenMinis 的稳定区别：
+## 成功条件
 
-```text
-OpenMinis  = AI + Linux Computer + Native Bridge
-Familiar   = AI + Native iPhone Runtime + Project Files + Sandboxed iSH
-```
-
-最核心的技术资产最终不是支持 GPT 还是 Claude，也不是 UI，而是：
-
-```text
-Capability Registry
-+ Agent Runtime
-+ Execution Policy
-+ Native Workspace
-```
-
-产品只呈现 Chat / Project / Files 三个一级对象。上传文件、Project 资料、保存的网页、AI 生成结果和 Shell 输出都通过 Files 呈现。Memory 作为系统行为，Run 作为执行过程；Skill、工具配置与执行详情进入相应高级入口。
-
-## 3. 产品目标
-
-Familiar 为普通 iPhone 用户提供统一的移动问答与 Agent 执行入口。当前实验阶段聚焦以下任务：
-
-1. 使用用户选择的 AI Provider 完成文本问答。
-2. 读取本机日历和提醒事项，回答时间安排相关问题。
-3. 创建日历事件或提醒事项；按后果分级授权，Project 内已批准的能力范围内可免重复确认，每次动作仍可检查，并保存跨重启 Undo 记录。
-4. 将本机文档转换为可发送的文本上下文。
-5. 将语音转换为可编辑的输入草稿。
-6. 在本机保存会话历史、Run/Step 执行记录和工具终态。
-7. 通过 Share Extension、Deep Link、Siri 与 Shortcuts 安全进入同一套草稿和 Agent Runtime。
-8. 使用只读 Web Search/Fetch 获取公开 HTTPS 内容，并在回答中保存和展示来源。
-
-核心目标：使多条对话、长期资料与执行记录属于同一个有边界的工作上下文（Project）。
-
-## 4. 核心用户任务
-
-### 4.1 配置模型服务
-
-用户可以在首启流程中配置当前启用的 DeepSeek 服务、填写 API Key、选择或输入模型 ID，并执行连接验证。API Key 写入设备 Keychain，Provider 配置和偏好写入本地设置。底层仍使用通用 ModelProvider/OpenAI-compatible adapter，不把 Agent Runtime 绑定到 DeepSeek。
-
-### 4.2 连续对话
-
-用户创建会话、发送文本、文档或图片上下文、查看流式回答，并执行复制、分享、重试、编辑后重发等操作。会话记录实际使用的 Provider 和模型。DeepSeek 是当前主要真实验收 Provider，`deepseek-v4-flash` 是默认主模型；架构不应把运行时绑定到 DeepSeek 专用协议。
-
-### 4.3 查询个人时间信息
-
-用户可以提出日历事件和提醒事项查询。首次触发相关功能时，界面说明数据用途并请求系统权限。查询范围由工具参数限定。
-
-### 4.4 创建日程或提醒
-
-模型生成结构化写入请求。目标策略按操作后果分四级：只读不出 App 审批卡；可撤销本地写入自动执行并提供回执与撤销；影响 App 外部的操作首次询问，默认“始终允许此类”；不可逆或破坏性操作每次确认。外部操作的持续授权目标按完整工作 scope 与能力隔离，可在设置中撤销。Swift 负责系统权限、执行前复核、journal、防重放和撤销，模型不能自授权。此策略在 PLAN.md 的 S2 实施，当前实现事实以 state/ARCHITECTURE.md 为准。
-
-### 4.5 使用本机文档与项目资料
-
-用户从系统文件选择器添加文档。App 将文件复制到私有目录，通过 AnyDoc 转换为 Markdown；PDF 页面缺少文本层时使用 Vision OCR。Files 使用稳定 identity 与不可变版本。Project 导入默认用于长期上下文，普通上传与生成结果默认随当前消息或工具结果进入上下文。删除 Chat 保留已提交 Files；移动 Chat 时复制关联文件到目标 Project 并分配新 identity。Project 名称全局唯一，比较时不区分大小写。
-
-### 4.6 使用图片
-
-选择 `deepseek-v4-flash-vision-exp` 时，图片字节只发往当前 DeepSeek endpoint；该实验 ID 的真实可用边界必须通过账户冒烟确认。选择文本模型时，Familiar 使用 Apple Vision 提取 OCR、条码和基础分类证据，再将带来源、方法和可信度说明的只读证据交给当前模型。不会自动切换到实验视觉模型。
-
-FastVLM 当前暂停提供，不显示安装入口，也不参与图片自动路由。Core AI/Qwen 是 iOS 27 正式可用后的本地文本模型方向。
-
-### 4.7 使用语音输入
-
-用户启动语音识别，转写结果持续写入输入框。转写文本保持可编辑状态。App 不创建音频消息，不保留原始录音文件。
-
-### 4.8 显式使用 Skill
-
-用户可以在普通聊天或项目聊天的 Composer 中显式选择一个已安装 Skill，选择只作用于下一次 Run。Project 也可绑定候选 Skill；Run 开始时仅暴露 metadata，Agent 在 planning 阶段通过 `skill_read` 按需加载至多一个。两条路径都只注入指令并收窄 Tool Scope，不能授予权限或绕过确认；当前仍没有 Skill 目录导入、scripts、references 或 assets。
-
-## 5. 产品原则
-
-### 5.1 LLM 决定做什么，Swift 决定怎么做
-
-模型只生成结构化 Tool Call，不直接操纵 EventKit、文件系统、HealthKit，也不执行 arbitrary code。
-
-### 5.2 Tool 是核心抽象
-
-Calendar、Vision、PDF、Maps 最终都只是 Capability Registry 中的 Tool。Tool 要小、正交、可组合：做 `pdf.extractText`、`calendar.create`、`file.write`，不做 `summarizePDFAndCreateCalendarEvent`。
-
-### 5.3 Native First
-
-Apple 已有成熟 Framework 的能力直接调用原生 API。不重新实现 OCR、日历、地图、压缩、PDF 渲染之类的基础设施。
-
-### 5.4 单 Agent First
-
-Familiar v1 只有一个主 Agent。Subagent、Manager Agent、Graph orchestration 暂时不做。
-
-### 5.5 权限由代码控制，不靠 Prompt
-
-模型不能通过一句话绕过 HealthKit 权限、删除确认或敏感数据策略。Tool approval 和 guardrail 放在工具执行层。
-
-### 5.6 Capability 可用性过滤
-
-当前设备、地区、系统版本、用户授权不可用的 Tool 不暴露给模型。目标 Registry 具备运行时发现、安装、启停、版本治理与项目绑定。
-
-### 5.7 所有执行必须可观察
-
-一次 Agent Run 中发生的模型调用、Tool Call、失败、权限请求、耗时都必须能够 Trace。
-
-### 5.8 先完成真实任务，再扩 Framework
-
-判断新能力值不值得加入，只问：它能让 Familiar 完成哪个之前不能完成的真实任务？
-
-### 5.9 复杂度必须由真实需求购买
-
-MCP、Skills、Core ML、Background、Memory、Subagent 都是能力，不是 MVP 入场券。
-
-### 5.10 能力不足时补齐输入，不伪装模型能力
-
-Provider 原生能力、设备端预处理和可选本地模型是不同的数据处理路径。Familiar 可以为纯文本模型提供视觉证据，但必须标明证据来源，不能声称文本模型直接看见了图片，也不能未经用户选择把图片发送到另一个 Provider。
-
-## 6. 系统入口
-
-系统入口按优先级划分：
-
-| 优先级 | 入口 |
-| --- | --- |
-| **第一优先级** | ① Familiar App 本身 · ② Share Extension · ③ 系统通知 / Deep Link |
-| **第二优先级** | ④ Widgets / Controls · ⑤ Spotlight 等轻量系统入口 |
-| **兼容能力** | ⑥ App Intents · ⑦ Shortcuts |
-
-设计约束（交互细节见 `03-ui-ux-design.md`）：
-
-- Deep Link 只接受有长度上限的草稿文本或本地会话 / Run UUID；不自动发送、不承载 API Key，也不授予工具写权限。
-- Share Extension 只把用户明确共享的文本、URL 和文件复制到 App Group 收件箱；扩展不读取 Keychain、Provider 配置或 EventKit 数据。
-- Run 终态通知是用户可选的本地通知，不使用远程推送，只包含通用状态与本地 Run / 会话标识。
-- Spotlight 使用受保护的设备内索引，只保存会话标题、更新时间和本地 UUID。
-- Widget / Control 只暴露轻量动作，不复制完整聊天界面。
-- App Intents 只暴露 `Ask Familiar`、`Process with Familiar`、`Open Familiar`，不复制 Capability Registry，不能授权工具写入。
-- 所有入口最终汇入同一个 Agent Runtime。
-
-## 7. 当前实验范围
-
-### 7.1 包含
-
-- 文本聊天与本地会话管理。
-- BYOK 模型接入与已连接的外部 Provider 登录；默认 DeepSeek，Provider/Agent 接口保持通用。
-- 通用 OpenAI-compatible Chat Completions SSE adapter。
-- 日历事件与提醒事项的读取、创建、修改和删除；按后果授权并保留执行回执与撤销。
-- 只读 `web_search`、`web_fetch` 与回答来源记录。
-- PDF、Office、OpenDocument、RTF、EPUB、CSV、TXT、Markdown 等文档导入；AnyDoc 本地转换、PDFKit 文本层检查与 Vision OCR。
-- 图片选择、拍照和预览；DeepSeek 实验视觉模型发送，以及文本模型的 Apple Vision 基础证据 fallback。
-- Apple Speech 转写。
-- Chat / Project / Files、Context Compiler 与 Single Agent Runtime 主链路。
-- 按作用域加载的 Skills、Memory 与 HTTP MCP 客户端。
-- 内置 iSH/Alpine 与受限 Shell；复杂文档经校验后交付到 Files。
-- 简体中文和英文界面。
-
-### 7.2 当前排除
-
-- FastVLM 下载、设置入口和自动推理路由。
-- iOS 27 正式发布前的 Core AI/Qwen 真实 Runtime。
-
-- iPad 专用界面。
-- 账户、登录、云端会话同步。
-- Familiar 自建业务后端。
-- 订阅、购买、权益和托管额度。
-- 超出 Project Workspace 的任意代码执行。
-- 多 Agent、Subagent、Agent Graph。
-- 复杂 RAG、向量数据库。
-- iPhone 上的 MCP Server。
-- Apple Intelligence 依赖；通用本地文本 LLM 不进入当前范围。
-- 实时语音对话。
-- 读取学术系统或其他 App 的私有数据。
-- 通用外部操作自动化。
-- Plan / Build 模式（不照搬 Coding Agent 范式）。
-
-## 8. MVP Benchmark
-
-架构是否成功不看 Tool 数量，看这些任务能否端到端完成。以下为产品目标场景，由 `FamiliarBenchmarkTests` 的 fake-provider runner 以确定性方式运行：
-
-| Benchmark | 检验能力 |
-| --- | --- |
-| "明天下午有什么安排？" | Read Tool |
-| "明天下午三点提醒我交作业" | Write Tool |
-| 海报 → "加到日历" | Vision + LLM + Calendar |
-| PDF → "考试什么时候？" | Workspace |
-| PDF → 找时间 → 加 Calendar | Multi-tool |
-| "看看周六安排和天气" | Parallel context |
-| URL → 找活动 → 创建提醒 | Web + System |
-| Tool 失败 → 自动修正/询问 | Recovery |
-
-每一次影响 Agent 行为的提交，都应通过 fake-provider runner 记录成功率、工具序列、审批结果、耗时和成本。真实 Provider 验收见 `11-verification-and-release-checklist.md`。
-
-## 9. 长期路线图
-
-当前路线以根目录 PLAN.md 为准：S1 搜索 → S2 授权 → S4 文档交付 → S3 Chat 呈现 → S5/S6 日常管理 → S7/S8 次级能力。本阶段打磨现有能力，不增加 Router、多 Agent、后台执行或跨重启续跑。
-
-## 10. 实验交付门槛
-
-1. Debug 和 Release 的 iPhone 构建通过。
-2. 使用具体 arm64 iOS Simulator destination 构建并执行相关测试。
-3. 写操作符合后果分级策略；需要确认的操作获批后才能执行，可撤销本地写入具备 Undo 路径。
-4. Provider 错误、工具错误和文件错误不显示虚假成功。
-5. 图片按当前模型能力路由：原生多模态模型直收图片，纯文本模型使用本地视觉证据；所有路径失败时明确说明能力边界并保留可恢复输入。
-6. API Key 只进入 Keychain 和对应 Provider 请求。
-7. 隐私用途说明与实际调用一致。
-8. 内置模型 ID 失效时允许用户输入有效模型 ID，界面保持可恢复。
-9. 本次明确授权重置全部旧业务数据，采用单一当前 schema 与业务代际标记；凭据和设置保留。重置完成后的打开失败进入恢复页，不重复清空；当前实现与证据见 state/ARCHITECTURE.md。
-10. EventKit、相机、Apple Vision、Speech 和安全作用域文件完成真机验收。
-11. 通知权限只在用户明确开启时请求；关闭后不再安排 Familiar 通知，并清理待处理与已投递通知。
-12. Spotlight 结果只暴露受保护的本地会话标题和 UUID，点击后能回到存在的本地会话；删除会话后对应结果被清理。
-
-## 11. 产品成功条件
-
-- 用户可独立完成 Provider 配置并发送首条消息。
-- 会话中可稳定完成文本流式回答。
-- 文档转换结果可进入模型上下文并保留原文件预览。
-- 日历与提醒事项查询结果来源于 EventKit。
-- 每次写入均具备授权依据和系统保存结果；跨重启 Undo 路径可验证。
-- 一次 Agent Run 可以查看摘要执行轨迹；严格重放与恢复依赖 Context/Capability/Authorization snapshot 与 ResumeCursor。
-- 关闭并重新打开 App 后，可查看已完成消息和工具终态。
-- 系统拒绝权限时，App 提供明确状态和恢复入口。
-- 入口调整后：Share Extension 能承接文本，Deep Link / 通知能回到对应任务上下文。
+- 同一界面只有一套现行设计，目标能追溯固定源码及必要适配。
+- 发送、阅读、输入和返回保持稳定；草稿、历史、文件归属与审批规则不因 UI 对齐改变。
+- App 与测试目标编译通过；真实服务、系统权限、性能和所有者真机视觉另行验收。

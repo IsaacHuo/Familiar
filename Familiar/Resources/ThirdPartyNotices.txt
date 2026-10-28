@@ -134,3 +134,18 @@ marks identify the model service the user selected and imply no affiliation or
 endorsement. The vector marks are derived from the LobeHub icons set
 (https://github.com/lobehub/lobe-icons, MIT License) and remain trademarks of
 their respective owners.
+
+-------------------------------------------------------------------------------
+
+Familiar adapts Telegram-iOS message bubble geometry, presentation constants and
+includes the default wallpaper pattern and the previously included avatar mask.
+Copyright (c) Telegram Messenger and Telegram-iOS contributors.
+Source commit: f1dd7a2dbd02cbbf513e75d5695d8d36d1cf5838
+https://github.com/TelegramMessenger/Telegram-iOS
+Upstream license: GNU General Public License version 2 or later.
+Official declaration: https://telegram.org/apps#source-code
+This adaptation is distributed under Familiar's GPL version 3.
+The wallpaper PNG is a lossless rasterization of Resources/
+fqv01SQemVIBAAAApND8LDRUhRU.tgv (gzip SVG) at its 1440x2960 viewBox.
+Familiar source and build instructions: https://github.com/IsaacHuo/Familiar
+Full GPLv3 terms are included in GPL-3.0.txt and the repository LICENSE.

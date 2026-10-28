@@ -1,77 +1,30 @@
-# docs/ — 设计与规划
+# 项目文档
 
-`docs/` 回答的问题是：**我们打算构建什么，以及为什么。**
+Familiar 当前目标是 Telegram iOS 视觉与交互的 AI 问答体验。产品意图、代码事实、执行证据分别维护，避免重复阶段计划。
 
-它承载产品设计、产品理念、UX/UI 设计、技术方案、Architecture Proposal、Research、RFC、长期规划，以及重要技术决策背后的 rationale。
+## 阅读入口
 
-本目录与当前实现状态的区分：
-
-```text
-docs/   → 打算构建什么、为什么（设计、目标、rationale）
-state/  → 现在实际存在什么（以代码为准，见 ../state/README.md）
-logs/   → 可复用的调查经验（见 ../logs/README.md）
-git     → 普通代码改动历史
-```
-
-`docs/` 与 `state/` 允许存在差异。例如 `docs/` 规划未来采用 Architecture B，而 `state/` 显示当前仍运行 Architecture A，这是正常状态；不要为了让两边一致而伪造当前实现。
-
-## 文档目录
-
-| 文档 | 内容 |
+| 文档 | 职责 |
 |---|---|
-| [01-product-definition.md](01-product-definition.md) | 产品定位、North Star、用户任务、产品原则、系统入口优先级、首发范围、Benchmark、发布门槛、成功条件 |
-| [02-system-architecture.md](02-system-architecture.md) | 目标六层架构与各层设计、目标 Capability Registry / Execution Policy / State Layer、架构约束 |
-| [03-ui-ux-design.md](03-ui-ux-design.md) | 信息架构、聊天界面、输入器、系统入口交互约束、Runtime Event 执行界面、视觉、无障碍 |
-| [05-local-data-and-privacy.md](05-local-data-and-privacy.md) | 数据处理原则、数据清单、持久化时点、文件系统/Keychain 设计、权限表、威胁与控制、删除语义 |
-| [07-decision-log.md](07-decision-log.md) | 关键产品和工程决策、依据、影响、复审条件 |
-| [08-reference-repositories.md](08-reference-repositories.md) | 实现代码时的参考仓库、视觉能力参考、许可证与使用规则 |
-| [09-ui-component-reference.md](09-ui-component-reference.md) | 聊天页模型回复 UI 的 Beautiful UI 组件源码摘录、CSS 令牌与 Familiar 适配建议 |
-| [10-next-phase-execution-plan.md](10-next-phase-execution-plan.md) | 历史 DeepSeek-only 阶段执行方案；当前切片以根目录 PLAN.md 为准 |
-| [11-verification-and-release-checklist.md](11-verification-and-release-checklist.md) | 静态/构建验证基线、真机验收、当前存储与运行验证门槛 |
-| [15-s1-search-acceptance.md](15-s1-search-acceptance.md) | S1 搜索收口的构建、定向测试、截图和真实服务验收证据；所有者验收独立列出 |
-| [16-work-scope-convergence.md](16-work-scope-convergence.md) | 普通对话/项目分离、抽屉顶栏与 S2a 构建证据及待验收项 |
-| [20-telegram-chat-ui-roadmap.md](20-telegram-chat-ui-roadmap.md) | Telegram 参照的根导航、会话状态、列表、聊天与 AI 编辑器实施设计 |
-| [21-telegram-ios-ui-optimization-guide.md](21-telegram-ios-ui-optimization-guide.md) | 全应用 UI 长期指引：U0 阻塞修复、U1–U6 路线、U5 动效/辅助操作、真机 UI 反馈修正与 U6 持久层窗口/完整业务历史契约、候选功能与 68 个 Telegram 源文件的阅读登记 |
-| [22-telegram-ios-ui-motion-polish.md](22-telegram-ios-ui-motion-polish.md) | Telegram源码迁移：文件选择/删除、发送、选区、图库、设置头部、润色；适配说明与真机检查单 |
-| [research/](research/) | 阶段性专题研究材料（2026-08-13 产品/架构评估、UI 壁垒、原生运行时后端、项目 Workspace 流程） |
-| [hwf 卡死调查](research/2026-10-19-hwf-hang-investigation.md) | 设备看门狗、消息布局与滚动反馈线索，实际采样及修复验收边界 |
+| [产品定义](01-product-definition.md) | 产品对象、目标与排除项 |
+| [架构约束](02-system-architecture.md) | 模块责任、scope、授权和执行边界 |
+| [UI 规范](03-ui-ux-design.md) | 唯一现行视觉与交互设计 |
+| [对齐账本](telegram-ios-ui-checklist.md) | 稳定编号、源码、差距、实现／编译／真机状态 |
+| [本地数据与隐私](05-local-data-and-privacy.md) | 数据目的地、保护、授权、删除和系统入口 |
+| [现行决策](07-decision-log.md) | 仍有效的选择与理由 |
+| [参考实现](08-reference-repositories.md) | 来源和迁移边界 |
+| [统一验证与发布](11-verification-and-release-checklist.md) | 编译规则、所有者验收与发布要求 |
+| [源码登记](research/telegram-ios-source-map.md) | 固定Telegram提交、具体路径和已读范围 |
+| [研究索引](research/README.md) | 独有调查与历史证据 |
 
-> 04（Agent/Provider/内容链路）与 06（工程状态与验证）已按职责拆分：当前实现细节并入 `../state/ARCHITECTURE.md`，验证清单并入 `11-verification-and-release-checklist.md`，调试经验并入 `../logs/`。对应的旧文件已删除，不再维护。
+当前代码事实在 [state](../state/README.md)，当前批次在 [PLAN](../PLAN.md)，可复用故障在 [logs](../logs/README.md)。不将设计目标、下载或编译描述为已验收。
 
-## 状态术语
+## 本次收敛对应关系
 
-`docs/` 描述设计目标，不负责记录当前交付状态（那是 `state/` 的职责）。为避免把设计目标写成已交付能力，文档仍可使用以下标记：
+- 旧09 Beautiful UI：现有AI内容和动作契约进入UI规范，删除React/CSS摘录。
+- 旧10／12阶段路线、20–22 Telegram方案：目标进入UI规范／账本，当前批次进入PLAN，源码登记保留原研究深度。
+- 旧14／15／19验收单及S1验收：统一验证清单保留当前场景，独有历史执行证据进入research。
+- 旧13 OpenMinis矩阵、16工作范围、17授权、18文档生成：有效约束进入架构／隐私，代码现状在state。
+- product-completion：复用调查结论进入research，普通流水删除，完整历史由Git保留。
 
-| 术语 | 定义 |
-|---|---|
-| 设计约束 | 产品范围或安全要求，后续实现应持续遵守 |
-| 目标架构 | 已确定方向但尚未实现，不得当作当前能力宣传 |
-| 后续候选 | 未进入当前范围，不构成承诺 |
-
-当前实现状态一律查 `state/CURRENT.md` 与 `state/ARCHITECTURE.md`。
-
-## 写作规范
-
-1. 直接陈述目标、事实、约束、机制和结论。
-2. 产品目标与设计意图分段记录；不要混杂实现状态。
-3. 风险使用可复现条件、影响范围和处理策略描述。
-4. 验收项使用可观察结果描述。
-5. 文案避免宣传口号、拟人化表达和无依据的程度词。
-6. 文案禁用预设读者误解后再反转的句式。
-7. 涉及"当前状态"的陈述必须指向 `state/`，不在 `docs/` 中重复维护一份状态。
-
-## 事实优先级
-
-当前实现事实按以下顺序取证（供写 `state/` 时使用）：
-
-1. `familiar.xcodeproj/project.pbxproj` 与 App 配置。
-2. `Familiar/` 下的当前实现。
-3. `Vendor/AnyDocBridgeRust/`、`Vendor/AnyDocBridge.xcframework/` 与构建脚本。
-4. 已执行的构建、测试和运行记录。
-5. 产品计划与发布要求。
-
-当代码、计划和验证结果存在差异时，分别记录三者，不合并为单一结论。
-
-## 维护规则
-
-`docs/` 在**意图或设计发生变化**时更新（例如：调整产品定位、改变目标架构、作出新的技术决策、更新长期规划）。实现状态的变化见 `state/README.md` 的更新规则；发现设计落后于实现时，只更新 `state/`，不反向改写设计。
+维护时直接修改对应现行文档；不新增第二份总路线或跨文档重复状态表。

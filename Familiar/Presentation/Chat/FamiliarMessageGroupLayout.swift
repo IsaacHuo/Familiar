@@ -2,10 +2,12 @@ import SwiftUI
 
 /// Measure against the actual timeline width, including narrow screens and large type.
 struct FamiliarMessageGroupLayout: Layout {
-    var fraction: CGFloat
+    var accessibilityWide = false
     var trailing: Bool
     private func childWidth(_ width: CGFloat?) -> CGFloat {
-        max(0, (width.flatMap { $0.isFinite ? $0 : nil } ?? 320) * fraction)
+        let available = width.flatMap { $0.isFinite ? $0 : nil } ?? 320
+        if accessibilityWide { return max(0, available * 0.98) }
+        return FamiliarChatAppearance.messageWidth(available)
     }
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width.flatMap { $0.isFinite ? $0 : nil } ?? 320

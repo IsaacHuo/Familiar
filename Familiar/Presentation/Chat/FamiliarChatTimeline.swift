@@ -165,7 +165,13 @@ struct FamiliarMessageTimeline: View {
             // are never merged based on their visible author.
             let sameUser = previous.map { item.isUser && $0.isUser &&
                 item.createdAt.timeIntervalSince($0.createdAt) < 600 && !day } ?? false
-            return .init(item: item, startsDay: day, gap: index == 0 ? 0 : sameUser ? 0 : 4 + 2 / max(1, displayScale))
+            let next = index + 1 < items.count ? items[index + 1] : nil
+            let joinsNext = next.map { item.isUser && $0.isUser &&
+                $0.createdAt.timeIntervalSince(item.createdAt) < 600 &&
+                !FamiliarMessageReadingStyle.startsDay($0.createdAt, after: item.createdAt) } ?? false
+            return .init(item: item, startsDay: day,
+                         gap: index == 0 ? 0 : sameUser ? 0 : 4 + 2 / max(1, displayScale),
+                         neighbors: .init(top: sameUser, bottom: joinsNext))
         }
     }
 
@@ -223,6 +229,7 @@ struct FamiliarMessageTimeline: View {
                                     .fill(FamiliarTheme.accent.opacity(highlightedID == item.id ? 0.14 : 0))
                             }
                             }
+                            .environment(\.familiarMessageNeighbors, row.neighbors)
                             .padding(.top, row.gap)
                             .id(item.id)
                             .animation(reduceMotion ? nil : FamiliarMotion.standard, value: highlightedID == item.id)
@@ -260,7 +267,7 @@ struct FamiliarMessageTimeline: View {
                     .environment(\.familiarChatScrollSession, scroll)
                     .environment(\.familiarReadingGeometry, FamiliarReadingGeometry(session: scroll, position: $position, presenterID: presenterID))
                     .scrollTargetLayout()
-                    .padding(.horizontal, 3)
+                    .padding(.horizontal, FamiliarChatAppearance.edgeInset)
                     .padding(.top, FamiliarAISurfaceMetric.spaceM)
                     .padding(.bottom, FamiliarAISurfaceMetric.spaceM)
                     .frame(maxWidth: FamiliarAISurfaceMetric.timelineWidth)
@@ -526,5 +533,6 @@ private struct FamiliarTimelinePresentationRow: Identifiable {
     let item: FamiliarTimelineItem
     let startsDay: Bool
     let gap: CGFloat
+    let neighbors: FamiliarMessageNeighbors
     var id: String { item.id }
 }

@@ -24,7 +24,7 @@ enum FamiliarSettingsCatalog {
     static let groups = ["settings.hub.models", "settings.hub.personalization", "settings.hub.capabilities", "settings.hub.interface", "settings.privacy.title", "settings.hub.support", "settings.developer"]
     static let entries: [FamiliarSettingsEntry] = [
         .init(route: .profile, titleKey: "profile.edit", groupKey: "settings.hub.personalization", detailKey: "profile.local", symbol: "person.crop.circle", color: .blue, aliases: "profile avatar nickname bio photo 资料 头像 昵称 简介"),
-        .init(route: .modelService, titleKey: "settings.hub.model_service", groupKey: "settings.hub.models", detailKey: "provider.instances.footer", symbol: "key.horizontal.fill", color: FamiliarTheme.accent, aliases: "provider model api key endpoint base url 模型 服务商 密钥 验证 登录"),
+        .init(route: .modelService, titleKey: "settings.hub.model_service", groupKey: "settings.hub.models", detailKey: "provider.instances.footer", symbol: "key.horizontal.fill", color: .blue, aliases: "provider model api key endpoint base url 模型 服务商 密钥 验证 登录"),
         .init(route: .modelGroups, titleKey: "group.title", groupKey: "settings.hub.models", detailKey: "group.detail", symbol: "square.stack", color: .blue, aliases: "model group fallback 模型组 备用 故障切换"),
         .init(route: .soul, titleKey: "settings.hub.soul", groupKey: "settings.hub.personalization", detailKey: "settings.hub.soul.detail", symbol: "sparkles", color: .pink, aliases: "personality prompt tone style 人格 提示词 语气 风格"),
         .init(route: .memory, titleKey: "settings.memory.title", groupKey: "settings.hub.personalization", detailKey: "settings.hub.memory.detail", symbol: "brain", color: .pink, aliases: "memory remember preference fact 记忆 偏好 事实 自动记忆"),

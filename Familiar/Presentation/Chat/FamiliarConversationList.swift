@@ -351,42 +351,54 @@ struct FamiliarConversationPreview: View {
     }
 }
 
+/// Bounded local preview: production width, bubble and status layout, without
+/// mounting a Runtime, editable text view, WebView or message action handlers.
 struct FamiliarReadOnlyMessage: View {
+    @Environment(\.dynamicTypeSize) private var dynamicType
+    @ScaledMetric(relativeTo: .body) private var textSize: CGFloat = 17
     let message: FamiliarMessageSnapshot
+    private var isUser: Bool { message.role == .user }
+    private var content: String { String((isUser ? message.content : message.finalAnswerText).prefix(1_200)) }
+
     var body: some View {
-        HStack {
-            if message.role == .user { Spacer(minLength: 30) }
-            VStack(alignment: .leading, spacing: FamiliarSpacing.small) {
-                if !message.content.isEmpty {
-                    if message.role == .user { Text(String(message.content.prefix(1_200))).font(FamiliarTypography.body).familiarMessageBubble(isUser: true) }
-                    else { FamiliarMarkdownFallbackText(markdown: String(message.finalAnswerText.prefix(1_200))).font(.body).familiarMessageBubble(isUser: false) }
+        let presentation = FamiliarMessageAttachmentPresentation(attachments: message.attachments, hasCaption: !content.isEmpty)
+        FamiliarMessageGroupLayout(accessibilityWide: dynamicType.isAccessibilitySize, trailing: isUser) {
+            VStack(alignment: isUser ? .trailing : .leading, spacing: FamiliarChatAppearance.attachmentSpacing) {
+                ForEach(presentation.attachments) { attachment in
+                    Group {
+                        if attachment.kind == .image {
+                            FamiliarImageAttachmentView(relativePath: attachment.relativePath,
+                                date: attachment.id == presentation.statusAttachmentID ? message.createdAt : nil,
+                                joinsContentAbove: presentation.hasContentAbove(attachment.id),
+                                joinsContentBelow: presentation.hasContentBelow(attachment.id))
+                        } else {
+                            FamiliarFileTile(file: .init(attachment: attachment), isUser: isUser,
+                                date: attachment.id == presentation.statusAttachmentID ? message.createdAt : nil)
+                                .frame(maxWidth: 300)
+                        }
+                    }
+                    .environment(\.familiarMessageNeighbors, presentation.neighbors(for: attachment.id))
                 }
-                ForEach(message.attachments) { attachment in
-                    if attachment.kind == .image { FamiliarImageAttachmentView(relativePath: attachment.relativePath) }
-                    else { FamiliarFileLabel(file: .init(attachment: attachment)) }
+                if !content.isEmpty {
+                    Group {
+                        if isUser || FamiliarMessageReadingStyle.canUseNativeText(content) {
+                            FamiliarTextAndTimeLayout(fontSize: textSize, text: content) {
+                                Text(content).font(.system(size: textSize))
+                                FamiliarMessageTimestamp(date: message.createdAt)
+                            }
+                        } else {
+                            VStack(alignment: .trailing, spacing: 4) {
+                                FamiliarMarkdownFallbackText(markdown: content).font(.body)
+                                FamiliarMessageTimestamp(date: message.createdAt)
+                            }
+                        }
+                    }.familiarMessageBubble(isUser: isUser)
+                        .environment(\.familiarMessageNeighbors, presentation.captionNeighbors)
                 }
+                if content.isEmpty && presentation.attachments.isEmpty { FamiliarMessageTimestamp(date: message.createdAt) }
             }
-            if message.role == .assistant { Spacer(minLength: 12) }
+            .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
+            .environment(\.familiarOutgoingMessage, isUser)
         }
-    }
-}
-
-extension View {
-    func familiarMessageBubble(isUser: Bool) -> some View {
-        modifier(FamiliarMessageBubbleInsets(isUser: isUser))
-    }
-}
-
-/// ChatMessageItemCommon.swift:138–139 compact bubble/text constants.
-private struct FamiliarMessageBubbleInsets: ViewModifier {
-    @Environment(\.displayScale) private var scale
-    let isUser: Bool
-    func body(content: Content) -> some View {
-        content.padding(.horizontal, 11)
-            .padding(.top, 6 + 1 / max(1, scale))
-            .padding(.bottom, 6 - 1 / max(1, scale))
-            .frame(minWidth: 40, minHeight: 35, alignment: .leading)
-            .background(isUser ? FamiliarTheme.accent.opacity(0.12) : FamiliarTheme.elevatedFill,
-                        in: RoundedRectangle(cornerRadius: FamiliarRadius.card, style: .continuous))
     }
 }
