@@ -399,9 +399,11 @@ nonisolated enum FamiliarCapabilityRequirement: String, Codable, Hashable, Senda
     case remindersFullAccess
     case contactsRead
     case locationWhenInUse
-    case weatherKit
+// Temporarily disabled for App Review, 2026-11-07.
+//     case weatherKit
     case photoLibraryRead
-    case healthActivityRead
+// Temporarily disabled for App Review, 2026-11-07.
+//     case healthActivityRead
     case musicCatalogRead
     case bluetoothScan
     case userNotifications
@@ -420,21 +422,25 @@ nonisolated extension FamiliarCapabilityRequirement {
         case .contactsRead: "NSContactsUsageDescription"
         case .locationWhenInUse: "NSLocationWhenInUseUsageDescription"
         case .photoLibraryRead: "NSPhotoLibraryUsageDescription"
-        case .healthActivityRead: "NSHealthShareUsageDescription"
+// Temporarily disabled for App Review, 2026-11-07.
+//         case .healthActivityRead: "NSHealthShareUsageDescription"
         case .musicCatalogRead: "NSAppleMusicUsageDescription"
         case .bluetoothScan: "NSBluetoothAlwaysUsageDescription"
         // AlarmKit refuses to schedule anything when this key is missing or empty,
         // so it is a hard shipping requirement rather than a courtesy string.
         case .alarmKit: "NSAlarmKitUsageDescription"
-        case .weatherKit, .userNotifications: nil
+// Temporarily disabled for App Review, 2026-11-07.
+//         case .weatherKit, .userNotifications: nil
+        case .userNotifications: nil
         }
     }
 
     /// `nil` means the capability needs no signed entitlement.
     var entitlementKey: String? {
         switch self {
-        case .weatherKit: "com.apple.developer.weatherkit"
-        case .healthActivityRead: "com.apple.developer.healthkit"
+// Temporarily disabled for App Review, 2026-11-07.
+//         case .weatherKit: "com.apple.developer.weatherkit"
+//         case .healthActivityRead: "com.apple.developer.healthkit"
         case .calendarFullAccess, .remindersFullAccess, .contactsRead, .locationWhenInUse,
              .photoLibraryRead, .musicCatalogRead, .bluetoothScan, .userNotifications, .alarmKit: nil
         }
@@ -447,13 +453,16 @@ nonisolated extension FamiliarCapabilityRequirement {
         switch self {
         case .contactsRead: ["NSPrivacyCollectedDataTypeContacts"]
         case .locationWhenInUse: ["NSPrivacyCollectedDataTypePreciseLocation"]
-        case .healthActivityRead: ["NSPrivacyCollectedDataTypeHealth", "NSPrivacyCollectedDataTypeFitness"]
+// Temporarily disabled for App Review, 2026-11-07.
+//         case .healthActivityRead: ["NSPrivacyCollectedDataTypeHealth", "NSPrivacyCollectedDataTypeFitness"]
         case .photoLibraryRead: ["NSPrivacyCollectedDataTypePhotosorVideos"]
         case .bluetoothScan: ["NSPrivacyCollectedDataTypeOtherDataTypes"]
         // Alarm labels are content the user asked for, already covered by the
         // declared OtherUserContent type; scheduling one collects nothing new.
         case .calendarFullAccess, .remindersFullAccess, .musicCatalogRead,
-             .weatherKit, .userNotifications, .alarmKit: []
+// Temporarily disabled for App Review, 2026-11-07.
+//              .weatherKit, .userNotifications, .alarmKit: []
+             .userNotifications, .alarmKit: []
         }
     }
 }

@@ -60,14 +60,17 @@ struct FamiliarRecordCollectionSurface: View {
                     .foregroundStyle(FamiliarTheme.accentInk)
                     .accessibilityIdentifier("surface.records.details")
                 }
-                if let attribution = FamiliarWeatherAttribution(surface: surface) {
-                    FamiliarWeatherAttributionView(attribution: attribution)
-                }
+// Temporarily disabled for App Review, 2026-11-07.
+//                 if let attribution = FamiliarWeatherAttribution(surface: surface) {
+//                     FamiliarWeatherAttributionView(attribution: attribution)
+//                 }
             }
             .padding(.vertical, FamiliarAISurfaceMetric.spaceS)
             .fullScreenCover(isPresented: $showsAllRecords) {
-                FamiliarRecordCollectionDetailView(collection: collection, initialFilter: selectedFilter,
-                    weatherAttribution: FamiliarWeatherAttribution(surface: surface))
+// Temporarily disabled for App Review, 2026-11-07.
+//                 FamiliarRecordCollectionDetailView(collection: collection, initialFilter: selectedFilter,
+//                     weatherAttribution: FamiliarWeatherAttribution(surface: surface))
+                FamiliarRecordCollectionDetailView(collection: collection, initialFilter: selectedFilter)
             }
         }
     }
@@ -228,15 +231,19 @@ struct FamiliarRecordRow: View {
 
 struct FamiliarRecordCollectionDetailView: View {
     let collection: FamiliarToolPresentationPayload.RecordCollection
-    let weatherAttribution: FamiliarWeatherAttribution?
+// Temporarily disabled for App Review, 2026-11-07.
+//     let weatherAttribution: FamiliarWeatherAttribution?
     @State private var selectedFilter: String?
     @State private var searchText = ""
     @Environment(\.dismiss) private var dismiss
 
-    init(collection: FamiliarToolPresentationPayload.RecordCollection, initialFilter: String?,
-         weatherAttribution: FamiliarWeatherAttribution? = nil) {
+// Temporarily disabled for App Review, 2026-11-07.
+//     init(collection: FamiliarToolPresentationPayload.RecordCollection, initialFilter: String?,
+//          weatherAttribution: FamiliarWeatherAttribution? = nil) {
+    init(collection: FamiliarToolPresentationPayload.RecordCollection, initialFilter: String?) {
         self.collection = collection
-        self.weatherAttribution = weatherAttribution
+// Temporarily disabled for App Review, 2026-11-07.
+//         self.weatherAttribution = weatherAttribution
         _selectedFilter = State(initialValue: initialFilter)
     }
 
@@ -246,9 +253,10 @@ struct FamiliarRecordCollectionDetailView: View {
             .filter { FamiliarRecordPresentation.matches($0, query: searchText) }
         NavigationStack {
             List {
-                if let weatherAttribution {
-                    FamiliarWeatherAttributionView(attribution: weatherAttribution)
-                }
+// Temporarily disabled for App Review, 2026-11-07.
+//                 if let weatherAttribution {
+//                     FamiliarWeatherAttributionView(attribution: weatherAttribution)
+//                 }
                 if let filter {
                     Section {
                         FamiliarRecordFilterChips(filter: filter, selected: $selectedFilter)

@@ -37,18 +37,19 @@ struct FamiliarReleaseComplianceTests {
         let info = try plist("Familiar/Resources/Info.plist")
         let english = try stringsFile("Familiar/Resources/en.lproj/InfoPlist.strings")
         let chinese = try stringsFile("Familiar/Resources/zh-Hans.lproj/InfoPlist.strings")
-        let entitlements = try plist("Familiar/Familiar.entitlements")
-
-        // App Store Connect also requires the update purpose string for this
-        // HealthKit-enabled binary, although authorization requests share no types.
-        if entitlements["com.apple.developer.healthkit"] as? Bool == true {
-            for key in ["NSHealthShareUsageDescription", "NSHealthUpdateUsageDescription"] {
-                #expect((info[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
-                #expect(english[key]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
-                #expect(chinese[key]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
-            }
-        }
-
+// Temporarily disabled for App Review, 2026-11-07.
+//         let entitlements = try plist("Familiar/Familiar.entitlements")
+//
+//         // App Store Connect also requires the update purpose string for this
+//         // HealthKit-enabled binary, although authorization requests share no types.
+//         if entitlements["com.apple.developer.healthkit"] as? Bool == true {
+//             for key in ["NSHealthShareUsageDescription", "NSHealthUpdateUsageDescription"] {
+//                 #expect((info[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+//                 #expect(english[key]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+//                 #expect(chinese[key]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+//             }
+//         }
+//
         for requirement in FamiliarCapabilityRequirement.allCases {
             guard let key = requirement.usageDescriptionKey else { continue }
             let base = info[key] as? String
@@ -62,6 +63,26 @@ struct FamiliarReleaseComplianceTests {
         let localizableKeys = Set(FamiliarCapabilityRequirement.allCases.compactMap(\.usageDescriptionKey))
         #expect(localizableKeys.isSubset(of: Set(english.keys)))
         #expect(Set(english.keys) == Set(chinese.keys))
+    }
+
+    @Test("Disabled native features ship no permissions, entitlements or privacy data types")
+    func disabledNativeFeatures() throws {
+        let info = try plist("Familiar/Resources/Info.plist")
+        let entitlements = try plist("Familiar/Familiar.entitlements")
+        for key in ["NSMicrophoneUsageDescription", "NSSpeechRecognitionUsageDescription", "NSHealthShareUsageDescription", "NSHealthUpdateUsageDescription"] {
+            #expect(info[key] == nil)
+            for language in ["en", "zh-Hans"] {
+                let localized = try stringsFile("Familiar/Resources/\(language).lproj/InfoPlist.strings")
+                #expect(localized[key] == nil)
+            }
+        }
+        #expect(entitlements["com.apple.developer.healthkit"] == nil)
+        #expect(entitlements["com.apple.developer.weatherkit"] == nil)
+        let privacy = try plist("Familiar/PrivacyInfo.xcprivacy")
+        let types = (privacy["NSPrivacyCollectedDataTypes"] as? [[String: Any]] ?? [])
+            .compactMap { $0["NSPrivacyCollectedDataType"] as? String }
+        #expect(!types.contains("NSPrivacyCollectedDataTypeHealth"))
+        #expect(!types.contains("NSPrivacyCollectedDataTypeFitness"))
     }
 
     @Test("Every declared capability ships its entitlement and privacy data types")
@@ -86,6 +107,8 @@ struct FamiliarReleaseComplianceTests {
     @Test("Registered tools only require capabilities with complete shipping declarations") @MainActor
     func registeredToolCapabilitiesAreDeclared() async throws {
         let manifests = await FamiliarAppDependencies().registry.snapshot()
+        let disabledTools: Set<String> = ["health_activity_summary", "weather_forecast", "weather_history"]
+        #expect(disabledTools.isDisjoint(with: Set(manifests.map(\.name))))
         let required = Set(manifests.flatMap(\.requirements))
         #expect(!required.isEmpty)
 

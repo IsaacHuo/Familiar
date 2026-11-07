@@ -7,7 +7,7 @@ A native AI Q&A app for iPhone. The current focus is a source-backed Telegram iO
 ## Capabilities and boundaries
 
 - BYOK and connected external provider sign-in; credentials stay in device Keychain and requests go directly to the selected service.
-- Local chat history, streaming, Markdown, code, tables, math, Mermaid, images and speech transcription.
+- Local chat history, streaming, Markdown, code, tables, math, Mermaid, images and reply read-aloud.
 - Optional Projects, canonical File/FileVersion, scoped Memory and Skills.
 - One Agent with Lazy Tools for Web, native Apple capabilities, MCP and the bundled iSH/Alpine document environment.
 - Swift-enforced authorization, real receipts and Undo for supported local writes, valid grants for external effects, and confirmation for every delete.

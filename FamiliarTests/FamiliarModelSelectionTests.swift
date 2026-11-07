@@ -41,7 +41,7 @@ struct FamiliarModelSelectionTests {
 
     @Test("Opening old history does not replace the user's default model with past execution metadata")
     @MainActor
-    func historyDoesNotSelectOldModel() throws {
+    func historyDoesNotSelectOldModel() async throws {
         let container = try FamiliarTestStore.make(name: "ModelHistorySelection")
         let project = FamiliarProject(name: "History")
         let chat = FamiliarConversation(currentProviderID: "historical-member", currentModelID: "historical-model", project: project)
@@ -52,6 +52,7 @@ struct FamiliarModelSelectionTests {
         controller.settings = .defaultValue
         let baseline = controller.settings
         controller.select(chat.id, in: container.mainContext)
+        _ = await controller.waitForHistory()
         #expect(controller.settings == baseline)
         #expect(controller.effectiveSettings(for: project) == baseline)
         project.modelIDOverride = "removed-model"
@@ -72,7 +73,7 @@ struct FamiliarModelSelectionTests {
         let snapshot = try FamiliarContextCompiler.assemble(seed: .init(projectID: nil, projectName: nil,
             conversationID: chat.id, projectInstruction: nil, resources: []), settings: settings, messages: [], toolManifests: [])
         let recorder = FamiliarRunPersistenceRecorder()
-        recorder.ensureRun(runtimeID: "models", snapshot: snapshot, startedAt: Date(), context: context)
+        try recorder.ensureRun(runtimeID: "models", snapshot: snapshot, startedAt: Date(), context: context)
         let first = FamiliarModelReference(providerID: "member-a", modelID: "model-a")
         let fallback = FamiliarModelReference(providerID: "member-b", modelID: "model-b")
         try recorder.recordModelSelection(first, runtimeID: "models", context: context)

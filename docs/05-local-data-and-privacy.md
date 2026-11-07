@@ -10,7 +10,7 @@
 | 会话、Run、工具回执、授权、文件元数据 | 本机SwiftData | 仅当前请求经Context Compiler选择的内容进入Provider |
 | 文档和附件字节 | 受保护App私有目录 | 文档在设备提取文字，原始Office/PDF不发给文本模型 |
 | 图片 | 托管附件；当前模型原生处理或Apple Vision | 仅支持图片的当前Provider接收所选图片；文本模型接收有限视觉证据，不自动切Provider |
-| 语音 | 实时buffer生成可编辑文本，不持久保存原录音 | 系统Speech由Apple决定处理路径；用户配置的远程服务按该配置处理 |
+| 回复朗读 | 系统语音合成或所选远程 TTS；麦克风转写已注释停用 | 远程朗读将回复文字发送给用户选择的服务商；不请求麦克风或语音识别权限 |
 | 网页 | 受限HTTP读取，作为不可信Evidence | 公开HTTPS，逐跳DNS和URL复核；显式保存才进入长期Files |
 | Markdown页面 | Bundle脚本／字体／样式；非持久WKWebView | connect/media/object/frame/form受CSP限制；不自动加载远程图片 |
 | 本机资料 | UserDefaults编码昵称／简介／降采样头像 | 不作为账户或授权身份，不进入模型上下文 |

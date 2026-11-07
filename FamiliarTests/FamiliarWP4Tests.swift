@@ -206,7 +206,7 @@ struct FamiliarWP4Tests {
             toolManifests: []
         )
         let recorder = FamiliarRunPersistenceRecorder()
-        recorder.ensureRun(runtimeID: "failed-run", snapshot: snapshot, startedAt: Date(), context: context)
+        try recorder.ensureRun(runtimeID: "failed-run", snapshot: snapshot, startedAt: Date(), context: context)
         try recorder.finishRun(runtimeID: "failed-run", outcome: .init(status: .failed, failureKind: .unknown, message: "fixture"), eventSequence: 1, at: Date(), context: context)
         let cancelledSnapshot = try FamiliarContextCompiler.assemble(
             seed: .init(projectID: fixtureProjectID, projectName: "P", conversationID: conversation.id, projectInstruction: "Instruction", resources: [contextResource]),
@@ -214,7 +214,7 @@ struct FamiliarWP4Tests {
             messages: [],
             toolManifests: []
         )
-        recorder.ensureRun(runtimeID: "cancelled-run", snapshot: cancelledSnapshot, startedAt: Date(), context: context)
+        try recorder.ensureRun(runtimeID: "cancelled-run", snapshot: cancelledSnapshot, startedAt: Date(), context: context)
         try recorder.finishRun(runtimeID: "cancelled-run", outcome: .cancelled(message: "fixture"), eventSequence: 1, at: Date(), context: context)
         let record = try #require(context.fetch(FetchDescriptor<FamiliarContextSnapshotRecord>()).first { $0.id == snapshot.id })
         let reference = try #require(record.resourceReferences.first)
@@ -307,7 +307,7 @@ struct FamiliarWP4Tests {
             conversationID: conversation.id, projectInstruction: nil, resources: [resource(id: UUID(), name: "ref.txt", text: "PRIVATE FILE BODY")]),
             settings: .defaultValue, messages: [], toolManifests: [])
         let recorder = FamiliarRunPersistenceRecorder(), state = FamiliarRunState()
-        recorder.ensureRun(runtimeID: "audit", snapshot: input, startedAt: Date(), context: context)
+        try recorder.ensureRun(runtimeID: "audit", snapshot: input, startedAt: Date(), context: context)
         let compiled = try FamiliarContextCompiler.compileRequest(input: input, transcript: input.providerMessages,
             facts: await state.snapshot(), manifests: [], toolsWithheld: false)
         try recorder.recordCompilation(compiled.manifest, runtimeID: "audit", context: context)

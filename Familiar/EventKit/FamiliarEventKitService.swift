@@ -285,8 +285,11 @@ public actor FamiliarEventKitService: FamiliarEventKitServicing {
         switch requirement {
         case .calendarFullAccess: authorization = FamiliarEventKitAuthorization(EKEventStore.authorizationStatus(for: .event))
         case .remindersFullAccess: authorization = FamiliarEventKitAuthorization(EKEventStore.authorizationStatus(for: .reminder))
-        case .contactsRead, .locationWhenInUse, .weatherKit, .photoLibraryRead,
-             .healthActivityRead, .musicCatalogRead, .bluetoothScan, .userNotifications, .alarmKit:
+// Temporarily disabled for App Review, 2026-11-07.
+//         case .contactsRead, .locationWhenInUse, .weatherKit, .photoLibraryRead,
+//              .healthActivityRead, .musicCatalogRead, .bluetoothScan, .userNotifications, .alarmKit:
+        case .contactsRead, .locationWhenInUse, .photoLibraryRead,
+             .musicCatalogRead, .bluetoothScan, .userNotifications, .alarmKit:
             return .unavailable(reason: "此设备能力需要对应的 Native Service。")
         }
         switch authorization {
@@ -304,8 +307,11 @@ public actor FamiliarEventKitService: FamiliarEventKitServicing {
             switch requirement {
             case .calendarFullAccess: try await requestFullAccess(for: .events)
             case .remindersFullAccess: try await requestFullAccess(for: .reminders)
-            case .contactsRead, .locationWhenInUse, .weatherKit, .photoLibraryRead,
-                 .healthActivityRead, .musicCatalogRead, .bluetoothScan, .userNotifications, .alarmKit:
+// Temporarily disabled for App Review, 2026-11-07.
+//             case .contactsRead, .locationWhenInUse, .weatherKit, .photoLibraryRead,
+//                  .healthActivityRead, .musicCatalogRead, .bluetoothScan, .userNotifications, .alarmKit:
+            case .contactsRead, .locationWhenInUse, .photoLibraryRead,
+                 .musicCatalogRead, .bluetoothScan, .userNotifications, .alarmKit:
                 throw FamiliarToolRegistryError.capabilityUnavailable("此设备能力需要对应的 Native Service。")
             }
         }

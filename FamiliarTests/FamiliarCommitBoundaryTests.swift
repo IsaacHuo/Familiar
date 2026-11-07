@@ -95,6 +95,37 @@ struct FamiliarCommitBoundaryTests {
         #expect(try !FamiliarRunRecoveryService().requiresInspection(run, in: context))
     }
 
+    @Test("Recorded effects protect regeneration when snapshot capabilities are disabled",
+          arguments: [FamiliarToolEffect.read, .reversibleWrite, .destructiveWrite])
+    @MainActor
+    func disabledSnapshotCapabilities(_ effect: FamiliarToolEffect) throws {
+        let container = try FamiliarTestStore.make(name: "DisabledSnapshot-" + effect.rawValue)
+        let context = container.mainContext
+        let conversation = FamiliarConversation()
+        let run = FamiliarAgentRun(runtimeID: "snapshot-run", conversation: conversation)
+        let snapshot = FamiliarContextSnapshotRecord(createdAt: Date(), projectID: nil, projectName: nil,
+            conversationID: conversation.id, projectInstruction: nil, providerID: "fixture", modelID: "fixture",
+            exposedToolNamesJSON: "[]", maximumInputCharacters: 100, initialInputCharacters: 0, run: run)
+        run.contextSnapshot = snapshot
+        context.insert(conversation)
+        context.insert(run)
+        context.insert(snapshot)
+        let capabilities = FamiliarCapabilitySnapshotRecord(createdAt: Date(), projectID: nil,
+            conversationID: conversation.id, contextSnapshotID: snapshot.id,
+            manifestsJSON: """
+            [{"name":"recorded_tool","effect":"\(effect.rawValue)","requirements":["healthActivityRead","weatherKit"]}]
+            """)
+        context.insert(capabilities)
+        context.insert(FamiliarToolInvocationRecord(idempotencyKey: "snapshot-run:call", runtimeID: run.runtimeID,
+            toolCallID: "call", toolName: "recorded_tool", argumentsHash: "hash", state: .committed))
+        try context.save()
+        let recovery = FamiliarRunRecoveryService()
+        #expect(try recovery.requiresInspection(run, in: context) == (effect != .read))
+        capabilities.manifestsJSON = #"[{"name":"recorded_tool","effect":"invalid"}]"#
+        try context.save()
+        #expect(throws: DecodingError.self) { try recovery.requiresInspection(run, in: context) }
+    }
+
     @Test("Environment save compensation restores the previous directory")
     func environmentRollback() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

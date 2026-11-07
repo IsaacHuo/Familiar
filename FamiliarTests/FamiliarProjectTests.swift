@@ -131,7 +131,7 @@ struct FamiliarProjectTests {
 
     @Test("Starting a workspace chat stays transient and selecting history restores its scope")
     @MainActor
-    func transientWorkspaceSelection() throws {
+    func transientWorkspaceSelection() async throws {
         let container = try FamiliarTestStore.make(name: "TransientWorkspace")
         let context = container.mainContext
         let project = try FamiliarProjectService().create(name: "Workspace", in: context)
@@ -144,8 +144,10 @@ struct FamiliarProjectTests {
 
         let conversation = try #require(controller.createConversation(project: project, in: context))
         controller.select(nil, in: context)
+        _ = await controller.waitForHistory()
         #expect(controller.selectedProjectID == project.id)
         controller.select(conversation.id, in: context)
+        _ = await controller.waitForHistory()
         #expect(controller.selectedProjectID == project.id)
         controller.startNewConversation(project: nil, in: context)
         #expect(controller.selectedProjectID == nil)
@@ -161,7 +163,7 @@ struct FamiliarProjectTests {
         context.insert(conversation)
         try context.save()
 
-        FamiliarRunPersistenceRecorder().ensureRun(
+        try FamiliarRunPersistenceRecorder().ensureRun(
             runtimeID: "captured-run",
             snapshot: try FamiliarContextCompiler.assemble(
                 seed: .init(projectID: project.id, projectName: project.name, conversationID: conversation.id, projectInstruction: nil, resources: []),

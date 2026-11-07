@@ -223,13 +223,18 @@ nonisolated struct FamiliarFileCatalogService {
         do { try context.save() } catch { context.rollback(); throw error }
     }
 
-    func stageUploads(_ attachments: [FamiliarAttachment], in context: ModelContext) throws {
+    func stageUploads(_ attachments: [FamiliarAttachment], in context: ModelContext, prepared: FamiliarPreparedAttachmentCopies? = nil) throws {
         for attachment in attachments {
             guard attachment.resourceVersion == nil else { throw FamiliarFileError.invalidIdentifier }
             guard let chat = attachment.message?.conversation else { throw FamiliarFileError.workScopeRequired }
             let scope = chat.project.map { FamiliarWorkScope.project($0.id) } ?? .conversation(chat.id)
             let versionID = attachment.id
             let chatIDs = attachment.message?.conversation.map { [$0.id] } ?? []
+            let evidence = prepared?.entries[attachment.id]
+            if let prepared {
+                guard prepared.scope == scope, prepared.messageID == attachment.message?.id,
+                      let evidence, evidence.relativePath == attachment.relativePath, evidence.byteSize == attachment.byteSize else { throw FamiliarFileError.contentMismatch }
+            }
             if let existing = try context.fetch(FetchDescriptor<FamiliarFileVersionRecord>(predicate: #Predicate { $0.id == versionID })).first {
                 guard existing.scope == scope, existing.storageRelativePath == attachment.relativePath else { throw FamiliarFileError.contentMismatch }
                 if let file = existing.file { file.chatIDs = Array(Set(file.chatIDs + chatIDs)) }
@@ -241,8 +246,8 @@ nonisolated struct FamiliarFileCatalogService {
             let provenance = ["extractionEngine": attachment.extractionEngine, "extractionVersion": attachment.extractionVersion,
                 "detectedFormat": attachment.detectedFormat, "usedOCR": String(attachment.usedOCR)]
             let version = FamiliarFileVersionRecord(id: versionID, version: 1, filename: attachment.filename, mimeType: attachment.mimeType,
-                byteSize: attachment.byteSize, contentHash: FamiliarHash.sha256(try Data(contentsOf: url, options: [.mappedIfSafe])),
-                extractedText: attachment.extractedText, extractedTextHash: FamiliarHash.sha256(attachment.extractedText),
+                byteSize: attachment.byteSize, contentHash: try evidence?.hashes.content ?? FamiliarHash.sha256(Data(contentsOf: url, options: [.mappedIfSafe])),
+                extractedText: attachment.extractedText, extractedTextHash: evidence?.hashes.extractedText ?? FamiliarHash.sha256(attachment.extractedText),
                 storage: .init(kind: .attachment, relativePath: attachment.relativePath),
                 provenanceJSON: String(decoding: try JSONEncoder().encode(provenance), as: UTF8.self), createdAt: attachment.createdAt, file: file)
             context.insert(file); context.insert(version)

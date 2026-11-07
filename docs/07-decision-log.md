@@ -18,7 +18,7 @@
 | 内存流式与持久检查点分离 | 避免逐 token 广泛 invalidation；历史窗口不限制业务上下文 |
 | 本地非持久 WebKit | 本地资源渲染富文本，禁止自动远程图片和页面脚本出站 |
 | 图片按当前模型能力处理 | 支持图片的 Provider 接收用户图片；文本模型走 Apple Vision 证据，不自动切模型；FastVLM 非产品路径 |
-| Speech 只形成可编辑文本 | 不创建持久录音文件；旧回调不能覆盖其他草稿 |
+| 麦克风转写／HealthKit／WeatherKit 暂时停用 | 源码注释保留，不进入当前构建；回复朗读继续可用 |
 | 真机视觉由所有者验收 | 代理编译不代表运行／手势／性能通过；不启动 Simulator 或截图 |
 
 详细规则分别在 [架构](02-system-architecture.md)、[隐私](05-local-data-and-privacy.md)、[UI](03-ui-ux-design.md) 与 [验证](11-verification-and-release-checklist.md)。

@@ -34,9 +34,9 @@ R4追加复验原编号：BUB-029／MED-001/004/021/022检查预览与聊天附�
 - 授权：创建／更新首次默认始终允许此类，同scope换参数复用，换scope重新询问，设置撤销后再询问；删除／闹钟取消／未信任MCP每次询问；拒绝和取消零写入。
 - Memory：真实归属、开关关闭不注入不写入；自动写可撤销，保存失败回滚；不把Memory视为权限。
 - 文档任务：公开Web来源→DOCX/XLSX/PPTX/PDF→Outputs捕获→FileVersion→校验回执→真机预览／分享／重开；四种格式分别记录。预装库不重复安装，配置源准确，冷／热准备和取消可恢复。
-- 系统服务：EventKit、Contacts、Location、Weather、Health、Music、Bluetooth、Photos add-only、Alarm逐一核对真实系统许可、成功／空／拒绝／失败／取消／重开，fixture不替代硬件结果。
+- 系统服务：EventKit、Contacts、Location、Music、Bluetooth、Photos add-only、Alarm逐一核对真实系统许可、成功／空／拒绝／失败／取消／重开，fixture不替代硬件结果。
 - Provider：使用实际配置服务与模型；保存／删除凭据、发现模型、连接验证、外部登录／取消／刷新分别记录。图片是否上传由当前模型能力决定，文本模型只接收本地Vision证据。
-- 语音：连续启停、中断、准备时停止、切会话、后台与晚到回调；无录音文件。iOS26实现与iOS27新版系统路径按拥有设备分别验收。
+- 输入／朗读：确认空草稿无麦克风按钮、文字和附件可发送、生成可停止；设置不展示语音输入或健康权限；回复朗读连续启停、切会话、中断与错误处理仍须真机验收。麦克风转写、HealthKit 与 WeatherKit 源码暂时注释停用。
 - 系统入口：分享、Deep Link、通知、Spotlight、App Intents、Widget／Control覆盖冷启动、锁定、目标删除与未发送草稿，入口不自动写授权。
 - 中断窗口：只用专用测试条目检查审批后中断、journal和真实系统状态；不自动重放不确定写入，不声称可跨重启续跑，不人为填满日常设备做故障注入。
 

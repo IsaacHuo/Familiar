@@ -85,9 +85,10 @@ struct FamiliarAssistantTurn: View {
             }
             if let liveController {
                 FamiliarLiveReplyStatus(controller: liveController)
-            }
-            ForEach(FamiliarWeatherAttribution.unique(in: surfaces)) { attribution in
-                FamiliarWeatherAttributionView(attribution: attribution)
+// Temporarily disabled for App Review, 2026-11-07.
+//             }
+//             ForEach(FamiliarWeatherAttribution.unique(in: surfaces)) { attribution in
+//                 FamiliarWeatherAttributionView(attribution: attribution)
             }
             if let message {
                 if case .text = blocks.last { } else if fileTimestampBlockID == nil {
@@ -146,8 +147,8 @@ struct FamiliarMarkdownBlock: View {
     @ScaledMetric(relativeTo: .body) private var textSize: CGFloat = 17
 
     var body: some View {
-        let live = controller?.streamingResponseBlocks.first { "text:\($0.id.uuidString)" == text.id }
-        let content = live?.content ?? text.content
+        let live = controller?.streamingPresentation(for: text.id)
+        let content = live?.text ?? text.content
         let streaming = live?.isStreaming ?? false
         VStack(alignment: .leading, spacing: FamiliarSpacing.small) {
             Group {
@@ -162,7 +163,7 @@ struct FamiliarMarkdownBlock: View {
                 } else {
                     VStack(alignment: .trailing, spacing: 4) {
                         FamiliarMarkdownWebView(markdown: FamiliarCitation.canonicalized(content, sources: sources).text,
-                                                sources: citationSources, isStreaming: streaming, messageActions: messageActions)
+                                                sources: citationSources, isStreaming: streaming, messageActions: messageActions, presentation: live)
                         if let timestamp { FamiliarMessageTimestamp(date: timestamp).accessibilityIdentifier("message.completed") }
                     }
                 }
@@ -186,7 +187,7 @@ struct FamiliarLiveReplyStatus: View {
             return false
         }
         let hasInteraction = !controller.pendingConfirmations.isEmpty || !controller.pendingClarifications.isEmpty
-        let isWriting = controller.streamingResponseBlocks.last.map { $0.isStreaming && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? false
+        let isWriting = controller.currentTextPresentation.map { $0.isStreaming && $0.hasNonWhitespaceContent } ?? false
         if let status, !status.phase.isTerminal, !hasActiveCard, !hasInteraction, !isWriting {
             HStack(spacing: FamiliarSpacing.small) {
                 ProgressView().controlSize(.small)

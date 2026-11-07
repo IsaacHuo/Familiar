@@ -15,6 +15,8 @@ actor FamiliarISHPreparation {
     }
 
     func prepare() async throws {
+        let interval = FamiliarPerformance.begin("ShellPreparation")
+        defer { interval.end() }
         try Task.checkCancellation()
         if ready { return }
         if flight == nil {

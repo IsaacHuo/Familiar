@@ -182,10 +182,48 @@ final class FamiliarMarkdownWebKitTests: XCTestCase {
     }
 
     @MainActor
+    func testWebContentTerminationHasOneRecoveryAttempt() async throws {
+        let content = Content(); content.streaming = false
+        let host = UIHostingController(rootView: Host(content: content))
+        let window = familiarTestWindow(width: 350, height: 800)
+        window.rootViewController = host; window.makeKeyAndVisible(); host.view.layoutIfNeeded()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        let web = try XCTUnwrap(webViews(in: host.view).first)
+        web.navigationDelegate?.webViewWebContentProcessDidTerminate?(web)
+        web.navigationDelegate?.webViewWebContentProcessDidTerminate?(web)
+        for _ in 0..<20 {
+            host.view.layoutIfNeeded()
+            if webViews(in: host.view).isEmpty { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertTrue(webViews(in: host.view).isEmpty)
+    }
+
+    @MainActor
+    func testUnchangedClosedCodeReusesHighlightAndCacheCanBeReleased() async throws {
+        let web = try await renderer()
+        _ = try await evaluate("""
+        window.originalHighlight = window.hljs.highlight;
+        window.highlightCalls = 0;
+        window.hljs.highlight = function() { window.highlightCalls++; return window.originalHighlight.apply(this, arguments); };
+        'ready';
+        """, in: web)
+        let code = "~~~swift\nlet shared = 1\n~~~"
+        try await render(code, streaming: false, in: web)
+        try await render(code + "\n\nA new paragraph", streaming: false, in: web)
+        let reused = try await evaluate("String(window.highlightCalls)", in: web)
+        XCTAssertEqual(reused, "1")
+        _ = try await evaluate("window.FamiliarMarkdown.releaseCaches(); 'cleared'", in: web)
+        try await render(code + "\n\nAnother paragraph", streaming: false, in: web)
+        let refreshed = try await evaluate("String(window.highlightCalls)", in: web)
+        XCTAssertEqual(refreshed, "2")
+    }
+
+    @MainActor
     private final class ShiftRecorder: NSObject, WKScriptMessageHandler {
         var shifts: [Double] = []
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            if let value = message.body as? NSNumber { shifts.append(value.doubleValue) }
+            if let value = (message.body as? [String: Any])?["value"] as? NSNumber { shifts.append(value.doubleValue) }
         }
     }
 

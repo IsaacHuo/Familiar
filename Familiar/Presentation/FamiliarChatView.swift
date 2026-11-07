@@ -36,7 +36,8 @@ struct FamiliarChatView: View {
     private var installedSkills: [FamiliarSkill]
 
     @State private var controller: FamiliarChatController
-    @State private var speechTranscriber = FamiliarSpeechTranscriber()
+// Temporarily disabled for App Review, 2026-11-07.
+//     @State private var speechTranscriber = FamiliarSpeechTranscriber()
     @State private var isDrawerOpen = false
     @State private var drawerDrag: CGFloat = 0
     @State private var isDragging = false
@@ -49,8 +50,9 @@ struct FamiliarChatView: View {
     @State private var isProjectChatVisible = false
     @State private var pendingDraftNavigation: FamiliarPendingDraftNavigation?
     @State private var conversationPendingDeletion: FamiliarConversation?
-    @State private var speechBaseDraft = ""
-    @State private var speechDraftID: UUID?
+// Temporarily disabled for App Review, 2026-11-07.
+//     @State private var speechBaseDraft = ""
+//     @State private var speechDraftID: UUID?
     @State private var configuredProviderIDs: Set<String> = []
     @State private var isImportingSharedItem = false
     @State private var pendingSharedDraft: FamiliarPreparedSharedDraft?
@@ -226,7 +228,7 @@ struct FamiliarChatView: View {
                let first = conversations.first(where: { $0.project == nil }) {
                 controller.select(first.id, in: modelContext)
             }
-            FamiliarChatTestScenario.seedHistory(in: controller)
+            FamiliarChatTestScenario.seedHistory(in: controller, context: modelContext)
             if controller.selectedConversationID == nil, !controller.hasHistory {
                 Task { @MainActor in await Task.yield(); if detailVisible { isComposerFocused = true } }
             }
@@ -248,24 +250,28 @@ struct FamiliarChatView: View {
             if let message { controller.errorMessage = message }
         }
         .onChange(of: controller.selectedConversationID) { _, _ in speechPlayer.stop() }
-        .onChange(of: speechTranscriber.errorMessage) { _, message in
-            if let message { controller.errorMessage = message }
-        }
+// Temporarily disabled for App Review, 2026-11-07.
+//         .onChange(of: speechTranscriber.errorMessage) { _, message in
+//             if let message { controller.errorMessage = message }
+//         }
         .onDisappear {
             detailVisible = false
             controller.sendPresentation.cancel()
             isComposerFocused = false
             if !isHosted { controller.cancelFollowUps() }
             speechPlayer.stop()
-            Task { await controller.checkpointDraft(in: modelContext); await speechTranscriber.stop(); await controller.checkpointDraft(in: modelContext) }
+// Temporarily disabled for App Review, 2026-11-07.
+//             Task { await controller.checkpointDraft(in: modelContext); await speechTranscriber.stop(); await controller.checkpointDraft(in: modelContext) }
+            Task { await controller.checkpointDraft(in: modelContext) }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { controller.cancelFollowUps() }
             if phase == .active {
                 refreshConfiguredProviders()
                 handleSharedInbox()
-            } else {
-                Task { await speechTranscriber.stop() }
+// Temporarily disabled for App Review, 2026-11-07.
+//             } else {
+//                 Task { await speechTranscriber.stop() }
             }
         }
         .onChange(of: pendingSystemEntry) { _, _ in
@@ -471,8 +477,9 @@ struct FamiliarChatView: View {
         guard controller.openDeepLink(request.deepLink, conversations: conversations, in: modelContext) else { return }
 
         pendingSystemEntry = nil
-        speechDraftID = nil
-        Task { await speechTranscriber.stop() }
+// Temporarily disabled for App Review, 2026-11-07.
+//         speechDraftID = nil
+//         Task { await speechTranscriber.stop() }
         presentedSheet = nil
         closeDrawer()
         switch request.deepLink {
@@ -529,7 +536,8 @@ struct FamiliarChatView: View {
 
     private func importSharedDraft(to destination: FamiliarSharedDestination) {
         guard let prepared = pendingSharedDraft else { return }
-        Task { await speechTranscriber.stop() }
+// Temporarily disabled for App Review, 2026-11-07.
+//         Task { await speechTranscriber.stop() }
         switch destination {
         case .project(let project):
             pendingSharedDraft = nil
@@ -559,7 +567,7 @@ struct FamiliarChatView: View {
                         if Self.isStandaloneHTTPSURL(sharedText) {
                             try await service.importWebPage(from: sharedText, into: project, in: modelContext)
                         } else {
-                            try service.importPastedText(sharedText, into: project, in: modelContext)
+                            try await service.importPastedText(sharedText, into: project, in: modelContext)
                         }
                         importedCount += 1
                     } catch {
@@ -719,13 +727,16 @@ struct FamiliarChatView: View {
                                 detail: $0.descriptionText
                             )
                         },
-                        isListening: speechTranscriber.isListening,
+// Temporarily disabled for App Review, 2026-11-07.
+//                         isListening: speechTranscriber.isListening,
                         focus: $isComposerFocused,
                         availableHeight: availableHeight,
-                        onSpeech: toggleSpeech,
+// Temporarily disabled for App Review, 2026-11-07.
+//                         onSpeech: toggleSpeech,
                         onSend: {
-                            speechDraftID = nil
-                            Task { await speechTranscriber.stop() }
+// Temporarily disabled for App Review, 2026-11-07.
+//                             speechDraftID = nil
+//                             Task { await speechTranscriber.stop() }
                             isComposerFocused = false
                             if controller.isSending {
                                 controller.cancelSending(in: modelContext)
@@ -787,7 +798,10 @@ struct FamiliarChatView: View {
                 scrollSession: controller.scrollSession,
                 initialMessageID: initialMessageID, findState: findState,
                 historyIndex: controller.historyIndex,
-                onLoadHistory: { controller.historyIndex == nil || controller.loadHistory(anchor: $0, in: modelContext) }
+                onLoadHistory: { anchor, presenterID in
+                    if controller.historyIndex == nil { return true }
+                    return await controller.loadHistory(anchor: anchor, in: modelContext, updateBookmark: false, presenterID: presenterID)
+                }
             )
             .id(controller.selectedConversationID)
             .environment(\.familiarCanMarkRead, detailAllowsReading)
@@ -855,7 +869,8 @@ struct FamiliarChatView: View {
             onExport: { present(.export) },
             onSpeak: {
                 Task { @MainActor in
-                    await speechTranscriber.stop()
+// Temporarily disabled for App Review, 2026-11-07.
+//                     await speechTranscriber.stop()
                     if speechPlayer.isSpeaking { speechPlayer.stop() }
                     else if let id = controller.selectedConversationID {
                         do {
@@ -1005,8 +1020,9 @@ struct FamiliarChatView: View {
             controller.errorMessage = String(localized: "error.deep_link.busy")
             return
         }
-        speechDraftID = nil
-        Task { await speechTranscriber.stop() }
+// Temporarily disabled for App Review, 2026-11-07.
+//         speechDraftID = nil
+//         Task { await speechTranscriber.stop() }
         switch navigation {
         case .fork:
             controller.forkCurrentConversation(in: modelContext)
@@ -1089,22 +1105,23 @@ struct FamiliarChatView: View {
         }
     }
 
-    private func toggleSpeech() {
-        speechPlayer.stop()
-        if !speechTranscriber.isListening {
-            speechBaseDraft = controller.draft
-            speechDraftID = UUID()
-        }
-        let expectedDraft = speechDraftID
-        Task {
-            await speechTranscriber.toggle { transcript in
-                guard speechDraftID == expectedDraft else { return }
-                let separator = speechBaseDraft.isEmpty || transcript.isEmpty ? "" : " "
-                controller.draft = speechBaseDraft + separator + transcript
-                isComposerFocused = true
-            }
-        }
-    }
+// Temporarily disabled for App Review, 2026-11-07.
+//     private func toggleSpeech() {
+//         speechPlayer.stop()
+//         if !speechTranscriber.isListening {
+//             speechBaseDraft = controller.draft
+//             speechDraftID = UUID()
+//         }
+//         let expectedDraft = speechDraftID
+//         Task {
+//             await speechTranscriber.toggle { transcript in
+//                 guard speechDraftID == expectedDraft else { return }
+//                 let separator = speechBaseDraft.isEmpty || transcript.isEmpty ? "" : " "
+//                 controller.draft = speechBaseDraft + separator + transcript
+//                 isComposerFocused = true
+//             }
+//         }
+//     }
 
     private func togglePin(_ targetType: FamiliarPinnedTargetType, targetID: UUID) {
         do {

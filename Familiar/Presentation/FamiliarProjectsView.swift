@@ -461,7 +461,7 @@ struct FamiliarProjectDetailView: View {
                         in: modelContext
                     )
                 case .pastedText:
-                    try FamiliarFileImportService().importPastedText(
+                    try await FamiliarFileImportService().importPastedText(
                         value,
                         title: title,
                         into: project,

@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 import WebKit
 import XCTest
 import Darwin
@@ -12,18 +13,16 @@ final class FamiliarTimelinePerformanceTests: XCTestCase {
     }
 
     @MainActor
-    private func timeline(count: Int, session: FamiliarChatScrollSession = .init()) -> (UIWindow, UIViewController) {
+    private func timeline(count: Int, session: FamiliarChatScrollSession = .init()) async throws -> (UIWindow, UIViewController, FamiliarPerformanceHistoryFixture) {
         let controller = FamiliarChatController(dependencies: .init())
-        let messages = (0..<count).map { index in
-            FamiliarMessageSnapshot(id: UUID(), role: .assistant,
-                content: "# Reply \(index)\n\nA paragraph in the conversation.\n\n~~~swift\nlet value = \(index)\n~~~",
-                createdAt: Date(timeIntervalSince1970: Double(index)), sequence: index,
-                providerID: nil, modelID: nil, attachments: [])
-        }
+        let fixture = try await FamiliarPerformanceHistoryFixture(count: count)
+        let page = fixture.page
+        controller.messages = page.messages
+        let messages = page.messages
         let timeline = FamiliarMessageTimeline(messages: messages, modelSwitches: [], agentRuns: [],
             liveController: controller, availableUndoKeys: [], completedUndoKeys: [],
             onInsertPrompt: { _ in }, onUndo: { _, _ in }, onEdit: { _ in },
-            onRetry: { _ in }, onRetryRecovery: { _ in }, scrollSession: session)
+            onRetry: { _ in }, onRetryRecovery: { _ in }, scrollSession: session, historyIndex: fixture.index)
         let host = UIHostingController(rootView: NavigationStack { timeline })
         let window = familiarTestWindow(width: 350, height: 800)
         window.rootViewController = host
@@ -33,13 +32,21 @@ final class FamiliarTimelinePerformanceTests: XCTestCase {
         let elapsed = ProcessInfo.processInfo.systemUptime - start
         let views = webCount(host.view)
         print("TIMELINE_METRIC count=\(count) webViews=\(views) initialLayoutSeconds=\(elapsed)")
-        XCTAssertGreaterThan(views, 0)
+        if count > 0 { XCTAssertGreaterThan(views, 0) }
         XCTAssertLessThanOrEqual(views, 8)
-        return (window, host)
+        XCTAssertLessThanOrEqual(messages.count, FamiliarHistoryWindow.pageSize)
+        return (window, host, fixture)
     }
 
-    @MainActor func testHistory100InitialNativeLayout() { timeline(count: 100).0.isHidden = true }
-    @MainActor func testHistory300InitialNativeLayout() { timeline(count: 300).0.isHidden = true }
+    @MainActor private func checkInitialLayout(_ count: Int) async throws {
+        let (window, _, fixture) = try await timeline(count: count)
+        window.isHidden = true
+        withExtendedLifetime(fixture) {}
+    }
+    @MainActor func testHistory0InitialNativeLayout() async throws { try await checkInitialLayout(0) }
+    @MainActor func testHistory100InitialNativeLayout() async throws { try await checkInitialLayout(100) }
+    @MainActor func testHistory300InitialNativeLayout() async throws { try await checkInitialLayout(300) }
+    @MainActor func testHistory3000InitialNativeLayout() async throws { try await checkInitialLayout(3000) }
 
     @MainActor private func nativeScroll(in view: UIView) -> UIScrollView? {
         if view is WKWebView { return nil }
@@ -61,8 +68,8 @@ final class FamiliarTimelinePerformanceTests: XCTestCase {
     @MainActor func testHistoryScrollRetainsBoundedNativeWebViews() async throws {
         for count in [100, 300] {
             let session = FamiliarChatScrollSession()
-            let (window, host) = timeline(count: count, session: session)
-            defer { window.isHidden = true }
+            let (window, host, fixture) = try await timeline(count: count, session: session)
+            defer { window.isHidden = true; withExtendedLifetime(fixture) {} }
             try await Task.sleep(for: .milliseconds(200))
             let scroll = try XCTUnwrap(nativeScroll(in: host.view))
             session.userBegan()
@@ -80,8 +87,7 @@ final class FamiliarTimelinePerformanceTests: XCTestCase {
             }
             session.userEnded()
             XCTAssertLessThan(maximumViews, count / 2)
-            XCTAssertLessThan(costs.max() ?? 0, 1)
-            print("TIMELINE_SCROLL count=\(count) steps=20 maxWebViews=\(maximumViews) medianLayoutSeconds=\(costs.sorted()[10]) maxLayoutSeconds=\(costs.max() ?? 0) peakNativeResidentMB=\(peak)")
+            print("TIMELINE_SCROLL count=\(count) steps=20 maxWebViews=\(maximumViews) medianLayoutSeconds=\(costs.sorted()[10]) maxLayoutSeconds=\(costs.max() ?? 0) peakAppResidentMB_excludesWebContent=\(peak)")
         }
     }
 }

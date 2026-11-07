@@ -72,7 +72,7 @@ struct FamiliarWP5Tests {
 
     @Test("Fetched web text imports from the capture without a second fetch")
     @MainActor
-    func fetchedWebLineage() throws {
+    func fetchedWebLineage() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("FamiliarWebCapture-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
         let project = FamiliarProject(name: "Web")
@@ -80,7 +80,7 @@ struct FamiliarWP5Tests {
         let capture = FamiliarWebCapture(captureID: "capture-1", urlString: "https://example.com/page", accessedAt: Date(timeIntervalSince1970: 10), contentHash: FamiliarHash.sha256(text), text: text, truncated: false, sourceID: "src-1")
         let container = try FamiliarTestStore.make()
         container.mainContext.insert(project)
-        let resource = try FamiliarFileImportService(store: FamiliarProjectResourceStore(rootURL: root)).importFetchedWebText(capture, into: project, in: container.mainContext)
+        let resource = try await FamiliarFileImportService(store: FamiliarProjectResourceStore(rootURL: root)).importFetchedWebText(capture, into: project, in: container.mainContext)
         let version = try #require(resource.versions.first)
         #expect(resource.originRawValue == FamiliarFileOrigin.webCapture.rawValue)
         #expect(version.sourceURLString == capture.urlString)

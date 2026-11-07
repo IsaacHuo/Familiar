@@ -110,8 +110,8 @@ struct FamiliarWP1Tests {
             messages: [],
             toolManifests: []
         )
-        recorder.ensureRun(runtimeID: "run", snapshot: snapshot, startedAt: startedAt, context: context)
-        recorder.ensureRun(runtimeID: "run", snapshot: snapshot, startedAt: .distantFuture, context: context)
+        try recorder.ensureRun(runtimeID: "run", snapshot: snapshot, startedAt: startedAt, context: context)
+        try recorder.ensureRun(runtimeID: "run", snapshot: snapshot, startedAt: .distantFuture, context: context)
         let envelope = try FamiliarToolResultEnvelope(canonicalModelJSON: #"{"value":"OK"}"#, presentation: .scalar(.init(summary: "Done", value: "OK")))
         let completion = FamiliarRuntimeActivityCompletion(
             runID: "run",

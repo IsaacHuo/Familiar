@@ -49,7 +49,7 @@ func familiarTestContextSnapshot(
         initialInputCharacters: FamiliarContextCompiler.inputCharacterCount(messages: snapshot.providerMessages, manifests: manifests),
         resources: snapshot.resources, attachments: snapshot.attachments, skills: snapshot.skills,
         availableSkills: snapshot.availableSkills, memories: snapshot.memories, visualEvidence: snapshot.visualEvidence,
-        visualEvidenceMessageID: snapshot.visualEvidenceMessageID, files: snapshot.files, fileSelections: snapshot.fileSelections)
+        visualEvidenceMessageID: snapshot.visualEvidenceMessageID, files: snapshot.files, fileSelections: snapshot.fileSelections, attachmentHashes: snapshot.attachmentHashes)
 }
 
 actor FamiliarFakeCapabilities: FamiliarCapabilityProviding {

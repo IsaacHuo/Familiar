@@ -20,6 +20,24 @@ struct FamiliarChatScrollTests {
         #expect(compensation == 40)
     }
 
+    @Test("An old presentation cannot end a newly mounted reader")
+    @MainActor func oldPresentationCannotEndCurrentReader() async throws {
+        let session = FamiliarChatScrollSession(), old = UUID(), current = UUID()
+        session.beginPresentation(old)
+        session.endPresentation(old)
+        session.beginPresentation(current)
+        session.geometryChanged(offset: 200, latest: 500, viewport: 600, presenter: current)
+        session.userBegan()
+        session.rowChanged(id: "current", frame: .init(x: 0, y: -60, width: 300, height: 500), presenter: current) { _ in }
+        session.userEnded()
+        session.endPresentation(old)
+        var correction: CGFloat = 0
+        session.rowChanged(id: "current", frame: .init(x: 0, y: -20, width: 300, height: 500), presenter: current) { correction = $0 }
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(session.acceptsPresenter(current))
+        #expect(correction == 40)
+    }
+
     @Test("Viewport motion and repeated geometry cannot create a counter-scroll loop")
     @MainActor func viewportMotionDoesNotCompensate() async throws {
         let session = FamiliarChatScrollSession()

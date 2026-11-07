@@ -3,10 +3,12 @@ import Contacts
 import CoreBluetooth
 import CoreLocation
 import EventKit
-import HealthKit
+// Temporarily disabled for App Review, 2026-11-07.
+// import HealthKit
 import MusicKit
 import Photos
-import Speech
+// Temporarily disabled for App Review, 2026-11-07.
+// import Speech
 import SwiftData
 import SwiftUI
 import UIKit

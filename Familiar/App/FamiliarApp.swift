@@ -10,6 +10,8 @@ struct FamiliarApp: App {
     private let dependencies: FamiliarAppDependencies
 
     init() {
+        let interval = FamiliarPerformance.begin("AppInitialization")
+        defer { interval.end() }
         dependencies = FamiliarAppDependencies()
         do {
             modelContainer = try Self.makeModelContainer()

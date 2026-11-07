@@ -52,9 +52,11 @@ nonisolated struct FamiliarConversationHistoryPage: Sendable {
 }
 
 /// Reads the identity index separately from an at-most-80-entry rich page.
-/// Uses the caller's context so terminal writes are visible in the same transaction.
-@MainActor enum FamiliarChatHistoryStore {
+/// Synchronous projection on the caller-owned context; presentation reads use the background reader.
+nonisolated enum FamiliarChatHistoryStore {
     static func index(conversationID: UUID, in context: ModelContext) throws -> FamiliarConversationHistoryIndex {
+        let interval = FamiliarPerformance.begin("HistoryIndex")
+        defer { interval.end() }
         var messages = FetchDescriptor<FamiliarMessage>(predicate: #Predicate { $0.conversation?.id == conversationID },
             sortBy: [SortDescriptor(\.sequence), SortDescriptor(\.createdAt)])
         messages.propertiesToFetch = [\.id, \.createdAt, \.sequence, \.roleRawValue]
@@ -79,6 +81,8 @@ nonisolated struct FamiliarConversationHistoryPage: Sendable {
 
     static func page(conversation: FamiliarConversation, references: [FamiliarHistoryReference], activeRunID: String?,
                      in context: ModelContext) throws -> FamiliarConversationHistoryPage {
+        let interval = FamiliarPerformance.begin("HistoryPage")
+        defer { interval.end() }
         guard references.count <= FamiliarHistoryWindow.pageSize else { throw CocoaError(.coderInvalidValue) }
         let conversationID = conversation.id
         let messageIDs = references.compactMap(\.messageID)

@@ -129,12 +129,27 @@ nonisolated struct FamiliarContextSnapshot: Sendable {
     let visualEvidenceMessageID: UUID?
     let files: [FamiliarFileSnapshot]
     let fileSelections: [FamiliarContextFileSelection]
+    var attachmentHashes: [UUID: FamiliarAttachmentHashes] = [:]
 
     var exposedToolNames: [String] { toolManifests.map(\.name) }
     var allowedToolNames: [String] { availableToolManifests.map(\.name) }
 }
 
 nonisolated enum FamiliarContextCompiler {
+    @concurrent
+    static func prepare(seed: FamiliarProjectContextSeed, settings: FamiliarSettings,
+                        messages: [FamiliarMessageSnapshot], toolManifests: [FamiliarToolManifest],
+                        additionalToolGroups: [FamiliarToolGroupSummary] = [], visualEvidence: [FamiliarVisualEvidence] = [],
+                        attachmentReadPaths: [UUID: String] = [:], resolvedModel: FamiliarModelDescriptor? = nil) async throws -> FamiliarContextSnapshot {
+        try Task.checkCancellation()
+        let snapshot = try assemble(seed: seed, settings: settings, messages: messages, toolManifests: toolManifests,
+            additionalToolGroups: additionalToolGroups, visualEvidence: visualEvidence,
+            attachmentReadPaths: attachmentReadPaths, resolvedModel: resolvedModel)
+        try validateSubmission(snapshot)
+        try Task.checkCancellation()
+        return snapshot
+    }
+
     static func assemble(
         seed: FamiliarProjectContextSeed,
         settings: FamiliarSettings,
@@ -148,6 +163,8 @@ nonisolated enum FamiliarContextCompiler {
         now: Date = Date()
     ) throws -> FamiliarContextSnapshot {
         let model = resolvedModel ?? settings.selectedModel
+        let interval = FamiliarPerformance.begin("ContextCompile")
+        defer { interval.end() }
         let skills = seed.skills.sorted {
             if $0.stableID == $1.stableID {
                 if $0.version == $1.version { return $0.contentHash < $1.contentHash }
@@ -235,6 +252,7 @@ nonisolated enum FamiliarContextCompiler {
             if snapshot.role == .assistant { return .assistant(snapshot.content) }
             var parts: [FamiliarProviderContent] = snapshot.content.isEmpty ? [] : [.text(snapshot.content)]
             parts += try snapshot.attachments.map { attachment in
+                try Task.checkCancellation()
                 if attachment.kind == .image, model.capabilities.supportsImages {
                     guard let url = FamiliarAttachmentStore.url(for: attachmentReadPaths[attachment.id] ?? attachment.relativePath),
                           let data = try? Data(contentsOf: url) else {
@@ -288,7 +306,7 @@ nonisolated enum FamiliarContextCompiler {
         let evidenceMessageID = messages.last { message in
             message.role == .user && message.attachments.contains { evidenceAttachmentIDs.contains($0.id) }
         }?.id
-        return FamiliarContextSnapshot(
+        var snapshot = FamiliarContextSnapshot(
             id: UUID(),
             createdAt: now,
             projectID: seed.projectID,
@@ -313,6 +331,14 @@ nonisolated enum FamiliarContextCompiler {
             files: seed.files.filter { $0.reference.scope == seed.workScope },
             fileSelections: fileSelections
         )
+        for attachment in snapshot.attachments {
+            try Task.checkCancellation()
+            let textHash = FamiliarHash.sha256(attachment.extractedText)
+            let url = FamiliarAttachmentStore.url(for: attachmentReadPaths[attachment.id] ?? attachment.relativePath)
+            let hash = url.flatMap { try? FamiliarHash.sha256(contentsOf: $0) } ?? textHash
+            snapshot.attachmentHashes[attachment.id] = .init(content: hash, extractedText: textHash)
+        }
+        return snapshot
     }
 
     static func inputCharacterCount(

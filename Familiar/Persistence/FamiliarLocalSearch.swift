@@ -23,11 +23,22 @@ nonisolated struct FamiliarLocalSearchPage: Sendable {
     var messages: [FamiliarLocalSearchHit] = []
     var conversationCount = 0
     var messageCount = 0
+    var hasMore = false
     static let size = 50
 }
 
 @ModelActor actor FamiliarLocalSearchStore {
+    private struct Metadata {
+        let request: FamiliarLocalSearchRequest
+        let messages: Int
+        let conversations: Int
+        let archived: Set<UUID>
+    }
+    private var metadata: Metadata?
+
     func search(_ request: FamiliarLocalSearchRequest, offset: Int) throws -> FamiliarLocalSearchPage {
+        let context = ModelContext(modelContainer)
+        context.autosaveEnabled = false
         let query = request.query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty, request.conversationIDs?.isEmpty != true else { return .init() }
         try Task.checkCancellation()
@@ -41,24 +52,36 @@ nonisolated struct FamiliarLocalSearchPage: Sendable {
             chatPredicate = #Predicate { $0.title.localizedStandardContains(query) }
         }
         var result = FamiliarLocalSearchPage()
-        result.messageCount = try modelContext.fetchCount(FetchDescriptor(predicate: messagePredicate))
+        if offset == 0 || metadata?.request != request {
+            let messages = try context.fetchCount(FetchDescriptor(predicate: messagePredicate))
+            let conversations = request.includeTitles ? try context.fetchCount(FetchDescriptor(predicate: chatPredicate)) : 0
+            let archived = Set(try context.fetch(FetchDescriptor<FamiliarConversationListStateRecord>(predicate: #Predicate { $0.isArchived })).map(\.conversationID))
+            try Task.checkCancellation()
+            metadata = .init(request: request, messages: messages, conversations: conversations, archived: archived)
+        }
+        guard let metadata else { return result }
+        result.messageCount = metadata.messages
+        result.conversationCount = metadata.conversations
         var messages = FetchDescriptor(predicate: messagePredicate,
             sortBy: [SortDescriptor(\FamiliarMessage.createdAt, order: .reverse), SortDescriptor(\FamiliarMessage.sequence, order: .reverse)])
         messages.fetchOffset = offset
         messages.fetchLimit = FamiliarLocalSearchPage.size
-        let archived = Set(try modelContext.fetch(FetchDescriptor<FamiliarConversationListStateRecord>(predicate: #Predicate { $0.isArchived })).map(\.conversationID))
-        for message in try modelContext.fetch(messages) {
+        let archived = metadata.archived
+        let messageRecords = try context.fetch(messages)
+        result.hasMore = messageRecords.count == FamiliarLocalSearchPage.size && offset + messageRecords.count < metadata.messages
+        for message in messageRecords {
             try Task.checkCancellation()
             guard let chat = message.conversation else { continue }
             result.messages.append(.init(id: message.id, conversationID: chat.id, title: chat.title,
                 excerpt: FamiliarSearchText.excerpt(message.content, query: query), date: message.createdAt, isArchived: archived.contains(chat.id)))
         }
         if request.includeTitles {
-            result.conversationCount = try modelContext.fetchCount(FetchDescriptor(predicate: chatPredicate))
             var chats = FetchDescriptor(predicate: chatPredicate, sortBy: [SortDescriptor(\FamiliarConversation.updatedAt, order: .reverse)])
             chats.fetchOffset = offset
             chats.fetchLimit = FamiliarLocalSearchPage.size
-            for chat in try modelContext.fetch(chats) {
+            let chatRecords = try context.fetch(chats)
+            result.hasMore = result.hasMore || (chatRecords.count == FamiliarLocalSearchPage.size && offset + chatRecords.count < metadata.conversations)
+            for chat in chatRecords {
                 try Task.checkCancellation()
                 result.conversations.append(.init(id: chat.id, conversationID: chat.id, title: chat.title,
                     excerpt: chat.project?.displayName ?? "", date: chat.updatedAt, isArchived: archived.contains(chat.id)))
@@ -86,7 +109,9 @@ nonisolated enum FamiliarSearchText {
     private(set) var error: String?
     private var generation = UUID()
     private var nextOffset = 0
-    var hasMore: Bool { nextOffset < max(result.messageCount, result.conversationCount) }
+    @ObservationIgnored private var storeTask: Task<FamiliarLocalSearchStore, Never>?
+    @ObservationIgnored private var storeContainerID: ObjectIdentifier?
+    var hasMore: Bool { result.hasMore }
 
     func update(_ request: FamiliarLocalSearchRequest, container: ModelContainer) async {
         let id = UUID()
@@ -115,10 +140,15 @@ nonisolated enum FamiliarSearchText {
 
     private func fetch(_ request: FamiliarLocalSearchRequest, container: ModelContainer, id: UUID) async throws {
         let offset = nextOffset
-        let job = Task.detached(priority: .userInitiated) {
-            let store = FamiliarLocalSearchStore(modelContainer: container)
-            return try await store.search(request, offset: offset)
+        if storeTask == nil || storeContainerID != ObjectIdentifier(container) {
+            storeContainerID = ObjectIdentifier(container)
+            storeTask = Task.detached { FamiliarLocalSearchStore(modelContainer: container) }
         }
+        guard let storeTask else { return }
+        let store = await storeTask.value
+        try Task.checkCancellation()
+        guard generation == id else { return }
+        let job = Task.detached(priority: .userInitiated) { try await store.search(request, offset: offset) }
         let page = try await withTaskCancellationHandler { try await job.value } onCancel: { job.cancel() }
         try Task.checkCancellation()
         guard generation == id else { return }
@@ -126,6 +156,7 @@ nonisolated enum FamiliarSearchText {
         result.conversations += page.conversations.filter { !chatIDs.contains($0.id) }
         result.messages += page.messages.filter { !messageIDs.contains($0.id) }
         result.conversationCount = page.conversationCount; result.messageCount = page.messageCount
+        result.hasMore = page.hasMore
         nextOffset += FamiliarLocalSearchPage.size
     }
 }

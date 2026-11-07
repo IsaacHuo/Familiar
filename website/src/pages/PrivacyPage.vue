@@ -9,7 +9,7 @@ const base = import.meta.env.BASE_URL;
       <h1>隐私政策</h1>
       <p>我们希望你准确知道 Familiar 在设备上保存什么、何时会发送数据，以及你可以怎样保持控制。</p>
       <div class="meta-row">
-        <span>生效日期：2026 年 8 月 21 日</span>
+        <span>生效日期：2026 年 11 月 7 日</span>
         <span>适用于 Familiar 1.0 及本网站</span>
       </div>
     </header>
@@ -84,8 +84,11 @@ const base = import.meta.env.BASE_URL;
           <h3>相机</h3>
           <p>用于拍摄准备添加到消息草稿中的照片。Familiar 不会在后台持续使用相机。</p>
 
+
+<!-- Temporarily disabled for App Review, 2026-11-07.
           <h3>麦克风与语音识别</h3>
           <p>用于将你的语音转换为可编辑的文字草稿。Familiar 使用 Apple Speech 框架，并在设备与语言支持时要求端侧识别；并非所有情况下都能保证完全在设备上识别。Familiar 不保存音频录音，但 Apple 对语音数据的处理可能适用 Apple 自身的隐私政策。</p>
+-->
 
           <h3>日历与提醒事项</h3>
           <p>仅在你主动请求相应工具并授予权限后，读取完成当前问题所需的日历或提醒事项数据。创建、修改、完成或删除前，Familiar 会显示精确预览并要求确认；取消不会写入。成功操作保存本地 Undo 记录。与问题相关的数据可能作为工具结果发送给 DeepSeek，以便生成回答。</p>
@@ -117,7 +120,7 @@ const base = import.meta.env.BASE_URL;
           <ul>
             <li>你可以在 Familiar 中删除会话及其本地附件。</li>
             <li>你可以在设置中清除 DeepSeek API Key。</li>
-            <li>你可以在 iOS“设置”中撤销相机、麦克风、语音识别、日历、提醒事项、照片添加、联系人、位置或通知权限。</li>
+            <li>你可以在 iOS“设置”中撤销相机、日历、提醒事项、照片添加、联系人、位置或通知权限。</li>
             <li>卸载 App 通常会删除 App 容器中的会话与附件；Keychain 项可能在卸载后仍由系统保留，因此如需确保清除，请先在 Familiar 设置中移除 API Key。</li>
           </ul>
           <p>Familiar 无法代表第三方模型或搜索服务删除其已经接收的数据。相关请求请直接依据该服务提供的控制项或隐私渠道处理。</p>

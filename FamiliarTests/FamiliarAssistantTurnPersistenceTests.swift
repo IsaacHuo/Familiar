@@ -95,7 +95,7 @@ struct FamiliarAssistantTurnPersistenceTests {
 
     @Test("Completed assistant messages reload with a markdown response block")
     @MainActor
-    func responseBlockReload() throws {
+    func responseBlockReload() async throws {
         let fixture = try makeRun(runtimeID: "response-run")
         let recorder = FamiliarRunPersistenceRecorder()
         let messageID = UUID()
@@ -125,6 +125,7 @@ struct FamiliarAssistantTurnPersistenceTests {
 
         let controller = FamiliarChatController(dependencies: FamiliarAppDependencies())
         controller.select(fixture.conversation.id, in: fixture.context)
+        _ = await controller.waitForHistory()
 
         let block = try #require(controller.messages.first?.responseBlocks.first)
         let runBlock = try #require(controller.agentRuns.first?.responseBlocks.first)
@@ -138,7 +139,7 @@ struct FamiliarAssistantTurnPersistenceTests {
 
     @Test("Final checkpoint replaces citation aliases in the existing block and survives reload")
     @MainActor
-    func finalizedCitationsReload() throws {
+    func finalizedCitationsReload() async throws {
         let fixture = try makeRun(runtimeID: "citation-run")
         let recorder = FamiliarRunPersistenceRecorder(), blockID = UUID(), messageID = UUID()
         let url = URL(string: "https://example.com/final")!
@@ -164,6 +165,7 @@ struct FamiliarAssistantTurnPersistenceTests {
         let reopened = ModelContext(fixture.container)
         let controller = FamiliarChatController(dependencies: .init())
         controller.select(fixture.conversation.id, in: reopened)
+        _ = await controller.waitForHistory()
         let saved = try #require(controller.messages.first)
         let block = try #require(saved.responseBlocks.first)
         #expect(block.id == blockID)
@@ -175,7 +177,7 @@ struct FamiliarAssistantTurnPersistenceTests {
 
     @Test("Multiple assistant turns retain runtime order when attached to one message")
     @MainActor
-    func orderedResponseBlockReload() throws {
+    func orderedResponseBlockReload() async throws {
         let fixture = try makeRun(runtimeID: "ordered-response-run")
         let recorder = FamiliarRunPersistenceRecorder()
         let messageID = UUID()
@@ -199,6 +201,7 @@ struct FamiliarAssistantTurnPersistenceTests {
 
         let controller = FamiliarChatController(dependencies: FamiliarAppDependencies())
         controller.select(fixture.conversation.id, in: fixture.context)
+        _ = await controller.waitForHistory()
 
         let blocks = try #require(controller.messages.first?.responseBlocks)
         #expect(blocks.map(\.id) == [firstID, finalID])
@@ -253,7 +256,7 @@ struct FamiliarAssistantTurnPersistenceTests {
 
     @Test("Interrupted clarification reloads as non-interactive")
     @MainActor
-    func interruptedClarificationProjection() throws {
+    func interruptedClarificationProjection() async throws {
         let fixture = try makeRun(runtimeID: "clarification-run")
         let recorder = FamiliarRunPersistenceRecorder()
         let request = FamiliarClarificationRequest(runID: "clarification-run", toolCallID: "question", question: "Choose a scope", options: [.init(id: "project", label: "Project")], allowCustom: true)
@@ -262,6 +265,7 @@ struct FamiliarAssistantTurnPersistenceTests {
         #expect(try FamiliarRunRecoveryService().recoverInterruptedRuns(in: fixture.context) == 1)
         let controller = FamiliarChatController(dependencies: FamiliarAppDependencies())
         controller.select(fixture.conversation.id, in: fixture.context)
+        _ = await controller.waitForHistory()
         let run = try #require(controller.agentRuns.first)
         let clarification = try #require(FamiliarSurfaceStore.projectedSurfaces(for: run).first { $0.kind == .clarification })
 
@@ -283,6 +287,27 @@ struct FamiliarAssistantTurnPersistenceTests {
         let run = try #require(reopened.fetch(FetchDescriptor<FamiliarAgentRun>()).first)
         #expect(run.status == .running)
         #expect(run.finishedAt == nil)
+    }
+
+    @Test("Terminal cleanup changes only pending clarifications in its own Run")
+    @MainActor func terminalClarificationScope() throws {
+        let fixture = try makeRun(runtimeID: "scoped-terminal")
+        func question(_ run: String, state: FamiliarClarificationState = .requested) -> FamiliarClarificationRecord {
+            .init(id: UUID(), runtimeID: run, assistantTurnID: run + ":turn", activityID: UUID().uuidString,
+                toolCallID: UUID().uuidString, question: "Fixture", optionsJSON: "[]", allowCustom: true,
+                state: state, requestedAt: Date(timeIntervalSince1970: 1))
+        }
+        let pending = question("scoped-terminal")
+        let resolved = question("scoped-terminal", state: .cancelled)
+        let unrelated = question("other-run")
+        fixture.context.insert(pending); fixture.context.insert(resolved); fixture.context.insert(unrelated)
+        try fixture.context.save()
+        try FamiliarRunPersistenceRecorder().finishRun(runtimeID: "scoped-terminal", outcome: .succeeded,
+            eventSequence: 9, at: Date(timeIntervalSince1970: 20), context: fixture.context)
+        #expect(pending.state == .interrupted)
+        #expect(pending.resolvedAt == Date(timeIntervalSince1970: 20))
+        #expect(resolved.state == .cancelled && resolved.resolvedAt == nil)
+        #expect(unrelated.state == .requested && unrelated.resolvedAt == nil)
     }
 
     @Test("Final response and successful Run remain staged until a single save")
@@ -319,7 +344,7 @@ struct FamiliarAssistantTurnPersistenceTests {
             messages: [],
             toolManifests: []
         )
-        FamiliarRunPersistenceRecorder().ensureRun(runtimeID: runtimeID, snapshot: snapshot, startedAt: Date(timeIntervalSince1970: 1), context: context)
+        try FamiliarRunPersistenceRecorder().ensureRun(runtimeID: runtimeID, snapshot: snapshot, startedAt: Date(timeIntervalSince1970: 1), context: context)
         return (container, context, conversation)
     }
 }

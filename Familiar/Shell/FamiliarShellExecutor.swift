@@ -28,6 +28,12 @@ final class FamiliarShellRuntimeStatus {
     }
 
     var isReady: Bool { phase == .ready }
+    var canEditWorkspacePreferences: Bool {
+        switch phase {
+        case .notPrepared, .ready, .failed: true
+        default: false
+        }
+    }
 
     func markReady() { phase = .ready }
     func markFailed(_ message: String) { phase = .failed(message) }

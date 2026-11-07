@@ -14,10 +14,12 @@ struct FamiliarBaselineTests {
         "tools_load",
         "app_information",
         "map_search",
-        "weather_forecast",
-        "weather_history",
+// Temporarily disabled for App Review, 2026-11-07.
+//         "weather_forecast",
+//         "weather_history",
         "natural_language_analyze",
-        "health_activity_summary",
+// Temporarily disabled for App Review, 2026-11-07.
+//         "health_activity_summary",
         "music_catalog_search",
         "bluetooth_scan",
         "notification_schedule",
@@ -443,7 +445,9 @@ struct FamiliarBaselineTests {
         #expect(try await decision( read, availability: .requestable) == .requireApproval)
 
         // A sensitive read must still be confirmed even once the capability is granted.
-        let sensitiveRead = FamiliarToolManifest(name: "read_health", title: "Read health", description: "", parameters: .object([:]), effect: .read, risk: .high)
+// Temporarily disabled for App Review, 2026-11-07.
+//         let sensitiveRead = FamiliarToolManifest(name: "read_health", title: "Read health", description: "", parameters: .object([:]), effect: .read, risk: .high)
+        let sensitiveRead = FamiliarToolManifest(name: "read_sensitive", title: "Read sensitive data", description: "", parameters: .object([:]), effect: .read, risk: .high)
         #expect(try await decision( sensitiveRead, availability: .available) == .requireApproval)
 
         #expect(try await decision( read, availability: .unavailable(reason: "denied")) == .deny("denied"))

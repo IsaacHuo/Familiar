@@ -141,28 +141,30 @@ nonisolated enum FamiliarToolDefaults {
         static let limit = 5
     }
 
-    enum WeatherForecast {
-        static let minimumDays = 1
-        static let maximumDays = 10
-        static let days = 3
-    }
-
-    enum WeatherHistory {
-        /// WeatherKit historical coverage begins on 2021-08-01T00:00:00Z.
-        static let earliestDate = Date(timeIntervalSince1970: 1_627_776_000)
-        /// WeatherKit returns at most 10 days per daily range request.
-        static let maximumDays = 10
-        static let earliestDateDescription = "2021-08-01"
-    }
-
+// Temporarily disabled for App Review, 2026-11-07.
+//     enum WeatherForecast {
+//         static let minimumDays = 1
+//         static let maximumDays = 10
+//         static let days = 3
+//     }
+//
+//     enum WeatherHistory {
+//         /// WeatherKit historical coverage begins on 2021-08-01T00:00:00Z.
+//         static let earliestDate = Date(timeIntervalSince1970: 1_627_776_000)
+//         /// WeatherKit returns at most 10 days per daily range request.
+//         static let maximumDays = 10
+//         static let earliestDateDescription = "2021-08-01"
+//     }
+//
     enum Alarm {
         static let maximumLabelCharacters = 120
-    }
-
-    enum HealthActivity {
-        static let minimumDays = 1
-        static let maximumDays = 31
-        static let days = 7
+// Temporarily disabled for App Review, 2026-11-07.
+//     }
+//
+//     enum HealthActivity {
+//         static let minimumDays = 1
+//         static let maximumDays = 31
+//         static let days = 7
     }
 
     enum MusicSearch {

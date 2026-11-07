@@ -7,7 +7,7 @@ import Testing
 struct FamiliarProjectWorkspaceTests {
     @Test("Pasted text becomes a durable project resource and rejects empty input")
     @MainActor
-    func pastedTextImport() throws {
+    func pastedTextImport() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("FamiliarPastedResource-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -19,7 +19,7 @@ struct FamiliarProjectWorkspaceTests {
         try context.save()
 
         let service = FamiliarFileImportService(store: FamiliarProjectResourceStore(rootURL: root))
-        let resource = try service.importPastedText(
+        let resource = try await service.importPastedText(
             "  A durable note.  ",
             title: "Field Notes",
             into: project,
@@ -33,15 +33,15 @@ struct FamiliarProjectWorkspaceTests {
         #expect(version.provenanceJSON.contains("user_paste"))
         #expect(version.extractedTextHash == FamiliarHash.sha256("A durable note."))
         #expect(service.quickLookURL(for: version) != nil)
-        #expect(throws: FamiliarFileImportError.self) {
-            try service.importPastedText(" \n ", into: project, in: context)
+        await #expect(throws: FamiliarFileImportError.self) {
+            _ = try await service.importPastedText(" \n ", into: project, in: context)
         }
         #expect(try context.fetch(FetchDescriptor<FamiliarFileRecord>()).count == 1)
     }
 
     @Test("Project deletion removes project scope and preserves detached history")
     @MainActor
-    func projectDeletionBoundary() throws {
+    func projectDeletionBoundary() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("FamiliarWorkspaceDelete-\(UUID().uuidString)", isDirectory: true)
         let resourceStore = FamiliarProjectResourceStore(rootURL: root.appendingPathComponent("Resources"))
@@ -145,7 +145,7 @@ struct FamiliarProjectWorkspaceTests {
         context.insert(undo)
         try context.save()
 
-        _ = try FamiliarFileImportService(store: resourceStore).importPastedText(
+        _ = try await FamiliarFileImportService(store: resourceStore).importPastedText(
             "Delete this resource",
             into: project,
             in: context

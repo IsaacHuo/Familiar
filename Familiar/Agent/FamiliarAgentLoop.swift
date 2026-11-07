@@ -547,6 +547,9 @@ nonisolated struct FamiliarAgentLoop: Sendable {
             attempt += 1
             do {
                 let result = try await Self.withDeadline(deadline) {
+                    let firstTextInterval = FamiliarPerformance.begin("ModelAttemptToFirstText")
+                    var receivedText = false
+                    defer { if !receivedText { firstTextInterval.end() } }
                     var emittedContent = false
                     var pendingCalls: [Int: PendingToolCall] = [:]
                     var roundText = ""
@@ -558,6 +561,7 @@ nonisolated struct FamiliarAgentLoop: Sendable {
                             try Task.checkCancellation()
                             switch event {
                             case .textDelta(let value):
+                                if !receivedText { firstTextInterval.end(); receivedText = true }
                                 emittedContent = true
                                 if emitsText, !roundIsResponding {
                                     roundIsResponding = true

@@ -145,8 +145,9 @@
 "settings.permissions.calendar" = "Calendar";
 "settings.permissions.reminders" = "Reminders";
 "settings.permissions.camera" = "Camera";
-"settings.permissions.microphone" = "Microphone";
-"settings.permissions.speech" = "Speech Recognition";
+// Temporarily disabled for App Review, 2026-11-07.
+// "settings.permissions.microphone" = "Microphone";
+// "settings.permissions.speech" = "Speech Recognition";
 "settings.permissions.footer" = "Familiar asks for access only when you use the related feature. Permissions are controlled by iOS.";
 "settings.permissions.open" = "Open Familiar in iOS Settings";
 "settings.permissions.allowed" = "Allowed";
@@ -319,8 +320,9 @@
 "attachment.camera" = "Camera";
 "attachment.photos" = "Photos";
 "attachment.files" = "Files";
-"speech.start" = "Start voice input";
-"speech.stop" = "Stop voice input";
+// Temporarily disabled for App Review, 2026-11-07.
+// "speech.start" = "Start voice input";
+// "speech.stop" = "Stop voice input";
 "composer.placeholder" = "Message Familiar";
 "message.send" = "Send";
 "message.stop" = "Stop generating";
@@ -439,10 +441,11 @@
 "camera.configuration_failed" = "The camera could not be configured.";
 "composer.expand" = "Expand editor";
 "composer.collapse" = "Collapse editor";
-"speech.error.unavailable" = "Speech recognition is currently unavailable.";
-"speech.error.permission" = "Allow Speech Recognition in Settings to use voice input.";
-"speech.error.microphone" = "Allow microphone access in Settings to use voice input.";
-"speech.error.start" = "Voice transcription couldn't start. Check the microphone and try again.";
+// Temporarily disabled for App Review, 2026-11-07.
+// "speech.error.unavailable" = "Speech recognition is currently unavailable.";
+// "speech.error.permission" = "Allow Speech Recognition in Settings to use voice input.";
+// "speech.error.microphone" = "Allow microphone access in Settings to use voice input.";
+// "speech.error.start" = "Voice transcription couldn't start. Check the microphone and try again.";
 
 "agent.status.thinking" = "Thinking";
 "agent.status.using_tool" = "Using %@";
@@ -630,10 +633,12 @@
 "tool.photos_save_output" = "Save image to Photos";
 "tool.photos_recent_metadata" = "Read photo metadata";
 "tool.map_search" = "Search places";
-"tool.weather_forecast" = "Check weather";
-"tool.weather_history" = "Check past weather";
+// Temporarily disabled for App Review, 2026-11-07.
+// "tool.weather_forecast" = "Check weather";
+// "tool.weather_history" = "Check past weather";
 "tool.natural_language_analyze" = "Analyze text";
-"tool.health_activity_summary" = "Read health activity";
+// Temporarily disabled for App Review, 2026-11-07.
+// "tool.health_activity_summary" = "Read health activity";
 "tool.music_catalog_search" = "Search Apple Music";
 "tool.bluetooth_scan" = "Scan Bluetooth devices";
 "tool.notification_schedule" = "Schedule notification";
@@ -665,22 +670,26 @@
 "tool.alarm_list" = "List alarms";
 "approval.field.duration" = "Duration";
 "approval.value.recent_days" = "Last %lld days";
-"approval.value.health_aggregate" = "Daily totals only, no individual samples";
+// Temporarily disabled for App Review, 2026-11-07.
+// "approval.value.health_aggregate" = "Daily totals only, no individual samples";
 "approval.value.images_only" = "Images only";
 "approval.value.all_media" = "Images, video and audio";
 "approval.value.photo_metadata" = "Metadata only, including capture location. No image pixels.";
 "approval.value.bluetooth_scope" = "Foreground discovery only. No connection, no characteristic reads.";
-"approval.consequence.health_read" = "Familiar reads aggregated activity totals for this window. Results may be sent to the selected model provider as a tool result.";
+// Temporarily disabled for App Review, 2026-11-07.
+// "approval.consequence.health_read" = "Familiar reads aggregated activity totals for this window. Results may be sent to the selected model provider as a tool result.";
 "approval.consequence.photo_metadata_read" = "Familiar reads recent asset metadata, which can include where each photo was taken. Results may be sent to the selected model provider as a tool result.";
 "approval.consequence.bluetooth_scan" = "Familiar discovers nearby devices advertising these services and reports their names and signal strength. Results may be sent to the selected model provider as a tool result.";
 "settings.permissions.photos_read" = "Read Photo Metadata";
-"settings.permissions.health" = "Health Activity";
+// Temporarily disabled for App Review, 2026-11-07.
+// "settings.permissions.health" = "Health Activity";
 "settings.permissions.music" = "Apple Music";
 "settings.permissions.bluetooth" = "Bluetooth";
 "settings.permissions.limited" = "Limited";
 "settings.permissions.requested" = "Requested";
 "settings.permissions.unsupported" = "Not Supported";
-"settings.permissions.health_footer" = "HealthKit never tells apps whether you denied a read request, so Familiar can only show whether it has asked. Missing values are never reported as zero.";
+// Temporarily disabled for App Review, 2026-11-07.
+// "settings.permissions.health_footer" = "HealthKit never tells apps whether you denied a read request, so Familiar can only show whether it has asked. Missing values are never reported as zero.";
 "settings.shell.title" = "Execution Environment";
 "settings.shell.detail" = "File processing and dependencies for this workspace";
 "settings.shell.status" = "Runtime Status";
@@ -697,7 +706,9 @@
 "project.error.unknown_model" = "That model is no longer available.";
 "tool.category.basics" = "Basics";
 "tool.category.calendar" = "Calendar & Reminders";
-"tool.category.places" = "Places & Weather";
+// Temporarily disabled for App Review, 2026-11-07.
+// "tool.category.places" = "Places & Weather";
+"tool.category.places" = "Places";
 "tool.category.personal" = "Personal Data";
 "tool.category.web" = "Web";
 "tool.category.project" = "Project Resources & Artifacts";
@@ -897,12 +908,16 @@
 "voice.providers" = "Voice Providers";
 "voice.add" = "Add Voice Provider";
 "voice.system" = "System Voice";
-"voice.input" = "Voice Input";
+// Temporarily disabled for App Review, 2026-11-07.
+// "voice.input" = "Voice Input";
 "voice.output" = "Voice Output";
-"voice.input_model" = "Recognition Model (default if empty)";
+// Temporarily disabled for App Review, 2026-11-07.
+// "voice.input_model" = "Recognition Model (default if empty)";
 "voice.output_model" = "Synthesis Model (default if empty)";
 "voice.voice_id" = "Voice ID (default if empty)";
-"voice.remote.footer" = "Cloud voice input sends recordings to the selected provider; cloud output sends reply text. System input uses on-device recognition.";
+// Temporarily disabled for App Review, 2026-11-07.
+// "voice.remote.footer" = "Cloud voice input sends recordings to the selected provider; cloud output sends reply text. System input uses on-device recognition.";
+"voice.remote.footer" = "Cloud read-aloud sends reply text to the selected provider. System read-aloud uses Apple speech synthesis.";
 "voice.error.unsupported" = "This voice provider does not support the operation.";
 "voice.error.http" = "Voice request failed (HTTP %lld): %@";
 "voice.error.response" = "Could not read the voice provider response.";
@@ -980,7 +995,9 @@
 // Lazy tool loading
 "tool.group.web" = "Web";
 "tool.group.calendar" = "Calendar & Reminders";
-"tool.group.places" = "Places & Weather";
+// Temporarily disabled for App Review, 2026-11-07.
+// "tool.group.places" = "Places & Weather";
+"tool.group.places" = "Places";
 "tool.group.files" = "Files";
 "tool.group.artifact" = "Outputs";
 "tool.group.memory" = "Memory";
@@ -1313,7 +1330,15 @@
 "files.delete.partial" = "Deleted %lld items; %lld failed. Failed files are preserved and can be retried.";
 
 "message.date.today" = "Today";
-
-/* App Review: native weather attribution and health discovery */
-"weather.attribution.legal" = "Weather data sources and legal information";
-"settings.permissions.health_usage" = "To use Health Activity, configure a model in Settings → Model Service, then start a chat and ask “Read my steps, active energy, and walking or running distance for the last seven days.” Review the in-app approval and allow the requested Health access. Familiar only reads these three activity totals; results may be sent to your selected model provider.";
+// Temporarily disabled for App Review, 2026-11-07.
+//
+// /* App Review: native weather attribution and health discovery */
+// "weather.attribution.legal" = "Weather data sources and legal information";
+// "settings.permissions.health_usage" = "To use Health Activity, configure a model in Settings → Model Service, then start a chat and ask “Read my steps, active energy, and walking or running distance for the last seven days.” Review the in-app approval and allow the requested Health access. Familiar only reads these three activity totals; results may be sent to your selected model provider.";
+"composer.preparing_message" = "Preparing message…";
+"common.saving" = "Saving…";
+"history.load_failed" = "Couldn't load this conversation";
+"history.reload" = "Reload";
+"history.scope_changed" = "This conversation changed while loading. Reload it to continue.";
+"resource.error.destination_changed" = "The file destination changed. Open the conversation and try again.";
+"history.loading" = "Loading conversation…";

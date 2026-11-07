@@ -21,59 +21,60 @@ private final class FamiliarMapServiceFixture: FamiliarMapServicing {
             phoneNumber: nil,
             url: nil
         )]
-    }
-}
-
-private actor FamiliarWeatherServiceFixture: FamiliarWeatherServicing {
-    private(set) var forecastDays: [Int] = []
-    private(set) var historyRanges: [(start: Date, end: Date)] = []
-
-    func forecast(latitude: Double, longitude: Double, days: Int) -> FamiliarWeatherSnapshot {
-        forecastDays.append(days)
-        return FamiliarWeatherSnapshot(
-            latitude: latitude,
-            longitude: longitude,
-            retrievedAtISO8601: "2026-09-02T00:00:00.000Z",
-            currentTemperatureCelsius: 24,
-            currentApparentTemperatureCelsius: 25,
-            currentCondition: "clear",
-            currentHumidity: 0.4,
-            dailyForecast: [],
-            attributionServiceName: "Apple Weather",
-            attributionLegalURL: "https://weatherkit.apple.com/legal-attribution.html"
-        )
-    }
-
-    func history(latitude: Double, longitude: Double, start: Date, end: Date) -> FamiliarWeatherHistory {
-        historyRanges.append((start, end))
-        return FamiliarWeatherHistory(
-            latitude: latitude,
-            longitude: longitude,
-            startISO8601: FamiliarISO8601.string(start),
-            endISO8601: FamiliarISO8601.string(end),
-            days: [],
-            attributionServiceName: "Apple Weather",
-            attributionLegalURL: "https://weatherkit.apple.com/legal-attribution.html"
-        )
-    }
-}
-
-private actor FamiliarHealthServiceFixture: FamiliarHealthServicing {
-    private(set) var requestedDays: [Int] = []
-
-    func availability() -> FamiliarCapabilityAvailability { .available }
-    func requestAccess() {}
-
-    func activitySummary(days: Int) -> FamiliarHealthActivitySummary {
-        requestedDays.append(days)
-        return FamiliarHealthActivitySummary(
-            startISO8601: "2026-08-26T00:00:00.000Z",
-            endISO8601: "2026-09-02T00:00:00.000Z",
-            stepCount: nil,
-            activeEnergyKilocalories: 420,
-            walkingRunningDistanceMeters: nil,
-            authorizationDoesNotRevealReadDenials: true
-        )
+// Temporarily disabled for App Review, 2026-11-07.
+//     }
+// }
+//
+// private actor FamiliarWeatherServiceFixture: FamiliarWeatherServicing {
+//     private(set) var forecastDays: [Int] = []
+//     private(set) var historyRanges: [(start: Date, end: Date)] = []
+//
+//     func forecast(latitude: Double, longitude: Double, days: Int) -> FamiliarWeatherSnapshot {
+//         forecastDays.append(days)
+//         return FamiliarWeatherSnapshot(
+//             latitude: latitude,
+//             longitude: longitude,
+//             retrievedAtISO8601: "2026-09-02T00:00:00.000Z",
+//             currentTemperatureCelsius: 24,
+//             currentApparentTemperatureCelsius: 25,
+//             currentCondition: "clear",
+//             currentHumidity: 0.4,
+//             dailyForecast: [],
+//             attributionServiceName: "Apple Weather",
+//             attributionLegalURL: "https://weatherkit.apple.com/legal-attribution.html"
+//         )
+//     }
+//
+//     func history(latitude: Double, longitude: Double, start: Date, end: Date) -> FamiliarWeatherHistory {
+//         historyRanges.append((start, end))
+//         return FamiliarWeatherHistory(
+//             latitude: latitude,
+//             longitude: longitude,
+//             startISO8601: FamiliarISO8601.string(start),
+//             endISO8601: FamiliarISO8601.string(end),
+//             days: [],
+//             attributionServiceName: "Apple Weather",
+//             attributionLegalURL: "https://weatherkit.apple.com/legal-attribution.html"
+//         )
+//     }
+// }
+//
+// private actor FamiliarHealthServiceFixture: FamiliarHealthServicing {
+//     private(set) var requestedDays: [Int] = []
+//
+//     func availability() -> FamiliarCapabilityAvailability { .available }
+//     func requestAccess() {}
+//
+//     func activitySummary(days: Int) -> FamiliarHealthActivitySummary {
+//         requestedDays.append(days)
+//         return FamiliarHealthActivitySummary(
+//             startISO8601: "2026-08-26T00:00:00.000Z",
+//             endISO8601: "2026-09-02T00:00:00.000Z",
+//             stepCount: nil,
+//             activeEnergyKilocalories: 420,
+//             walkingRunningDistanceMeters: nil,
+//             authorizationDoesNotRevealReadDenials: true
+//         )
     }
 }
 
@@ -225,159 +226,160 @@ struct FamiliarAppleNativeToolTests {
             #expect(structuredCode(error) == "invalid_coordinate")
             #expect((error as? any FamiliarStructuredToolError)?.isRetryable == false)
         }
-    }
-
-    // MARK: WeatherKit
-
-    @Test("Native forecast and history retain attribution without model citations")
-    func weatherAttributionContract() async throws {
-        let service = FamiliarWeatherServiceFixture()
-        let forecast = try await FamiliarWeatherForecastTool(service: service).execute(
-            .init(latitude: 39.9, longitude: 116.4, days: 3), context: context())
-        let history = try await FamiliarWeatherHistoryTool(service: service).execute(
-            .init(latitude: 39.9, longitude: 116.4, startISO8601: "2026-08-20T00:00:00Z", endISO8601: "2026-08-21T00:00:00Z"), context: context())
-        var surfaces: [FamiliarSurfaceDescriptor] = []
-        for (name, outcome) in [("weather_forecast", forecast), ("weather_history", history)] {
-            guard case .result(let result) = outcome else { Issue.record("Expected native weather result"); return }
-            let envelope = try JSONDecoder().decode(FamiliarToolResultEnvelope.self, from: JSONEncoder().encode(result.envelope))
-            let surface = FamiliarSurfaceDescriptor(id: name, runID: "run", kind: .records, placement: .trace,
-                phase: .succeeded, title: name, toolName: name, resultEnvelope: envelope)
-            let attribution = try #require(FamiliarWeatherAttribution(surface: surface))
-            #expect(attribution.legalURL.absoluteString == "https://weatherkit.apple.com/legal-attribution.html")
-            surfaces.append(surface)
-        }
-        #expect(FamiliarWeatherAttribution.unique(in: surfaces + surfaces).count == 1)
-        var rejected = try #require(surfaces.first)
-        for phase in [FamiliarSurfacePhase.running, .failed, .cancelled] {
-            rejected.phase = phase
-            #expect(FamiliarWeatherAttribution(surface: rejected) == nil)
-        }
-        rejected.phase = .succeeded
-        rejected.toolName = "web_search"
-        #expect(FamiliarWeatherAttribution(surface: rejected) == nil)
-        rejected.toolName = "weather_forecast"
-        rejected.resultEnvelope = try .init(canonicalModelJSON: "{}", presentation: .scalar(.init(summary: "Missing", value: "")))
-        #expect(FamiliarWeatherAttribution(surface: rejected) == nil)
-    }
-
-    @Test("Weather forecast applies the advertised default day count")
-    func weatherForecastDefault() async throws {
-        let service = FamiliarWeatherServiceFixture()
-        let tool = FamiliarWeatherForecastTool(service: service)
-        _ = try await tool.execute(.init(latitude: 39.9, longitude: 116.4, days: nil), context: context())
-        #expect(await service.forecastDays == [FamiliarToolDefaults.WeatherForecast.days])
-    }
-
-    @Test("Weather history forwards an exclusive end bound to the service")
-    func weatherHistoryRange() async throws {
-        let service = FamiliarWeatherServiceFixture()
-        let tool = FamiliarWeatherHistoryTool(service: service)
-        _ = try await tool.execute(
-            .init(
-                latitude: 39.9042,
-                longitude: 116.4074,
-                startISO8601: "2026-08-20T00:00:00Z",
-                endISO8601: "2026-08-21T00:00:00Z"
-            ),
-            context: context()
-        )
-        let ranges = await service.historyRanges
-        #expect(ranges.count == 1)
-        #expect(ranges[0].end.timeIntervalSince(ranges[0].start) == 86_400)
-    }
-
-    @Test("Weather history rejects an inverted range before reaching WeatherKit")
-    func weatherHistoryInvertedRange() async throws {
-        let tool = FamiliarWeatherHistoryTool(service: FamiliarWeatherServiceFixture())
-        do {
-            _ = try await tool.execute(
-                .init(
-                    latitude: 39.9,
-                    longitude: 116.4,
-                    startISO8601: "2026-08-21T00:00:00Z",
-                    endISO8601: "2026-08-20T00:00:00Z"
-                ),
-                context: context()
-            )
-            Issue.record("Expected an inverted range to fail")
-        } catch {
-            #expect(structuredCode(error) == "invalid_range")
-        }
-    }
-
-    /// These bounds are enforced inside `FamiliarWeatherService` before any network
-    /// call, so the real service can be exercised deterministically.
-    @Test("Real weather service enforces WeatherKit's documented history limits")
-    func weatherHistoryPlatformLimits() async throws {
-        let service = FamiliarWeatherService()
-        let earliest = FamiliarToolDefaults.WeatherHistory.earliestDate
-
-        do {
-            _ = try await service.history(
-                latitude: 39.9,
-                longitude: 116.4,
-                start: earliest.addingTimeInterval(-86_400),
-                end: earliest
-            )
-            Issue.record("Expected a pre-coverage start date to fail")
-        } catch {
-            #expect(structuredCode(error) == "weather_history_before_coverage")
-        }
-
-        do {
-            let start = earliest.addingTimeInterval(86_400)
-            _ = try await service.history(
-                latitude: 39.9,
-                longitude: 116.4,
-                start: start,
-                end: start.addingTimeInterval(Double(FamiliarToolDefaults.WeatherHistory.maximumDays + 2) * 86_400)
-            )
-            Issue.record("Expected an oversized range to fail instead of being truncated")
-        } catch {
-            #expect(structuredCode(error) == "weather_history_range_too_long")
-            // Truncating would let the model believe it received days it never got.
-            #expect((error as? any FamiliarStructuredToolError)?.isRetryable == false)
-        }
-    }
-
-    // MARK: HealthKit
-
-    @Test("Health preflight states the real window and never reports a value as zero")
-    func healthPreflightScope() async throws {
-        let service = FamiliarHealthServiceFixture()
-        let tool = FamiliarHealthActivitySummaryTool(service: service)
-
-        let assessment = try await tool.preflight(.init(days: 3), context: context())
-        #expect(assessment.disposition == .requiresApproval)
-        #expect(assessment.risk == .high)
-        #expect(assessment.targetKey == "health-activity")
-        #expect(!assessment.fields.isEmpty)
-        #expect(assessment.fields.contains { $0.value.contains("3") })
-        #expect(assessment.fields.contains { $0.value.contains("stepCount") })
-        #expect(!assessment.consequence.isEmpty)
-
-        // A day count beyond the platform bound is clamped, not rejected, and the
-        // approval card must show the clamped value rather than the request.
-        let clamped = try await tool.preflight(
-            .init(days: FamiliarToolDefaults.HealthActivity.maximumDays + 40),
-            context: context()
-        )
-        #expect(clamped.fields.contains { $0.value.contains(String(FamiliarToolDefaults.HealthActivity.maximumDays)) })
-
-        let outcome = try await tool.execute(.init(days: nil), context: context())
-        guard case .result(let result) = outcome else { Issue.record("Expected a result"); return }
-        #expect(await service.requestedDays == [FamiliarToolDefaults.HealthActivity.days])
-        // HealthKit never reveals read denials, so an unavailable metric must not be
-        // reported as a real zero. A nil optional is omitted from the encoded model
-        // JSON rather than encoded as null.
-        #expect(!result.modelContent.contains("\"stepCount\":0"))
-        #expect(result.modelContent.contains("activeEnergyKilocalories"))
-        #expect(result.summary.contains("未授权") || result.summary.contains("空值"))
-        guard case .recordCollection(let records) = result.envelope.presentation.content else {
-            Issue.record("Expected a record collection")
-            return
-        }
-        #expect(records.records.first?.fields.contains { $0.value == "unavailable" } == true)
+// Temporarily disabled for App Review, 2026-11-07.
+//     }
+//
+//     // MARK: WeatherKit
+//
+//     @Test("Native forecast and history retain attribution without model citations")
+//     func weatherAttributionContract() async throws {
+//         let service = FamiliarWeatherServiceFixture()
+//         let forecast = try await FamiliarWeatherForecastTool(service: service).execute(
+//             .init(latitude: 39.9, longitude: 116.4, days: 3), context: context())
+//         let history = try await FamiliarWeatherHistoryTool(service: service).execute(
+//             .init(latitude: 39.9, longitude: 116.4, startISO8601: "2026-08-20T00:00:00Z", endISO8601: "2026-08-21T00:00:00Z"), context: context())
+//         var surfaces: [FamiliarSurfaceDescriptor] = []
+//         for (name, outcome) in [("weather_forecast", forecast), ("weather_history", history)] {
+//             guard case .result(let result) = outcome else { Issue.record("Expected native weather result"); return }
+//             let envelope = try JSONDecoder().decode(FamiliarToolResultEnvelope.self, from: JSONEncoder().encode(result.envelope))
+//             let surface = FamiliarSurfaceDescriptor(id: name, runID: "run", kind: .records, placement: .trace,
+//                 phase: .succeeded, title: name, toolName: name, resultEnvelope: envelope)
+//             let attribution = try #require(FamiliarWeatherAttribution(surface: surface))
+//             #expect(attribution.legalURL.absoluteString == "https://weatherkit.apple.com/legal-attribution.html")
+//             surfaces.append(surface)
+//         }
+//         #expect(FamiliarWeatherAttribution.unique(in: surfaces + surfaces).count == 1)
+//         var rejected = try #require(surfaces.first)
+//         for phase in [FamiliarSurfacePhase.running, .failed, .cancelled] {
+//             rejected.phase = phase
+//             #expect(FamiliarWeatherAttribution(surface: rejected) == nil)
+//         }
+//         rejected.phase = .succeeded
+//         rejected.toolName = "web_search"
+//         #expect(FamiliarWeatherAttribution(surface: rejected) == nil)
+//         rejected.toolName = "weather_forecast"
+//         rejected.resultEnvelope = try .init(canonicalModelJSON: "{}", presentation: .scalar(.init(summary: "Missing", value: "")))
+//         #expect(FamiliarWeatherAttribution(surface: rejected) == nil)
+//     }
+//
+//     @Test("Weather forecast applies the advertised default day count")
+//     func weatherForecastDefault() async throws {
+//         let service = FamiliarWeatherServiceFixture()
+//         let tool = FamiliarWeatherForecastTool(service: service)
+//         _ = try await tool.execute(.init(latitude: 39.9, longitude: 116.4, days: nil), context: context())
+//         #expect(await service.forecastDays == [FamiliarToolDefaults.WeatherForecast.days])
+//     }
+//
+//     @Test("Weather history forwards an exclusive end bound to the service")
+//     func weatherHistoryRange() async throws {
+//         let service = FamiliarWeatherServiceFixture()
+//         let tool = FamiliarWeatherHistoryTool(service: service)
+//         _ = try await tool.execute(
+//             .init(
+//                 latitude: 39.9042,
+//                 longitude: 116.4074,
+//                 startISO8601: "2026-08-20T00:00:00Z",
+//                 endISO8601: "2026-08-21T00:00:00Z"
+//             ),
+//             context: context()
+//         )
+//         let ranges = await service.historyRanges
+//         #expect(ranges.count == 1)
+//         #expect(ranges[0].end.timeIntervalSince(ranges[0].start) == 86_400)
+//     }
+//
+//     @Test("Weather history rejects an inverted range before reaching WeatherKit")
+//     func weatherHistoryInvertedRange() async throws {
+//         let tool = FamiliarWeatherHistoryTool(service: FamiliarWeatherServiceFixture())
+//         do {
+//             _ = try await tool.execute(
+//                 .init(
+//                     latitude: 39.9,
+//                     longitude: 116.4,
+//                     startISO8601: "2026-08-21T00:00:00Z",
+//                     endISO8601: "2026-08-20T00:00:00Z"
+//                 ),
+//                 context: context()
+//             )
+//             Issue.record("Expected an inverted range to fail")
+//         } catch {
+//             #expect(structuredCode(error) == "invalid_range")
+//         }
+//     }
+//
+//     /// These bounds are enforced inside `FamiliarWeatherService` before any network
+//     /// call, so the real service can be exercised deterministically.
+//     @Test("Real weather service enforces WeatherKit's documented history limits")
+//     func weatherHistoryPlatformLimits() async throws {
+//         let service = FamiliarWeatherService()
+//         let earliest = FamiliarToolDefaults.WeatherHistory.earliestDate
+//
+//         do {
+//             _ = try await service.history(
+//                 latitude: 39.9,
+//                 longitude: 116.4,
+//                 start: earliest.addingTimeInterval(-86_400),
+//                 end: earliest
+//             )
+//             Issue.record("Expected a pre-coverage start date to fail")
+//         } catch {
+//             #expect(structuredCode(error) == "weather_history_before_coverage")
+//         }
+//
+//         do {
+//             let start = earliest.addingTimeInterval(86_400)
+//             _ = try await service.history(
+//                 latitude: 39.9,
+//                 longitude: 116.4,
+//                 start: start,
+//                 end: start.addingTimeInterval(Double(FamiliarToolDefaults.WeatherHistory.maximumDays + 2) * 86_400)
+//             )
+//             Issue.record("Expected an oversized range to fail instead of being truncated")
+//         } catch {
+//             #expect(structuredCode(error) == "weather_history_range_too_long")
+//             // Truncating would let the model believe it received days it never got.
+//             #expect((error as? any FamiliarStructuredToolError)?.isRetryable == false)
+//         }
+//     }
+//
+//     // MARK: HealthKit
+//
+//     @Test("Health preflight states the real window and never reports a value as zero")
+//     func healthPreflightScope() async throws {
+//         let service = FamiliarHealthServiceFixture()
+//         let tool = FamiliarHealthActivitySummaryTool(service: service)
+//
+//         let assessment = try await tool.preflight(.init(days: 3), context: context())
+//         #expect(assessment.disposition == .requiresApproval)
+//         #expect(assessment.risk == .high)
+//         #expect(assessment.targetKey == "health-activity")
+//         #expect(!assessment.fields.isEmpty)
+//         #expect(assessment.fields.contains { $0.value.contains("3") })
+//         #expect(assessment.fields.contains { $0.value.contains("stepCount") })
+//         #expect(!assessment.consequence.isEmpty)
+//
+//         // A day count beyond the platform bound is clamped, not rejected, and the
+//         // approval card must show the clamped value rather than the request.
+//         let clamped = try await tool.preflight(
+//             .init(days: FamiliarToolDefaults.HealthActivity.maximumDays + 40),
+//             context: context()
+//         )
+//         #expect(clamped.fields.contains { $0.value.contains(String(FamiliarToolDefaults.HealthActivity.maximumDays)) })
+//
+//         let outcome = try await tool.execute(.init(days: nil), context: context())
+//         guard case .result(let result) = outcome else { Issue.record("Expected a result"); return }
+//         #expect(await service.requestedDays == [FamiliarToolDefaults.HealthActivity.days])
+//         // HealthKit never reveals read denials, so an unavailable metric must not be
+//         // reported as a real zero. A nil optional is omitted from the encoded model
+//         // JSON rather than encoded as null.
+//         #expect(!result.modelContent.contains("\"stepCount\":0"))
+//         #expect(result.modelContent.contains("activeEnergyKilocalories"))
+//         #expect(result.summary.contains("未授权") || result.summary.contains("空值"))
+//         guard case .recordCollection(let records) = result.envelope.presentation.content else {
+//             Issue.record("Expected a record collection")
+//             return
+//         }
+//         #expect(records.records.first?.fields.contains { $0.value == "unavailable" } == true)
     }
 
     // MARK: PhotoKit

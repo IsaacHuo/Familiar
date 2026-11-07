@@ -145,8 +145,9 @@
 "settings.permissions.calendar" = "日历";
 "settings.permissions.reminders" = "提醒事项";
 "settings.permissions.camera" = "相机";
-"settings.permissions.microphone" = "麦克风";
-"settings.permissions.speech" = "语音识别";
+// Temporarily disabled for App Review, 2026-11-07.
+// "settings.permissions.microphone" = "麦克风";
+// "settings.permissions.speech" = "语音识别";
 "settings.permissions.footer" = "Familiar 只会在使用相关功能时请求访问。所有权限均由 iOS 管理。";
 "settings.permissions.open" = "在 iOS 设置中打开 Familiar";
 "settings.permissions.allowed" = "已允许";
@@ -319,8 +320,9 @@
 "attachment.camera" = "相机";
 "attachment.photos" = "照片";
 "attachment.files" = "文件";
-"speech.start" = "开始语音输入";
-"speech.stop" = "停止语音输入";
+// Temporarily disabled for App Review, 2026-11-07.
+// "speech.start" = "开始语音输入";
+// "speech.stop" = "停止语音输入";
 "composer.placeholder" = "问问 Familiar";
 "message.send" = "发送";
 "message.stop" = "停止生成";
@@ -439,10 +441,11 @@
 "camera.configuration_failed" = "相机配置失败。";
 "composer.expand" = "放大编辑器";
 "composer.collapse" = "缩小编辑器";
-"speech.error.unavailable" = "语音识别当前不可用。";
-"speech.error.permission" = "请在系统设置中允许语音识别，以使用语音输入。";
-"speech.error.microphone" = "请在系统设置中允许麦克风，以使用语音输入。";
-"speech.error.start" = "无法开始语音转写，请检查麦克风后重试。";
+// Temporarily disabled for App Review, 2026-11-07.
+// "speech.error.unavailable" = "语音识别当前不可用。";
+// "speech.error.permission" = "请在系统设置中允许语音识别，以使用语音输入。";
+// "speech.error.microphone" = "请在系统设置中允许麦克风，以使用语音输入。";
+// "speech.error.start" = "无法开始语音转写，请检查麦克风后重试。";
 
 "agent.status.thinking" = "正在思考";
 "agent.status.using_tool" = "正在使用 %@";
@@ -630,10 +633,12 @@
 "tool.photos_save_output" = "保存图片到照片";
 "tool.photos_recent_metadata" = "读取照片信息";
 "tool.map_search" = "搜索地点";
-"tool.weather_forecast" = "查询天气";
-"tool.weather_history" = "查询历史天气";
+// Temporarily disabled for App Review, 2026-11-07.
+// "tool.weather_forecast" = "查询天气";
+// "tool.weather_history" = "查询历史天气";
 "tool.natural_language_analyze" = "分析文本";
-"tool.health_activity_summary" = "读取健康活动";
+// Temporarily disabled for App Review, 2026-11-07.
+// "tool.health_activity_summary" = "读取健康活动";
 "tool.music_catalog_search" = "搜索 Apple Music";
 "tool.bluetooth_scan" = "扫描蓝牙设备";
 "tool.notification_schedule" = "安排通知";
@@ -665,22 +670,26 @@
 "tool.alarm_list" = "列出闹钟";
 "approval.field.duration" = "时长（秒）";
 "approval.value.recent_days" = "最近 %lld 天";
-"approval.value.health_aggregate" = "只读取每日汇总，不读取单条样本";
+// Temporarily disabled for App Review, 2026-11-07.
+// "approval.value.health_aggregate" = "只读取每日汇总，不读取单条样本";
 "approval.value.images_only" = "仅图片";
 "approval.value.all_media" = "图片、视频与音频";
 "approval.value.photo_metadata" = "只读取元数据，包含拍摄位置，不读取图片像素。";
 "approval.value.bluetooth_scope" = "仅前台发现设备，不连接、不读取特征值。";
-"approval.consequence.health_read" = "Familiar 会读取该时间范围内的活动汇总数据。结果可能作为工具输出发送给你选择的模型服务。";
+// Temporarily disabled for App Review, 2026-11-07.
+// "approval.consequence.health_read" = "Familiar 会读取该时间范围内的活动汇总数据。结果可能作为工具输出发送给你选择的模型服务。";
 "approval.consequence.photo_metadata_read" = "Familiar 会读取最近项目的元数据，其中可能包含每张照片的拍摄位置。结果可能作为工具输出发送给你选择的模型服务。";
 "approval.consequence.bluetooth_scan" = "Familiar 会发现正在广播这些服务的附近设备，并报告其名称与信号强度。结果可能作为工具输出发送给你选择的模型服务。";
 "settings.permissions.photos_read" = "读取照片信息";
-"settings.permissions.health" = "健康活动";
+// Temporarily disabled for App Review, 2026-11-07.
+// "settings.permissions.health" = "健康活动";
 "settings.permissions.music" = "Apple Music";
 "settings.permissions.bluetooth" = "蓝牙";
 "settings.permissions.limited" = "有限访问";
 "settings.permissions.requested" = "已请求";
 "settings.permissions.unsupported" = "不支持";
-"settings.permissions.health_footer" = "HealthKit 不会告知 App 你是否拒绝了读取请求，因此 Familiar 只能显示是否已经请求过。缺失的数值不会被当作零。";
+// Temporarily disabled for App Review, 2026-11-07.
+// "settings.permissions.health_footer" = "HealthKit 不会告知 App 你是否拒绝了读取请求，因此 Familiar 只能显示是否已经请求过。缺失的数值不会被当作零。";
 "settings.shell.title" = "执行环境";
 "settings.shell.detail" = "当前工作区的文件处理和依赖环境";
 "settings.shell.status" = "运行环境状态";
@@ -697,7 +706,9 @@
 "project.error.unknown_model" = "该模型已不可用。";
 "tool.category.basics" = "基础信息";
 "tool.category.calendar" = "日历与提醒";
-"tool.category.places" = "地点与天气";
+// Temporarily disabled for App Review, 2026-11-07.
+// "tool.category.places" = "地点与天气";
+"tool.category.places" = "地点";
 "tool.category.personal" = "个人数据";
 "tool.category.web" = "网页";
 "tool.category.project" = "项目资料与产物";
@@ -897,12 +908,16 @@
 "voice.providers" = "语音服务商";
 "voice.add" = "添加语音服务商";
 "voice.system" = "系统语音";
-"voice.input" = "语音输入";
+// Temporarily disabled for App Review, 2026-11-07.
+// "voice.input" = "语音输入";
 "voice.output" = "语音输出";
-"voice.input_model" = "识别模型（留空使用默认值）";
+// Temporarily disabled for App Review, 2026-11-07.
+// "voice.input_model" = "识别模型（留空使用默认值）";
 "voice.output_model" = "合成模型（留空使用默认值）";
 "voice.voice_id" = "声音 ID（留空使用默认值）";
-"voice.remote.footer" = "选择云端语音输入后，录音会发送给所选服务商；选择云端朗读后，回复文字会发送给所选服务商。系统输入在本机完成识别。";
+// Temporarily disabled for App Review, 2026-11-07.
+// "voice.remote.footer" = "选择云端语音输入后，录音会发送给所选服务商；选择云端朗读后，回复文字会发送给所选服务商。系统输入在本机完成识别。";
+"voice.remote.footer" = "选择云端朗读后，回复文字会发送给所选服务商。系统朗读使用 Apple 语音合成。";
 "voice.error.unsupported" = "此语音服务不支持这项操作。";
 "voice.error.http" = "语音请求失败（HTTP %lld）：%@";
 "voice.error.response" = "无法解析语音服务响应。";
@@ -980,7 +995,9 @@
 // Lazy tool loading
 "tool.group.web" = "网页";
 "tool.group.calendar" = "日历与提醒";
-"tool.group.places" = "地点与天气";
+// Temporarily disabled for App Review, 2026-11-07.
+// "tool.group.places" = "地点与天气";
+"tool.group.places" = "地点";
 "tool.group.files" = "文件";
 "tool.group.artifact" = "输出文件";
 "tool.group.memory" = "记忆";
@@ -1313,7 +1330,15 @@
 "files.delete.partial" = "已删除 %lld 项，%lld 项失败。失败文件仍保留，可重试。";
 
 "message.date.today" = "今天";
-
-/* App Review: native weather attribution and health discovery */
-"weather.attribution.legal" = "天气数据来源与法律信息";
-"settings.permissions.health_usage" = "使用健康活动前，请在“设置 → 模型服务”配置模型，然后新建会话并提问“读取最近七天的步数、活动能量和步行跑步距离”。查看应用内审批并允许所需的健康读取权限。Familiar 只读取这三项活动汇总，结果可能发送给你选择的模型服务。";
+// Temporarily disabled for App Review, 2026-11-07.
+//
+// /* App Review: native weather attribution and health discovery */
+// "weather.attribution.legal" = "天气数据来源与法律信息";
+// "settings.permissions.health_usage" = "使用健康活动前，请在“设置 → 模型服务”配置模型，然后新建会话并提问“读取最近七天的步数、活动能量和步行跑步距离”。查看应用内审批并允许所需的健康读取权限。Familiar 只读取这三项活动汇总，结果可能发送给你选择的模型服务。";
+"composer.preparing_message" = "正在准备消息…";
+"common.saving" = "正在保存…";
+"history.load_failed" = "暂时无法载入会话";
+"history.reload" = "重新载入";
+"history.scope_changed" = "载入期间会话发生了变化，请重新载入后继续。";
+"resource.error.destination_changed" = "文件保存位置已变化，请重新打开会话后重试。";
+"history.loading" = "正在载入会话…";

@@ -20,8 +20,8 @@ final class FamiliarRunPersistenceRecorder {
         snapshot: FamiliarContextSnapshot,
         startedAt: Date,
         context: ModelContext
-    ) {
-        guard let conversation = fetchConversation(id: snapshot.conversationID, in: context),
+    ) throws {
+        guard let conversation = try fetchConversation(id: snapshot.conversationID, in: context),
               !conversation.agentRuns.contains(where: { $0.runtimeID == runtimeID })
         else { return }
         let run = FamiliarAgentRun(
@@ -60,9 +60,7 @@ final class FamiliarRunPersistenceRecorder {
             ))
         }
         for attachment in snapshot.attachments {
-            let sourceData = FamiliarAttachmentStore.url(for: attachment.relativePath)
-                .flatMap { try? Data(contentsOf: $0, options: [.mappedIfSafe]) }
-                ?? Data(attachment.extractedText.utf8)
+            let hashes = snapshot.attachmentHashes[attachment.id]
             context.insert(FamiliarContextAttachmentReference(
                 contextSnapshotID: snapshot.id,
                 attachmentID: attachment.id,
@@ -70,8 +68,8 @@ final class FamiliarRunPersistenceRecorder {
                 mimeType: attachment.mimeType,
                 sourceRelativePath: attachment.relativePath,
                 byteSize: attachment.byteSize,
-                contentHash: FamiliarHash.sha256(sourceData),
-                extractedTextHash: FamiliarHash.sha256(Data(attachment.extractedText.utf8)),
+                contentHash: hashes?.content ?? FamiliarHash.sha256(attachment.extractedText),
+                extractedTextHash: hashes?.extractedText ?? FamiliarHash.sha256(attachment.extractedText),
                 createdAt: snapshot.createdAt
             ))
         }
@@ -114,9 +112,9 @@ final class FamiliarRunPersistenceRecorder {
 
     /// Uses the existing execution-audit row; no file body or new Domain entity.
     func recordCompilation(_ compilation: FamiliarContextCompilation, runtimeID: String, context: ModelContext) throws {
-        guard fetchRun(runtimeID: runtimeID, in: context) != nil else { throw FamiliarAgentError.incompleteResponse }
+        guard try fetchRun(runtimeID: runtimeID, in: context) != nil else { throw FamiliarAgentError.incompleteResponse }
         let activityID = "context:" + compilation.id.uuidString
-        guard fetchActivity(activityID: activityID, in: context) == nil else { return }
+        guard try fetchActivity(activityID: activityID, in: context) == nil else { return }
         let detail = String(decoding: try JSONEncoder().encode(compilation), as: UTF8.self)
         context.insert(FamiliarActivityRecord(activityID: activityID, runtimeID: runtimeID,
             assistantTurnID: runtimeID + ":context", kind: .runtimeNotice, phase: .succeeded,
@@ -131,7 +129,7 @@ final class FamiliarRunPersistenceRecorder {
         at date: Date,
         context: ModelContext
     ) throws {
-        guard let run = fetchRun(runtimeID: runtimeID, in: context),
+        guard let run = try fetchRun(runtimeID: runtimeID, in: context),
               let snapshotID = run.contextSnapshot?.id
         else { return }
         let existing = try context.fetch(FetchDescriptor<FamiliarRunSkillSnapshotRecord>(
@@ -162,7 +160,7 @@ final class FamiliarRunPersistenceRecorder {
         at date: Date,
         context: ModelContext
     ) throws {
-        guard fetchRun(runtimeID: runtimeID, in: context) != nil else { return }
+        guard try fetchRun(runtimeID: runtimeID, in: context) != nil else { return }
         let value: String = switch phase {
         case .starting: "starting"
         case .compactingContext: "compactingContext"
@@ -193,11 +191,11 @@ final class FamiliarRunPersistenceRecorder {
         eventSequence: Int,
         context: ModelContext
     ) throws {
-        guard let run = fetchRun(runtimeID: runtimeID, in: context) else { return }
+        guard let run = try fetchRun(runtimeID: runtimeID, in: context) else { return }
         run.assistantTurnID = assistantTurnID
-        let parentID = ensureTurnActivity(run: run, assistantTurnID: assistantTurnID, sequence: eventSequence, at: activity.startedAt, context: context).activityID
+        let parentID = try ensureTurnActivity(run: run, assistantTurnID: assistantTurnID, sequence: eventSequence, at: activity.startedAt, context: context).activityID
         let activityID = Self.toolActivityID(runtimeID: runtimeID, toolCallID: activity.id)
-        if fetchActivity(activityID: activityID, in: context) == nil {
+        if try fetchActivity(activityID: activityID, in: context) == nil {
             context.insert(FamiliarActivityRecord(
                 activityID: activityID,
                 runtimeID: runtimeID,
@@ -223,7 +221,7 @@ final class FamiliarRunPersistenceRecorder {
         at date: Date,
         context: ModelContext
     ) throws {
-        guard let activity = fetchActivity(activityID: Self.toolActivityID(runtimeID: runtimeID, toolCallID: progress.id), in: context) else { return }
+        guard let activity = try fetchActivity(activityID: Self.toolActivityID(runtimeID: runtimeID, toolCallID: progress.id), in: context) else { return }
         activity.detail = progress.detail
         activity.phase = .running
         activity.progress = progress.fractionCompleted
@@ -237,14 +235,14 @@ final class FamiliarRunPersistenceRecorder {
         context: ModelContext
     ) throws {
         guard let conversationID,
-              let conversation = fetchConversation(id: conversationID, in: context),
+              let conversation = try fetchConversation(id: conversationID, in: context),
               let run = conversation.agentRuns.first(where: { $0.runtimeID == event.runID })
         else { return }
         run.assistantTurnID = event.assistantTurnID
-        let parentID = ensureTurnActivity(run: run, assistantTurnID: event.assistantTurnID, sequence: eventSequence, at: event.startedAt, context: context).activityID
+        let parentID = try ensureTurnActivity(run: run, assistantTurnID: event.assistantTurnID, sequence: eventSequence, at: event.startedAt, context: context).activityID
         let activityID = Self.toolActivityID(runtimeID: event.runID, toolCallID: event.toolCallID)
         let activity: FamiliarActivityRecord
-        if let existing = fetchActivity(activityID: activityID, in: context) {
+        if let existing = try fetchActivity(activityID: activityID, in: context) {
             activity = existing
         } else {
             activity = FamiliarActivityRecord(activityID: activityID, runtimeID: event.runID, parentID: parentID, assistantTurnID: event.assistantTurnID, kind: .tool, effect: event.effect, phase: activityPhase(for: event.status), toolName: event.toolName, toolCallID: event.toolCallID, summary: event.toolName, sequence: eventSequence, startedAt: event.startedAt)
@@ -259,12 +257,12 @@ final class FamiliarRunPersistenceRecorder {
         activity.progress = 1
         activity.endedAt = event.finishedAt
         if let automatic = event.automaticApprovalRequest {
-            let approval = upsertApproval(automatic, assistantTurnID: event.assistantTurnID, activityID: activityID, requestedAt: event.finishedAt, context: context)
+            let approval = try upsertApproval(automatic, assistantTurnID: event.assistantTurnID, activityID: activityID, requestedAt: event.finishedAt, context: context)
             approval.decisionRawValue = FamiliarApprovalDecision.approved.rawValue
             approval.scopeRawValue = approvalScope(for: automatic.automaticAuthorizationScope)?.rawValue
             approval.resolvedAt = event.finishedAt
             activity.approvalRecordID = approval.id
-            linkInvocation(runtimeID: event.runID, toolCallID: event.toolCallID, approvalRecordID: approval.id, toolResultRecordID: nil, context: context)
+            try linkInvocation(runtimeID: event.runID, toolCallID: event.toolCallID, approvalRecordID: approval.id, toolResultRecordID: nil, context: context)
         }
         conversation.updatedAt = event.finishedAt
         try context.save()
@@ -277,7 +275,7 @@ final class FamiliarRunPersistenceRecorder {
         at date: Date,
         context: ModelContext
     ) throws {
-        guard fetchRun(runtimeID: request.runID, in: context) != nil else { return }
+        guard try fetchRun(runtimeID: request.runID, in: context) != nil else { return }
         try recordActivityStarted(
             .init(id: request.toolCallID, toolName: request.toolName, effect: request.effect, startedAt: date),
             runtimeID: request.runID,
@@ -286,13 +284,13 @@ final class FamiliarRunPersistenceRecorder {
             context: context
         )
         let activityID = Self.toolActivityID(runtimeID: request.runID, toolCallID: request.toolCallID)
-        let record = upsertApproval(request, assistantTurnID: assistantTurnID, activityID: activityID, requestedAt: date, context: context)
-        if let activity = fetchActivity(activityID: activityID, in: context) {
+        let record = try upsertApproval(request, assistantTurnID: assistantTurnID, activityID: activityID, requestedAt: date, context: context)
+        if let activity = try fetchActivity(activityID: activityID, in: context) {
             activity.phase = .awaitingApproval
             activity.approvalRecordID = record.id
             activity.summary = request.toolName
         }
-        linkInvocation(runtimeID: request.runID, toolCallID: request.toolCallID, approvalRecordID: record.id, toolResultRecordID: nil, context: context)
+        try linkInvocation(runtimeID: request.runID, toolCallID: request.toolCallID, approvalRecordID: record.id, toolResultRecordID: nil, context: context)
         try context.save()
     }
 
@@ -309,7 +307,7 @@ final class FamiliarRunPersistenceRecorder {
         record.decisionRawValue = values.decision.rawValue
         record.scopeRawValue = values.scope?.rawValue
         record.resolvedAt = date
-        if let activity = fetchActivity(activityID: record.activityID, in: context) {
+        if let activity = try fetchActivity(activityID: record.activityID, in: context) {
             activity.phase = decision.isConfirmed ? .running : .cancelled
             if !decision.isConfirmed { activity.endedAt = date }
         }
@@ -323,9 +321,9 @@ final class FamiliarRunPersistenceRecorder {
         at date: Date,
         context: ModelContext
     ) throws {
-        guard fetchRun(runtimeID: request.runID, in: context) != nil else { return }
+        guard try fetchRun(runtimeID: request.runID, in: context) != nil else { return }
         let activityID = Self.toolActivityID(runtimeID: request.runID, toolCallID: request.toolCallID)
-        if fetchActivity(activityID: activityID, in: context) == nil {
+        if try fetchActivity(activityID: activityID, in: context) == nil {
             try recordActivityStarted(
                 .init(id: request.toolCallID, toolName: "ask_user", effect: .read, startedAt: date),
                 runtimeID: request.runID,
@@ -348,7 +346,7 @@ final class FamiliarRunPersistenceRecorder {
                 requestedAt: date
             ))
         }
-        if let activity = fetchActivity(activityID: activityID, in: context) {
+        if let activity = try fetchActivity(activityID: activityID, in: context) {
             activity.phase = .awaitingClarification
             activity.summary = request.question
         }
@@ -370,7 +368,7 @@ final class FamiliarRunPersistenceRecorder {
         }
         record.resolutionJSON = try Self.requireEncodedJSON(resolution)
         record.resolvedAt = date
-        if let activity = fetchActivity(activityID: record.activityID, in: context) {
+        if let activity = try fetchActivity(activityID: record.activityID, in: context) {
             activity.phase = record.state == .resolved ? .running : .cancelled
             activity.detail = resolution.answer
             if record.state != .resolved { activity.endedAt = date }
@@ -386,11 +384,11 @@ final class FamiliarRunPersistenceRecorder {
         at date: Date,
         context: ModelContext
     ) throws {
-        guard let run = fetchRun(runtimeID: runtimeID, in: context) else { return }
+        guard let run = try fetchRun(runtimeID: runtimeID, in: context) else { return }
         run.assistantTurnID = assistantTurnID
-        let parentID = ensureTurnActivity(run: run, assistantTurnID: assistantTurnID, sequence: eventSequence, at: date, context: context).activityID
+        let parentID = try ensureTurnActivity(run: run, assistantTurnID: assistantTurnID, sequence: eventSequence, at: date, context: context).activityID
         let activityID = "notice:\(runtimeID):\(notice.kind.rawValue):\(eventSequence)"
-        guard fetchActivity(activityID: activityID, in: context) == nil else { return }
+        guard try fetchActivity(activityID: activityID, in: context) == nil else { return }
         context.insert(FamiliarActivityRecord(
             activityID: activityID,
             runtimeID: runtimeID,
@@ -416,18 +414,18 @@ final class FamiliarRunPersistenceRecorder {
         context: ModelContext
     ) throws -> Bool {
         guard let conversationID,
-              let conversation = fetchConversation(id: conversationID, in: context),
+              let conversation = try fetchConversation(id: conversationID, in: context),
               let run = conversation.agentRuns.first(where: { $0.runtimeID == event.runID })
         else { return false }
         let activityID = Self.toolActivityID(runtimeID: event.runID, toolCallID: event.toolCallID)
         let turnID = event.assistantTurnID
         run.assistantTurnID = turnID
-        _ = ensureTurnActivity(run: run, assistantTurnID: turnID, sequence: eventSequence, at: event.producedAt, context: context)
-        guard let activity = fetchActivity(activityID: activityID, in: context) else { return false }
+        _ = try ensureTurnActivity(run: run, assistantTurnID: turnID, sequence: eventSequence, at: event.producedAt, context: context)
+        guard let activity = try fetchActivity(activityID: activityID, in: context) else { return false }
         let insertedResult = activity.resultRecordID == nil
         let result = try upsertToolResult(event.envelope, event: event, activityID: activityID, context: context)
         activity.resultRecordID = result.id
-        linkInvocation(runtimeID: event.runID, toolCallID: event.toolCallID, approvalRecordID: nil, toolResultRecordID: result.id, context: context)
+        try linkInvocation(runtimeID: event.runID, toolCallID: event.toolCallID, approvalRecordID: nil, toolResultRecordID: result.id, context: context)
         conversation.updatedAt = event.producedAt
         do {
             try context.save()
@@ -449,14 +447,14 @@ final class FamiliarRunPersistenceRecorder {
         }
     }
 
-    func updateRunFirstToken(runtimeID: String, date: Date, context: ModelContext) {
-        guard let run = fetchRun(runtimeID: runtimeID, in: context), run.firstTokenAt == nil else { return }
+    func updateRunFirstToken(runtimeID: String, date: Date, context: ModelContext) throws {
+        guard let run = try fetchRun(runtimeID: runtimeID, in: context), run.firstTokenAt == nil else { return }
         run.firstTokenAt = date
-        try? context.save()
+        try saveContext(context)
     }
 
     func recordModelSelection(_ reference: FamiliarModelReference, runtimeID: String, context: ModelContext) throws {
-        guard let run = fetchRun(runtimeID: runtimeID, in: context) else { return }
+        guard let run = try fetchRun(runtimeID: runtimeID, in: context) else { return }
         var requests = try JSONDecoder().decode([FamiliarModelReference].self, from: Data((run.modelRequestsJSON ?? "[]").utf8))
         requests.append(reference)
         run.modelRequestsJSON = String(decoding: try JSONEncoder().encode(requests), as: UTF8.self)
@@ -464,7 +462,7 @@ final class FamiliarRunPersistenceRecorder {
     }
 
     func recordUsage(_ usage: FamiliarTokenUsage, runtimeID: String, context: ModelContext) throws {
-        guard let run = fetchRun(runtimeID: runtimeID, in: context) else { return }
+        guard let run = try fetchRun(runtimeID: runtimeID, in: context) else { return }
         if let count = usage.inputTokens { run.inputTokenCount = (run.inputTokenCount ?? 0) + count }
         if let count = usage.outputTokens { run.outputTokenCount = (run.outputTokenCount ?? 0) + count }
         if let count = usage.cachedInputTokens { run.cachedInputTokenCount = (run.cachedInputTokenCount ?? 0) + count }
@@ -479,29 +477,34 @@ final class FamiliarRunPersistenceRecorder {
         context: ModelContext,
         save: Bool = true
     ) throws {
-        let descriptor = FetchDescriptor<FamiliarAgentRun>(predicate: #Predicate { $0.runtimeID == runtimeID })
-        guard let run = try context.fetch(descriptor).first else { return }
-        let status: FamiliarAgentRunStatus = switch outcome.status {
-        case .succeeded: .completed
-        case .cancelled: .cancelled
-        case .failed: .failed
-        }
-        let reason = outcome.message ?? outcome.failureKind?.code ?? outcome.status.rawValue
-        run.status = status
-        run.finishReason = reason
-        run.finishedAt = date
-        if status == .failed || status == .cancelled {
-            ensureTerminalProjection(for: run, status: status, reason: reason, eventSequence: eventSequence, at: date, context: context)
-        }
-        finishClarifications(runtimeID: runtimeID, state: status == .cancelled ? .cancelled : .interrupted, at: date, context: context)
-        finishTurnActivities(for: run, status: status, at: date, context: context)
-        if let cursor = try context.fetch(FetchDescriptor<FamiliarRunResumeCursorRecord>(predicate: #Predicate { $0.runtimeID == runtimeID })).first {
-            cursor.phase = .terminal
-            cursor.lastEventSequence = eventSequence
-            cursor.updatedAt = date
-        }
-        if save {
-            do { try saveContext(context) } catch { context.rollback(); throw error }
+        do {
+            let descriptor = FetchDescriptor<FamiliarAgentRun>(predicate: #Predicate { $0.runtimeID == runtimeID })
+            guard let run = try context.fetch(descriptor).first else { return }
+            let status: FamiliarAgentRunStatus = switch outcome.status {
+            case .succeeded: .completed
+            case .cancelled: .cancelled
+            case .failed: .failed
+            }
+            let reason = outcome.message ?? outcome.failureKind?.code ?? outcome.status.rawValue
+            run.status = status
+            run.finishReason = reason
+            run.finishedAt = date
+            if status == .failed || status == .cancelled {
+                try ensureTerminalProjection(for: run, status: status, reason: reason, eventSequence: eventSequence, at: date, context: context)
+            }
+            try finishClarifications(runtimeID: runtimeID, state: status == .cancelled ? .cancelled : .interrupted, at: date, context: context)
+            try finishTurnActivities(for: run, status: status, at: date, context: context)
+            if let cursor = try context.fetch(FetchDescriptor<FamiliarRunResumeCursorRecord>(predicate: #Predicate { $0.runtimeID == runtimeID })).first {
+                cursor.phase = .terminal
+                cursor.lastEventSequence = eventSequence
+                cursor.updatedAt = date
+            }
+            if save {
+                try saveContext(context)
+            }
+        } catch {
+            if save { context.rollback() }
+            throw error
         }
     }
 
@@ -522,7 +525,7 @@ final class FamiliarRunPersistenceRecorder {
         context: ModelContext,
         save: Bool = true
     ) throws -> FamiliarResponseBlockRecord? {
-        guard let run = fetchRun(runtimeID: runtimeID, in: context) else { return nil }
+        guard let run = try fetchRun(runtimeID: runtimeID, in: context) else { return nil }
         let descriptor = FetchDescriptor<FamiliarResponseBlockRecord>(predicate: #Predicate { $0.id == id })
         if let existing = try context.fetch(descriptor).first {
             if existing.messageID == nil, let messageID {
@@ -544,7 +547,7 @@ final class FamiliarRunPersistenceRecorder {
             assistantTurnID: assistantTurnID,
             messageID: messageID,
             kind: kind,
-            order: order ?? nextBlockOrder(runtimeID: runtimeID, context: context),
+            order: try (order ?? nextBlockOrder(runtimeID: runtimeID, context: context)),
             state: state,
             content: content,
             payloadJSON: payloadJSON,
@@ -561,27 +564,16 @@ final class FamiliarRunPersistenceRecorder {
         return block
     }
 
-    func finishActiveRuns(
-        conversationID: UUID,
-        outcome: FamiliarRunOutcome,
-        context: ModelContext
-    ) {
-        let status: FamiliarAgentRunStatus = switch outcome.status {
-        case .succeeded: .completed
-        case .cancelled: .cancelled
-        case .failed: .failed
-        }
-        let reason = outcome.message ?? outcome.failureKind?.code ?? outcome.status.rawValue
-        guard let conversation = fetchConversation(id: conversationID, in: context) else { return }
-        for run in conversation.agentRuns where run.status == .running {
-            run.status = status
-            run.finishReason = reason
-            let date = Date()
-            run.finishedAt = date
-            ensureTerminalProjection(for: run, status: status, reason: reason, eventSequence: nextActivitySequence(runtimeID: run.runtimeID, context: context), at: date, context: context)
-            finishTurnActivities(for: run, status: status, at: date, context: context)
-        }
-        try? context.save()
+    func finishActiveRuns(conversationID: UUID, outcome: FamiliarRunOutcome, context: ModelContext) throws {
+        do {
+            let query = FetchDescriptor<FamiliarAgentRun>(predicate: #Predicate { $0.conversation?.id == conversationID })
+            for run in try context.fetch(query) where run.status == .running {
+                try finishRun(runtimeID: run.runtimeID, outcome: outcome,
+                    eventSequence: try nextActivitySequence(runtimeID: run.runtimeID, context: context),
+                    at: Date(), context: context, save: false)
+            }
+            try saveContext(context)
+        } catch { context.rollback(); throw error }
     }
 
     private func activityPhase(for status: FamiliarToolRunTerminalStatus) -> FamiliarActivityPhase {
@@ -592,9 +584,9 @@ final class FamiliarRunPersistenceRecorder {
         }
     }
 
-    private func ensureTurnActivity(run: FamiliarAgentRun, assistantTurnID: String, sequence: Int, at date: Date, context: ModelContext) -> FamiliarActivityRecord {
+    private func ensureTurnActivity(run: FamiliarAgentRun, assistantTurnID: String, sequence: Int, at date: Date, context: ModelContext) throws -> FamiliarActivityRecord {
         let activityID = Self.turnActivityID(assistantTurnID: assistantTurnID)
-        if let existing = fetchActivity(activityID: activityID, in: context) { return existing }
+        if let existing = try fetchActivity(activityID: activityID, in: context) { return existing }
         let activity = FamiliarActivityRecord(
             activityID: activityID,
             runtimeID: run.runtimeID,
@@ -609,9 +601,9 @@ final class FamiliarRunPersistenceRecorder {
         return activity
     }
 
-    private func upsertApproval(_ request: FamiliarToolConfirmationRequest, assistantTurnID: String, activityID: String, requestedAt: Date, context: ModelContext) -> FamiliarApprovalRecord {
+    private func upsertApproval(_ request: FamiliarToolConfirmationRequest, assistantTurnID: String, activityID: String, requestedAt: Date, context: ModelContext) throws -> FamiliarApprovalRecord {
         let descriptor = FetchDescriptor<FamiliarApprovalRecord>(predicate: #Predicate { $0.id == request.id })
-        if let existing = try? context.fetch(descriptor).first { return existing }
+        if let existing = try context.fetch(descriptor).first { return existing }
         let fieldsJSON = Self.encodedJSON(request.fields) ?? "[]"
         let durationsJSON = Self.encodedJSON(request.allowedAuthorizationDurations) ?? "[]"
         let record = FamiliarApprovalRecord(
@@ -659,8 +651,11 @@ final class FamiliarRunPersistenceRecorder {
         return result
     }
 
-    private func finishClarifications(runtimeID: String, state: FamiliarClarificationState, at date: Date, context: ModelContext) {
-        let records = (try? context.fetch(FetchDescriptor<FamiliarClarificationRecord>())) ?? []
+    private func finishClarifications(runtimeID: String, state: FamiliarClarificationState, at date: Date, context: ModelContext) throws {
+        let requested = FamiliarClarificationState.requested.rawValue
+        let records = try context.fetch(FetchDescriptor<FamiliarClarificationRecord>(predicate: #Predicate {
+            $0.runtimeID == runtimeID && $0.stateRawValue == requested
+        }))
         for record in records where record.runtimeID == runtimeID && record.state == .requested {
             record.state = state
             let resolution: FamiliarClarificationResolution = state == .cancelled ? .cancelled : .interrupted
@@ -669,10 +664,10 @@ final class FamiliarRunPersistenceRecorder {
         }
     }
 
-    private func ensureTerminalProjection(for run: FamiliarAgentRun, status: FamiliarAgentRunStatus, reason: String, eventSequence: Int, at date: Date, context: ModelContext) {
+    private func ensureTerminalProjection(for run: FamiliarAgentRun, status: FamiliarAgentRunStatus, reason: String, eventSequence: Int, at date: Date, context: ModelContext) throws {
         let assistantTurnID = run.assistantTurnID ?? "\(run.runtimeID):runtime"
         let activityID = "notice:\(run.runtimeID):terminal"
-        if fetchActivity(activityID: activityID, in: context) == nil {
+        if try fetchActivity(activityID: activityID, in: context) == nil {
             context.insert(FamiliarActivityRecord(
                 activityID: activityID,
                 runtimeID: run.runtimeID,
@@ -687,7 +682,7 @@ final class FamiliarRunPersistenceRecorder {
                 endedAt: date
             ))
         }
-        let blocks = responseBlocks(runtimeID: run.runtimeID, context: context)
+        let blocks = try responseBlocks(runtimeID: run.runtimeID, context: context)
         guard !blocks.contains(where: { $0.kind == .runtimeNotice }) else { return }
         let block = FamiliarResponseBlockRecord(
             runtimeID: run.runtimeID,
@@ -706,7 +701,7 @@ final class FamiliarRunPersistenceRecorder {
         run.responseBlockID = block.id
     }
 
-    private func finishTurnActivities(for run: FamiliarAgentRun, status: FamiliarAgentRunStatus, at date: Date, context: ModelContext) {
+    private func finishTurnActivities(for run: FamiliarAgentRun, status: FamiliarAgentRunStatus, at date: Date, context: ModelContext) throws {
         let runtimeID = run.runtimeID
         let descriptor = FetchDescriptor<FamiliarActivityRecord>(predicate: #Predicate { $0.runtimeID == runtimeID })
         let phase: FamiliarActivityPhase = switch status {
@@ -714,17 +709,17 @@ final class FamiliarRunPersistenceRecorder {
         case .cancelled: .cancelled
         case .running, .failed: .failed
         }
-        for activity in ((try? context.fetch(descriptor)) ?? []) where !activity.phase.isTerminal {
+        for activity in (try context.fetch(descriptor)) where !activity.phase.isTerminal {
             activity.phase = phase
             activity.progress = 1
             activity.endedAt = date
         }
     }
 
-    private func linkInvocation(runtimeID: String, toolCallID: String, approvalRecordID: UUID?, toolResultRecordID: UUID?, context: ModelContext) {
+    private func linkInvocation(runtimeID: String, toolCallID: String, approvalRecordID: UUID?, toolResultRecordID: UUID?, context: ModelContext) throws {
         let key = runtimeID + ":" + toolCallID
         let descriptor = FetchDescriptor<FamiliarToolInvocationRecord>(predicate: #Predicate { $0.idempotencyKey == key })
-        guard let invocation = try? context.fetch(descriptor).first else { return }
+        guard let invocation = try context.fetch(descriptor).first else { return }
         if let approvalRecordID { invocation.approvalRecordID = approvalRecordID }
         if let toolResultRecordID { invocation.toolResultRecordID = toolResultRecordID }
     }
@@ -747,28 +742,28 @@ final class FamiliarRunPersistenceRecorder {
         }
     }
 
-    private func nextBlockOrder(runtimeID: String, context: ModelContext) -> Int {
-        responseBlocks(runtimeID: runtimeID, context: context).map(\.order).max().map { $0 + 1 } ?? 0
+    private func nextBlockOrder(runtimeID: String, context: ModelContext) throws -> Int {
+        try responseBlocks(runtimeID: runtimeID, context: context).map(\.order).max().map { $0 + 1 } ?? 0
     }
 
-    private func responseBlocks(runtimeID: String, context: ModelContext) -> [FamiliarResponseBlockRecord] {
+    private func responseBlocks(runtimeID: String, context: ModelContext) throws -> [FamiliarResponseBlockRecord] {
         let descriptor = FetchDescriptor<FamiliarResponseBlockRecord>(predicate: #Predicate { $0.runtimeID == runtimeID })
-        return (try? context.fetch(descriptor)) ?? []
+        return try context.fetch(descriptor)
     }
 
-    private func nextActivitySequence(runtimeID: String, context: ModelContext) -> Int {
+    private func nextActivitySequence(runtimeID: String, context: ModelContext) throws -> Int {
         let descriptor = FetchDescriptor<FamiliarActivityRecord>(predicate: #Predicate { $0.runtimeID == runtimeID })
-        return ((try? context.fetch(descriptor)) ?? []).map(\.sequence).max().map { $0 + 1 } ?? 0
+        return (try context.fetch(descriptor)).map(\.sequence).max().map { $0 + 1 } ?? 0
     }
 
-    private func fetchRun(runtimeID: String, in context: ModelContext) -> FamiliarAgentRun? {
+    private func fetchRun(runtimeID: String, in context: ModelContext) throws -> FamiliarAgentRun? {
         let descriptor = FetchDescriptor<FamiliarAgentRun>(predicate: #Predicate { $0.runtimeID == runtimeID })
-        return try? context.fetch(descriptor).first
+        return try context.fetch(descriptor).first
     }
 
-    private func fetchActivity(activityID: String, in context: ModelContext) -> FamiliarActivityRecord? {
+    private func fetchActivity(activityID: String, in context: ModelContext) throws -> FamiliarActivityRecord? {
         let descriptor = FetchDescriptor<FamiliarActivityRecord>(predicate: #Predicate { $0.activityID == activityID })
-        return try? context.fetch(descriptor).first
+        return try context.fetch(descriptor).first
     }
 
     private static func encodedJSON<T: Encodable>(_ value: T) -> String? {
@@ -781,11 +776,11 @@ final class FamiliarRunPersistenceRecorder {
         return String(decoding: try encoder.encode(value), as: UTF8.self)
     }
 
-    private func fetchConversation(id: UUID, in context: ModelContext) -> FamiliarConversation? {
+    private func fetchConversation(id: UUID, in context: ModelContext) throws -> FamiliarConversation? {
         var descriptor = FetchDescriptor<FamiliarConversation>(
             predicate: #Predicate { conversation in conversation.id == id }
         )
         descriptor.fetchLimit = 1
-        return try? context.fetch(descriptor).first
+        return try context.fetch(descriptor).first
     }
 }

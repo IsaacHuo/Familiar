@@ -103,12 +103,14 @@ struct FamiliarComposer: View {
     @Binding var selectedSkillID: UUID?
     let skills: [FamiliarSkillMenuItem]
     let isSending: Bool
-    let isListening: Bool
+// Temporarily disabled for App Review, 2026-11-07.
+//     let isListening: Bool
     let draftScopeID: UUID?
     let attachmentOwnerID: UUID?
     let isAttachmentOwnerCurrent: (UUID?) -> Bool
     let focus: Binding<Bool>
-    let onSpeech: () -> Void
+// Temporarily disabled for App Review, 2026-11-07.
+//     let onSpeech: () -> Void
     let onSend: () -> Void
     let isEditingMessage: Bool
     let isAnsweringClarification: Bool
@@ -147,10 +149,12 @@ struct FamiliarComposer: View {
         selectedSkillID: Binding<UUID?>,
         skills: [FamiliarSkillMenuItem],
         isSending: Bool,
-        isListening: Bool,
+// Temporarily disabled for App Review, 2026-11-07.
+//         isListening: Bool,
         draftScopeID: UUID?,
         focus: Binding<Bool>,
-        onSpeech: @escaping () -> Void,
+// Temporarily disabled for App Review, 2026-11-07.
+//         onSpeech: @escaping () -> Void,
         onSend: @escaping () -> Void,
         availableHeight: CGFloat,
         isAnsweringClarification: Bool = false,
@@ -170,10 +174,12 @@ struct FamiliarComposer: View {
         _selectedSkillID = selectedSkillID
         self.skills = skills
         self.isSending = isSending
-        self.isListening = isListening
+// Temporarily disabled for App Review, 2026-11-07.
+//         self.isListening = isListening
         self.draftScopeID = draftScopeID
         self.focus = focus
-        self.onSpeech = onSpeech
+// Temporarily disabled for App Review, 2026-11-07.
+//         self.onSpeech = onSpeech
         self.onSend = onSend
         self.availableHeight = availableHeight
         self.isAnsweringClarification = isAnsweringClarification
@@ -438,21 +444,28 @@ struct FamiliarComposer: View {
         Task { @MainActor in await Task.yield(); focus.wrappedValue = true }
     }
 
-    private var showsSpeechAction: Bool {
-        !isAnsweringClarification && !isSending &&
-            (isListening || (!hasText && images.isEmpty && documents.isEmpty))
-    }
-
+// Temporarily disabled for App Review, 2026-11-07.
+//     private var showsSpeechAction: Bool {
+//         !isAnsweringClarification && !isSending &&
+//             (isListening || (!hasText && images.isEmpty && documents.isEmpty))
     private var primaryActionSymbol: String {
-        showsSpeechAction ? (isListening ? "waveform" : "mic") : (showsStop ? "stop.fill" : "arrow.up")
+        showsStop ? "stop.fill" : "arrow.up"
     }
 
-    /// A single Button retains its identity, frame and accessibility focus while
-    /// microphone / send / stop change. Dictation keeps its Stop action as text arrives.
+// Temporarily disabled for App Review, 2026-11-07.
+//     private var primaryActionSymbol: String {
+//         showsSpeechAction ? (isListening ? "waveform" : "mic") : (showsStop ? "stop.fill" : "arrow.up")
+//     }
+//
+//     /// A single Button retains its identity, frame and accessibility focus while
+//     /// microphone / send / stop change. Dictation keeps its Stop action as text arrives.
+    /// Retain one Button identity and hit target across send and stop states.
     private var primaryActionButton: some View {
         Button {
-            if showsSpeechAction { onSpeech() }
-            else if isAnsweringClarification { if canSend { inputControl.commitText(); onSend() } }
+// Temporarily disabled for App Review, 2026-11-07.
+//             if showsSpeechAction { onSpeech() }
+//             else if isAnsweringClarification { if canSend { inputControl.commitText(); onSend() } }
+            if isAnsweringClarification { if canSend { inputControl.commitText(); onSend() } }
             else if isSending { FamiliarHaptics.shared.perform(.selection); onSend() }
             else if !pendingImports.isEmpty { return }
             else if hasText || !documents.isEmpty || !images.isEmpty {
@@ -463,25 +476,37 @@ struct FamiliarComposer: View {
         } label: {
             Image(systemName: primaryActionSymbol)
                 .contentTransition(reduceMotion ? .opacity : .symbolEffect(.replace))
-                .symbolEffect(.breathe, isActive: showsSpeechAction && isListening && !reduceMotion)
-                .font(.system(size: showsSpeechAction ? FamiliarIconSize.prominent : FamiliarIconSize.standard,
-                    weight: showsSpeechAction && !isListening ? .regular : .semibold))
-                .foregroundStyle(showsSpeechAction ? (isListening ? FamiliarTheme.accent : Color.primary) : FamiliarTheme.onAccent)
+// Temporarily disabled for App Review, 2026-11-07.
+//                 .symbolEffect(.breathe, isActive: showsSpeechAction && isListening && !reduceMotion)
+//                 .font(.system(size: showsSpeechAction ? FamiliarIconSize.prominent : FamiliarIconSize.standard,
+//                     weight: showsSpeechAction && !isListening ? .regular : .semibold))
+//                 .foregroundStyle(showsSpeechAction ? (isListening ? FamiliarTheme.accent : Color.primary) : FamiliarTheme.onAccent)
+                .font(.system(size: FamiliarIconSize.standard, weight: .semibold))
+                .foregroundStyle(FamiliarTheme.onAccent)
                 .frame(width: FamiliarControlSize.standardVisual, height: FamiliarControlSize.standardVisual)
-                .background(showsSpeechAction ? Color.clear : (canSend ? FamiliarTheme.accent : Color.secondary.opacity(0.28)), in: Circle())
+// Temporarily disabled for App Review, 2026-11-07.
+//                 .background(showsSpeechAction ? Color.clear : (canSend ? FamiliarTheme.accent : Color.secondary.opacity(0.28)), in: Circle())
+                .background(canSend ? FamiliarTheme.accent : Color.secondary.opacity(0.28), in: Circle())
                 .frame(width: FamiliarControlSize.minimumHitTarget, height: FamiliarControlSize.minimumHitTarget)
         }
         .buttonStyle(FamiliarIconButtonStyle())
-        .disabled(!showsSpeechAction && (!canSend || (!isSending && executionBlocked)))
+// Temporarily disabled for App Review, 2026-11-07.
+//         .disabled(!showsSpeechAction && (!canSend || (!isSending && executionBlocked)))
+        .disabled(!canSend || (!isSending && executionBlocked))
         .animation(reduceMotion ? nil : FamiliarMotion.micro, value: primaryActionSymbol)
         .animation(reduceMotion ? nil : FamiliarMotion.micro, value: canSend)
-        .accessibilityIdentifier(showsSpeechAction ? "composer.speech" : "composer.send")
+// Temporarily disabled for App Review, 2026-11-07.
+//         .accessibilityIdentifier(showsSpeechAction ? "composer.speech" : "composer.send")
+        .accessibilityIdentifier("composer.send")
         .accessibilityLabel(primaryActionLabel)
-        .accessibilityHint(showsSpeechAction ? "" : sendDisabledReason ?? "")
+// Temporarily disabled for App Review, 2026-11-07.
+//         .accessibilityHint(showsSpeechAction ? "" : sendDisabledReason ?? "")
+        .accessibilityHint(sendDisabledReason ?? "")
     }
 
     private var primaryActionLabel: String {
-        if showsSpeechAction { return String(localized: isListening ? "speech.stop" : "speech.start") }
+// Temporarily disabled for App Review, 2026-11-07.
+//         if showsSpeechAction { return String(localized: isListening ? "speech.stop" : "speech.start") }
         return String(localized: isAnsweringClarification ? "clarification.submit" :
             (showsStop ? "message.stop" : (isEditingMessage ? "message.edit.send" : "message.send")))
     }

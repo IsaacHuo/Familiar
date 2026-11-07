@@ -27,7 +27,6 @@ struct FamiliarRootView: View {
         .preferredColorScheme(FamiliarAppearancePreference(rawValue: appearance)?.colorScheme)
         .onAppear {
             handlePendingAppIntent()
-            dependencies.prewarmShellRuntime()
         }
         .onChange(of: appIntentHandoff.pendingRequest) { _, _ in handlePendingAppIntent() }
         .onOpenURL { url in

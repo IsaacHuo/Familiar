@@ -240,14 +240,15 @@ private struct FamiliarImageGalleryController: UIViewControllerRepresentable {
         }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
         override func removeFromSuperview() { task?.cancel(); task = nil; super.removeFromSuperview() }
+        isolated deinit { task?.cancel() }
         func prepare(full: Bool) {
             let pixels = full ? 3_072 : 512
             guard pixels > preparedPixels, pixels > requestedPixels else { return }
             task?.cancel(); requestedPixels = pixels
+            let url = self.url, identity = self.identity
             task = Task { @MainActor [weak self] in
-                guard let self else { return }
                 let image = await FamiliarThumbnailLoader.shared.image(url: url, pixels: pixels, identity: identity)
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, let self else { return }
                 preparedPixels = pixels; requestedPixels = 0; finished = true; imageView.image = image ?? UIImage(systemName: "photo.badge.exclamationmark"); fittedSize = .zero; setNeedsLayout(); layoutIfNeeded(); ready?()
             }
         }

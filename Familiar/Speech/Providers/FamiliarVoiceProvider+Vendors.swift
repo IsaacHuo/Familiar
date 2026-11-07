@@ -11,30 +11,35 @@ import CryptoKit
 // auth. Vendors that cannot be exercised in this environment (HMAC signing,
 // base64-wrapped audio) mirror their public API docs as closely as possible.
 
-// MARK: - Groq (ASR only, OpenAI-compatible, only the default model differs)
-
-@MainActor final class FamiliarGroqVoiceProvider: FamiliarVoiceProvider {
-    override var supportsVoiceOutput: Bool { false }
-    override func defaultVoiceInputModel() -> String { "whisper-large-v3-turbo" }
-
-    override func buildVoiceOutputRequest(_ request: FamiliarVoiceOutputRequest) throws -> URLRequest {
-        throw FamiliarVoiceProviderError.unsupported("Groq does not support speech synthesis")
-    }
-}
-
+// Temporarily disabled for App Review, 2026-11-07.
+// // MARK: - Groq (ASR only, OpenAI-compatible, only the default model differs)
+//
+// @MainActor final class FamiliarGroqVoiceProvider: FamiliarVoiceProvider {
+//     override var supportsVoiceOutput: Bool { false }
+//     override func defaultVoiceInputModel() -> String { "whisper-large-v3-turbo" }
+//
+//     override func buildVoiceOutputRequest(_ request: FamiliarVoiceOutputRequest) throws -> URLRequest {
+//         throw FamiliarVoiceProviderError.unsupported("Groq does not support speech synthesis")
+//     }
+// }
+//
 // MARK: - Alibaba Bailian (OpenAI-compatible, only default models differ)
 
 @MainActor final class FamiliarAlibabaVoiceProvider: FamiliarVoiceProvider {
-    override func defaultVoiceInputModel() -> String  { "paraformer-realtime-v2" }
+// Temporarily disabled for App Review, 2026-11-07.
+//     override func defaultVoiceInputModel() -> String  { "paraformer-realtime-v2" }
     override func defaultVoiceOutputModel() -> String { "cosyvoice-v2" }
     override func defaultVoiceOutputVoice() -> String { "longxiaochun" }
 }
 
-// MARK: - xAI (ASR endpoint path differs: /v1/stt)
+// Temporarily disabled for App Review, 2026-11-07.
+// // MARK: - xAI (ASR endpoint path differs: /v1/stt)
+// MARK: - xAI speech synthesis
 
 @MainActor final class FamiliarXAIVoiceProvider: FamiliarVoiceProvider {
-    override func voiceInputEndpointPath() -> String  { "/v1/stt" }
-    override func defaultVoiceInputModel() -> String  { "grok-stt" }
+// Temporarily disabled for App Review, 2026-11-07.
+//     override func voiceInputEndpointPath() -> String  { "/v1/stt" }
+//     override func defaultVoiceInputModel() -> String  { "grok-stt" }
     override func defaultVoiceOutputModel() -> String { "grok-tts-1" }
     override func defaultVoiceOutputVoice() -> String { "eve" }
 }
@@ -42,11 +47,12 @@ import CryptoKit
 // MARK: - MiniMax (TTS only, distinct body, base64-nested response)
 
 @MainActor final class FamiliarMiniMaxVoiceProvider: FamiliarVoiceProvider {
-    override var supportsVoiceInput: Bool { false }
-
-    override func buildVoiceInputRequest(_ request: FamiliarVoiceInputRequest) throws -> URLRequest {
-        throw FamiliarVoiceProviderError.unsupported("MiniMax does not support speech recognition")
-    }
+// Temporarily disabled for App Review, 2026-11-07.
+//     override var supportsVoiceInput: Bool { false }
+//
+//     override func buildVoiceInputRequest(_ request: FamiliarVoiceInputRequest) throws -> URLRequest {
+//         throw FamiliarVoiceProviderError.unsupported("MiniMax does not support speech recognition")
+//     }
 
     /// [T-voice-minimax-tts-404] MiniMax's NATIVE TTS endpoint (`/v1/t2a_v2`)
     /// lives at the API host ROOT — NOT under the `/anthropic` chat-proxy path.
@@ -170,7 +176,9 @@ import CryptoKit
     override func defaultVoiceOutputVoice() -> String { "female-shaonv" }
 }
 
-// MARK: - Doubao / Volcano (TTS + ASR, two-credential auth, distinct formats)
+// Temporarily disabled for App Review, 2026-11-07.
+// // MARK: - Doubao / Volcano (TTS + ASR, two-credential auth, distinct formats)
+// MARK: - Doubao / Volcano (TTS, two-credential auth)
 
 @MainActor final class FamiliarDoubaoVoiceProvider: FamiliarVoiceProvider {
 
@@ -247,51 +255,56 @@ import CryptoKit
 
     // -- ASR (v3 bigmodel flash recognize) ------------------------------------
 
-    override func voiceInputEndpointPath() -> String { "/api/v3/auc/bigmodel/recognize/flash" }
-
-    override func buildVoiceInputRequest(_ request: FamiliarVoiceInputRequest) throws -> URLRequest {
-        let urlStr = composedURLString(path: voiceInputEndpointPath())
-        guard let url = URL(string: urlStr) else {
-            throw FamiliarVoiceProviderError.parseError("Invalid URL: \(urlStr)")
-        }
-        var urlRequest = URLRequest(url: url)
-        urlRequest.httpMethod = "POST"
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.setValue("volc.bigasr.auc_turbo", forHTTPHeaderField: "X-Api-Resource-Id")
-        urlRequest.setValue(UUID().uuidString, forHTTPHeaderField: "X-Api-Request-Id")
-        urlRequest.setValue("-1", forHTTPHeaderField: "X-Api-Sequence")
-        applyVoiceAuth(&urlRequest)
-
-        let body: [String: Any] = [
-            "user": ["uid": "minis_user"],
-            "audio": ["data": request.audioData.base64EncodedString()],
-            "request": ["model_name": "bigmodel"]
-        ]
-        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
-        return urlRequest
-    }
-
+// Temporarily disabled for App Review, 2026-11-07.
+//     override func voiceInputEndpointPath() -> String { "/api/v3/auc/bigmodel/recognize/flash" }
     // v3 ASR response: { "result": { "text": "..." }, "audio_info": { ... } }
-    override func parseVoiceInputResponse(_ data: Data,
-                                          request: FamiliarVoiceInputRequest) throws -> FamiliarVoiceInputResponse {
-        guard
-            let json   = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let result = json["result"] as? [String: Any],
-            let text   = result["text"] as? String
-        else {
-            throw FamiliarVoiceProviderError.parseError("Unexpected Doubao v3 ASR response format")
-        }
-        let duration = (json["audio_info"] as? [String: Any])?["duration"] as? Double
-        return FamiliarVoiceInputResponse(text: text, language: request.language,
-                                  duration: duration.map { $0 / 1000 })
-    }
 
-    override func defaultVoiceInputModel() -> String  { "bigmodel" }
+// Temporarily disabled for App Review, 2026-11-07.
+//     override func buildVoiceInputRequest(_ request: FamiliarVoiceInputRequest) throws -> URLRequest {
+//         let urlStr = composedURLString(path: voiceInputEndpointPath())
+//         guard let url = URL(string: urlStr) else {
+//             throw FamiliarVoiceProviderError.parseError("Invalid URL: \(urlStr)")
+//         }
+//         var urlRequest = URLRequest(url: url)
+//         urlRequest.httpMethod = "POST"
+//         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+//         urlRequest.setValue("volc.bigasr.auc_turbo", forHTTPHeaderField: "X-Api-Resource-Id")
+//         urlRequest.setValue(UUID().uuidString, forHTTPHeaderField: "X-Api-Request-Id")
+//         urlRequest.setValue("-1", forHTTPHeaderField: "X-Api-Sequence")
+//         applyVoiceAuth(&urlRequest)
+//
+//         let body: [String: Any] = [
+//             "user": ["uid": "minis_user"],
+//             "audio": ["data": request.audioData.base64EncodedString()],
+//             "request": ["model_name": "bigmodel"]
+//         ]
+//         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+//         return urlRequest
+//     }
+//
+//     // v3 ASR response: { "result": { "text": "..." }, "audio_info": { ... } }
+//     override func parseVoiceInputResponse(_ data: Data,
+//                                           request: FamiliarVoiceInputRequest) throws -> FamiliarVoiceInputResponse {
+//         guard
+//             let json   = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+//             let result = json["result"] as? [String: Any],
+//             let text   = result["text"] as? String
+//         else {
+//             throw FamiliarVoiceProviderError.parseError("Unexpected Doubao v3 ASR response format")
+//         }
+//         let duration = (json["audio_info"] as? [String: Any])?["duration"] as? Double
+//         return FamiliarVoiceInputResponse(text: text, language: request.language,
+//                                   duration: duration.map { $0 / 1000 })
+//     }
+//
+//     override func defaultVoiceInputModel() -> String  { "bigmodel" }
     override func defaultVoiceOutputModel() -> String { "zh_female_cancan_uranus_bigtts" }
     override func defaultVoiceOutputVoice() -> String { "zh_female_cancan_uranus_bigtts" }
 }
 
-// MARK: - iFlytek / Xunfei (ASR with HMAC-SHA256 signed URL)
+// Temporarily disabled for App Review, 2026-11-07.
+// // MARK: - iFlytek / Xunfei (ASR with HMAC-SHA256 signed URL)
+// MARK: - iFlytek / Xunfei (TTS with HMAC-SHA256 signed URL)
 
 @MainActor final class FamiliarXunfeiVoiceProvider: FamiliarVoiceProvider {
     let appId:     String
@@ -301,7 +314,9 @@ import CryptoKit
         self.appId     = appId
         self.apiSecret = apiSecret
         super.init(providerId: providerId,
-                   baseURL: "https://iat-api.xfyun.cn",
+// Temporarily disabled for App Review, 2026-11-07.
+//                    baseURL: "https://iat-api.xfyun.cn",
+                   baseURL: "https://tts-api.xfyun.cn",
                    apiKey: apiKey)
     }
 
@@ -314,7 +329,9 @@ import CryptoKit
     private static let defaultTTSVoice = "xiaoyan"
 
     /// Xunfei TTS is a WebSocket endpoint (tts-api.xfyun.cn/v2/tts) that streams
-    /// base64 PCM frames, signed with the same HMAC scheme as ASR. We collect all
+// Temporarily disabled for App Review, 2026-11-07.
+//     /// base64 PCM frames, signed with the same HMAC scheme as ASR. We collect all
+    /// base64 PCM frames, signed with HMAC-SHA256. We collect all
     /// frames and wrap the raw 16k PCM in a WAV header for AVAudioPlayer.
     override func synthesize(_ request: FamiliarVoiceOutputRequest) async throws -> Data {
         let host = "tts-api.xfyun.cn"
@@ -381,68 +398,71 @@ import CryptoKit
         return wav
     }
 
-    override func buildVoiceInputRequest(_ request: FamiliarVoiceInputRequest) throws -> URLRequest {
-        let date = Date()
-        let signedURLStr = buildSignedURL(date: date)
-        guard let url = URL(string: signedURLStr) else {
-            throw FamiliarVoiceProviderError.parseError("Failed to build Xunfei signed URL")
-        }
-        var urlRequest = URLRequest(url: url)
-        urlRequest.httpMethod = "POST"
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let audioBase64 = request.audioData.base64EncodedString()
-        let body: [String: Any] = [
-            "header": ["app_id": appId, "status": 3],
-            "parameter": [
-                "iat": [
-                    "domain":   "iat",
-                    "language": request.language ?? "zh_cn",
-                    "accent":   "mandarin",
-                    "result":   ["encoding": "utf8", "compress": "raw", "format": "json"]
-                ]
-            ],
-            "payload": [
-                "audio": [
-                    "encoding":    "raw",
-                    "sample_rate": 16000,
-                    "channels":    1,
-                    "bit_depth":   16,
-                    "status":      3,
-                    "audio":       audioBase64
-                ]
-            ]
-        ]
-        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
-        return urlRequest
-    }
-
-    override func parseVoiceInputResponse(_ data: Data,
-                                          request: FamiliarVoiceInputRequest) throws -> FamiliarVoiceInputResponse {
-        guard
-            let json     = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let header   = json["header"] as? [String: Any],
-            (header["code"] as? Int) == 0,
-            let payload  = json["payload"] as? [String: Any],
-            let result   = payload["result"] as? [String: Any],
-            let b64Text  = result["text"] as? String,
-            let textData = Data(base64Encoded: b64Text),
-            let textJson = try? JSONSerialization.jsonObject(with: textData) as? [String: Any]
-        else {
-            throw FamiliarVoiceProviderError.parseError("Unexpected Xunfei ASR response format")
-        }
-
-        let text = (textJson["ws"] as? [[String: Any]] ?? [])
-            .flatMap { $0["cw"] as? [[String: Any]] ?? [] }
-            .compactMap { $0["w"] as? String }
-            .joined()
-
-        return FamiliarVoiceInputResponse(text: text, language: request.language, duration: nil)
-    }
-
+// Temporarily disabled for App Review, 2026-11-07.
+//     override func buildVoiceInputRequest(_ request: FamiliarVoiceInputRequest) throws -> URLRequest {
+//         let date = Date()
+//         let signedURLStr = buildSignedURL(date: date)
+//         guard let url = URL(string: signedURLStr) else {
+//             throw FamiliarVoiceProviderError.parseError("Failed to build Xunfei signed URL")
+//         }
+//         var urlRequest = URLRequest(url: url)
+//         urlRequest.httpMethod = "POST"
+//         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+//
+//         let audioBase64 = request.audioData.base64EncodedString()
+//         let body: [String: Any] = [
+//             "header": ["app_id": appId, "status": 3],
+//             "parameter": [
+//                 "iat": [
+//                     "domain":   "iat",
+//                     "language": request.language ?? "zh_cn",
+//                     "accent":   "mandarin",
+//                     "result":   ["encoding": "utf8", "compress": "raw", "format": "json"]
+//                 ]
+//             ],
+//             "payload": [
+//                 "audio": [
+//                     "encoding":    "raw",
+//                     "sample_rate": 16000,
+//                     "channels":    1,
+//                     "bit_depth":   16,
+//                     "status":      3,
+//                     "audio":       audioBase64
+//                 ]
+//             ]
+//         ]
+//         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+//         return urlRequest
+//     }
+//
+//     override func parseVoiceInputResponse(_ data: Data,
+//                                           request: FamiliarVoiceInputRequest) throws -> FamiliarVoiceInputResponse {
+//         guard
+//             let json     = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+//             let header   = json["header"] as? [String: Any],
+//             (header["code"] as? Int) == 0,
+//             let payload  = json["payload"] as? [String: Any],
+//             let result   = payload["result"] as? [String: Any],
+//             let b64Text  = result["text"] as? String,
+//             let textData = Data(base64Encoded: b64Text),
+//             let textJson = try? JSONSerialization.jsonObject(with: textData) as? [String: Any]
+//         else {
+//             throw FamiliarVoiceProviderError.parseError("Unexpected Xunfei ASR response format")
+//         }
+//
+//         let text = (textJson["ws"] as? [[String: Any]] ?? [])
+//             .flatMap { $0["cw"] as? [[String: Any]] ?? [] }
+//             .compactMap { $0["w"] as? String }
+//             .joined()
+//
+//         return FamiliarVoiceInputResponse(text: text, language: request.language, duration: nil)
+//     }
+//
     // MARK: - HMAC-SHA256 URL signature
 
-    private func buildSignedURL(host: String = "iat-api.xfyun.cn", path: String = "/v2/iat", date: Date) -> String {
+// Temporarily disabled for App Review, 2026-11-07.
+//     private func buildSignedURL(host: String = "iat-api.xfyun.cn", path: String = "/v2/iat", date: Date) -> String {
+    private func buildSignedURL(host: String, path: String, date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale     = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss z"
@@ -481,7 +501,8 @@ import CryptoKit
         return "Kore"
     }
 
-    override var supportsVoiceInput: Bool { false }
+// Temporarily disabled for App Review, 2026-11-07.
+//     override var supportsVoiceInput: Bool { false }
     override var supportsVoiceOutput: Bool { true }
     override func defaultVoiceOutputModel() -> String { "gemini-2.5-flash-preview-tts" }
 
@@ -587,7 +608,8 @@ import CryptoKit
     private static let defaultVoiceId = "21m00Tcm4TlvDq8ikWAM" // Rachel
     private static let modelId = "eleven_multilingual_v2"
 
-    override var supportsVoiceInput: Bool { false }
+// Temporarily disabled for App Review, 2026-11-07.
+//     override var supportsVoiceInput: Bool { false }
     override var supportsVoiceOutput: Bool { true }
 
     override func synthesize(_ request: FamiliarVoiceOutputRequest) async throws -> Data {
@@ -615,7 +637,9 @@ import CryptoKit
     }
 }
 
-// MARK: - Deepgram — ASR (/v1/listen) + TTS Aura (/v1/speak), Token header
+// Temporarily disabled for App Review, 2026-11-07.
+// // MARK: - Deepgram — ASR (/v1/listen) + TTS Aura (/v1/speak), Token header
+// MARK: - Deepgram — TTS Aura (/v1/speak), Token header
 
 /// Deepgram. ASR posts raw audio to /v1/listen?model=…; TTS (Aura) posts text to
 /// /v1/speak?model=… and returns audio. Auth: `Authorization: Token <key>`.
@@ -624,7 +648,8 @@ import CryptoKit
     private static let defaultASRModel = "nova-2"
     private static let defaultTTSModel = "aura-asteria-en"
 
-    override var supportsVoiceInput: Bool { true }
+// Temporarily disabled for App Review, 2026-11-07.
+//     override var supportsVoiceInput: Bool { true }
     override var supportsVoiceOutput: Bool { true }
 
     private func dgBase() -> String {
@@ -649,45 +674,49 @@ import CryptoKit
     }
 
     // -- ASR ---------------------------------------------------------
-    override func buildVoiceInputRequest(_ request: FamiliarVoiceInputRequest) throws -> URLRequest {
-        let model = (request.model?.isEmpty == false) ? request.model! : Self.defaultASRModel
-        var qs = "model=\(model)&smart_format=true"
-        if let lang = request.language, !lang.isEmpty { qs += "&language=\(lang)" }
-        guard let url = URL(string: "\(dgBase())/listen?\(qs)") else {
-            throw FamiliarVoiceProviderError.parseError("Deepgram: bad ASR URL")
-        }
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("Token \(apiKey ?? "")", forHTTPHeaderField: "Authorization")
-        req.setValue("audio/wav", forHTTPHeaderField: "Content-Type")
-        req.httpBody = request.audioData
-        return req
-    }
+// Temporarily disabled for App Review, 2026-11-07.
+//     override func buildVoiceInputRequest(_ request: FamiliarVoiceInputRequest) throws -> URLRequest {
+//         let model = (request.model?.isEmpty == false) ? request.model! : Self.defaultASRModel
+//         var qs = "model=\(model)&smart_format=true"
+//         if let lang = request.language, !lang.isEmpty { qs += "&language=\(lang)" }
+//         guard let url = URL(string: "\(dgBase())/listen?\(qs)") else {
+//             throw FamiliarVoiceProviderError.parseError("Deepgram: bad ASR URL")
+//         }
+//         var req = URLRequest(url: url)
+//         req.httpMethod = "POST"
+//         req.setValue("Token \(apiKey ?? "")", forHTTPHeaderField: "Authorization")
+//         req.setValue("audio/wav", forHTTPHeaderField: "Content-Type")
+//         req.httpBody = request.audioData
+//         return req
+//     }
 
-    override func parseVoiceInputResponse(_ data: Data, request: FamiliarVoiceInputRequest) throws -> FamiliarVoiceInputResponse {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let results = json["results"] as? [String: Any],
-              let channels = results["channels"] as? [[String: Any]],
-              let alts = channels.first?["alternatives"] as? [[String: Any]],
-              let transcript = alts.first?["transcript"] as? String else {
-            throw FamiliarVoiceProviderError.parseError("Unexpected Deepgram ASR response")
-        }
-        return FamiliarVoiceInputResponse(text: transcript, language: request.language, duration: nil)
-    }
+// Temporarily disabled for App Review, 2026-11-07.
+//     override func parseVoiceInputResponse(_ data: Data, request: FamiliarVoiceInputRequest) throws -> FamiliarVoiceInputResponse {
+//         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+//               let results = json["results"] as? [String: Any],
+//               let channels = results["channels"] as? [[String: Any]],
+//               let alts = channels.first?["alternatives"] as? [[String: Any]],
+//               let transcript = alts.first?["transcript"] as? String else {
+//             throw FamiliarVoiceProviderError.parseError("Unexpected Deepgram ASR response")
+//         }
+//         return FamiliarVoiceInputResponse(text: transcript, language: request.language, duration: nil)
+//     }
 }
 
 // MARK: - Azure TTS (REST API, Ocp-Apim-Subscription-Key auth)
 
 @MainActor final class FamiliarAzureTTSVoiceProvider: FamiliarVoiceProvider {
 
-    override var supportsVoiceInput: Bool { false }
+// Temporarily disabled for App Review, 2026-11-07.
+//     override var supportsVoiceInput: Bool { false }
     override var supportsVoiceOutput: Bool { true }
     override func defaultVoiceOutputModel() -> String { "azure-tts" }
     override func defaultVoiceOutputVoice() -> String { "zh-CN-XiaoxiaoNeural" }
-
-    override func buildVoiceInputRequest(_ request: FamiliarVoiceInputRequest) throws -> URLRequest {
-        throw FamiliarVoiceProviderError.unsupported("Azure TTS does not support speech recognition")
-    }
+// Temporarily disabled for App Review, 2026-11-07.
+//
+//     override func buildVoiceInputRequest(_ request: FamiliarVoiceInputRequest) throws -> URLRequest {
+//         throw FamiliarVoiceProviderError.unsupported("Azure TTS does not support speech recognition")
+//     }
 
     override func buildVoiceOutputRequest(_ request: FamiliarVoiceOutputRequest) throws -> URLRequest {
         let urlStr = composedURLString(path: "/cognitiveservices/v1")
@@ -719,7 +748,9 @@ import CryptoKit
     }
 }
 
-// MARK: - Xiaomi MiMo (ASR + TTS, both ride on /v1/chat/completions,
+// Temporarily disabled for App Review, 2026-11-07.
+// // MARK: - Xiaomi MiMo (ASR + TTS, both ride on /v1/chat/completions,
+// MARK: - Xiaomi MiMo (TTS via /v1/chat/completions,
 // NOT the OpenAI /v1/audio/{transcriptions,speech} endpoints)
 
 @MainActor final class FamiliarMimoVoiceProvider: FamiliarVoiceProvider {
@@ -728,57 +759,59 @@ import CryptoKit
         super.init(providerId: providerId, baseURL: baseURL, apiKey: apiKey)
     }
 
-    override func defaultVoiceInputModel() -> String  { "mimo-v2.5-asr" }
+// Temporarily disabled for App Review, 2026-11-07.
+//     override func defaultVoiceInputModel() -> String  { "mimo-v2.5-asr" }
     override func defaultVoiceOutputModel() -> String { "mimo-v2.5-tts" }
     override func defaultVoiceOutputVoice() -> String { "mimo_default" }
 
     // -- ASR -----------------------------------------------------------------
-
-    override func transcribe(_ request: FamiliarVoiceInputRequest) async throws -> FamiliarVoiceInputResponse {
-        let urlStr = composedURLString(path: "/v1/chat/completions")
-        guard let url = URL(string: urlStr) else {
-            throw FamiliarVoiceProviderError.parseError("Invalid URL: \(urlStr)")
-        }
-        var urlRequest = URLRequest(url: url)
-        urlRequest.httpMethod = "POST"
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        applyVoiceAuth(&urlRequest)
-
-        let audioBase64 = request.audioData.base64EncodedString()
-        let lang = request.language.flatMap { Self.iso639_1(from: $0) } ?? "auto"
-
-        let body: [String: Any] = [
-            "model": request.model ?? defaultVoiceInputModel(),
-            "messages": [
-                [
-                    "role": "user",
-                    "content": [
-                        [
-                            "type": "input_audio",
-                            "input_audio": [
-                                "data": audioBase64,
-                                "format": "wav"
-                            ]
-                        ]
-                    ]
-                ]
-            ],
-            "asr_options": ["language": lang]
-        ]
-        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let data = try await executeRequest(urlRequest)
-        guard
-            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let choices = json["choices"] as? [[String: Any]],
-            let message = choices.first?["message"] as? [String: Any],
-            let text = message["content"] as? String
-        else {
-            throw FamiliarVoiceProviderError.parseError("Unexpected MiMo ASR response format")
-        }
-        let seconds = (json["usage"] as? [String: Any])?["seconds"] as? Double
-        return FamiliarVoiceInputResponse(text: text, language: nil, duration: seconds)
-    }
+// Temporarily disabled for App Review, 2026-11-07.
+//
+//     override func transcribe(_ request: FamiliarVoiceInputRequest) async throws -> FamiliarVoiceInputResponse {
+//         let urlStr = composedURLString(path: "/v1/chat/completions")
+//         guard let url = URL(string: urlStr) else {
+//             throw FamiliarVoiceProviderError.parseError("Invalid URL: \(urlStr)")
+//         }
+//         var urlRequest = URLRequest(url: url)
+//         urlRequest.httpMethod = "POST"
+//         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+//         applyVoiceAuth(&urlRequest)
+//
+//         let audioBase64 = request.audioData.base64EncodedString()
+//         let lang = request.language.flatMap { Self.iso639_1(from: $0) } ?? "auto"
+//
+//         let body: [String: Any] = [
+//             "model": request.model ?? defaultVoiceInputModel(),
+//             "messages": [
+//                 [
+//                     "role": "user",
+//                     "content": [
+//                         [
+//                             "type": "input_audio",
+//                             "input_audio": [
+//                                 "data": audioBase64,
+//                                 "format": "wav"
+//                             ]
+//                         ]
+//                     ]
+//                 ]
+//             ],
+//             "asr_options": ["language": lang]
+//         ]
+//         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+//
+//         let data = try await executeRequest(urlRequest)
+//         guard
+//             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+//             let choices = json["choices"] as? [[String: Any]],
+//             let message = choices.first?["message"] as? [String: Any],
+//             let text = message["content"] as? String
+//         else {
+//             throw FamiliarVoiceProviderError.parseError("Unexpected MiMo ASR response format")
+//         }
+//         let seconds = (json["usage"] as? [String: Any])?["seconds"] as? Double
+//         return FamiliarVoiceInputResponse(text: text, language: nil, duration: seconds)
+//     }
 
     // -- TTS -----------------------------------------------------------------
 
@@ -879,15 +912,16 @@ private extension String {
 /// is not that.
 @MainActor final class FamiliarOpenRouterVoiceProvider: FamiliarVoiceProvider {
 
-
     /// OpenAI's audio-preview models emit 24 kHz mono PCM16; OpenRouter proxies
     /// that stream unchanged. There is no field in the response announcing the
     /// rate, so it is fixed here — a wrong value would play at the wrong pitch,
     /// which is immediately audible if it ever changes.
     private static let pcmSampleRate = 24000
 
-    /// Only chat-audio models can produce audio here. Mirrors the reasoning of
-    /// `usesChatBasedASR`: the audio-capable CHAT family is small and
+// Temporarily disabled for App Review, 2026-11-07.
+//     /// Only chat-audio models can produce audio here. Mirrors the reasoning of
+//     /// `usesChatBasedASR`: the audio-capable CHAT family is small and
+    /// Only chat-audio models can produce audio here. The supported family is small and
     /// enumerable, so it is the special case, and anything else keeps the
     /// inherited behaviour rather than being force-routed into a shape it may
     /// not support.
@@ -900,68 +934,69 @@ private extension String {
         let id = modelId.lowercased()
         guard id.contains("audio") else { return false }
         return id.contains("gpt") || id.contains("openai")
-    }
-
-    // MARK: - ASR
-
-    /// OpenRouter splits transcription across TWO endpoints that serve
-    /// DISJOINT model sets, and it says so itself:
-    ///
-    ///   • `POST /api/v1/audio/transcriptions` — dedicated ASR models only.
-    ///     `openai/whisper-1` works here and returns
-    ///     `{"text":"The quick brown fox…"}`. Asking it for a chat model gives
-    ///     `{"error":{"message":"Model google/gemini-3.6-flash does not
-    ///     exist","code":400}}` — the reported bug, and the same wording the
-    ///     missing TTS endpoint produces, which is what made it look like the
-    ///     endpoint was absent.
-    ///   • `POST /api/v1/chat/completions` with `input_audio` — chat models
-    ///     with audio input. `google/gemini-3.6-flash`, `google/gemini-2.5-flash`
-    ///     and `openai/gpt-audio-mini` all transcribe correctly here (verified
-    ///     against the live API with real speech, not silence). Asking it for
-    ///     whisper gives "openai/whisper-1 is a transcription model and cannot
-    ///     be used with the chat/completions endpoint."
-    ///
-    /// So this CANNOT be routed by provider type alone, even though every
-    /// failing id in the report was on OpenRouter: sending everything through
-    /// chat would break `whisper-1`, which works today. The split is per model,
-    /// and OpenRouter's own error text is the specification.
-    ///
-    /// Inverting the base class's rule is what makes it general. The base gates
-    /// on a small allowlist of chat-audio stems (gpt/qwen + "audio"), which is
-    /// right when the fallback is a REST endpoint that accepts arbitrary
-    /// third-party ASR ids. Here the fallback only accepts DEDICATED
-    /// transcription models — a small, recognisable family — so the default
-    /// flips: anything that is not obviously a transcription model is treated
-    /// as a chat model. That covers gemini, gpt-audio, qwen-omni and every
-    /// future audio-capable chat model without another allowlist to maintain.
-    override func usesChatBasedASR(model: FamiliarModelDescriptor) -> Bool {
-        !Self.isDedicatedTranscriptionModel(model.id)
-    }
-
-    /// Ids that belong to the `/audio/transcriptions` endpoint. Deliberately
-    /// narrow and name-based: these are the ASR engines OpenRouter actually
-    /// routes there, and a false positive sends a working chat model back to
-    /// the endpoint that 400s.
-    ///
-    /// Every pattern here was probed against the live endpoint rather than
-    /// guessed, because OpenRouter publishes no catalogue to derive them from:
-    /// `GET /api/v1/models` lists the 400 CHAT models and contains no ASR id at
-    /// all, yet `openai/whisper-1` transcribes fine — the two endpoints have
-    /// separate, and for ASR non-enumerable, model sets. Confirmed working on
-    /// `/audio/transcriptions`: `openai/whisper-1`,
-    /// `openai/gpt-4o-transcribe`, `openai/gpt-4o-mini-transcribe`,
-    /// `deepgram/nova-3`.
-    ///
-    /// Deepgram is matched VENDOR-qualified, never by the bare engine name:
-    /// `nova-2`/`nova-3` alone also matches `amazon/nova-2-lite-v1`, a chat
-    /// model that is in the catalogue — and sending it here returns "Model
-    /// amazon/nova-2-lite-v1 does not exist", i.e. exactly the 400 this fix
-    /// exists to remove.
-    static func isDedicatedTranscriptionModel(_ modelId: String) -> Bool {
-        let id = modelId.lowercased()
-        return id.contains("whisper")
-            || id.contains("transcribe")     // gpt-4o[-mini]-transcribe
-            || id.contains("deepgram/")
+// Temporarily disabled for App Review, 2026-11-07.
+//     }
+//
+//     // MARK: - ASR
+//
+//     /// OpenRouter splits transcription across TWO endpoints that serve
+//     /// DISJOINT model sets, and it says so itself:
+//     ///
+//     ///   • `POST /api/v1/audio/transcriptions` — dedicated ASR models only.
+//     ///     `openai/whisper-1` works here and returns
+//     ///     `{"text":"The quick brown fox…"}`. Asking it for a chat model gives
+//     ///     `{"error":{"message":"Model google/gemini-3.6-flash does not
+//     ///     exist","code":400}}` — the reported bug, and the same wording the
+//     ///     missing TTS endpoint produces, which is what made it look like the
+//     ///     endpoint was absent.
+//     ///   • `POST /api/v1/chat/completions` with `input_audio` — chat models
+//     ///     with audio input. `google/gemini-3.6-flash`, `google/gemini-2.5-flash`
+//     ///     and `openai/gpt-audio-mini` all transcribe correctly here (verified
+//     ///     against the live API with real speech, not silence). Asking it for
+//     ///     whisper gives "openai/whisper-1 is a transcription model and cannot
+//     ///     be used with the chat/completions endpoint."
+//     ///
+//     /// So this CANNOT be routed by provider type alone, even though every
+//     /// failing id in the report was on OpenRouter: sending everything through
+//     /// chat would break `whisper-1`, which works today. The split is per model,
+//     /// and OpenRouter's own error text is the specification.
+//     ///
+//     /// Inverting the base class's rule is what makes it general. The base gates
+//     /// on a small allowlist of chat-audio stems (gpt/qwen + "audio"), which is
+//     /// right when the fallback is a REST endpoint that accepts arbitrary
+//     /// third-party ASR ids. Here the fallback only accepts DEDICATED
+//     /// transcription models — a small, recognisable family — so the default
+//     /// flips: anything that is not obviously a transcription model is treated
+//     /// as a chat model. That covers gemini, gpt-audio, qwen-omni and every
+//     /// future audio-capable chat model without another allowlist to maintain.
+//     override func usesChatBasedASR(model: FamiliarModelDescriptor) -> Bool {
+//         !Self.isDedicatedTranscriptionModel(model.id)
+//     }
+//
+//     /// Ids that belong to the `/audio/transcriptions` endpoint. Deliberately
+//     /// narrow and name-based: these are the ASR engines OpenRouter actually
+//     /// routes there, and a false positive sends a working chat model back to
+//     /// the endpoint that 400s.
+//     ///
+//     /// Every pattern here was probed against the live endpoint rather than
+//     /// guessed, because OpenRouter publishes no catalogue to derive them from:
+//     /// `GET /api/v1/models` lists the 400 CHAT models and contains no ASR id at
+//     /// all, yet `openai/whisper-1` transcribes fine — the two endpoints have
+//     /// separate, and for ASR non-enumerable, model sets. Confirmed working on
+//     /// `/audio/transcriptions`: `openai/whisper-1`,
+//     /// `openai/gpt-4o-transcribe`, `openai/gpt-4o-mini-transcribe`,
+//     /// `deepgram/nova-3`.
+//     ///
+//     /// Deepgram is matched VENDOR-qualified, never by the bare engine name:
+//     /// `nova-2`/`nova-3` alone also matches `amazon/nova-2-lite-v1`, a chat
+//     /// model that is in the catalogue — and sending it here returns "Model
+//     /// amazon/nova-2-lite-v1 does not exist", i.e. exactly the 400 this fix
+//     /// exists to remove.
+//     static func isDedicatedTranscriptionModel(_ modelId: String) -> Bool {
+//         let id = modelId.lowercased()
+//         return id.contains("whisper")
+//             || id.contains("transcribe")     // gpt-4o[-mini]-transcribe
+//             || id.contains("deepgram/")
     }
 
     /// The voices OpenAI's audio-preview models accept, as returned verbatim in

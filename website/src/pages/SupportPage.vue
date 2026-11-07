@@ -139,9 +139,9 @@ const base = import.meta.env.BASE_URL;
         </details>
 
         <details>
-          <summary>为什么需要相机、麦克风或语音识别权限？</summary>
+          <summary>为什么需要相机权限？</summary>
           <div class="detail-content">
-            <p>相机用于拍摄准备添加到消息草稿的照片；麦克风与 Apple Speech 用于将语音转换为可编辑文字。只有你主动使用这些入口时才会请求权限。你可以拒绝，文字聊天仍可继续使用。</p>
+            <p>相机用于拍摄准备添加到消息草稿的照片。只有你主动使用拍照入口时才会请求权限。你可以拒绝，文字聊天仍可继续使用。</p>
           </div>
         </details>
 
@@ -152,12 +152,15 @@ const base = import.meta.env.BASE_URL;
           </div>
         </details>
 
+
+<!-- Temporarily disabled for App Review, 2026-11-07.
         <details>
           <summary>语音输入是否完全在本机完成？</summary>
           <div class="detail-content">
             <p>Familiar 使用 Apple Speech，并在系统与当前语言支持时要求端侧识别，但无法保证所有设备和语言都完全在本机处理。Familiar 本身不保存语音录音。</p>
           </div>
         </details>
+-->
 
         <details>
           <summary>支持哪些系统版本？</summary>

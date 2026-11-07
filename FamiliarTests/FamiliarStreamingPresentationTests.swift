@@ -52,6 +52,39 @@ struct FamiliarStreamingPresentationTests {
         #expect(!buffer.hasPending)
     }
 
+    @Test("Ordered deltas preserve combining characters and long text without prefix reconstruction")
+    func appendedDeltas() {
+        for count in [10000, 50000, 100000] {
+            var buffer = FamiliarStreamingBuffer()
+            let deltas = ["e", "\u{301}", " ", "👨", "\u{200D}", "👩", "\u{200D}", "👧"]
+            var expected = ""
+            for delta in deltas { buffer.append(delta, at: 0); expected += delta }
+            let tail = String(repeating: "文", count: count)
+            buffer.append(tail, at: 0.1); expected += tail
+            buffer.advance(at: 0.6)
+            #expect(buffer.visible == expected)
+            #expect(buffer.received == expected)
+        }
+    }
+
+    @Test("One departing renderer cannot stop another renderer's presentation lease")
+    @MainActor func presentationLeases() async throws {
+        let presentation = FamiliarStreamingPresentation()
+        let old = UUID(), current = UUID()
+        presentation.activate(owner: old); presentation.activate(owner: current)
+        presentation.append("A shared stream")
+        presentation.deactivate(owner: old)
+        try await Task.sleep(for: .milliseconds(160))
+        #expect(!presentation.text.isEmpty)
+        presentation.deactivate(owner: current)
+        let visible = presentation.text
+        presentation.append(" while hidden")
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(presentation.text == visible)
+        presentation.receive("A shared stream while hidden", streaming: false)
+        #expect(presentation.text == "A shared stream while hidden")
+    }
+
     @Test("Paced output does not invalidate raw recording and a stopped scheduler stays stopped")
     @MainActor
     func stoppedScheduler() async throws {

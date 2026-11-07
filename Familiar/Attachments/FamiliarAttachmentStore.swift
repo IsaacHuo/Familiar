@@ -4,6 +4,28 @@ import UIKit
 import UniformTypeIdentifiers
 import Vision
 
+nonisolated struct FamiliarAttachmentHashes: Sendable {
+    let content: String
+    let extractedText: String
+}
+
+/// Only the byte preparer can mint this receipt. Metadata commits bind it to
+/// the exact message, work scope, attachment ID and destination path.
+nonisolated struct FamiliarPreparedAttachmentCopies: Sendable {
+    struct Entry: Sendable {
+        let relativePath: String
+        let byteSize: Int64
+        let hashes: FamiliarAttachmentHashes
+    }
+    let messageID: UUID
+    let scope: FamiliarWorkScope
+    let paths: [String]
+    let entries: [UUID: Entry]
+    fileprivate init(messageID: UUID, scope: FamiliarWorkScope, paths: [String], entries: [UUID: Entry]) {
+        self.messageID = messageID; self.scope = scope; self.paths = paths; self.entries = entries
+    }
+}
+
 nonisolated enum FamiliarAttachmentStoreError: LocalizedError, Sendable {
     case sourceUnavailable
     case unsupportedFile
@@ -201,6 +223,31 @@ nonisolated enum FamiliarAttachmentStore {
             detectedFormat: attachment.detectedFormat,
             usedOCR: attachment.usedOCR
         )
+    }
+
+    @concurrent
+    static func prepareCommittedCopies(of attachments: [FamiliarAttachmentDraft], messageID: UUID,
+        scope: FamiliarWorkScope, expectedHashes: [UUID: FamiliarAttachmentHashes]) async throws -> FamiliarPreparedAttachmentCopies {
+        let interval = FamiliarPerformance.begin("AttachmentCommitPreparation")
+        defer { interval.end() }
+        var paths: [String] = []
+        var entries: [UUID: FamiliarPreparedAttachmentCopies.Entry] = [:]
+        do {
+            for attachment in attachments {
+                try Task.checkCancellation()
+                guard entries[attachment.id] == nil, let expected = expectedHashes[attachment.id]
+                else { throw FamiliarAttachmentStoreError.copyFailed }
+                let path = try committedCopy(of: attachment, messageID: messageID, scope: scope)
+                paths.append(path)
+                guard let url = url(for: path), try fileSize(of: url) == attachment.byteSize,
+                      try FamiliarHash.sha256(contentsOf: url) == expected.content,
+                      FamiliarHash.sha256(attachment.extractedText) == expected.extractedText
+                else { throw FamiliarAttachmentStoreError.copyFailed }
+                entries[attachment.id] = .init(relativePath: path, byteSize: attachment.byteSize, hashes: expected)
+            }
+            try Task.checkCancellation()
+            return .init(messageID: messageID, scope: scope, paths: paths, entries: entries)
+        } catch { remove(relativePaths: paths); throw error }
     }
 
     static func committedCopy(of draft: FamiliarAttachmentDraft, messageID: UUID, scope: FamiliarWorkScope) throws -> String {

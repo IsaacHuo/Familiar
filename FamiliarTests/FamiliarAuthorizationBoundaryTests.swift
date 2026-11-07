@@ -136,7 +136,7 @@ struct FamiliarAuthorizationBoundaryTests {
         let snapshot = try FamiliarContextCompiler.assemble(seed: .init(projectID: nil, projectName: nil,
             conversationID: conversation.id, projectInstruction: nil, resources: []), settings: .defaultValue, messages: [], toolManifests: [])
         let recorder = FamiliarRunPersistenceRecorder()
-        recorder.ensureRun(runtimeID: "interrupted", snapshot: snapshot, startedAt: Date(), context: context)
+        try recorder.ensureRun(runtimeID: "interrupted", snapshot: snapshot, startedAt: Date(), context: context)
         let activity = FamiliarRuntimeActivityCompletion(runID: "interrupted", toolCallID: "read", toolName: "web_fetch", effect: .read,
             assistantTurnID: "interrupted:turn:0", detail: "Read", confirmation: .notRequired, status: .succeeded,
             startedAt: Date(), finishedAt: Date(), fileIdentifier: nil, undoAvailable: false, automaticApprovalRequest: nil)

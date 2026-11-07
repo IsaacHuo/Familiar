@@ -142,11 +142,8 @@ struct FamiliarAppShell: View {
         if case .chat(let id) = route {
             do { guard try coordinator.existingSession(id: id, in: context) != nil else { return } }
             catch { errorMessage = error.localizedDescription; return }
-        } else if case .message(let id, let messageID) = route {
-            do {
-                guard let session = try coordinator.existingSession(id: id, in: context),
-                      session.locateHistoryMessage(messageID, in: context) else { return }
-            }
+        } else if case .message(let id, _) = route {
+            do { guard try coordinator.existingSession(id: id, in: context) != nil else { return } }
             catch { errorMessage = error.localizedDescription; return }
         }
         tab = .chats
@@ -256,7 +253,7 @@ struct FamiliarAppShell: View {
                     do {
                         if let url = URL(string: text), url.scheme == "https", !text.contains(where: \.isWhitespace) {
                             try await service.importWebPage(from: text, into: project, in: context)
-                        } else { try service.importPastedText(text, into: project, in: context) }
+                        } else { try await service.importPastedText(text, into: project, in: context) }
                     } catch { firstError = firstError ?? error.localizedDescription }
                 }
                 FamiliarSharedDraftImportService.consume(prepared)
@@ -305,22 +302,60 @@ private struct FamiliarChatDestination: View {
     let onProjectDetails: (UUID) -> Void
     @State private var session: FamiliarChatController?
     @State private var unavailable = false
+    @State private var loadError: String?
+    @State private var reloadID = UUID()
+    init(coordinator: FamiliarChatSessionCoordinator, id: UUID, messageID: UUID?,
+         onBack: @escaping () -> Void, onNewDraft: @escaping (UUID?) -> Void,
+         onRootSettings: @escaping (FamiliarSettingsRoute?) -> Void,
+         onConversationChanged: @escaping (UUID) -> Void, onOpenConversation: @escaping (UUID) -> Void,
+         onProjectDetails: @escaping (UUID) -> Void) {
+        self.coordinator = coordinator; self.id = id; self.messageID = messageID
+        self.onBack = onBack; self.onNewDraft = onNewDraft; self.onRootSettings = onRootSettings
+        self.onConversationChanged = onConversationChanged; self.onOpenConversation = onOpenConversation
+        self.onProjectDetails = onProjectDetails
+        _session = State(initialValue: Self.readySession(coordinator: coordinator, id: id, messageID: messageID))
+    }
+
     var body: some View {
         Group {
-            if let session = session ?? preparedSession {
+            if let session {
                 FamiliarChatView(dependencies: coordinator.dependencies, controller: session,
                     onBack: onBack, onNewDraft: onNewDraft, onRootSettings: onRootSettings,
                     initialMessageID: messageID, onConversationChanged: onConversationChanged,
                     onOpenConversation: onOpenConversation, onProjectDetails: onProjectDetails)
+            } else if let loadError {
+                ContentUnavailableView {
+                    Label(String(localized: "history.load_failed"), systemImage: "bubble.left")
+                } description: {
+                    Text(loadError)
+                } actions: {
+                    Button(String(localized: "history.reload")) {
+                        self.loadError = nil; unavailable = false
+                        coordinator.sessions[id]?.errorMessage = nil
+                        coordinator.sessions[id]?.reloadMessages(in: context)
+                        reloadID = UUID()
+                    }.buttonStyle(.glass)
+                }
             } else if unavailable {
                 ContentUnavailableView(String(localized: "error.deep_link.conversation_not_found"), systemImage: "bubble.left")
-            } else { ProgressView() }
+            } else { ProgressView().accessibilityLabel(String(localized: "history.loading")) }
         }
-        .task(id: id) {
+        .task(id: FamiliarSessionLoadIdentity(conversationID: id, messageID: messageID, reloadID: reloadID)) {
+            loadError = nil; unavailable = false
             do {
                 if let cached = coordinator.sessions[id] {
-                    if let messageID, !cached.locateHistoryMessage(messageID, in: context) { unavailable = true; return }
-                    session = cached; return
+                    if session == nil, let ready = Self.readySession(coordinator: coordinator, id: id, messageID: messageID) {
+                        session = ready
+                    }
+                    guard await cached.waitForHistory(), !Task.isCancelled else {
+                        if !Task.isCancelled { loadError = cached.historyError; unavailable = loadError == nil }; return
+                    }
+                    if let messageID, !(await cached.locateHistoryMessage(messageID, in: context)) {
+                        guard !Task.isCancelled else { return }
+                        loadError = cached.historyError; unavailable = loadError == nil; return
+                    }
+                    guard !Task.isCancelled, (cached.selectedConversationID ?? cached.draftConversationID) == id else { return }
+                    if session !== cached { session = cached }; return
                 }
                 let target = id
                 var descriptor = FetchDescriptor<FamiliarConversation>(predicate: #Predicate { $0.id == target })
@@ -331,17 +366,33 @@ private struct FamiliarChatDestination: View {
                     unavailable = true; return
                 }
                 let loaded = coordinator.session(id: id, in: context)
-                if let messageID, !loaded.locateHistoryMessage(messageID, in: context) { unavailable = true; return }
-                session = loaded
-            } catch { unavailable = true }
+                guard await loaded.waitForHistory(), !Task.isCancelled else {
+                    if !Task.isCancelled { loadError = loaded.historyError; unavailable = loadError == nil }; return
+                }
+                if let messageID, !(await loaded.locateHistoryMessage(messageID, in: context)) {
+                    guard !Task.isCancelled else { return }
+                    loadError = loaded.historyError; unavailable = loadError == nil; return
+                }
+                guard !Task.isCancelled, (loaded.selectedConversationID ?? loaded.draftConversationID) == id else { return }
+                if session !== loaded { session = loaded }
+            } catch { if !Task.isCancelled { loadError = error.localizedDescription } }
         }
     }
 
-    private var preparedSession: FamiliarChatController? {
-        guard let cached = coordinator.sessions[id] else { return nil }
+    private static func readySession(coordinator: FamiliarChatSessionCoordinator, id: UUID,
+                                     messageID: UUID?) -> FamiliarChatController? {
+        guard let cached = coordinator.sessions[id],
+              (cached.selectedConversationID ?? cached.draftConversationID) == id,
+              cached.selectedConversationID == nil || cached.historyIndex != nil else { return nil }
         if let messageID {
             guard let target = cached.historyIndex?.messageEntries[messageID], cached.loadedHistoryAnchorID == target else { return nil }
         }
         return cached
     }
+}
+
+private nonisolated struct FamiliarSessionLoadIdentity: Hashable {
+    let conversationID: UUID
+    let messageID: UUID?
+    let reloadID: UUID
 }

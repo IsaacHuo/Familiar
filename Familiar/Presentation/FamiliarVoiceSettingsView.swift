@@ -1,7 +1,8 @@
 import SwiftUI
 
 struct FamiliarVoiceSettingsView: View {
-    @AppStorage(FamiliarVoiceStore.inputKey) private var input = ""
+// Temporarily disabled for App Review, 2026-11-07.
+//     @AppStorage(FamiliarVoiceStore.inputKey) private var input = ""
     @AppStorage(FamiliarVoiceStore.outputKey) private var output = ""
     @State private var providers = FamiliarVoiceStore.load()
     @State private var editor: FamiliarVoiceConfiguration?
@@ -9,10 +10,11 @@ struct FamiliarVoiceSettingsView: View {
     var body: some View {
         List {
             Section {
-                Picker(String(localized: "voice.input"), selection: $input) {
-                    Text(String(localized: "voice.system")).tag("")
-                    ForEach(providers.filter { (try? FamiliarVoiceFactory.make($0).supportsVoiceInput) == true }) { Text(FamiliarVoiceStore.displayName($0.name)).tag($0.id) }
-                }
+// Temporarily disabled for App Review, 2026-11-07.
+//                 Picker(String(localized: "voice.input"), selection: $input) {
+//                     Text(String(localized: "voice.system")).tag("")
+//                     ForEach(providers.filter { (try? FamiliarVoiceFactory.make($0).supportsVoiceInput) == true }) { Text(FamiliarVoiceStore.displayName($0.name)).tag($0.id) }
+//                 }
                 Picker(String(localized: "voice.output"), selection: $output) {
                     Text(String(localized: "voice.system")).tag("")
                     ForEach(providers.filter { (try? FamiliarVoiceFactory.make($0).supportsVoiceOutput) == true }) { Text(FamiliarVoiceStore.displayName($0.name)).tag($0.id) }
@@ -56,7 +58,8 @@ struct FamiliarVoiceProviderEditor: View {
                 SecureField(String(localized: "settings.api_key.replace_placeholder"), text: $key).textInputAutocapitalization(.never).autocorrectionDisabled()
                 if value.vendor == "xunfei" { Text("App ID;API Key;API Secret").font(FamiliarTypography.caption) }
                 Section(String(localized: "settings.model")) {
-                    TextField(String(localized: "voice.input_model"), text: $value.inputModel)
+// Temporarily disabled for App Review, 2026-11-07.
+//                     TextField(String(localized: "voice.input_model"), text: $value.inputModel)
                     TextField(String(localized: "voice.output_model"), text: $value.outputModel)
                     TextField(String(localized: "voice.voice_id"), text: $value.voice)
                 }

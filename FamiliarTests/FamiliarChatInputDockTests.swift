@@ -136,8 +136,11 @@ struct FamiliarChatInputDockTests {
         let controller: FamiliarChatController
         @State private var focused = false
         var body: some View {
-            FamiliarChatInputDock(controller: controller, skills: [], isListening: false,
-                focus: $focused, availableHeight: 700, onSpeech: {}, onSend: {}, onStop: {})
+// Temporarily disabled for App Review, 2026-11-07.
+//             FamiliarChatInputDock(controller: controller, skills: [], isListening: false,
+//                 focus: $focused, availableHeight: 700, onSpeech: {}, onSend: {}, onStop: {})
+            FamiliarChatInputDock(controller: controller, skills: [],
+                focus: $focused, availableHeight: 700, onSend: {}, onStop: {})
         }
     }
 

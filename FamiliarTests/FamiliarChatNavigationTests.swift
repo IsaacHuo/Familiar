@@ -7,7 +7,7 @@ import Testing
 @Suite("Chat navigation state", .serialized)
 struct FamiliarChatNavigationTests {
     @Test("A branch from an old page copies the complete conversation")
-    @MainActor func branchUsesCompleteHistory() throws {
+    @MainActor func branchUsesCompleteHistory() async throws {
         let container = try FamiliarModelContainer.makeInMemory(), context = container.mainContext
         let original = FamiliarConversation(title: "Original"); context.insert(original)
         for index in 0..<205 {
@@ -16,8 +16,10 @@ struct FamiliarChatNavigationTests {
         }
         try context.save()
         let controller = FamiliarChatController(dependencies: .init()); controller.select(original.id, in: context)
+        _ = await controller.waitForHistory()
         #expect(controller.messages.count == 80)
         controller.forkCurrentConversation(in: context)
+        _ = await controller.waitForHistory()
         #expect(controller.errorMessage == nil)
         let forkID = try #require(controller.selectedConversationID)
         #expect(forkID != original.id)
@@ -41,7 +43,7 @@ struct FamiliarChatNavigationTests {
     }
 
     @Test("Stored history reads only a rich page; business snapshots remain complete")
-    @MainActor func durableHistoryPagesAndCompleteInput() throws {
+    @MainActor func durableHistoryPagesAndCompleteInput() async throws {
         let container = try FamiliarModelContainer.makeInMemory(), context = container.mainContext
         let chat = FamiliarConversation(title: "Paged"), other = FamiliarConversation(title: "Other")
         context.insert(chat); context.insert(other)
@@ -69,6 +71,7 @@ struct FamiliarChatNavigationTests {
         try context.save()
         let controller = FamiliarChatController(dependencies: .init())
         controller.select(chat.id, in: context)
+        _ = await controller.waitForHistory()
         let metadata = try #require(controller.historyIndex)
         #expect(metadata.messageCount == 246)
         #expect(metadata.entries.count == 246)
@@ -77,7 +80,7 @@ struct FamiliarChatNavigationTests {
         #expect(controller.agentRuns.isEmpty)
         let early = try #require(metadata.messageEntries[records[1].id])
         #expect(early == "run:paged-run")
-        #expect(controller.loadHistory(anchor: early, in: context))
+        #expect(await controller.loadHistory(anchor: early, in: context))
         #expect(controller.messages.count == 80)
         #expect(controller.messages.first?.id == records[0].id)
         #expect(controller.messages.first?.attachments.first?.extractedText == "Early context evidence")
@@ -127,7 +130,7 @@ struct FamiliarChatNavigationTests {
     }
 
     @Test("A pinned old page survives terminal writes without moving the model's full history")
-    @MainActor func historyReloadKeepsPage() throws {
+    @MainActor func historyReloadKeepsPage() async throws {
         let container = try FamiliarModelContainer.makeInMemory(), context = container.mainContext
         let chat = FamiliarConversation(title: "Anchor"); context.insert(chat)
         var records: [FamiliarMessage] = []
@@ -138,20 +141,22 @@ struct FamiliarChatNavigationTests {
         }
         try context.save()
         let controller = FamiliarChatController(dependencies: .init()); controller.select(chat.id, in: context)
+        _ = await controller.waitForHistory()
         let index = try #require(controller.historyIndex)
         let anchor = try #require(index.messageEntries[records[10].id])
-        #expect(controller.loadHistory(anchor: anchor, in: context))
+        #expect(await controller.loadHistory(anchor: anchor, in: context))
         let visible = controller.messages.map(\.id)
         let reply = FamiliarMessage(role: .assistant, content: "New reply", createdAt: Date(timeIntervalSince1970: 201), sequence: 200, conversation: chat)
         context.insert(reply); try context.save()
         controller.reloadMessages(in: context)
+        _ = await controller.waitForHistory()
         #expect(controller.loadedHistoryAnchorID == anchor)
         #expect(controller.messages.map(\.id) == visible)
         #expect(controller.historyIndex?.latestReplyID == reply.id)
         #expect(controller.durableMessageCount == 201)
-        #expect(controller.locateHistoryMessage(reply.id, in: context))
+        #expect(await controller.locateHistoryMessage(reply.id, in: context))
         #expect(controller.messages.contains { $0.id == reply.id })
-        #expect(controller.loadHistory(anchor: nil, in: context))
+        #expect(await controller.loadHistory(anchor: nil, in: context))
         #expect(controller.messages.last?.id == reply.id)
     }
 
@@ -474,6 +479,7 @@ struct FamiliarChatNavigationTests {
         context.insert(original); context.insert(reply); try context.save()
         let controller = FamiliarChatController(dependencies: .init())
         controller.select(chat.id, in: context)
+        _ = await controller.waitForHistory()
         controller.draft = "Unsent draft"
         controller.draftSelection = .init(start: 1, end: 3)
         let skill = UUID()
@@ -489,6 +495,7 @@ struct FamiliarChatNavigationTests {
         #expect(try FamiliarChatListStore.retainedDraftPaths(in: context).contains(attachment.relativePath))
         let restored = FamiliarChatController(dependencies: .init())
         restored.select(chat.id, in: context)
+        _ = await restored.waitForHistory()
         try restored.restoreDraft(id: chat.id, in: context)
         #expect(restored.messageEdit?.messageID == original.id)
         #expect(restored.draft == "Edited text")
@@ -513,6 +520,7 @@ struct FamiliarChatNavigationTests {
         let originalIDs = Set([original.id, reply.id])
         let controller = FamiliarChatController(dependencies: .init())
         controller.select(chat.id, in: context)
+        _ = await controller.waitForHistory()
         controller.draft = "Prior draft"
         let snapshot = try #require(controller.messages.first { $0.id == original.id })
         #expect(controller.prepareToEdit(snapshot, in: context))

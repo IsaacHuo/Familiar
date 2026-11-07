@@ -3,10 +3,12 @@ import Contacts
 import CoreBluetooth
 import CoreLocation
 import EventKit
-import HealthKit
+// Temporarily disabled for App Review, 2026-11-07.
+// import HealthKit
 import MusicKit
 import Photos
-import Speech
+// Temporarily disabled for App Review, 2026-11-07.
+// import Speech
 import SwiftData
 import SwiftUI
 import UIKit
@@ -111,7 +113,7 @@ struct FamiliarShellRuntimeSettingsView: View {
                         set: { enabled in saveNetworkEnabled(enabled) }
                     )
                 )
-                .disabled(workspaceID == nil || !runtimeStatus.isReady)
+                .disabled(workspaceID == nil || !runtimeStatus.canEditWorkspacePreferences)
             } footer: {
                 Text(String(localized: "settings.shell.network.footer", defaultValue: "Off by default. Shell never receives model API keys, Keychain data, cookies, or access to local-network services."))
             }

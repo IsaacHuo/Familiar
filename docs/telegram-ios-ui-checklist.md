@@ -166,11 +166,11 @@
 | INP-009 | 中文组合输入提交后再采集发送内容 | TG24/TG25/TG26/TG27/TG45/TG46 | `FamiliarComposerTextView / ComposerView / ChatInputDock` | 公开UITextView与现有焦点／草稿身份保护；Skill和润色为AI入口 | 代码已对齐 | B-FINAL（仅编译） | 待验收 |
 | INP-010 | UTF16选区正确处理Emoji | TG24/TG25/TG26/TG27/TG45/TG46 | `FamiliarComposerTextView / ComposerView / ChatInputDock` | 公开UITextView与现有焦点／草稿身份保护；Skill和润色为AI入口 | 代码已对齐 | B-FINAL（仅编译） | 待验收 |
 | INP-011 | 外部追加草稿后光标位于目标位置 | TG24/TG25/TG26/TG27/TG45/TG46 | `FamiliarComposerTextView / ComposerView / ChatInputDock` | 公开UITextView与现有焦点／草稿身份保护；Skill和润色为AI入口 | 代码已对齐 | B-FINAL（仅编译） | 待验收 |
-| INP-012 | 空输入显示语音动作 | TG24/TG25/TG26/TG27/TG45/TG46 | `FamiliarComposerTextView / ComposerView / ChatInputDock` | 公开UITextView与现有焦点／草稿身份保护；Skill和润色为AI入口 | 代码已对齐 | B-FINAL（仅编译） | 待验收 |
+| INP-012 | 空输入显示语音动作 | TG24/TG25/TG26/TG27/TG45/TG46 | `FamiliarComposerTextView / ComposerView / ChatInputDock` | 所有者要求暂时注释停用语音；当前仅发送／停止，空草稿禁用发送 | 必要适配 | 2026-11-07（仅编译） | 待验收 |
 | INP-013 | 有内容时显示发送动作 | TG24/TG25/TG26/TG27/TG45/TG46 | `FamiliarComposerTextView / ComposerView / ChatInputDock` | 公开UITextView与现有焦点／草稿身份保护；Skill和润色为AI入口 | 代码已对齐 | B-FINAL（仅编译） | 待验收 |
 | INP-014 | 生成中显示停止动作 | TG24/TG25/TG26/TG27/TG45/TG46 | `FamiliarComposerTextView / ComposerView / ChatInputDock` | 公开UITextView与现有焦点／草稿身份保护；Skill和润色为AI入口 | 代码已对齐 | B-FINAL（仅编译） | 待验收 |
-| INP-015 | 语音转写期间保留停止语音动作 | TG24/TG25/TG26/TG27/TG45/TG46 | `FamiliarComposerTextView / ComposerView / ChatInputDock` | 公开UITextView与现有焦点／草稿身份保护；Skill和润色为AI入口 | 代码已对齐 | B-FINAL（仅编译） | 待验收 |
-| INP-016 | 发送语音停止共用稳定Button身份 | TG24/TG25/TG26/TG27/TG45/TG46 | `FamiliarComposerTextView / ComposerView / ChatInputDock` | 公开UITextView与现有焦点／草稿身份保护；Skill和润色为AI入口 | 代码已对齐 | B-FINAL（仅编译） | 待验收 |
+| INP-015 | 语音转写期间保留停止语音动作 | TG24/TG25/TG26/TG27/TG45/TG46 | `FamiliarComposerTextView / ComposerView / ChatInputDock` | 所有者要求暂时注释停用语音；当前仅发送／停止，空草稿禁用发送 | 必要适配 | 2026-11-07（仅编译） | 待验收 |
+| INP-016 | 发送语音停止共用稳定Button身份 | TG24/TG25/TG26/TG27/TG45/TG46 | `FamiliarComposerTextView / ComposerView / ChatInputDock` | 所有者要求暂时注释停用语音；当前仅发送／停止，空草稿禁用发送 | 必要适配 | 2026-11-07（仅编译） | 待验收 |
 | INP-017 | 发送动作命中范围至少44pt | TG24/TG25/TG26/TG27/TG45/TG46 | `FamiliarComposerTextView / ComposerView / ChatInputDock` | 公开UITextView与现有焦点／草稿身份保护；Skill和润色为AI入口 | 代码已对齐 | B-FINAL（仅编译） | 待验收 |
 | INP-018 | 纯附件草稿允许发送 | TG24/TG25/TG26/TG27/TG45/TG46 | `FamiliarComposerTextView / ComposerView / ChatInputDock` | 公开UITextView与现有焦点／草稿身份保护；Skill和润色为AI入口 | 代码已对齐 | B-FINAL（仅编译） | 待验收 |
 | INP-019 | 附件准备期间阻止提交 | TG24/TG25/TG26/TG27/TG45/TG46 | `FamiliarComposerTextView / ComposerView / ChatInputDock` | 公开UITextView与现有焦点／草稿身份保护；Skill和润色为AI入口 | 代码已对齐 | B-FINAL（仅编译） | 待验收 |

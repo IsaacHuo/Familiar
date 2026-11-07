@@ -11,9 +11,11 @@ struct FamiliarAppDependencies {
     let contacts: FamiliarContactsService
     let location: FamiliarLocationService
     let map: FamiliarMapService
-    let weather: FamiliarWeatherService
+// Temporarily disabled for App Review, 2026-11-07.
+//     let weather: FamiliarWeatherService
     let photoLibrary: FamiliarPhotoLibraryService
-    let health: FamiliarHealthService
+// Temporarily disabled for App Review, 2026-11-07.
+//     let health: FamiliarHealthService
     let music: FamiliarMusicService
     let naturalLanguage: FamiliarNaturalLanguageService
     let bluetooth: FamiliarBluetoothService
@@ -23,7 +25,6 @@ struct FamiliarAppDependencies {
     let pythonPackageSourceSettings: FamiliarPythonPackageSourceSettingsStore
     let workspaceStore: FamiliarWorkspaceStore
     let shellRuntimeStatus: FamiliarShellRuntimeStatus
-    private var prepareShellRuntime: (@MainActor @Sendable () -> Void)? = nil
     let visionProcessor = FamiliarVisionProcessor()
     let foregroundExecution = FamiliarForegroundExecution()
     let sessionID = UUID().uuidString
@@ -33,9 +34,11 @@ struct FamiliarAppDependencies {
         contacts = FamiliarContactsService()
         location = FamiliarLocationService()
         map = FamiliarMapService()
-        weather = FamiliarWeatherService()
+// Temporarily disabled for App Review, 2026-11-07.
+//         weather = FamiliarWeatherService()
         photoLibrary = FamiliarPhotoLibraryService()
-        health = FamiliarHealthService()
+// Temporarily disabled for App Review, 2026-11-07.
+//         health = FamiliarHealthService()
         music = FamiliarMusicService()
         naturalLanguage = FamiliarNaturalLanguageService()
         bluetooth = FamiliarBluetoothService()
@@ -73,10 +76,12 @@ struct FamiliarAppDependencies {
                 AnyFamiliarTool(FamiliarToolsLoadTool()),
                 AnyFamiliarTool(FamiliarAppInformationTool()),
                 AnyFamiliarTool(FamiliarMapSearchTool(service: map)),
-                AnyFamiliarTool(FamiliarWeatherForecastTool(service: weather)),
-                AnyFamiliarTool(FamiliarWeatherHistoryTool(service: weather)),
+// Temporarily disabled for App Review, 2026-11-07.
+//                 AnyFamiliarTool(FamiliarWeatherForecastTool(service: weather)),
+//                 AnyFamiliarTool(FamiliarWeatherHistoryTool(service: weather)),
                 AnyFamiliarTool(FamiliarNaturalLanguageAnalyzeTool(service: naturalLanguage)),
-                AnyFamiliarTool(FamiliarHealthActivitySummaryTool(service: health)),
+// Temporarily disabled for App Review, 2026-11-07.
+//                 AnyFamiliarTool(FamiliarHealthActivitySummaryTool(service: health)),
                 AnyFamiliarTool(FamiliarMusicCatalogSearchTool(service: music)),
                 AnyFamiliarTool(FamiliarBluetoothScanTool(service: bluetooth)),
                 AnyFamiliarTool(FamiliarScheduleNotificationTool()),
@@ -136,7 +141,8 @@ struct FamiliarAppDependencies {
                     contacts: contacts,
                     location: location,
                     photos: photoLibrary,
-                    health: health,
+// Temporarily disabled for App Review, 2026-11-07.
+//                     health: health,
                     music: music,
                     bluetooth: bluetooth,
                     alarm: alarm
@@ -158,15 +164,7 @@ struct FamiliarAppDependencies {
                 }
             }
             status.configureRetry(prepareRuntime)
-            prepareShellRuntime = prepareRuntime
         }
-    }
-
-    /// Starts the shared runtime-preparation flight in the background after the
-    /// interface exists. Repeated calls join the same flight; failures stay silent
-    /// here because Settings shows the phase and the next real call retries.
-    func prewarmShellRuntime() {
-        prepareShellRuntime?()
     }
 
     private static func makeShellRuntime(

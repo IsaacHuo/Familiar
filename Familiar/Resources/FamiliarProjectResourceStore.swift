@@ -28,16 +28,12 @@ nonisolated struct FamiliarStagedResourceDirectory: Sendable {
     let stagedURL: URL
 }
 
-nonisolated struct FamiliarProjectResourceStore {
+nonisolated struct FamiliarProjectResourceStore: Sendable {
     let rootURL: URL
-    private let fileManager: FileManager
+    private var fileManager: FileManager { .default }
 
-    init(
-        rootURL: URL? = nil,
-        fileManager: FileManager = .default
-    ) {
-        self.fileManager = fileManager
-        self.rootURL = rootURL ?? fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    init(rootURL: URL? = nil) {
+        self.rootURL = rootURL ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Familiar/ProjectResources", isDirectory: true)
     }
 

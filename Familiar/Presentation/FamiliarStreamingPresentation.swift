@@ -17,9 +17,13 @@ nonisolated struct FamiliarStreamingBuffer {
             flush()
             return
         }
-        let delta = String(text.dropFirst(received.count))
-        received = text
+        append(String(text.dropFirst(received.count)), at: now)
+    }
+
+    /// Runtime deltas are already ordered; do not compare or traverse the old prefix.
+    mutating func append(_ delta: String, at now: TimeInterval) {
         guard !delta.isEmpty else { return }
+        received += delta
         pending += delta
         if firstPendingAt == nil { firstPendingAt = now }
         if firstReleaseAt == nil { firstReleaseAt = now + 0.06 }
@@ -53,18 +57,45 @@ nonisolated struct FamiliarStreamingBuffer {
 @MainActor @Observable
 final class FamiliarStreamingPresentation {
     private(set) var text: String
+    private(set) var isStreaming: Bool
+    private(set) var hasNonWhitespaceContent: Bool
     @ObservationIgnored private var buffer = FamiliarStreamingBuffer()
     @ObservationIgnored private var task: Task<Void, Never>?
+    @ObservationIgnored private var owners: Set<UUID> = []
 
     init(text: String = "", streaming: Bool = false) {
         self.text = streaming ? "" : text
+        self.isStreaming = streaming
+        self.hasNonWhitespaceContent = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         buffer.receive(text, streaming: streaming, at: ProcessInfo.processInfo.systemUptime)
     }
 
+    func activate(owner: UUID) { owners.insert(owner); schedule() }
+    func deactivate(owner: UUID) {
+        owners.remove(owner)
+        if owners.isEmpty { stopScheduler() }
+    }
+
+    func append(_ delta: String) {
+        isStreaming = true
+        if !hasNonWhitespaceContent, !delta.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            hasNonWhitespaceContent = true
+        }
+        buffer.append(delta, at: ProcessInfo.processInfo.systemUptime)
+        schedule()
+    }
+
+    /// Full snapshots are for binding, replacement, restoration and terminal flush.
     func receive(_ value: String, streaming: Bool) {
+        isStreaming = streaming
+        hasNonWhitespaceContent = !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         buffer.receive(value, streaming: streaming, at: ProcessInfo.processInfo.systemUptime)
         text = buffer.visible
-        guard streaming, buffer.hasPending else { stop(); return }
+        schedule()
+    }
+
+    private func schedule() {
+        guard isStreaming, buffer.hasPending, !owners.isEmpty else { stopScheduler(); return }
         guard task == nil else { return }
         task = Task { @MainActor [weak self] in
             while !Task.isCancelled {
@@ -77,8 +108,7 @@ final class FamiliarStreamingPresentation {
         }
     }
 
-    func stop() {
-        task?.cancel()
-        task = nil
-    }
+    private func stopScheduler() { task?.cancel(); task = nil }
+    func stop() { owners.removeAll(); stopScheduler() }
+    isolated deinit { task?.cancel() }
 }

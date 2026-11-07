@@ -18,20 +18,21 @@ struct FamiliarMarkdownWebView: View {
     let sources: [FamiliarSource]
     let mode: Mode
     let isStreaming: Bool
+    private let usesExternalPresentation: Bool
     let allowsMermaidPreview: Bool
     let onSelectionChange: (String?) -> Void
     var messageActions: FamiliarMessageActions? = nil
 
     @Environment(\.openURL) private var openURL
     @Environment(\.familiarReduceMotion) private var reduceMotion
-    @State private var contentHeight: CGFloat = 1
-    @State private var hasReportedHeight = false
+    @State private var layoutState = FamiliarMarkdownLayoutState()
     @State private var didFailRendering = false
     @State private var isVisible = false
     @State private var selectingMessage = false
     @State private var messageSelectionControl = FamiliarMessageSelectionControl()
     @State private var previewedDiagram: FamiliarMermaidPreview?
     @State private var presentation: FamiliarStreamingPresentation
+    @State private var presentationOwner = UUID()
 
     init(
         markdown: String,
@@ -40,7 +41,8 @@ struct FamiliarMarkdownWebView: View {
         isStreaming: Bool = false,
         allowsMermaidPreview: Bool = true,
         onSelectionChange: @escaping (String?) -> Void = { _ in },
-        messageActions: FamiliarMessageActions? = nil
+        messageActions: FamiliarMessageActions? = nil,
+        presentation: FamiliarStreamingPresentation? = nil
     ) {
         let resolved = FamiliarCitation.canonicalized(markdown, sources: sources)
         self.markdown = FamiliarMarkdownNormalizer.normalize(resolved.text)
@@ -50,12 +52,16 @@ struct FamiliarMarkdownWebView: View {
         self.allowsMermaidPreview = allowsMermaidPreview
         self.onSelectionChange = onSelectionChange
         self.messageActions = messageActions
-        _presentation = State(initialValue: FamiliarStreamingPresentation(
+        self.usesExternalPresentation = presentation != nil
+        _presentation = State(initialValue: presentation ?? FamiliarStreamingPresentation(
             text: FamiliarMarkdownNormalizer.normalize(resolved.text), streaming: isStreaming
         ))
     }
 
     var body: some View {
+        let renderedMarkdown = usesExternalPresentation
+            ? FamiliarMarkdownNormalizer.normalize(FamiliarCitation.canonicalized(presentation.text, sources: sources).text)
+            : presentation.text
         Group {
             if didFailRendering {
                 ScrollView {
@@ -74,9 +80,15 @@ struct FamiliarMarkdownWebView: View {
             } else {
                 ZStack(alignment: .topLeading) {
                     FamiliarMarkdownPlatformWebView(
-                        markdown: presentation.text,
+                        markdown: renderedMarkdown,
                         sources: sources,
-                        height: $contentHeight,
+                        height: Binding(get: { layoutState.height }, set: { value in
+                            var next = layoutState
+                            next.receive(value)
+                            var transaction = Transaction(animation: nil)
+                            transaction.disablesAnimations = true
+                            withTransaction(transaction) { layoutState = next }
+                        }),
                         didFailRendering: $didFailRendering,
                         isScrollEnabled: mode == .document,
                         isStreaming: isStreaming,
@@ -91,14 +103,15 @@ struct FamiliarMarkdownWebView: View {
                         onMessageSelection: { selectingMessage = $0 },
                         onFinishMessageSelection: { messageSelectionControl.finish = $0 }
                     )
-                    .frame(height: mode == .document ? nil : max(1, contentHeight))
+                    .frame(height: mode == .document ? nil : layoutState.height)
+                    .opacity(mode == .document || layoutState.isMeasured ? 1 : 0)
                     .transaction { transaction in
                         transaction.animation = nil
                         transaction.disablesAnimations = true
                     }
 
-                    if mode == .compact, !hasReportedHeight {
-                        FamiliarMarkdownFallbackText(markdown: presentation.text)
+                    if mode == .compact, !layoutState.isMeasured {
+                        FamiliarMarkdownFallbackText(markdown: renderedMarkdown)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -118,13 +131,17 @@ struct FamiliarMarkdownWebView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: mode == .document ? .infinity : nil, alignment: .topLeading)
-        .onAppear { isVisible = true; presentation.receive(markdown, streaming: isStreaming) }
-        .onChange(of: markdown) { _, value in if isVisible { presentation.receive(value, streaming: isStreaming) } }
-        .onChange(of: isStreaming) { _, value in if isVisible { presentation.receive(markdown, streaming: value) } }
-        .onDisappear { isVisible = false; presentation.stop() }
-        .onChange(of: contentHeight) { _, newHeight in
-            if newHeight > 1 { hasReportedHeight = true }
+        .onAppear {
+            isVisible = true
+            presentation.activate(owner: presentationOwner)
+            if !usesExternalPresentation { presentation.receive(markdown, streaming: isStreaming) }
         }
+        .onChange(of: markdown) { _, value in if isVisible && !usesExternalPresentation { presentation.receive(value, streaming: isStreaming) } }
+        .onChange(of: isStreaming) { _, value in if isVisible && !usesExternalPresentation { presentation.receive(markdown, streaming: value) } }
+        .onChange(of: usesExternalPresentation) { _, external in
+            if isVisible && !external { presentation.receive(markdown, streaming: isStreaming) }
+        }
+        .onDisappear { isVisible = false; presentation.deactivate(owner: presentationOwner) }
         .fullScreenCover(item: $previewedDiagram) { diagram in
             NavigationStack {
                 FamiliarMarkdownWebView(
@@ -504,6 +521,15 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
     private var renderedState: FamiliarMarkdownRenderState?
     private var isRendering = false
     private var scheduledRender: DispatchWorkItem?
+    private var documentGeneration = UUID()
+    private var currentNavigation: WKNavigation?
+    private var processRecoveryCount = 0
+    private var permanentlyUnavailable = false
+    private var lastRenderAt: TimeInterval = 0
+    private var renderInterval: FamiliarPerformance.Interval?
+    #if os(iOS)
+    private var memoryWarningObserver: NSObjectProtocol?
+    #endif
     private var deliveredSelection: String?
     private var hasDeliveredSelection = false
     var onSelectionChange: (String?) -> Void
@@ -525,8 +551,15 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
     }
 
     func attach(to webView: WKWebView) {
+        if self.webView !== webView {
+            invalidateRender()
+            didStartLoading = false
+            processRecoveryCount = 0
+            permanentlyUnavailable = false
+        }
         self.webView = webView
         #if os(iOS)
+        observeMemoryPressure()
         messageInteraction.attach(to: webView)
         messageInteraction.selectText = { [weak webView] point in
             webView?.becomeFirstResponder()
@@ -576,19 +609,18 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
             styleJSON: styleJSON
         )
 
+        guard !permanentlyUnavailable else { return }
         if renderedState != pendingRender && didFailRendering.wrappedValue {
+            let generation = documentGeneration
             DispatchQueue.main.async { [weak self, weak webView] in
-                guard let self, let webView, self.webView === webView else { return }
+                guard let self, let webView, self.webView === webView,
+                      self.documentGeneration == generation, !self.permanentlyUnavailable else { return }
                 self.didFailRendering.wrappedValue = false
             }
         }
 
         if !didStartLoading {
-            didStartLoading = true
-            webView.loadHTMLString(
-                FamiliarMarkdownHTML.baseDocument,
-                baseURL: FamiliarMarkdownHTML.rendererDirectory()
-            )
+            loadDocument(in: webView)
             return
         }
 
@@ -597,8 +629,12 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
 
     func dismantle(from webView: WKWebView) {
         messageInteraction.detach()
-        scheduledRender?.cancel()
-        scheduledRender = nil
+        #if os(iOS)
+        if let memoryWarningObserver { NotificationCenter.default.removeObserver(memoryWarningObserver) }
+        memoryWarningObserver = nil
+        #endif
+        invalidateRender()
+        currentNavigation = nil
         if deliveredSelection != nil {
             deliveredSelection = nil
             let callback = onSelectionChange
@@ -614,14 +650,18 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.frameInfo.isMainFrame, let origin = message.webView, origin === webView else { return }
+        guard message.frameInfo.isMainFrame, let origin = message.webView, origin === webView,
+              let envelope = message.body as? [String: Any],
+              envelope["documentID"] as? String == documentGeneration.uuidString else { return }
+        let payload = envelope["value"]
+        let generation = documentGeneration
         DispatchQueue.main.async { [weak self, weak origin] in
             // A completed plain block may now be native. Its retired WebView
             // must not publish a queued height, failure, selection or action.
-            guard let self, let origin, self.webView === origin else { return }
+            guard let self, let origin, self.webView === origin, self.documentGeneration == generation else { return }
             switch message.name {
             case "heightChanged":
-                if let value = message.body as? NSNumber {
+                if let value = payload as? NSNumber {
                     let newHeight = max(1, min(CGFloat(truncating: value), 1_000_000))
                     guard abs(self.height.wrappedValue - newHeight) >= 1 else { break }
                     var transaction = Transaction(animation: nil)
@@ -637,10 +677,11 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
                 self.didFailRendering.wrappedValue = true
             case "readingShift":
                 #if os(iOS)
-                if let delta = message.body as? NSNumber, delta.doubleValue.isFinite {
+                if let delta = payload as? NSNumber, delta.doubleValue.isFinite {
                     // Let the paired height message settle native layout first.
                     DispatchQueue.main.async { [weak self, weak origin] in
-                        guard let self, let origin, self.webView === origin, let session = self.scrollSession,
+                        guard let self, let origin, self.webView === origin, self.documentGeneration == generation,
+                              let session = self.scrollSession,
                               session.acceptsPresenter(self.presenterID), session.mode == .userReading, !session.isInteracting,
                               let scroll = self.containingScrollView else { return }
                         scroll.superview?.layoutIfNeeded()
@@ -653,21 +694,21 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
                 }
                 #endif
             case "copyCode":
-                if let text = message.body as? String {
+                if let text = payload as? String {
                     Self.copyToPasteboard(text)
                     FamiliarHaptics.shared.perform(.success)
                     FamiliarAccessibility.announce(String(localized: "common.copied"))
                 }
             case "messageAccessibilityAction":
-                if let value = message.body as? String, let action = FamiliarMessageAction(rawValue: value) {
+                if let value = payload as? String, let action = FamiliarMessageAction(rawValue: value) {
                     self.messageInteraction.perform(action)
                 }
             case Self.mermaidPreviewMessageName:
-                if let source = message.body as? String, !source.isEmpty {
+                if let source = payload as? String, !source.isEmpty {
                     self.onMermaidPreview(source)
                 }
             case "messageInteractionRegions":
-                if let regions = message.body as? [[String: Double]] {
+                if let regions = payload as? [[String: Double]] {
                     self.messageInteraction.interactiveRegions = regions.compactMap { value in
                         guard let x = value["x"], let y = value["y"], let w = value["width"], let h = value["height"] else { return nil }
                         return CGRect(x: x, y: y, width: w, height: h)
@@ -678,7 +719,7 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
                     self.deliverSelection(nil)
                     break
                 }
-                guard let payload = message.body as? [String: Any], let text = payload["text"] as? String else {
+                guard let payload = payload as? [String: Any], let text = payload["text"] as? String else {
                     self.deliverSelection(nil)
                     break
                 }
@@ -701,18 +742,18 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
     #endif
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        guard self.webView === webView else { return }
+        guard self.webView === webView, currentNavigation == nil || navigation === currentNavigation else { return }
         isRendererReady = true
         renderIfReady()
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        guard self.webView === webView else { return }
+        guard self.webView === webView, currentNavigation == nil || navigation === currentNavigation else { return }
         didFailRendering.wrappedValue = true
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        guard self.webView === webView else { return }
+        guard self.webView === webView, currentNavigation == nil || navigation === currentNavigation else { return }
         didFailRendering.wrappedValue = true
     }
 
@@ -737,6 +778,55 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
         decisionHandler(.cancel)
     }
 
+    private func loadDocument(in webView: WKWebView) {
+        didStartLoading = true
+        let metadata = "<head><meta name=\"familiar-document\" content=\"" + documentGeneration.uuidString + "\">"
+        let html = FamiliarMarkdownHTML.baseDocument.replacingOccurrences(of: "<head>", with: metadata)
+        currentNavigation = webView.loadHTMLString(html, baseURL: FamiliarMarkdownHTML.rendererDirectory())
+    }
+
+    private func finishRenderInterval() { renderInterval?.end(); renderInterval = nil }
+
+    private func invalidateRender() {
+        documentGeneration = UUID()
+        scheduledRender?.cancel(); scheduledRender = nil
+        isRendering = false; isRendererReady = false; renderedState = nil
+        lastRenderAt = 0
+        finishRenderInterval()
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        guard self.webView === webView else { return }
+        invalidateRender()
+        if processRecoveryCount == 0 {
+            processRecoveryCount = 1
+            loadDocument(in: webView)
+        } else {
+            permanentlyUnavailable = true
+            didFailRendering.wrappedValue = true
+        }
+    }
+
+    #if os(iOS)
+    private func observeMemoryPressure() {
+        guard memoryWarningObserver == nil else { return }
+        memoryWarningObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                _ = try? await self?.webView?.evaluateJavaScript("window.FamiliarMarkdown && window.FamiliarMarkdown.releaseCaches();")
+            }
+        }
+    }
+    #endif
+
+    isolated deinit {
+        scheduledRender?.cancel(); renderInterval?.end()
+        #if os(iOS)
+        if let memoryWarningObserver { NotificationCenter.default.removeObserver(memoryWarningObserver) }
+        #endif
+    }
+
     private func renderIfReady() {
         guard let webView,
               isRendererReady,
@@ -744,6 +834,9 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
               renderedState != pendingRender
         else { return }
 
+        renderInterval = FamiliarPerformance.begin("MarkdownRender")
+        let generation = documentGeneration
+        lastRenderAt = ProcessInfo.processInfo.systemUptime
         let target = pendingRender
         let literal = FamiliarMarkdownHTML.javascriptStringLiteral(target.markdown)
         let mermaidPreviewLabel = FamiliarMarkdownHTML.javascriptStringLiteral(String(localized: "mermaid.preview.action", defaultValue: "Open full-screen diagram"))
@@ -756,7 +849,9 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
         isRendering = true
         webView.evaluateJavaScript("window.FamiliarMarkdown.setReadingTop(\(readingTop)); window.FamiliarMarkdown.setSearchTerm(\(FamiliarMarkdownHTML.javascriptStringLiteral(searchTerm))); window.FamiliarMarkdown.render(\(literal), { sources: \(target.sourcesJSON), streaming: \(target.isStreaming), messageActionsEnabled: \(messageInteraction.actions != nil), messageAccessibilityActions: \(messageAccessibilityActionsJSON), messageActionsLabel: \(FamiliarMarkdownHTML.javascriptStringLiteral(String(localized: "accessibility.message_actions"))), mermaidPreviewEnabled: \(target.allowsMermaidPreview), mermaidPreviewLabel: \(mermaidPreviewLabel), reduceMotion: \(target.reduceMotion), style: \(target.styleJSON), copyLabel: \(copyLabel), copiedLabel: \(copiedLabel) });") { [weak self, weak webView] _, error in
             DispatchQueue.main.async {
-                guard let self, let webView, self.webView === webView else { return }
+                guard let self, let webView, self.webView === webView, self.documentGeneration == generation else { return }
+                self.finishRenderInterval()
+                if self.renderedState == nil, error == nil { FamiliarPerformance.event("FirstMarkdownRenderCompleted") }
                 self.isRendering = false
                 if error == nil {
                     self.renderedState = target
@@ -771,10 +866,24 @@ private final class FamiliarMarkdownWebCoordinator: NSObject, WKNavigationDelega
     }
 
     private func scheduleRender(isStreaming: Bool) {
-        scheduledRender?.cancel()
-        scheduledRender = nil
-        // Input is already paced. A second debounce would starve a continuous stream.
-        renderIfReady()
+        if !isStreaming {
+            scheduledRender?.cancel(); scheduledRender = nil
+            renderIfReady()
+            return
+        }
+        let delay = pendingRender.markdown.utf8.count >= 16_384
+            ? max(0, 0.12 - (ProcessInfo.processInfo.systemUptime - lastRenderAt)) : 0
+        guard delay > 0 else { renderIfReady(); return }
+        // Keep the original deadline while replacing the pending value, not a debounce.
+        guard scheduledRender == nil else { return }
+        let generation = documentGeneration
+        let job = DispatchWorkItem { [weak self] in
+            guard let self, self.documentGeneration == generation else { return }
+            self.scheduledRender = nil
+            self.renderIfReady()
+        }
+        scheduledRender = job
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: job)
     }
 
     private static func copyToPasteboard(_ text: String) {

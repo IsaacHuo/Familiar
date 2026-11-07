@@ -236,7 +236,9 @@ struct FamiliarLazyToolTests {
         let service = FamiliarProjectService()
         let project = try service.create(name: "Scope", in: container.mainContext)
         let probe = FamiliarLazyProbe()
-        let registry = try registry(probe: probe, names: ["web_fetch", "shell_execute", "file_publish", "health_activity_summary"])
+// Temporarily disabled for App Review, 2026-11-07.
+//         let registry = try registry(probe: probe, names: ["web_fetch", "shell_execute", "file_publish", "health_activity_summary"])
+        let registry = try registry(probe: probe, names: ["web_fetch", "shell_execute", "file_publish", "photos_recent_metadata"])
         let all = await registry.snapshot()
         let initial = try service.filterCapabilities(all, projectID: project.id, in: container.mainContext)
         #expect(initial.map(\.name).contains("web_fetch"))
@@ -249,7 +251,9 @@ struct FamiliarLazyToolTests {
         let toggled = try service.filterCapabilities(all, projectID: project.id, in: container.mainContext)
         #expect(!toggled.map(\.name).contains("file_publish"))
         #expect(toggled.map(\.name).contains("shell_execute"))
-        #expect(toggled.map(\.name).contains("health_activity_summary"))
+// Temporarily disabled for App Review, 2026-11-07.
+//         #expect(toggled.map(\.name).contains("health_activity_summary"))
+        #expect(toggled.map(\.name).contains("photos_recent_metadata"))
         try service.setCapability("web_fetch", enabled: false, allCapabilities: all, projectID: project.id, in: container.mainContext)
         let disabled = try service.filterCapabilities(all, projectID: project.id, in: container.mainContext)
         #expect(!disabled.map(\.name).contains("web_fetch"))

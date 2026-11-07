@@ -49,22 +49,28 @@
 	<string>Familiar searches contacts only when you ask and only after you approve access.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Unlock your private Familiar workspace.</string>
+<!-- Temporarily disabled for App Review, 2026-11-07.
 	<key>NSHealthShareUsageDescription</key>
 	<string>Familiar reads only the health activity summaries you explicitly request and never writes health data.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Familiar accesses HealthKit to answer your questions about steps, active energy, and walking or running distance. Access is read-only; Familiar does not save or change health records.</string>
+-->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Familiar requests a single foreground location only when your task needs it.</string>
+<!-- Temporarily disabled for App Review, 2026-11-07.
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Familiar uses the microphone only while transcribing your voice into an editable message draft.</string>
+-->
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Familiar saves a Workspace image to Photos only after you approve the exact output.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Familiar reads recent photo metadata only when you ask, respects limited access, and does not read image pixels without a separate selection.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>Familiar reads reminders you ask about and adds a reminder only after you confirm its preview.</string>
+<!-- Temporarily disabled for App Review, 2026-11-07.
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Familiar uses Apple Speech to turn your voice into editable text and does not keep an audio recording.</string>
+-->
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchScreen</key>

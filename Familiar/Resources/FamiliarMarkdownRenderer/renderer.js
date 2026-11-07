@@ -2,6 +2,7 @@
   "use strict";
 
   const content = document.getElementById("content");
+  const documentID = (document.querySelector('meta[name="familiar-document"]') || {}).content || "";
   let pendingHeightFrame = null;
   let pendingSelectionFrame = null;
   let lastReportedHeight = 0;
@@ -83,6 +84,37 @@
   let renderVersion = 0;
   let didRenderBlocks = false;
   let markdownParser = null;
+  let mermaidStyleSignature = null;
+  const highlightCache = new Map();
+  let highlightCacheCost = 0;
+  const highlightCacheBudget = 1024 * 1024;
+
+  function clearHighlightCache() { highlightCache.clear(); highlightCacheCost = 0; }
+
+  function highlightedCode(source, language) {
+    if (!window.hljs) return escapeHTML(source);
+    const key = JSON.stringify([language || "", source]);
+    const cached = highlightCache.get(key);
+    if (cached) return cached.html;
+    let html;
+    try {
+      html = language && window.hljs.getLanguage(language)
+        ? window.hljs.highlight(source, { language: language, ignoreIllegals: true }).value
+        : window.hljs.highlightAuto(source).value;
+    } catch (_) { return escapeHTML(source); }
+    // Approximate UTF-16 string cost, not a WebContent process memory limit.
+    const cost = (key.length + html.length) * 2;
+    if (cost <= highlightCacheBudget) {
+      while (highlightCache.size && (highlightCache.size >= 32 || highlightCacheCost + cost > highlightCacheBudget)) {
+        const first = highlightCache.keys().next().value;
+        highlightCacheCost -= highlightCache.get(first).cost;
+        highlightCache.delete(first);
+      }
+      highlightCache.set(key, { html: html, cost: cost });
+      highlightCacheCost += cost;
+    }
+    return html;
+  }
   let readingAnchor = null;
   function setReadingTop(y) {
     readingAnchor = null;
@@ -96,7 +128,7 @@
 
   function post(name, payload) {
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers[name]) {
-      window.webkit.messageHandlers[name].postMessage(payload);
+      window.webkit.messageHandlers[name].postMessage({ documentID: documentID, value: payload });
     }
   }
 
@@ -284,19 +316,7 @@
       linkify: true,
       typographer: false,
       breaks: false,
-      highlight: function (source, language) {
-        if (!window.hljs) {
-          return escapeHTML(source);
-        }
-        try {
-          if (language && window.hljs.getLanguage(language)) {
-            return window.hljs.highlight(source, { language: language, ignoreIllegals: true }).value;
-          }
-          return window.hljs.highlightAuto(source).value;
-        } catch (_) {
-          return escapeHTML(source);
-        }
-      }
+      highlight: highlightedCode
     });
     const fence = markdownParser.renderer.rules.fence;
     markdownParser.renderer.rules.fence = function (tokens, index, options, env, self) {
@@ -485,7 +505,8 @@
       return;
     }
 
-    try {
+    const style = document.documentElement.getAttribute("style") || "";
+    if (mermaidStyleSignature !== style) try {
       window.mermaid.initialize({
         startOnLoad: false,
         securityLevel: "strict",
@@ -501,6 +522,7 @@
           fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif"
         }
       });
+      mermaidStyleSignature = style;
     } catch (_) {}
 
     const nodes = Array.from(root.querySelectorAll("[data-mermaid-id]"));
@@ -508,8 +530,7 @@
       if (version !== renderVersion) return;
       const node = nodes[index];
       const source = diagrams[Number(node.getAttribute("data-mermaid-id"))] || "";
-      const style = document.documentElement.getAttribute ? document.documentElement.getAttribute("style") || "" : "";
-      const signature = source + style;
+      const signature = JSON.stringify([source, style]);
       if (node._familiarMermaid === signature || node._familiarMermaidPending === signature) continue;
       node._familiarMermaidPending = signature;
       if (!source.trim()) {
@@ -826,6 +847,7 @@
 
   window.FamiliarMarkdown = {
     render: render,
+    releaseCaches: clearHighlightCache,
     setSearchTerm: setSearchTerm,
     setReadingTop: setReadingTop,
     setMessageActions: setMessageActions,

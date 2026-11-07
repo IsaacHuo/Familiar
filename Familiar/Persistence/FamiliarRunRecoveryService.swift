@@ -3,6 +3,7 @@ import SwiftData
 
 @MainActor
 final class FamiliarRunRecoveryService {
+    nonisolated init() {}
     enum Error: Swift.Error { case invocationAlreadyCommitted }
 
     func persistCapabilitySnapshot(_ snapshot: FamiliarCapabilitySnapshot, contextSnapshotID: UUID, conversationID: UUID, in context: ModelContext) throws {
@@ -64,7 +65,7 @@ final class FamiliarRunRecoveryService {
     }
 
     /// Regeneration must not erase an action's receipts and replay its original prompt.
-    func requiresInspection(_ run: FamiliarAgentRun, in context: ModelContext) throws -> Bool {
+    nonisolated func requiresInspection(_ run: FamiliarAgentRun, in context: ModelContext) throws -> Bool {
         let runtimeID = run.runtimeID
         let invocations = try context.fetch(FetchDescriptor<FamiliarToolInvocationRecord>(predicate: #Predicate { $0.runtimeID == runtimeID }))
         if invocations.contains(where: { $0.state == .committing }) { return true }
@@ -80,7 +81,13 @@ final class FamiliarRunRecoveryService {
         if let snapshotID = run.contextSnapshot?.id {
             let snapshots = try context.fetch(FetchDescriptor<FamiliarCapabilitySnapshotRecord>(predicate: #Predicate { $0.contextSnapshotID == snapshotID }))
             for snapshot in snapshots {
-                let manifests = try JSONDecoder().decode([FamiliarToolManifest].self, from: Data(snapshot.manifestsJSON.utf8))
+                // Inspection depends only on the recorded effect, not on capabilities
+                // that may no longer be enabled in the current tool catalog.
+                struct RecordedEffect: Decodable {
+                    let name: String
+                    let effect: FamiliarToolEffect
+                }
+                let manifests = try JSONDecoder().decode([RecordedEffect].self, from: Data(snapshot.manifestsJSON.utf8))
                 for manifest in manifests { effects[manifest.name] = manifest.effect }
             }
         }

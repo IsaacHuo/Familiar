@@ -1,5 +1,6 @@
 import Foundation
-import HealthKit
+// Temporarily disabled for App Review, 2026-11-07.
+// import HealthKit
 import MusicKit
 import NaturalLanguage
 
@@ -95,176 +96,177 @@ nonisolated struct FamiliarNaturalLanguageAnalyzeTool: FamiliarTool {
                 summary: "已在设备上完成 NaturalLanguage 分析。",
                 recordType: "namedEntityGroup",
                 records: records
-            ))
-        )))
-    }
-}
-
-// MARK: - HealthKit
-
-nonisolated struct FamiliarHealthActivitySummary: Codable, Equatable, Sendable {
-    let startISO8601: String
-    let endISO8601: String
-    let stepCount: Double?
-    let activeEnergyKilocalories: Double?
-    let walkingRunningDistanceMeters: Double?
-    let authorizationDoesNotRevealReadDenials: Bool
-}
-
-nonisolated protocol FamiliarHealthServicing: Sendable {
-    func availability() async -> FamiliarCapabilityAvailability
-    func requestAccess() async throws
-    func activitySummary(days: Int) async throws -> FamiliarHealthActivitySummary
-}
-
-/// Single definition of the HealthKit read scope, shared by the tool and the
-/// permissions surface so the UI can never claim a scope the tool does not request.
-nonisolated enum FamiliarHealthReadScope {
-    static let readTypes: Set<HKObjectType> = [
-        HKQuantityType(.stepCount),
-        HKQuantityType(.activeEnergyBurned),
-        HKQuantityType(.distanceWalkingRunning)
-    ]
-
-    /// HealthKit deliberately never reveals read denials, so the only honest
-    /// states are "not requested yet" and "already requested".
-    enum RequestState: Sendable, Equatable {
-        case unavailable(reason: String)
-        case notRequested
-        case requested
-    }
-
-    static func requestState(store: HKHealthStore = HKHealthStore()) async -> RequestState {
-        guard HKHealthStore.isHealthDataAvailable() else {
-            return .unavailable(reason: "这台设备不支持 HealthKit。")
-        }
-        do {
-            let status: HKAuthorizationRequestStatus = try await withCheckedThrowingContinuation { continuation in
-                store.getRequestStatusForAuthorization(toShare: [], read: readTypes) { status, error in
-                    if let error { continuation.resume(throwing: error) }
-                    else { continuation.resume(returning: status) }
-                }
-            }
-            return status == .shouldRequest ? .notRequested : .requested
-        } catch {
-            return .unavailable(reason: "无法检查 HealthKit 授权状态：\(error.localizedDescription)")
-        }
-    }
-}
-
-actor FamiliarHealthService: FamiliarHealthServicing {
-    private let store = HKHealthStore()
-
-    func availability() async -> FamiliarCapabilityAvailability {
-        switch await FamiliarHealthReadScope.requestState(store: store) {
-        case .unavailable(let reason): .unavailable(reason: reason)
-        case .notRequested: .requestable
-        case .requested: .available
-        }
-    }
-
-    func requestAccess() async throws {
-        guard HKHealthStore.isHealthDataAvailable() else {
-            throw FamiliarToolRegistryError.capabilityUnavailable("这台设备不支持 HealthKit。")
-        }
-        try await store.requestAuthorization(toShare: [], read: FamiliarHealthReadScope.readTypes)
-    }
-
-    func activitySummary(days: Int) async throws -> FamiliarHealthActivitySummary {
-        let boundedDays = min(
-            max(days, FamiliarToolDefaults.HealthActivity.minimumDays),
-            FamiliarToolDefaults.HealthActivity.maximumDays
-        )
-        let end = Date()
-        let start = Calendar.current.date(byAdding: .day, value: -boundedDays, to: end) ?? end
-        let predicate = HKQuery.predicateForSamples(withStart: start, end: end)
-        let steps = try await sum(type: .stepCount, unit: .count(), predicate: predicate)
-        let energy = try await sum(type: .activeEnergyBurned, unit: .kilocalorie(), predicate: predicate)
-        let distance = try await sum(type: .distanceWalkingRunning, unit: .meter(), predicate: predicate)
-        return FamiliarHealthActivitySummary(
-            startISO8601: start.ISO8601Format(),
-            endISO8601: end.ISO8601Format(),
-            stepCount: steps,
-            activeEnergyKilocalories: energy,
-            walkingRunningDistanceMeters: distance,
-            authorizationDoesNotRevealReadDenials: true
-        )
-    }
-
-    private func sum(
-        type identifier: HKQuantityTypeIdentifier,
-        unit: HKUnit,
-        predicate: NSPredicate
-    ) async throws -> Double? {
-        let type = HKQuantityType(identifier)
-        let descriptor = HKStatisticsQueryDescriptor(
-            predicate: .quantitySample(type: type, predicate: predicate),
-            options: .cumulativeSum
-        )
-        return try await descriptor.result(for: store)?.sumQuantity()?.doubleValue(for: unit)
-    }
-}
-
-nonisolated struct FamiliarHealthActivitySummaryTool: FamiliarTool {
-    struct Input: Decodable, Sendable { let days: Int? }
-    let service: any FamiliarHealthServicing
-    let manifest = FamiliarToolManifest(
-        name: "health_activity_summary",
-        title: "读取健康活动摘要",
-        description: "经明确授权后，从 HealthKit 汇总最近 1 到 31 天的步数、活动能量和步行跑步距离。HealthKit 不会向 App 揭示用户是否拒绝了某项读取权限；空值不得解释为零。",
-        parameters: .object(
-            ["days": .integer(
-                "统计最近多少天。",
-                minimum: FamiliarToolDefaults.HealthActivity.minimumDays,
-                maximum: FamiliarToolDefaults.HealthActivity.maximumDays,
-                defaultValue: FamiliarToolDefaults.HealthActivity.days
-            )],
-            required: []
-        ),
-        effect: .read,
-        risk: .high,
-        requirements: [.healthActivityRead],
-        dataDomains: ["health.activity"],
-        privacyLabels: ["health-data", "minimum-aggregation"],
-        supportsParallelism: false,
-        executionClass: .native
-    )
-
-    /// Surfaces the concrete window and metric list in the confirmation card. The
-    /// manifest description alone would not tell the user what is about to be read.
-    func preflight(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolAuthorizationAssessment {
-        let days = min(
-            max(input.days ?? FamiliarToolDefaults.HealthActivity.days, FamiliarToolDefaults.HealthActivity.minimumDays),
-            FamiliarToolDefaults.HealthActivity.maximumDays
-        )
-        return .init(
-            disposition: .requiresApproval,
-            effect: manifest.effect,
-            risk: manifest.risk,
-            reason: manifest.description,
-            fields: [
-                .init(id: "window", label: String(localized: "approval.field.window", defaultValue: "Window"), type: .text, value: String(format: String(localized: "approval.value.recent_days", defaultValue: "Last %lld days"), days)),
-                .init(id: "metrics", label: String(localized: "approval.field.metrics", defaultValue: "Metrics"), type: .text, value: "stepCount, activeEnergyBurned, distanceWalkingRunning"),
-                .init(id: "scope", label: String(localized: "approval.field.scope", defaultValue: "Scope"), type: .text, value: String(localized: "approval.value.health_aggregate", defaultValue: "Daily totals only, no individual samples"))
-            ],
-            consequence: String(localized: "approval.consequence.health_read", defaultValue: "Familiar reads aggregated activity totals for this window. Results may be sent to the selected model provider as a tool result."),
-            targetKey: "health-activity"
-        )
-    }
-
-    func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
-        let summary = try await service.activitySummary(days: input.days ?? FamiliarToolDefaults.HealthActivity.days)
-        let fields: [FamiliarToolPresentationPayload.RecordField] = [
-            .init(name: "steps", value: summary.stepCount.map { String($0) } ?? "unavailable"),
-            .init(name: "activeEnergyKilocalories", value: summary.activeEnergyKilocalories.map { String($0) } ?? "unavailable"),
-            .init(name: "walkingRunningDistanceMeters", value: summary.walkingRunningDistanceMeters.map { String($0) } ?? "unavailable")
-        ]
-        return .result(.init(envelope: try FamiliarToolResultEnvelope(
-            model: summary,
-            presentation: .recordCollection(.init(
-                summary: "已读取 HealthKit 活动摘要。空值可能表示没有样本或未授权。",
-                recordType: "healthActivitySummary",
-                records: [.init(id: summary.startISO8601, fields: fields)]
+// Temporarily disabled for App Review, 2026-11-07.
+//             ))
+//         )))
+//     }
+// }
+//
+// // MARK: - HealthKit
+//
+// nonisolated struct FamiliarHealthActivitySummary: Codable, Equatable, Sendable {
+//     let startISO8601: String
+//     let endISO8601: String
+//     let stepCount: Double?
+//     let activeEnergyKilocalories: Double?
+//     let walkingRunningDistanceMeters: Double?
+//     let authorizationDoesNotRevealReadDenials: Bool
+// }
+//
+// nonisolated protocol FamiliarHealthServicing: Sendable {
+//     func availability() async -> FamiliarCapabilityAvailability
+//     func requestAccess() async throws
+//     func activitySummary(days: Int) async throws -> FamiliarHealthActivitySummary
+// }
+//
+// /// Single definition of the HealthKit read scope, shared by the tool and the
+// /// permissions surface so the UI can never claim a scope the tool does not request.
+// nonisolated enum FamiliarHealthReadScope {
+//     static let readTypes: Set<HKObjectType> = [
+//         HKQuantityType(.stepCount),
+//         HKQuantityType(.activeEnergyBurned),
+//         HKQuantityType(.distanceWalkingRunning)
+//     ]
+//
+//     /// HealthKit deliberately never reveals read denials, so the only honest
+//     /// states are "not requested yet" and "already requested".
+//     enum RequestState: Sendable, Equatable {
+//         case unavailable(reason: String)
+//         case notRequested
+//         case requested
+//     }
+//
+//     static func requestState(store: HKHealthStore = HKHealthStore()) async -> RequestState {
+//         guard HKHealthStore.isHealthDataAvailable() else {
+//             return .unavailable(reason: "这台设备不支持 HealthKit。")
+//         }
+//         do {
+//             let status: HKAuthorizationRequestStatus = try await withCheckedThrowingContinuation { continuation in
+//                 store.getRequestStatusForAuthorization(toShare: [], read: readTypes) { status, error in
+//                     if let error { continuation.resume(throwing: error) }
+//                     else { continuation.resume(returning: status) }
+//                 }
+//             }
+//             return status == .shouldRequest ? .notRequested : .requested
+//         } catch {
+//             return .unavailable(reason: "无法检查 HealthKit 授权状态：\(error.localizedDescription)")
+//         }
+//     }
+// }
+//
+// actor FamiliarHealthService: FamiliarHealthServicing {
+//     private let store = HKHealthStore()
+//
+//     func availability() async -> FamiliarCapabilityAvailability {
+//         switch await FamiliarHealthReadScope.requestState(store: store) {
+//         case .unavailable(let reason): .unavailable(reason: reason)
+//         case .notRequested: .requestable
+//         case .requested: .available
+//         }
+//     }
+//
+//     func requestAccess() async throws {
+//         guard HKHealthStore.isHealthDataAvailable() else {
+//             throw FamiliarToolRegistryError.capabilityUnavailable("这台设备不支持 HealthKit。")
+//         }
+//         try await store.requestAuthorization(toShare: [], read: FamiliarHealthReadScope.readTypes)
+//     }
+//
+//     func activitySummary(days: Int) async throws -> FamiliarHealthActivitySummary {
+//         let boundedDays = min(
+//             max(days, FamiliarToolDefaults.HealthActivity.minimumDays),
+//             FamiliarToolDefaults.HealthActivity.maximumDays
+//         )
+//         let end = Date()
+//         let start = Calendar.current.date(byAdding: .day, value: -boundedDays, to: end) ?? end
+//         let predicate = HKQuery.predicateForSamples(withStart: start, end: end)
+//         let steps = try await sum(type: .stepCount, unit: .count(), predicate: predicate)
+//         let energy = try await sum(type: .activeEnergyBurned, unit: .kilocalorie(), predicate: predicate)
+//         let distance = try await sum(type: .distanceWalkingRunning, unit: .meter(), predicate: predicate)
+//         return FamiliarHealthActivitySummary(
+//             startISO8601: start.ISO8601Format(),
+//             endISO8601: end.ISO8601Format(),
+//             stepCount: steps,
+//             activeEnergyKilocalories: energy,
+//             walkingRunningDistanceMeters: distance,
+//             authorizationDoesNotRevealReadDenials: true
+//         )
+//     }
+//
+//     private func sum(
+//         type identifier: HKQuantityTypeIdentifier,
+//         unit: HKUnit,
+//         predicate: NSPredicate
+//     ) async throws -> Double? {
+//         let type = HKQuantityType(identifier)
+//         let descriptor = HKStatisticsQueryDescriptor(
+//             predicate: .quantitySample(type: type, predicate: predicate),
+//             options: .cumulativeSum
+//         )
+//         return try await descriptor.result(for: store)?.sumQuantity()?.doubleValue(for: unit)
+//     }
+// }
+//
+// nonisolated struct FamiliarHealthActivitySummaryTool: FamiliarTool {
+//     struct Input: Decodable, Sendable { let days: Int? }
+//     let service: any FamiliarHealthServicing
+//     let manifest = FamiliarToolManifest(
+//         name: "health_activity_summary",
+//         title: "读取健康活动摘要",
+//         description: "经明确授权后，从 HealthKit 汇总最近 1 到 31 天的步数、活动能量和步行跑步距离。HealthKit 不会向 App 揭示用户是否拒绝了某项读取权限；空值不得解释为零。",
+//         parameters: .object(
+//             ["days": .integer(
+//                 "统计最近多少天。",
+//                 minimum: FamiliarToolDefaults.HealthActivity.minimumDays,
+//                 maximum: FamiliarToolDefaults.HealthActivity.maximumDays,
+//                 defaultValue: FamiliarToolDefaults.HealthActivity.days
+//             )],
+//             required: []
+//         ),
+//         effect: .read,
+//         risk: .high,
+//         requirements: [.healthActivityRead],
+//         dataDomains: ["health.activity"],
+//         privacyLabels: ["health-data", "minimum-aggregation"],
+//         supportsParallelism: false,
+//         executionClass: .native
+//     )
+//
+//     /// Surfaces the concrete window and metric list in the confirmation card. The
+//     /// manifest description alone would not tell the user what is about to be read.
+//     func preflight(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolAuthorizationAssessment {
+//         let days = min(
+//             max(input.days ?? FamiliarToolDefaults.HealthActivity.days, FamiliarToolDefaults.HealthActivity.minimumDays),
+//             FamiliarToolDefaults.HealthActivity.maximumDays
+//         )
+//         return .init(
+//             disposition: .requiresApproval,
+//             effect: manifest.effect,
+//             risk: manifest.risk,
+//             reason: manifest.description,
+//             fields: [
+//                 .init(id: "window", label: String(localized: "approval.field.window", defaultValue: "Window"), type: .text, value: String(format: String(localized: "approval.value.recent_days", defaultValue: "Last %lld days"), days)),
+//                 .init(id: "metrics", label: String(localized: "approval.field.metrics", defaultValue: "Metrics"), type: .text, value: "stepCount, activeEnergyBurned, distanceWalkingRunning"),
+//                 .init(id: "scope", label: String(localized: "approval.field.scope", defaultValue: "Scope"), type: .text, value: String(localized: "approval.value.health_aggregate", defaultValue: "Daily totals only, no individual samples"))
+//             ],
+//             consequence: String(localized: "approval.consequence.health_read", defaultValue: "Familiar reads aggregated activity totals for this window. Results may be sent to the selected model provider as a tool result."),
+//             targetKey: "health-activity"
+//         )
+//     }
+//
+//     func execute(_ input: Input, context: FamiliarToolContext) async throws -> FamiliarToolOutcome {
+//         let summary = try await service.activitySummary(days: input.days ?? FamiliarToolDefaults.HealthActivity.days)
+//         let fields: [FamiliarToolPresentationPayload.RecordField] = [
+//             .init(name: "steps", value: summary.stepCount.map { String($0) } ?? "unavailable"),
+//             .init(name: "activeEnergyKilocalories", value: summary.activeEnergyKilocalories.map { String($0) } ?? "unavailable"),
+//             .init(name: "walkingRunningDistanceMeters", value: summary.walkingRunningDistanceMeters.map { String($0) } ?? "unavailable")
+//         ]
+//         return .result(.init(envelope: try FamiliarToolResultEnvelope(
+//             model: summary,
+//             presentation: .recordCollection(.init(
+//                 summary: "已读取 HealthKit 活动摘要。空值可能表示没有样本或未授权。",
+//                 recordType: "healthActivitySummary",
+//                 records: [.init(id: summary.startISO8601, fields: fields)]
             ))
         )))
     }

@@ -47,24 +47,19 @@ struct FamiliarChatsHome: View {
             if entry.element.targetType == .conversation, result[entry.element.targetID] == nil { result[entry.element.targetID] = entry.offset }
         }
         let pinned = Set(pinOrder.keys)
-        let active = coordinator.activeSession
         return conversations.compactMap { conversation in
             let state = stateByID[conversation.id]
             guard (state?.isArchived ?? false) == archived else { return nil }
             let draft = draftByID[conversation.id]
-            let running = active?.selectedConversationID == conversation.id
-            let attention = running && (!(active?.pendingConfirmations.isEmpty ?? true) || !(active?.pendingClarifications.isEmpty ?? true))
             let preview: String
             if let draft { preview = String(localized: "chat.draft") + " · " + FamiliarChatListStore.draftSummary(draft) }
-            else if attention { preview = String(localized: "chat.needs_attention") }
-            else if running { preview = String(localized: "chat.running") }
             else { preview = state?.preview ?? "…" }
             return .init(id: conversation.id, title: conversation.title, preview: preview,
                 projectName: conversation.project?.displayName,
                 date: max(draft?.updatedAt ?? .distantPast, state?.latestActivityAt ?? conversation.updatedAt),
                 isPinned: pinned.contains(conversation.id), isUnread: state?.isUnread ?? false,
-                isArchived: archived, hasDraft: draft != nil, isRunning: running,
-                needsAttention: attention, hasFailure: state?.hasFailure ?? false, projectID: conversation.project?.id)
+                isArchived: archived, hasDraft: draft != nil, isRunning: false,
+                needsAttention: false, hasFailure: state?.hasFailure ?? false, projectID: conversation.project?.id)
         }.sorted { lhs, rhs in
             if lhs.isPinned != rhs.isPinned { return lhs.isPinned }
             if lhs.isPinned {
@@ -90,7 +85,7 @@ struct FamiliarChatsHome: View {
         let special = Dictionary(uniqueKeysWithValues: filters.compactMap { item in
             hasSpecialRows(for: item) ? (item, AnyView(specialRows(for: item))) : nil
         })
-        FamiliarChatProjectPager(rowsByFilter: lists, projects: orderedProjects, filter: $filter,
+        FamiliarLiveChatPager(coordinator: coordinator, rowsByFilter: lists, projects: orderedProjects, filter: $filter,
             editing: editing, selection: $selection,
             counts: projectUnreadCounts,
             specialRowsByFilter: special, specialRowsRevision: specialRevision,
@@ -107,11 +102,7 @@ struct FamiliarChatsHome: View {
             if let active = coordinator.activeSession, let onActiveRun {
                 ToolbarItem(placement: .principal) {
                     Button(action: onActiveRun) {
-                        HStack(spacing: 6) {
-                            ProgressView().controlSize(.mini)
-                            Text(String(localized: active.pendingConfirmations.isEmpty && active.pendingClarifications.isEmpty ? "chat.running" : "chat.needs_attention"))
-                                .font(.subheadline.weight(.medium)).lineLimit(1)
-                        }.padding(.horizontal, 12).frame(minHeight: 44)
+                        FamiliarActiveRunStatusLabel(controller: active)
                     }
                     .buttonStyle(.plain).familiarGlassSurface(interactive: true)
                     .accessibilityIdentifier("chat.activeRun")

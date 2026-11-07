@@ -57,7 +57,9 @@ struct FamiliarMessageTimeline: View {
     private let historyItems: [FamiliarTimelineItem]
     private let historyIndex: [String: Int]
     private let pageIndex: FamiliarConversationHistoryIndex?
-    private let onLoadHistory: (String?) -> Bool
+    @State private var historyNavigationTask: Task<Void, Never>?
+    @State private var historyNavigationID = UUID()
+    private let onLoadHistory: @MainActor (String?, UUID) async -> Bool
 
     init(
         messages: [FamiliarMessageSnapshot], modelSwitches: [FamiliarModelSwitchSnapshot],
@@ -70,7 +72,7 @@ struct FamiliarMessageTimeline: View {
         initialMessageID: UUID? = nil,
         findState: FamiliarConversationFindState? = nil,
         historyIndex: FamiliarConversationHistoryIndex? = nil,
-        onLoadHistory: @escaping (String?) -> Bool = { _ in true }
+        onLoadHistory: @escaping @MainActor (String?, UUID) async -> Bool = { _, _ in true }
     ) {
         _scroll = State(initialValue: scrollSession)
         var restoredScroll = ScrollPosition(idType: String.self)
@@ -129,7 +131,8 @@ struct FamiliarMessageTimeline: View {
 
     private var historyCount: Int { pageIndex?.entries.count ?? historyItems.count }
     private var historyRange: Range<Int> {
-        FamiliarHistoryWindow.range(total: historyCount, center: historyAnchorID.flatMap { historyIndex[$0] })
+        let anchor = pageIndex == nil ? historyAnchorID : liveController.loadedHistoryAnchorID
+        return FamiliarHistoryWindow.range(total: historyCount, center: anchor.flatMap { historyIndex[$0] })
     }
     private func entryID(at index: Int) -> String {
         pageIndex?.entries[index].id ?? historyItems[index].id
@@ -137,11 +140,21 @@ struct FamiliarMessageTimeline: View {
     private func entryID(for message: UUID) -> String? {
         pageIndex?.messageEntries[message] ?? historyItems.first { $0.messageID == message }?.id
     }
-    @discardableResult private func changeHistoryAnchor(_ value: String?) -> Bool {
-        guard scroll.acceptsPresenter(presenterID) else { return false }
-        guard onLoadHistory(value) else { return false }
-        historyAnchorID = value
-        return true
+    private func changeHistoryAnchor(_ value: String?, then action: @escaping @MainActor () -> Void = {}) {
+        guard scroll.acceptsPresenter(presenterID) else { return }
+        historyNavigationTask?.cancel()
+        let generation = UUID()
+        historyNavigationID = generation
+        let dragRevision = scroll.dragRevision
+        historyNavigationTask = Task { @MainActor in
+            defer { if historyNavigationID == generation { historyNavigationTask = nil } }
+            guard scroll.acceptsPresenter(presenterID), scroll.dragRevision == dragRevision else { return }
+            guard await onLoadHistory(value, presenterID), !Task.isCancelled,
+                  historyNavigationID == generation, scroll.acceptsPresenter(presenterID),
+                  scroll.dragRevision == dragRevision else { return }
+            historyAnchorID = value
+            action()
+        }
     }
 
     private var timelineItems: [FamiliarTimelineItem] {
@@ -233,7 +246,7 @@ struct FamiliarMessageTimeline: View {
                             .padding(.top, row.gap)
                             .id(item.id)
                             .animation(reduceMotion ? nil : FamiliarMotion.standard, value: highlightedID == item.id)
-                            .modifier(FamiliarSoftRise(enabled: !item.isUser && scroll.mode != .userReading && !voiceOver, identity: item.id))
+                            .modifier(FamiliarSoftRise(enabled: item.isLive && scroll.mode != .userReading && !voiceOver, identity: item.id))
                             .onGeometryChange(for: Bool.self) { geometry in
                                 let frame = geometry.frame(in: .named("conversation-scroll"))
                                 return frame.maxY > 0 && frame.maxY <= viewportHeight + 1
@@ -278,11 +291,12 @@ struct FamiliarMessageTimeline: View {
                 .scrollEdgeEffectHidden(true, for: .top)
                 .scrollPosition($position)
                 .defaultScrollAnchor(.bottom, for: .initialOffset)
-                .defaultScrollAnchor(.top, for: .sizeChanges)
+                .defaultScrollAnchor(scroll.mode != .userReading && historyAnchorID == nil ? .bottom : .top, for: .sizeChanges)
                 .onScrollPhaseChange { _, phase in
                     guard scroll.acceptsPresenter(presenterID) else { return }
                     switch phase {
-                    case .tracking, .interacting: scroll.userBegan()
+                    case .tracking: scroll.userBegan()
+                    case .interacting: scroll.userDragged()
                     case .idle: scroll.userEnded()
                     default: break
                     }
@@ -299,7 +313,9 @@ struct FamiliarMessageTimeline: View {
                 }
                 .onAppear {
                     scroll.beginPresentation(presenterID)
-                    _ = onLoadHistory(historyAnchorID)
+                    if pageIndex != nil, liveController.loadedHistoryAnchorID != historyAnchorID {
+                        changeHistoryAnchor(historyAnchorID)
+                    }
                     scroll.historyAnchorID = historyAnchorID
                     if findState?.isPresented == true, !inspectingFind {
                         if findReturnOffset == nil {
@@ -335,29 +351,33 @@ struct FamiliarMessageTimeline: View {
                 .onChange(of: messages.last(where: { $0.role == .assistant })?.id) { _, _ in updateReadVisibility() }
                 .onChange(of: findState?.isPresented) { _, shown in
                     if shown == true {
+                        historyNavigationTask?.cancel(); historyNavigationTask = nil; historyNavigationID = UUID()
                         findReturnOffset = scroll.offset
                         findReturnAnchorID = historyAnchorID
                         findWasFollowing = scroll.mode != .userReading
                         scroll.beginInspection(); inspectingFind = true
                     } else if inspectingFind {
                         scroll.endInspection(); inspectingFind = false
-                        guard changeHistoryAnchor(findReturnAnchorID) else { return }
-                        if findWasFollowing { returnToLatest() }
-                        else if let offset = findReturnOffset {
-                            scroll.prepareForNavigation()
-                            position.scrollTo(y: max(0, offset))
+                        changeHistoryAnchor(findReturnAnchorID) {
+                            if findWasFollowing { returnToLatest() }
+                            else if let offset = findReturnOffset {
+                                scroll.prepareForNavigation()
+                                position.scrollTo(y: max(0, offset))
+                            }
+                            findReturnOffset = nil; highlightedID = nil
                         }
-                        findReturnOffset = nil; highlightedID = nil
                     }
                 }
                 .onChange(of: findState?.navigationID) { _, _ in
-                    guard let id = findState?.selectedMessageID,
-                          let target = entryID(for: id), changeHistoryAnchor(target) else { return }
-                    scroll.prepareForNavigation()
-                    position.scrollTo(id: target, anchor: .center)
-                    highlightedID = target
+                    guard let id = findState?.selectedMessageID, let target = entryID(for: id) else { return }
+                    changeHistoryAnchor(target) {
+                        scroll.prepareForNavigation()
+                        position.scrollTo(id: target, anchor: .center)
+                        highlightedID = target
+                    }
                 }
                 .onDisappear {
+                    historyNavigationID = UUID(); historyNavigationTask?.cancel(); historyNavigationTask = nil
                     scroll.endPresentation(presenterID)
                     if inspectingFind { scroll.endInspection(); inspectingFind = false }
                 }
@@ -369,13 +389,16 @@ struct FamiliarMessageTimeline: View {
                     if returnOffset != nil || returnsToLatest {
                         Button {
                             if let offset = returnOffset {
-                                guard changeHistoryAnchor(returnAnchorID) else { return }
-                                scroll.beginInspection()
-                                scroll.prepareForNavigation()
-                                position.scrollTo(y: max(0, offset))
-                                scroll.endInspection()
-                            } else { returnToLatest() }
-                            returnOffset = nil; returnsToLatest = false; highlightedID = nil
+                                changeHistoryAnchor(returnAnchorID) {
+                                    scroll.beginInspection()
+                                    scroll.prepareForNavigation()
+                                    position.scrollTo(y: max(0, offset))
+                                    scroll.endInspection()
+                                    returnOffset = nil; returnsToLatest = false; highlightedID = nil
+                                }
+                            } else {
+                                returnToLatest { returnOffset = nil; returnsToLatest = false; highlightedID = nil }
+                            }
                         } label: {
                             Label(String(localized: "message.return_position"), systemImage: "arrow.uturn.backward")
                                 .font(.caption.weight(.medium)).padding(.horizontal, 12).frame(minHeight: 44)
@@ -435,6 +458,9 @@ struct FamiliarMessageTimeline: View {
         // Return to latest action still navigates without changing AX focus.
         guard scroll.acceptsPresenter(presenterID) else { return }
         guard !voiceOver, historyAnchorID == nil else { scroll.cancel(); return }
+        // Native bottom anchoring already follows settled size changes. Avoid a
+        // second delayed scroll after every restored WebView reports its height.
+        guard scroll.latestOffset > 0, scroll.latestOffset - scroll.offset > 1 else { return }
         scroll.schedule {
             var transaction = Transaction(animation: nil)
             transaction.disablesAnimations = true
@@ -444,25 +470,28 @@ struct FamiliarMessageTimeline: View {
         }
     }
 
-    private func returnToLatest() {
-        guard changeHistoryAnchor(nil) else { return }
-        if voiceOver {
-            scroll.prepareForNavigation()
-            position.scrollTo(edge: .bottom)
-            return
-        }
-        scroll.requestReturn()
-        if scroll.latestOffset - scroll.offset > scroll.viewportHeight {
-            var transaction = Transaction(animation: nil)
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                position.scrollTo(y: max(0, scroll.latestOffset - scroll.viewportHeight * 0.6))
-            }
-        }
-        scroll.schedule {
-            withAnimation(reduceMotion ? nil : FamiliarMotion.collapse) {
+    private func returnToLatest(completion: @escaping @MainActor () -> Void = {}) {
+        changeHistoryAnchor(nil) {
+            if voiceOver {
+                scroll.prepareForNavigation()
                 position.scrollTo(edge: .bottom)
+                completion()
+                return
             }
+            scroll.requestReturn()
+            if scroll.latestOffset - scroll.offset > scroll.viewportHeight {
+                var transaction = Transaction(animation: nil)
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    position.scrollTo(y: max(0, scroll.latestOffset - scroll.viewportHeight * 0.6))
+                }
+            }
+            scroll.schedule {
+                withAnimation(reduceMotion ? nil : FamiliarMotion.collapse) {
+                    position.scrollTo(edge: .bottom)
+                }
+            }
+            completion()
         }
     }
 
@@ -473,9 +502,10 @@ struct FamiliarMessageTimeline: View {
         let index = earlier ? max(0, range.lowerBound - 1) : min(historyCount - 1, range.upperBound)
         scroll.prepareForNavigation()
         var transaction = Transaction(animation: nil); transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            guard changeHistoryAnchor(entryID(at: index)) else { return }
-            position.scrollTo(id: oldEdge, anchor: earlier ? .top : .bottom)
+        changeHistoryAnchor(entryID(at: index)) {
+            withTransaction(transaction) {
+                position.scrollTo(id: oldEdge, anchor: earlier ? .top : .bottom)
+            }
         }
     }
 }
@@ -505,6 +535,11 @@ enum FamiliarTimelineItem: Identifiable {
         case .modelSwitch(let marker): "model-switch:\(marker.id.uuidString)"
         case .assistant(let id, _, _, _, _): id
         }
+    }
+
+    var isLive: Bool {
+        if case .assistant(_, _, _, let live, _) = self { return live }
+        return false
     }
 
     var isUser: Bool {

@@ -19,7 +19,7 @@ Familiar 是面向 iPhone 的原生 AI 问答 App，采用 Telegram iOS 的视�
 
 ## 保留能力
 
-BYOK 与已接入外部 Provider 登录、本地历史、Project、canonical File/FileVersion、单 Agent Lazy Tools、Context Compiler、Skills、Memory、Web、Apple 原生工具、MCP、内置 iSH/Alpine 文档生成、图片输入与语音转写。能力可用性与权限由 Swift 判断，模型不能自授权。
+BYOK 与已接入外部 Provider 登录、本地历史、Project、canonical File/FileVersion、单 Agent Lazy Tools、Context Compiler、Skills、Memory、Web、Apple 原生工具、MCP、内置 iSH/Alpine 文档生成、图片输入与回复朗读（麦克风转写、HealthKit 与 WeatherKit 暂时注释停用）。能力可用性与权限由 Swift 判断，模型不能自授权。
 
 不增加 Familiar 账户、业务后端、订阅、云同步、社交关系、通话、频道、多 Agent、后台执行或跨重启续跑。最低 iOS 26；不增加旧系统回退。
 

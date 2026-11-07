@@ -891,10 +891,12 @@ nonisolated enum FamiliarToolPresentationName {
         case "tools_load": String(localized: "tool.tools_load", defaultValue: "Prepare tools")
         case "ask_user": String(localized: "tool.ask_user", defaultValue: "Clarification")
         case "map_search": String(localized: "tool.map_search", defaultValue: "Search places")
-        case "weather_forecast": String(localized: "tool.weather_forecast", defaultValue: "Check weather")
-        case "weather_history": String(localized: "tool.weather_history", defaultValue: "Check past weather")
+// Temporarily disabled for App Review, 2026-11-07.
+//         case "weather_forecast": String(localized: "tool.weather_forecast", defaultValue: "Check weather")
+//         case "weather_history": String(localized: "tool.weather_history", defaultValue: "Check past weather")
         case "natural_language_analyze": String(localized: "tool.natural_language_analyze", defaultValue: "Analyze text")
-        case "health_activity_summary": String(localized: "tool.health_activity_summary", defaultValue: "Read health activity")
+// Temporarily disabled for App Review, 2026-11-07.
+//         case "health_activity_summary": String(localized: "tool.health_activity_summary", defaultValue: "Read health activity")
         case "music_catalog_search": String(localized: "tool.music_catalog_search", defaultValue: "Search Apple Music")
         case "bluetooth_scan": String(localized: "tool.bluetooth_scan", defaultValue: "Scan Bluetooth devices")
         case "photos_recent_metadata": String(localized: "tool.photos_recent_metadata", defaultValue: "Read photo metadata")
@@ -920,10 +922,12 @@ nonisolated enum FamiliarToolPresentationName {
     static func symbol(for name: String, effect: FamiliarToolEffect?) -> String {
         switch name {
         case "map_search": return "mappin.and.ellipse"
-        case "weather_forecast": return "cloud.sun"
-        case "weather_history": return "clock.arrow.circlepath"
+// Temporarily disabled for App Review, 2026-11-07.
+//         case "weather_forecast": return "cloud.sun"
+//         case "weather_history": return "clock.arrow.circlepath"
         case "natural_language_analyze": return "text.magnifyingglass"
-        case "health_activity_summary": return "heart.text.square"
+// Temporarily disabled for App Review, 2026-11-07.
+//         case "health_activity_summary": return "heart.text.square"
         case "music_catalog_search": return "music.note"
         case "bluetooth_scan": return "dot.radiowaves.left.and.right"
         case "photos_recent_metadata": return "photo.on.rectangle"

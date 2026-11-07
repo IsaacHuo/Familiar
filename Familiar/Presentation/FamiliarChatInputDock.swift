@@ -42,10 +42,12 @@ struct FamiliarChatInputDock: View {
     @Environment(\.modelContext) private var context
     let controller: FamiliarChatController
     let skills: [FamiliarSkillMenuItem]
-    let isListening: Bool
+// Temporarily disabled for App Review, 2026-11-07.
+//     let isListening: Bool
     let focus: Binding<Bool>
     let availableHeight: CGFloat
-    let onSpeech: () -> Void
+// Temporarily disabled for App Review, 2026-11-07.
+//     let onSpeech: () -> Void
     let onSend: () -> Void
     let onStop: () -> Void
     @State private var drafts = FamiliarInteractionDrafts()
@@ -63,6 +65,15 @@ struct FamiliarChatInputDock: View {
         let current = pending.first
         let question = current?.surface.kind == .clarification ? current : nil
         VStack(spacing: 0) {
+            if controller.isPreparingSend {
+                HStack(spacing: FamiliarSpacing.small) {
+                    ProgressView().controlSize(.small).accessibilityHidden(true)
+                    Text(String(localized: "composer.preparing_message")).font(FamiliarTypography.caption)
+                    Spacer()
+                }
+                .padding(.horizontal, FamiliarSpacing.medium).padding(.vertical, FamiliarSpacing.small)
+                .accessibilityElement(children: .combine).accessibilityIdentifier("composer.preparing")
+            }
             if let current {
                 VStack(alignment: .leading, spacing: FamiliarSpacing.small) {
                     HStack(spacing: FamiliarSpacing.small) {
@@ -130,9 +141,13 @@ struct FamiliarChatInputDock: View {
                 } ?? $controller.draft,
                 images: $controller.draftImages, documents: $controller.draftAttachments,
                 selectedSkillID: $controller.selectedSkillID, skills: skills,
-                isSending: controller.isSending, isListening: isListening,
+// Temporarily disabled for App Review, 2026-11-07.
+//                 isSending: controller.isSending, isListening: isListening,
+                isSending: controller.isSending,
                 draftScopeID: controller.selectedConversationID ?? controller.draftConversationID,
-                focus: focus, onSpeech: onSpeech,
+// Temporarily disabled for App Review, 2026-11-07.
+//                 focus: focus, onSpeech: onSpeech,
+                focus: focus,
                 onSend: {
                     if let question {
                         let answer = drafts.answer(for: question.id).trimmingCharacters(in: .whitespacesAndNewlines)

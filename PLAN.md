@@ -2,21 +2,60 @@
 
 目标：Telegram iOS视觉与交互的AI问答App。固定上游f1dd7a2；在main分批推进。设计只在[UI规范](docs/03-ui-ux-design.md)，逐项目标和状态只在[320项账本](docs/telegram-ios-ui-checklist.md)，源码阅读只在[登记](docs/research/telegram-ios-source-map.md)。
 
-## 当前批次：App Review 1.0 (2) 修复
+## 当前批次：进入富文本会话闪烁
 
-- [x] 三份崩溃日志匹配发布 dSYM，应用帧定位到输入框布局；初始化与寄存器证据见 [调查](logs/2026-10-28-review-composer-crash.md)。根因判断与真机复验分开。
-- [x] 输入框及消息正文显式创建 TextKit 1 并调用子类指定初始化器；统一布局文本快照、有效选区检查与重入保护。
-- [x] 天气成功工具结果驱动固定  Weather／法律链接，覆盖回复、结果和完整记录；实时／历史共用投影，不依赖模型引用，不改 schema。
-- [x] 保留 HealthKit／WeatherKit，健康权限页增加使用步骤；[审核回复与真机录屏清单](website/APP-STORE-CONNECT.md)已补齐。
-- [x] 新增初始化／生产挂载输入／天气工具契约／持久化重读四项单测及纸笔按钮与键盘导航 UI 回归。
-- [x] 指定 arm64 Simulator 的 Debug build-for-testing：App／单测／UI 测试目标编译通过；新增用例未执行。
-- [x] 同一具体 arm64 destination 的 Release build：exit0，BUILD SUCCEEDED；仅编译，不能替代设备复验。
-- [ ] 所有者真机：iPadOS 27.2 发布构建的新建／键盘／返回／旋转，iPhone 回归，HealthKit 权限与真实结果，WeatherKit 署名与链接及录屏。
-- [ ] 所有者上传新 build、附真实录屏、更新 Review Notes 并回复审核。未自动提交 App Store 审核或发布 App。
+- [x] 历史行不再播放新回复入场动画；仅实时新增回复保留原动效，异步发布历史页也直接呈现。
+- [x] 富文本高度和占位交接合为一个值发布；首个有效高度前隐藏 WebKit 正文，避免原生占位与网页文字叠绘及二次布局。
+- [x] 跟随最新时使用原生底部尺寸锚定，已在底部不再排队重复滚动；阅读旧内容时保留顶部与现有阅读补偿。
+- [x] 会话进入页固定持有已接受的会话；后台刷新不切回加载视图，同一定位已加载时不重复读取；初始窗口匹配时不重复发起页导航。
+- [x] 新增首个有效高度／占位交接／重排不重播占位回归；App／单测／UI测试目标具体 arm64 Debug build-for-testing 通过，exit 0、无 warning/error，日志 `/tmp/familiar-chat-entry-flicker-build.log`。仅编译，未执行用例或启动 Simulator。
+- [ ] 所有者设备：冷启动打开含代码／表格／公式的旧对话，返回后重入、长历史翻页、阅读中流式新增、键盘与旋转；确认无闪烁、文字叠影或来回跳位。代码风险已修正，尚无运行复现和视觉通过证据。
 
-本轮所有者另行授权将已有未提交改动与审核修复一并提交、推送 main；此授权不包含 App Store 重提审核。
+## 已实施基线：性能与可靠性 A → G
 
-审核修复完成后恢复下面 R4 的下一片；历史 UI／设备验收状态不自动关闭。
+保留下面未提交的审核修复及三个能力的注释停用；在 main 实施，不改 schema、签名、依赖或用户数据。采集方案与空基线表见 [性能验收](docs/12-performance-and-reliability.md)。
+
+- [x] A 代码：系统 signpost、真实持久历史夹具和 App／WebContent 内存口径分离。
+- [x] A 具体 arm64 Debug build-for-testing 通过（App／单测／UI测试），日志 `/tmp/familiar-performance-A-build.log`；一项 AppIntents metadata 提示；测试未执行，设备基线待采集。
+- [x] B 静态复核 TextKit／返回暂停／菜单身份／iPad 分享锚点，保留已有保护；运行记录读取、审批关联与终态收尾错误传播，澄清定向查询，终态失败回滚。新增跨 Run 收尾和旧呈现不能结束新阅读的回归。
+- [x] B App／单测／UI测试具体 arm64 build-for-testing 通过，`/tmp/familiar-performance-B-build.log`；测试未执行，运行卡死与设备反馈仍待采集。
+- [x] C 上下文／图片／审计哈希、文档／文本复制、网页解码与字节校验后台准备；回到主线程复核草稿／scope／版本，取消或目标失效清理产物。Shell 不再启动预热，notPrepared 可配置偏好，现有终端与工具按需准备。
+- [x] C App／单测／UI测试具体 arm64 build-for-testing 通过，`/tmp/familiar-performance-C-build-tests.log`；已有导入／网页保存回归已适配 async，并补取消后不创建记录或字节用例；仅编译。
+- [x] D 后台只读 ModelActor 返回索引／页面 DTO，完整发送历史独立读取；保存后刷新、会话／scope／代次和导航呈现保护，终态交接等待持久页面。首页排序分组与运行小标记分离，搜索 actor 与查询计数复用。
+- [x] D App／单测／UI测试具体 arm64 build-for-testing 通过，`/tmp/familiar-performance-D-build-final.log`；历史夹具走后台生产读取，旧用例等待异步边界，并补过期选择／失败保留页面／新检查点和完整历史回归；仅编译。
+- [x] E 块级展示直接接收 delta，可见性 lease 防止旧 renderer 停掉新 renderer；完整 Runtime 文本与检查点不变，终态立即 flush。16KiB 以上流式 Markdown 按固定 120ms 发布节奏合并，非 debounce，保留 500ms 缓冲兜底。
+- [x] E 高亮缓存每 renderer 最多32项／约1MiB字符串成本，Mermaid 复用既有内容签名并避免重复主题初始化；文档代次同时隔离 JS 消息与完成回调，WebContent 退出只重载一次，随后原生文本降级。
+- [x] E App／单测／UI测试具体 arm64 build-for-testing 通过，`/tmp/familiar-performance-E-build-complete.log`；node --check 通过；新增 Unicode／长 delta、显示 lease、单次 WebContent 恢复和缓存复用／清理回归，仅编译。
+- [x] F 保留缩略图单飞／取消／purge 代次、图库三页与会话淘汰边界；缩放页不再跨图片加载 await 强持有自身，离场／析构取消等待；内存警告释放每个 renderer 的可重建高亮缓存。
+- [x] F App／单测／UI测试具体 arm64 build-for-testing 通过，`/tmp/familiar-performance-F-build.log`；一项异步 API 提示已在 G 改用 async。没有设备内存图，不报告泄漏数量或内存下降。
+- [x] G 消息准备／网页保存／历史加载反馈与只读重载入口；跨等待归属复核、错误传播、失败保留当前页面与 Undo 状态，执行重试沿用不确定写入检查。
+- [x] 消息附件正式复制、大小／SHA-256／提取文本校验也移至后台；由附件存储层构造的准备回执绑定 message／scope／附件 ID／路径。再次验证草稿与归属后一次性保存，准备失败不回滚等待期间其他界面改动。补源文件变化清理、同 UUID 不同 scope 拒绝回归。
+- [x] 搜索以实际返回页终止分页，复用计数时不会因期间删除数据而持续提供空页；新增删除后翻页与重新查询回归。
+- [x] 异步页发布前复核呈现 ID 与真实拖动代次，时间线按已加载页选择数据；按钮 tracking 不误取消翻页。补旧呈现请求拒绝与 tracking 点按加载回归，仅编译。
+- [x] 最终 App／单测／UI测试具体 arm64 Debug build-for-testing：exit 0、TEST BUILD SUCCEEDED，无 warning/error，日志 `/tmp/familiar-performance-final-delivery.log`；包含全部上述修改。测试未执行。
+- [x] 最终静态／产物检查：1205 中英有效键，集合一致且无重复；plutil、renderer.js语法、变更及新增 Markdown 本地链接、git diff --check 通过；无 schema／依赖锁／工程签名配置变更。App 与 debug dylib 无 HealthKit／WeatherKit／Speech 直接链接或相关录音 API，处理后的权限与隐私清单无停用项，原注释文件保留；state 已核对更新。
+- [ ] 所有者真实性能／服务／故障与设备验收；没有采样不填改善百分比。
+
+目的地：iPhone 18 Pro／iOS 27.0／arm64，1041DD9D-AC70-4DDD-9D34-52514C3E491F，前后均 Shutdown；DerivedData `/tmp/FamiliarPerformanceDerived`，复用既有锁定 SourcePackages，串行构建。未运行 App、执行测试、安装设备、修改签名或清理用户数据；Git 发布按所有者指令执行；推送触发现有 iOS CI 和网站自动部署，结果以工作流为准。尚未重提 App Store 审核。Release 设备归档、五组前后性能对照、20轮故障复验与内存图仍待所有者。
+
+下一项：按性能验收文档采集当前 Release 的实际设备证据，再按确认热点定点优化；旧 R4／320项视觉与真实服务验收不因本轮编译自动关闭。
+
+## 保留基线：App Review 1.0 (3) 功能注释停用
+
+- [x] 按所有者最新要求将麦克风转写、HealthKit 与 WeatherKit 原实现恢复为注释，保留源码；工具注册、设置入口、权限和签名能力同步停用。
+- [x] 输入框只保留发送／停止，空草稿禁用发送；系统／远程回复朗读、相机、地图与其他原生工具保留。
+- [x] 注释停用过期测试／benchmark；合规套件检查当前发布声明与注册表无录音／健康／天气能力，更新中英文文案、隐私政策与审核回复草稿。
+- [x] 历史重试安全检查只解码快照中的工具名和读写类型，避免停用能力使旧快照解码失败；新增读／可撤销写／破坏性写及无效 effect 回归，仅编译不执行。
+- [x] 最终 Debug build-for-testing：App／单测／UI 测试目标具体 arm64 Simulator 编译通过，exit 0、TEST BUILD SUCCEEDED，无 warning/error；包含历史快照安全检查与新回归。测试未执行，Simulator 未启动。
+- [x] 静态与产物检查：中英各 1198 个有效本地化键、无重复且集合一致；plutil、变更 Markdown 链接、git diff --check 通过。最终 Debug 可执行文件与 debug dylib 无 HealthKit／WeatherKit／Speech 直接链接，也无相关录音／识别 API 未解析符号；处理后的权限文件和隐私清单无停用项。原文件全部保留。
+- [x] 网站 production build 通过；输出在 /tmp，未部署。停用的麦克风说明在 Vue 源码中保留为注释，生产文案不再展示。
+- [ ] 最后补充历史安全检查后的 Release 测试构建未完成：Familiar arm64 优化编译连续 180 秒无日志进展，按规则 SIGINT 终止，exit 75；根因未确认，不按源码错误或测试通过记录，不重试该检查。较早的普通 Release build 已通过，只覆盖功能注释停用基线，不覆盖随后历史保护修正。
+- [ ] 所有者真机：拟提交发布构建在 iPadOS 27.2 与 iPhone 复验新建／键盘／旋转／文字与附件发送／生成停止／回复朗读；确认无麦克风按钮、健康／天气工具和权限入口。
+- [ ] 所有者更新 App Store Connect 隐私答案、截图及审核备注；上传高于 3 的可用 build，附真实设备验证证据。网站文案已更新，部署结果以现有 Pages 工作流为准；尚未提交 App Store 审核或发布 App。
+
+本轮目的地：iPhone 18 Pro／iOS 27.0／arm64，1041DD9D-AC70-4DDD-9D34-52514C3E491F；前后均 Shutdown。DerivedData：`/tmp/FamiliarNativeRemovalDerived`。最终 Debug 日志：`/tmp/familiar-native-disabled-final-debug.log`；普通 Release：`/tmp/familiar-native-disabled-release.log`；被停止的 Release 测试构建：`/tmp/familiar-native-disabled-release-validation-final.log`；网站：`/tmp/familiar-native-disabled-website-build.log`。未修改项目签名或 Package.resolved；发布归档签名及真机行为仍待所有者。
+
+旧 TextKit 1 初始化修复保留；本轮没有将旧崩溃日志作为新麦克风崩溃根因。当前仅停用问题功能，不清除用户历史、不修改版本或签名配置。完成后恢复 R4 下一片。
 
 ## 前一批次：R4 附件邻接／只读预览／菜单身份
 

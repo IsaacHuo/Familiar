@@ -78,7 +78,8 @@
             <key>NSPrivacyCollectedDataTypePurposes</key>
             <array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
         </dict>
-        <!-- health_activity_summary reads HealthKit aggregates that can reach the selected model provider as tool results. -->
+<!-- Temporarily disabled for App Review, 2026-11-07.
+
         <dict>
             <key>NSPrivacyCollectedDataType</key>
             <string>NSPrivacyCollectedDataTypeHealth</string>
@@ -99,6 +100,7 @@
             <key>NSPrivacyCollectedDataTypePurposes</key>
             <array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
         </dict>
+-->
         <!-- photos_recent_metadata reads asset timestamps, dimensions and location metadata. -->
         <dict>
             <key>NSPrivacyCollectedDataType</key>

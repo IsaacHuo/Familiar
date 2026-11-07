@@ -16,7 +16,7 @@ nonisolated enum FamiliarToolGroup: String, CaseIterable, Sendable {
         case .base: String(localized: "tool.category.basics", defaultValue: "Basics")
         case .web: String(localized: "tool.group.web", defaultValue: "Web")
         case .calendar: String(localized: "tool.group.calendar", defaultValue: "Calendar & Reminders")
-        case .places: String(localized: "tool.group.places", defaultValue: "Places & Weather")
+        case .places: String(localized: "tool.group.places", defaultValue: "Places")
         case .files: String(localized: "tool.group.files", defaultValue: "Files")
         case .memory: String(localized: "tool.group.memory", defaultValue: "Memory")
         case .skills: String(localized: "tool.group.skills", defaultValue: "Skills")
@@ -30,7 +30,7 @@ nonisolated enum FamiliarToolGroup: String, CaseIterable, Sendable {
         case .base: "Base interaction and tool discovery."
         case .web: "Search public information and read web pages."
         case .calendar: "Read or propose changes to calendars and reminders."
-        case .places: "Find places and coordinates, then query native weather."
+        case .places: "Find places and coordinates."
         case .files: "Read, save, revise and share files in the current Project."
         case .memory: "Read frozen memories or propose a confirmed memory."
         case .skills: "Read explicitly attached guidance; installation requires approval."
@@ -45,7 +45,9 @@ nonisolated enum FamiliarToolGroup: String, CaseIterable, Sendable {
         case "web_search", "web_fetch": return .web
         case "calendar_events", "create_calendar_event", "update_calendar_event", "delete_calendar_event",
              "reminders", "create_reminder", "update_reminder", "delete_reminder": return .calendar
-        case "map_search", "weather_forecast", "weather_history", "current_location": return .places
+// Temporarily disabled for App Review, 2026-11-07.
+//         case "map_search", "weather_forecast", "weather_history", "current_location": return .places
+        case "map_search", "current_location": return .places
         case "file_list", "file_search", "workspace_list", "workspace_read",
              "workspace_search", "workspace_write", "workspace_image_list", "prepare_file_export": return .files
         case "file_write", "file_edit", "file_read": return .files

@@ -486,7 +486,8 @@ nonisolated struct FamiliarDeviceCapabilityProvider: FamiliarCapabilityProviding
     let contacts: any FamiliarContactsServicing
     let location: any FamiliarLocationServicing
     let photos: any FamiliarPhotoLibraryReading
-    let health: any FamiliarHealthServicing
+// Temporarily disabled for App Review, 2026-11-07.
+//     let health: any FamiliarHealthServicing
     let music: any FamiliarMusicServicing
     let bluetooth: any FamiliarBluetoothServicing
     let alarm: any FamiliarAlarmServicing
@@ -499,19 +500,21 @@ nonisolated struct FamiliarDeviceCapabilityProvider: FamiliarCapabilityProviding
             await contacts.availability()
         case .locationWhenInUse:
             await location.availability()
-        case .weatherKit:
-            // WeatherKit needs no user permission, and an app cannot inspect its
-            // own signed entitlements or Apple Weather quota at runtime. A
-            // version gate here was always true on an iOS 18 deployment target
-            // and therefore claimed availability it had not verified. Report
-            // `.available` and let a real failure surface as a typed
-            // `FamiliarWeatherError` so the model never silently substitutes
-            // web guesses for a WeatherKit outage.
-            .available
+// Temporarily disabled for App Review, 2026-11-07.
+//         case .weatherKit:
+//             // WeatherKit needs no user permission, and an app cannot inspect its
+//             // own signed entitlements or Apple Weather quota at runtime. A
+//             // version gate here was always true on an iOS 18 deployment target
+//             // and therefore claimed availability it had not verified. Report
+//             // `.available` and let a real failure surface as a typed
+//             // `FamiliarWeatherError` so the model never silently substitutes
+//             // web guesses for a WeatherKit outage.
+//             .available
         case .photoLibraryRead:
             await photos.readAvailability()
-        case .healthActivityRead:
-            await health.availability()
+// Temporarily disabled for App Review, 2026-11-07.
+//         case .healthActivityRead:
+//             await health.availability()
         case .musicCatalogRead:
             await music.availability()
         case .bluetoothScan:
@@ -533,12 +536,14 @@ nonisolated struct FamiliarDeviceCapabilityProvider: FamiliarCapabilityProviding
             try await contacts.requestAccess()
         case .locationWhenInUse:
             try await location.requestAccess()
-        case .weatherKit:
-            return
+// Temporarily disabled for App Review, 2026-11-07.
+//         case .weatherKit:
+//             return
         case .photoLibraryRead:
             try await photos.requestReadAccess()
-        case .healthActivityRead:
-            try await health.requestAccess()
+// Temporarily disabled for App Review, 2026-11-07.
+//         case .healthActivityRead:
+//             try await health.requestAccess()
         case .musicCatalogRead:
             try await music.requestAccess()
         case .bluetoothScan:

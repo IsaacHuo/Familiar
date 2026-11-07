@@ -116,11 +116,11 @@ struct FamiliarFunctionalFilesTests {
 
     @Test("Protected and corrupt PDFs fail rather than becoming successful empty imports", arguments: ["fc-encrypted.pdf", "fc-corrupt.pdf"])
     func invalidPDF(_ name: String) async throws {
-        await #expect(throws: (any Error).self) { try await FamiliarAttachmentStore.importDocument(from: fixture(name)) }
+        await #expect(throws: (any Error).self) { _ = try await FamiliarAttachmentStore.importDocument(from: fixture(name)) }
     }
 
     @Test("Missing destination Project rejects import before any new bytes or metadata")
-    @MainActor func deletedDestination() throws {
+    @MainActor func deletedDestination() async throws {
         let container = try FamiliarTestStore.make(), context = container.mainContext
         let project = FamiliarProject(name: "Deleted")
         context.insert(project); try context.save()
@@ -128,9 +128,26 @@ struct FamiliarFunctionalFilesTests {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let service = FamiliarFileImportService(store: .init(rootURL: root))
-        #expect(throws: FamiliarFileImportError.self) { try service.importPastedText("Unowned text", into: project, in: context) }
+        await #expect(throws: FamiliarFileImportError.self) { _ = try await service.importPastedText("Unowned text", into: project, in: context) }
         #expect(!FileManager.default.fileExists(atPath: root.path))
         #expect(try context.fetchCount(FetchDescriptor<FamiliarFileRecord>()) == 0)
+    }
+
+    @Test("Cancelled text preparation creates neither canonical records nor resource bytes")
+    @MainActor func cancelledTextPreparation() async throws {
+        let container = try FamiliarTestStore.make(), context = container.mainContext
+        let project = FamiliarProject(name: "Cancellation")
+        context.insert(project); try context.save()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let service = FamiliarFileImportService(store: .init(rootURL: root))
+        let task = Task { @MainActor in
+            _ = try await service.importPastedText(String(repeating: "prepared text ", count: 10000), into: project, in: context)
+        }
+        task.cancel()
+        await #expect(throws: CancellationError.self) { _ = try await task.value }
+        #expect(try context.fetchCount(FetchDescriptor<FamiliarFileRecord>()) == 0)
+        #expect(!FileManager.default.fileExists(atPath: root.path))
     }
 
     @Test("An imported text File can be revised without changing its original bytes or identity")
@@ -144,7 +161,7 @@ struct FamiliarFunctionalFilesTests {
             try? FileManager.default.removeItem(at: resources.rootURL.appendingPathComponent(FamiliarWorkScope.project(project.id).filePrefix))
             try? FileManager.default.removeItem(at: generated.rootURL)
         }
-        let file = try FamiliarFileImportService(store: resources).importPastedText("Original imported text", title: "Note", into: project, in: context)
+        let file = try await FamiliarFileImportService(store: resources).importPastedText("Original imported text", title: "Note", into: project, in: context)
         let version = try #require(file.latestVersion)
         let snapshot = try #require(FamiliarFileCatalogService().snapshot(version))
         let input = FamiliarFileEditTool.Input(identifier: "file_" + version.id.uuidString, content: "Revised imported text", title: nil)
@@ -176,7 +193,7 @@ struct FamiliarFunctionalFilesTests {
             let context = container.mainContext
             let project = FamiliarProject(name: "Disk Project")
             context.insert(project); try context.save()
-            let file = try FamiliarFileImportService(store: .init(rootURL: root.appendingPathComponent("Bytes")))
+            let file = try await FamiliarFileImportService(store: .init(rootURL: root.appendingPathComponent("Bytes")))
                 .importPastedText("Persist across container reopening", into: project, in: context)
             fileID = file.id
         }

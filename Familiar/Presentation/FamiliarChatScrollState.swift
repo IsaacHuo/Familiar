@@ -52,6 +52,7 @@ final class FamiliarChatScrollSession {
     private(set) var mode = FamiliarChatScrollState.Mode.following
     private(set) var showsReturnToLatest = false
     private(set) var readingRevision = 0
+    @ObservationIgnored private(set) var dragRevision = 0
     @ObservationIgnored private var state = FamiliarChatScrollState()
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var rowTask: Task<Void, Never>?
@@ -113,6 +114,8 @@ final class FamiliarChatScrollSession {
     }
 
     func userBegan() { guard isPresented else { return }; cancel(); anchor = nil; state.userBegan(); publish() }
+    /// Tracking includes button taps; only a recognized drag supersedes an async page action.
+    func userDragged() { guard isPresented else { return }; dragRevision &+= 1; userBegan() }
     /// Explicit search/navigation replaces the reading anchor; it is not content growth.
     func prepareForNavigation() {
         cancel(); anchor = nil; state.beginInspection(); readingRevision += 1; publish()

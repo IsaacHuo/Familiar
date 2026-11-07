@@ -23,18 +23,23 @@ nonisolated enum FamiliarChatTestScenario {
         guard !value.isEmpty, value.count <= 64, value.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }) else { return nil }
         return value
     }
-    @MainActor static func seedHistory(in controller: FamiliarChatController) {
+    @MainActor static func seedHistory(in controller: FamiliarChatController, context: ModelContext) {
         #if DEBUG && targetEnvironment(simulator)
         let args = ProcessInfo.processInfo.arguments
-        guard isEnabled, !controller.hasHistory,
+        guard isEnabled, controller.selectedConversationID == nil, !controller.hasHistory,
               let index = args.firstIndex(of: "-familiar.history-count"), args.indices.contains(index + 1),
-              let count = Int(args[index + 1]), [100, 300].contains(count) else { return }
-        controller.messages = (0..<count).map { index in
-            .init(id: UUID(), role: .assistant,
-                content: "# Reply \(index)\n\nA paragraph in the conversation.\n\n~~~swift\nlet value = \(index)\n~~~",
-                createdAt: Date(timeIntervalSince1970: Double(index)), sequence: index,
-                providerID: nil, modelID: nil, attachments: [])
-        }
+              let count = Int(args[index + 1]), [0, 100, 300, 3000].contains(count) else { return }
+        do {
+            let chat = FamiliarConversation(id: controller.draftConversationID, title: "Performance fixture")
+            context.insert(chat)
+            for index in 0..<count {
+                context.insert(FamiliarMessage(role: .assistant,
+                    content: "# Reply \(index)\n\nA paragraph in the conversation.\n\n~~~swift\nlet value = \(index)\n~~~",
+                    createdAt: Date(timeIntervalSince1970: Double(index)), sequence: index, conversation: chat))
+            }
+            try context.save()
+            controller.select(chat.id, in: context)
+        } catch { controller.errorMessage = error.localizedDescription }
         #endif
     }
     @MainActor static func seedChatList(in context: ModelContext) throws {

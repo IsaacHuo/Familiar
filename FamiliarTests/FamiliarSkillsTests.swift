@@ -209,7 +209,7 @@ struct FamiliarSkillsTests {
             toolManifests: [manifest("web_fetch")]
         )
 
-        FamiliarRunPersistenceRecorder().ensureRun(
+        try FamiliarRunPersistenceRecorder().ensureRun(
             runtimeID: "skill-run",
             snapshot: snapshot,
             startedAt: snapshot.createdAt,

@@ -10,10 +10,12 @@ enum FamiliarBenchmarkScenario: String, CaseIterable, Sendable {
     case posterImagePreflight = "poster-image-preflight"
     case documentQuestion = "document-question"
     case documentCalendar = "document-calendar"
-    case weatherCapabilityGate = "weather-capability-gate"
+// Temporarily disabled for App Review, 2026-11-07.
+//     case weatherCapabilityGate = "weather-capability-gate"
     case webReminder = "web-reminder"
     case toolFailureRecovery = "tool-failure-recovery"
-    case nativeWeatherReport = "native-weather-report"
+// Temporarily disabled for App Review, 2026-11-07.
+//     case nativeWeatherReport = "native-weather-report"
 
     var expectedTools: [String] {
         switch self {
@@ -22,10 +24,12 @@ enum FamiliarBenchmarkScenario: String, CaseIterable, Sendable {
         case .documentCalendar: ["calendar_events", "create_calendar_event"]
         case .webReminder: ["web_search", "web_fetch", "create_reminder"]
         case .toolFailureRecovery: ["failing_tool"]
-        // Past weather must come from WeatherKit history, never from a web guess
-        // and never from the forecast tool, which only starts at the current day.
-        case .nativeWeatherReport: ["photos_recent_metadata", "weather_history"]
-        case .posterImagePreflight, .documentQuestion, .weatherCapabilityGate: []
+// Temporarily disabled for App Review, 2026-11-07.
+//         // Past weather must come from WeatherKit history, never from a web guess
+//         // and never from the forecast tool, which only starts at the current day.
+//         case .nativeWeatherReport: ["photos_recent_metadata", "weather_history"]
+//         case .posterImagePreflight, .documentQuestion, .weatherCapabilityGate: []
+        case .posterImagePreflight, .documentQuestion: []
         }
     }
 
@@ -34,9 +38,10 @@ enum FamiliarBenchmarkScenario: String, CaseIterable, Sendable {
         case .reminderWrite: ["create_reminder"]
         case .documentCalendar: ["create_calendar_event"]
         case .webReminder: ["create_reminder"]
-        // Photo metadata is a sensitive read and is confirmed once; the WeatherKit
-        // lookup that follows is low risk and must not interrupt the user again.
-        case .nativeWeatherReport: ["photos_recent_metadata"]
+// Temporarily disabled for App Review, 2026-11-07.
+//         // Photo metadata is a sensitive read and is confirmed once; the WeatherKit
+//         // lookup that follows is low risk and must not interrupt the user again.
+//         case .nativeWeatherReport: ["photos_recent_metadata"]
         default: []
         }
     }
@@ -114,9 +119,10 @@ private struct FamiliarBenchmarkProvider: FamiliarModelProvider {
                         emitText("考试日程已经创建。", into: continuation)
                     }
 
-                case .weatherCapabilityGate:
-                    emitText("当前没有天气工具，无法核验周六天气。", into: continuation)
-
+// Temporarily disabled for App Review, 2026-11-07.
+//                 case .weatherCapabilityGate:
+//                     emitText("当前没有天气工具，无法核验周六天气。", into: continuation)
+//
                 case .webReminder:
                     if completedTools.isEmpty {
                         emitTool(
@@ -150,62 +156,64 @@ private struct FamiliarBenchmarkProvider: FamiliarModelProvider {
                         emitText("工具失败了，请提供可用的数据源后再试。", into: continuation)
                     }
 
-                case .nativeWeatherReport:
-                    if completedTools.isEmpty {
-                        emitTool(
-                            id: "photo-metadata",
-                            name: "photos_recent_metadata",
-                            arguments: #"{"limit":1,"imagesOnly":true}"#,
-                            into: continuation
-                        )
-                    } else if !completedTools.contains("weather_history") {
-                        // Reads the coordinates back out of the photo tool's own model
-                        // JSON, so the chain is genuinely data-driven rather than a
-                        // hardcoded pair of numbers.
-                        guard let window = Self.photoWeatherWindow(in: request.messages) else {
-                            continuation.finish(throwing: FamiliarBenchmarkError.photoChainBroken)
-                            return
-                        }
-                        emitTool(
-                            id: "weather-history",
-                            name: "weather_history",
-                            arguments: """
-                            {"latitude":\(window.latitude),"longitude":\(window.longitude),"startISO8601":"\(window.startISO8601)","endISO8601":"\(window.endISO8601)"}
-                            """,
-                            into: continuation
-                        )
-                    } else {
-                        emitText("拍照那天当地为晴天，最高 27.0 摄氏度。", into: continuation)
-                    }
-
+// Temporarily disabled for App Review, 2026-11-07.
+//                 case .nativeWeatherReport:
+//                     if completedTools.isEmpty {
+//                         emitTool(
+//                             id: "photo-metadata",
+//                             name: "photos_recent_metadata",
+//                             arguments: #"{"limit":1,"imagesOnly":true}"#,
+//                             into: continuation
+//                         )
+//                     } else if !completedTools.contains("weather_history") {
+//                         // Reads the coordinates back out of the photo tool's own model
+//                         // JSON, so the chain is genuinely data-driven rather than a
+//                         // hardcoded pair of numbers.
+//                         guard let window = Self.photoWeatherWindow(in: request.messages) else {
+//                             continuation.finish(throwing: FamiliarBenchmarkError.photoChainBroken)
+//                             return
+//                         }
+//                         emitTool(
+//                             id: "weather-history",
+//                             name: "weather_history",
+//                             arguments: """
+//                             {"latitude":\(window.latitude),"longitude":\(window.longitude),"startISO8601":"\(window.startISO8601)","endISO8601":"\(window.endISO8601)"}
+//                             """,
+//                             into: continuation
+//                         )
+//                     } else {
+//                         emitText("拍照那天当地为晴天，最高 27.0 摄氏度。", into: continuation)
+//                     }
+//
                 case .posterImagePreflight:
                     continuation.finish(throwing: FamiliarBenchmarkError.providerMustNotRun)
                 }
             }
         }
-    }
-
-    /// Extracts the capture coordinate and day window from the `photos_recent_metadata`
-    /// tool result. Returning `nil` means the photo tool stopped exposing usable
-    /// location metadata, which breaks the chain and must fail the benchmark.
-    private static func photoWeatherWindow(
-        in messages: [FamiliarProviderMessage]
-    ) -> (latitude: Double, longitude: Double, startISO8601: String, endISO8601: String)? {
-        guard let text = messages.last(where: { $0.role == .tool && $0.name == "photos_recent_metadata" })?.networkText,
-              let assets = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [[String: Any]],
-              let asset = assets.first,
-              let latitude = asset["latitude"] as? Double,
-              let longitude = asset["longitude"] as? Double,
-              let createdAt = asset["createdAtISO8601"] as? String,
-              let captured = try? FamiliarISO8601.date(createdAt)
-        else { return nil }
-        let dayStart = Calendar(identifier: .gregorian).startOfDay(for: captured)
-        return (
-            latitude,
-            longitude,
-            FamiliarISO8601.string(dayStart),
-            FamiliarISO8601.string(dayStart.addingTimeInterval(86_400))
-        )
+// Temporarily disabled for App Review, 2026-11-07.
+//     }
+//
+//     /// Extracts the capture coordinate and day window from the `photos_recent_metadata`
+//     /// tool result. Returning `nil` means the photo tool stopped exposing usable
+//     /// location metadata, which breaks the chain and must fail the benchmark.
+//     private static func photoWeatherWindow(
+//         in messages: [FamiliarProviderMessage]
+//     ) -> (latitude: Double, longitude: Double, startISO8601: String, endISO8601: String)? {
+//         guard let text = messages.last(where: { $0.role == .tool && $0.name == "photos_recent_metadata" })?.networkText,
+//               let assets = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [[String: Any]],
+//               let asset = assets.first,
+//               let latitude = asset["latitude"] as? Double,
+//               let longitude = asset["longitude"] as? Double,
+//               let createdAt = asset["createdAtISO8601"] as? String,
+//               let captured = try? FamiliarISO8601.date(createdAt)
+//         else { return nil }
+//         let dayStart = Calendar(identifier: .gregorian).startOfDay(for: captured)
+//         return (
+//             latitude,
+//             longitude,
+//             FamiliarISO8601.string(dayStart),
+//             FamiliarISO8601.string(dayStart.addingTimeInterval(86_400))
+//         )
     }
 
     private func emitTool(
@@ -409,85 +417,88 @@ private struct FamiliarBenchmarkFailingTool: FamiliarTool {
     }
 }
 
-/// Deterministic photo metadata with a real capture coordinate, which is what makes
-/// the photo -> location -> weather chain possible.
-private actor FamiliarBenchmarkPhotoLibrary: FamiliarPhotoLibraryReading {
-    static let latitude = 39.9042
-    static let longitude = 116.4074
-    static let createdAtISO8601 = "2026-08-20T09:30:00.000Z"
-
-    func readAvailability() -> FamiliarCapabilityAvailability { .available }
-
-    func requestReadAccess() {}
-
-    func recentAssets(limit: Int, imagesOnly: Bool) -> [FamiliarPhotoAssetMetadata] {
-        [FamiliarPhotoAssetMetadata(
-            id: "fixture-asset",
-            mediaType: "image",
-            createdAtISO8601: Self.createdAtISO8601,
-            latitude: Self.latitude,
-            longitude: Self.longitude,
-            pixelWidth: 4_032,
-            pixelHeight: 3_024,
-            isFavorite: false
-        )]
-    }
-}
-
-private actor FamiliarBenchmarkWeatherService: FamiliarWeatherServicing {
-    private(set) var historyCoordinates: [FamiliarBenchmarkCoordinate] = []
-
-    /// A past date can only be answered by the history query. Failing loudly here
-    /// means picking the wrong weather tool cannot pass silently.
-    func forecast(latitude: Double, longitude: Double, days: Int) throws -> FamiliarWeatherSnapshot {
-        throw FamiliarBenchmarkError.forecastUsedForPastDate
-    }
-
-    func history(
-        latitude: Double,
-        longitude: Double,
-        start: Date,
-        end: Date
-    ) -> FamiliarWeatherHistory {
-        historyCoordinates.append(.init(latitude: latitude, longitude: longitude))
-        return FamiliarWeatherHistory(
-            latitude: latitude,
-            longitude: longitude,
-            startISO8601: FamiliarISO8601.string(start),
-            endISO8601: FamiliarISO8601.string(end),
-            days: [FamiliarWeatherDay(
-                dateISO8601: FamiliarISO8601.string(start),
-                condition: "clear",
-                symbolName: "sun.max",
-                highCelsius: 27,
-                lowCelsius: 19,
-                precipitationChance: 0,
-                uvIndex: 7,
-                windKilometersPerHour: 9
-            )],
-            attributionServiceName: "Apple Weather",
-            attributionLegalURL: "https://weatherkit.apple.com/legal-attribution.html"
-        )
-    }
-}
-
-private struct FamiliarBenchmarkCoordinate: Sendable {
-    let latitude: Double
-    let longitude: Double
-}
-
+// Temporarily disabled for App Review, 2026-11-07.
+// /// Deterministic photo metadata with a real capture coordinate, which is what makes
+// /// the photo -> location -> weather chain possible.
+// private actor FamiliarBenchmarkPhotoLibrary: FamiliarPhotoLibraryReading {
+//     static let latitude = 39.9042
+//     static let longitude = 116.4074
+//     static let createdAtISO8601 = "2026-08-20T09:30:00.000Z"
+//
+//     func readAvailability() -> FamiliarCapabilityAvailability { .available }
+//
+//     func requestReadAccess() {}
+//
+//     func recentAssets(limit: Int, imagesOnly: Bool) -> [FamiliarPhotoAssetMetadata] {
+//         [FamiliarPhotoAssetMetadata(
+//             id: "fixture-asset",
+//             mediaType: "image",
+//             createdAtISO8601: Self.createdAtISO8601,
+//             latitude: Self.latitude,
+//             longitude: Self.longitude,
+//             pixelWidth: 4_032,
+//             pixelHeight: 3_024,
+//             isFavorite: false
+//         )]
+//     }
+// }
+//
+// private actor FamiliarBenchmarkWeatherService: FamiliarWeatherServicing {
+//     private(set) var historyCoordinates: [FamiliarBenchmarkCoordinate] = []
+//
+//     /// A past date can only be answered by the history query. Failing loudly here
+//     /// means picking the wrong weather tool cannot pass silently.
+//     func forecast(latitude: Double, longitude: Double, days: Int) throws -> FamiliarWeatherSnapshot {
+//         throw FamiliarBenchmarkError.forecastUsedForPastDate
+//     }
+//
+//     func history(
+//         latitude: Double,
+//         longitude: Double,
+//         start: Date,
+//         end: Date
+//     ) -> FamiliarWeatherHistory {
+//         historyCoordinates.append(.init(latitude: latitude, longitude: longitude))
+//         return FamiliarWeatherHistory(
+//             latitude: latitude,
+//             longitude: longitude,
+//             startISO8601: FamiliarISO8601.string(start),
+//             endISO8601: FamiliarISO8601.string(end),
+//             days: [FamiliarWeatherDay(
+//                 dateISO8601: FamiliarISO8601.string(start),
+//                 condition: "clear",
+//                 symbolName: "sun.max",
+//                 highCelsius: 27,
+//                 lowCelsius: 19,
+//                 precipitationChance: 0,
+//                 uvIndex: 7,
+//                 windKilometersPerHour: 9
+//             )],
+//             attributionServiceName: "Apple Weather",
+//             attributionLegalURL: "https://weatherkit.apple.com/legal-attribution.html"
+//         )
+//     }
+// }
+//
+// private struct FamiliarBenchmarkCoordinate: Sendable {
+//     let latitude: Double
+//     let longitude: Double
+// }
+//
 private enum FamiliarBenchmarkError: LocalizedError {
     case fixtureToolFailure
     case providerMustNotRun
-    case forecastUsedForPastDate
-    case photoChainBroken
+// Temporarily disabled for App Review, 2026-11-07.
+//     case forecastUsedForPastDate
+//     case photoChainBroken
 
     var errorDescription: String? {
         switch self {
         case .fixtureToolFailure: "The deterministic fixture tool failed."
         case .providerMustNotRun: "The provider ran despite the image capability gate."
-        case .forecastUsedForPastDate: "A past date was sent to the forecast tool instead of weather_history."
-        case .photoChainBroken: "Photo metadata did not expose a usable capture coordinate."
+// Temporarily disabled for App Review, 2026-11-07.
+//         case .forecastUsedForPastDate: "A past date was sent to the forecast tool instead of weather_history."
+//         case .photoChainBroken: "Photo metadata did not expose a usable capture coordinate."
         }
     }
 }
@@ -527,24 +538,27 @@ struct FamiliarBenchmarkTests {
 
         let startedAt = Date()
         let recorder = FamiliarBenchmarkRequestRecorder()
-        // The gate scenario asserts the model is never offered a weather tool, so the
-        // requirement has to be denied rather than merely absent from the fixture.
-        let eventKit = FamiliarBenchmarkEventKitService(
-            unavailableRequirements: scenario == .weatherCapabilityGate ? [.weatherKit] : []
-        )
-        let photoLibrary = FamiliarBenchmarkPhotoLibrary()
-        let weather = FamiliarBenchmarkWeatherService()
+// Temporarily disabled for App Review, 2026-11-07.
+//         // The gate scenario asserts the model is never offered a weather tool, so the
+//         // requirement has to be denied rather than merely absent from the fixture.
+//         let eventKit = FamiliarBenchmarkEventKitService(
+//             unavailableRequirements: scenario == .weatherCapabilityGate ? [.weatherKit] : []
+//         )
+//         let photoLibrary = FamiliarBenchmarkPhotoLibrary()
+//         let weather = FamiliarBenchmarkWeatherService()
+        let eventKit = FamiliarBenchmarkEventKitService()
         let confirmationCoordinator = FamiliarToolConfirmationCoordinator()
         let tools: [AnyFamiliarTool] = [
             AnyFamiliarTool(FamiliarCalendarEventsTool(service: eventKit)),
             AnyFamiliarTool(FamiliarCreateCalendarEventTool(service: eventKit)),
             AnyFamiliarTool(FamiliarRemindersTool(service: eventKit)),
             AnyFamiliarTool(FamiliarCreateReminderTool(service: eventKit)),
-            AnyFamiliarTool(FamiliarPhotosRecentMetadataTool(photos: photoLibrary)),
-            // Both weather tools are registered so choosing the wrong one stays
-            // possible, and therefore observable.
-            AnyFamiliarTool(FamiliarWeatherForecastTool(service: weather)),
-            AnyFamiliarTool(FamiliarWeatherHistoryTool(service: weather)),
+// Temporarily disabled for App Review, 2026-11-07.
+//             AnyFamiliarTool(FamiliarPhotosRecentMetadataTool(photos: photoLibrary)),
+//             // Both weather tools are registered so choosing the wrong one stays
+//             // possible, and therefore observable.
+//             AnyFamiliarTool(FamiliarWeatherForecastTool(service: weather)),
+//             AnyFamiliarTool(FamiliarWeatherHistoryTool(service: weather)),
             AnyFamiliarTool(FamiliarBenchmarkWebSearchTool()),
             AnyFamiliarTool(FamiliarBenchmarkWebFetchTool()),
             AnyFamiliarTool(FamiliarBenchmarkFailingTool())
@@ -624,39 +638,40 @@ struct FamiliarBenchmarkTests {
         case .documentCalendar:
             if requests.count != 3 { failures.append("expected 3 model rounds") }
             if commitCount != 1 { failures.append("expected one calendar commit") }
-
-        case .weatherCapabilityGate:
-            if requests.first?.tools.contains(where: { $0.name.contains("weather") }) == true {
-                failures.append("weather capability was exposed")
-            }
-            if response?.text.contains("没有天气工具") != true {
-                failures.append("weather boundary was not explicit")
-            }
-
-        case .nativeWeatherReport:
-            if requests.count != 3 { failures.append("expected 3 model rounds") }
-            if commitCount != 0 { failures.append("native read chain committed a write") }
-            // The coordinate must be the one the photo tool reported, proving the
-            // chain carried real data instead of the model inventing a location.
-            let coordinates = await weather.historyCoordinates
-            guard coordinates.count == 1 else {
-                failures.append("expected exactly one WeatherKit history lookup, got \(coordinates.count)")
-                break
-            }
-            if abs(coordinates[0].latitude - FamiliarBenchmarkPhotoLibrary.latitude) > 0.000_001
-                || abs(coordinates[0].longitude - FamiliarBenchmarkPhotoLibrary.longitude) > 0.000_001 {
-                failures.append("weather lookup did not reuse the photo capture coordinate")
-            }
-            // A low-risk WeatherKit read must not interrupt the user a second time.
-            if approvalSequence.contains("weather_history") {
-                failures.append("weather_history requested an approval it should not need")
-            }
-            if terminals.first(where: { $0.toolName == "photos_recent_metadata" })?.confirmation != .confirmed {
-                failures.append("sensitive photo read was not audited as confirmed")
-            }
-            if terminals.contains(where: { $0.status == .failed }) {
-                failures.append("native chain produced a failed tool call")
-            }
+// Temporarily disabled for App Review, 2026-11-07.
+//
+//         case .weatherCapabilityGate:
+//             if requests.first?.tools.contains(where: { $0.name.contains("weather") }) == true {
+//                 failures.append("weather capability was exposed")
+//             }
+//             if response?.text.contains("没有天气工具") != true {
+//                 failures.append("weather boundary was not explicit")
+//             }
+//
+//         case .nativeWeatherReport:
+//             if requests.count != 3 { failures.append("expected 3 model rounds") }
+//             if commitCount != 0 { failures.append("native read chain committed a write") }
+//             // The coordinate must be the one the photo tool reported, proving the
+//             // chain carried real data instead of the model inventing a location.
+//             let coordinates = await weather.historyCoordinates
+//             guard coordinates.count == 1 else {
+//                 failures.append("expected exactly one WeatherKit history lookup, got \(coordinates.count)")
+//                 break
+//             }
+//             if abs(coordinates[0].latitude - FamiliarBenchmarkPhotoLibrary.latitude) > 0.000_001
+//                 || abs(coordinates[0].longitude - FamiliarBenchmarkPhotoLibrary.longitude) > 0.000_001 {
+//                 failures.append("weather lookup did not reuse the photo capture coordinate")
+//             }
+//             // A low-risk WeatherKit read must not interrupt the user a second time.
+//             if approvalSequence.contains("weather_history") {
+//                 failures.append("weather_history requested an approval it should not need")
+//             }
+//             if terminals.first(where: { $0.toolName == "photos_recent_metadata" })?.confirmation != .confirmed {
+//                 failures.append("sensitive photo read was not audited as confirmed")
+//             }
+//             if terminals.contains(where: { $0.status == .failed }) {
+//                 failures.append("native chain produced a failed tool call")
+//             }
 
         case .webReminder:
             if requests.count != 4 { failures.append("expected 4 model rounds") }
@@ -756,17 +771,19 @@ struct FamiliarBenchmarkTests {
         case .documentCalendar:
             content = "找到考试时间，检查安排后加到日历"
             attachments = [documentAttachment()]
-        case .weatherCapabilityGate:
-            content = "看看周六安排和天气"
-            attachments = []
+// Temporarily disabled for App Review, 2026-11-07.
+//         case .weatherCapabilityGate:
+//             content = "看看周六安排和天气"
+//             attachments = []
         case .webReminder:
             content = "从这个 URL 找活动并创建提醒"
             attachments = []
         case .toolFailureRecovery:
             content = "读取不可用的数据源"
-            attachments = []
-        case .nativeWeatherReport:
-            content = "我最近拍的那张照片是在哪拍的，当时天气怎么样？"
+// Temporarily disabled for App Review, 2026-11-07.
+//             attachments = []
+//         case .nativeWeatherReport:
+//             content = "我最近拍的那张照片是在哪拍的，当时天气怎么样？"
             attachments = []
         case .posterImagePreflight:
             content = "把海报加到日历"
